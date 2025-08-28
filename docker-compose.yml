@@ -1,0 +1,95 @@
+services:
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        VERSION: "0.1.0"
+        COMMIT: "dev"
+        BUILD_TIME: "${BUILD_TIME:-dev}"
+    env_file:
+      - .env
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - TZ=Europe/Berlin
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - TZ=Europe/Berlin
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: nala
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: nalaerp
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale-provider=icu --icu-locale=de-x-icu"
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+      TZ: Europe/Berlin
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    environment:
+      TZ: Europe/Berlin
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 })"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    environment:
+      TZ: Europe/Berlin
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+  mongodata:
+  redisdata:
+
+networks:
+  default:
+    name: nalaerp_net

@@ -1,0 +1,13 @@
+**/.git
+**/.gitignore
+**/.idea
+**/.vscode
+**/node_modules
+**/build
+**/.dart_tool
+**/.packages
+**/.flutter-plugins*
+**/coverage
+**/*.log
+**/*.tmp
+
