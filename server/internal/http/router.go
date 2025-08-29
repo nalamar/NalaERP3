@@ -14,6 +14,20 @@ import (
     "nalaerp3/internal/config"
 )
 
+// corsMiddleware allows cross-origin requests (dev: client on :3000)
+func corsMiddleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        w.Header().Set("Access-Control-Allow-Origin", "*")
+        w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+        w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Accept-Language")
+        if r.Method == http.MethodOptions {
+            w.WriteHeader(http.StatusNoContent)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+
 // NewRouter stellt den HTTP-Router bereit.
 func NewRouter() http.Handler {
     r := chi.NewRouter()
@@ -21,7 +35,8 @@ func NewRouter() http.Handler {
     r.Use(middleware.RequestID)
     r.Use(middleware.RealIP)
     r.Use(middleware.Recoverer)
-    r.Use(middleware.AllowContentType("application/json"))
+    r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
+    r.Use(corsMiddleware)
     r.Use(func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
             w.Header().Set("Content-Language", "de-DE")
@@ -66,7 +81,8 @@ func NewRouterWithDeps(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg
     r.Use(middleware.RequestID)
     r.Use(middleware.RealIP)
     r.Use(middleware.Recoverer)
-    r.Use(middleware.AllowContentType("application/json"))
+    r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
+    r.Use(corsMiddleware)
     r.Use(func(next http.Handler) http.Handler {
         return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
             w.Header().Set("Content-Language", "de-DE")

@@ -14,11 +14,14 @@ import (
 )
 
 type Service struct {
-    pg *pgxpool.Pool
-    mg *mongo.Client
+    pg      *pgxpool.Pool
+    mg      *mongo.Client
+    mongoDB string
 }
 
-func NewService(pg *pgxpool.Pool, mg *mongo.Client) *Service { return &Service{pg: pg, mg: mg} }
+func NewService(pg *pgxpool.Pool, mg *mongo.Client, mongoDB string) *Service {
+    return &Service{pg: pg, mg: mg, mongoDB: mongoDB}
+}
 
 // Material
 type Material struct {
@@ -102,7 +105,7 @@ func (s *Service) List(ctx context.Context, _ MaterialFilter) ([]Material, error
     `)
     if err != nil { return nil, err }
     defer rows.Close()
-    var out []Material
+    out := make([]Material, 0)
     for rows.Next() {
         var m Material
         var raw []byte
@@ -166,7 +169,7 @@ func (s *Service) ListWarehouses(ctx context.Context) ([]Warehouse, error) {
     rows, err := s.pg.Query(ctx, `SELECT id, code, name FROM warehouses ORDER BY code ASC`)
     if err != nil { return nil, err }
     defer rows.Close()
-    var out []Warehouse
+    out := make([]Warehouse, 0)
     for rows.Next() {
         var w Warehouse
         if err := rows.Scan(&w.ID, &w.Code, &w.Name); err != nil { return nil, err }
@@ -175,8 +178,16 @@ func (s *Service) ListWarehouses(ctx context.Context) ([]Warehouse, error) {
     return out, nil
 }
 
-type Location struct { ID, WarehouseID, Code, Name string }
-type LocationCreate struct { Code, Name string `json:"code"` }
+type Location struct {
+    ID          string `json:"id"`
+    WarehouseID string `json:"warehouse_id"`
+    Code        string `json:"code"`
+    Name        string `json:"name"`
+}
+type LocationCreate struct {
+    Code string `json:"code"`
+    Name string `json:"name"`
+}
 
 func (s *Service) CreateLocation(ctx context.Context, warehouseID string, in LocationCreate) (*Location, error) {
     if strings.TrimSpace(in.Code) == "" { return nil, errors.New("Code erforderlich") }
@@ -192,7 +203,7 @@ func (s *Service) ListLocations(ctx context.Context, warehouseID string) ([]Loca
     rows, err := s.pg.Query(ctx, `SELECT id, warehouse_id, code, name FROM locations WHERE warehouse_id=$1 ORDER BY code ASC`, warehouseID)
     if err != nil { return nil, err }
     defer rows.Close()
-    var out []Location
+    out := make([]Location, 0)
     for rows.Next() {
         var l Location
         if err := rows.Scan(&l.ID, &l.WarehouseID, &l.Code, &l.Name); err != nil { return nil, err }
@@ -296,7 +307,7 @@ func (s *Service) StockByMaterial(ctx context.Context, materialID string) ([]Sto
     `, materialID)
     if err != nil { return nil, err }
     defer rows.Close()
-    var out []StockRow
+    out := make([]StockRow, 0)
     for rows.Next() {
         var r StockRow
         var batchCode *string

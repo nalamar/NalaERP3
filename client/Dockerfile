@@ -17,5 +17,6 @@ COPY web ./web
 
 EXPOSE 3000
 
-CMD ["bash", "-lc", "flutter config --no-analytics && flutter pub get && flutter run -d web-server --web-port 3000 --web-hostname 0.0.0.0"]
-
+RUN dart pub global activate dhttpd
+ENV PATH="/root/.pub-cache/bin:${PATH}"
+CMD ["bash", "-lc", "flutter config --no-analytics && flutter pub get && flutter build web --release && dhttpd --path build/web --host 0.0.0.0 --port 3000"]

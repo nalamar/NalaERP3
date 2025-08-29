@@ -4,13 +4,38 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
     <title>NalaERP3</title>
     <meta name="description" content="NalaERP3 – Flutter Web Client" />
+    <meta name="theme-color" content="#1E88E5" />
+    <link rel="manifest" href="manifest.json" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <script src="flutter.js" defer></script>
   </head>
   <body>
+    <noscript>Bitte JavaScript aktivieren, um diese Anwendung zu nutzen.</noscript>
     <script>
-      // Der Flutter Dev-Server liefert die App; diese Datei dient als Platzhalter.
+      window.addEventListener('load', function () {
+        console.log('Bootstrapping Flutter…');
+        if (typeof _flutter === 'undefined' || !_flutter.loader) {
+          console.error('Flutter loader nicht gefunden.');
+          return;
+        }
+        _flutter.loader
+          .loadEntrypoint({ serviceWorker: { serviceWorkerVersion: null } })
+          .then(function (engineInitializer) {
+            console.log('Engine initializer erhalten. Initialisiere Engine…');
+            return engineInitializer.initializeEngine();
+          })
+          .then(function (appRunner) {
+            console.log('Engine initialisiert. Starte App…');
+            return appRunner.runApp();
+          })
+          .catch(function (e) {
+            console.error('Flutter Startfehler:', e);
+          });
+      });
     </script>
   </body>
   </html>
-
