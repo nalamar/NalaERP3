@@ -20,6 +20,82 @@ class ApiClient {
   }
 
   Uri _u(String path, [Map<String, String>? q]) => Uri.parse('$baseUrl$path').replace(queryParameters: q);
+  // Lightweight raw helpers for internal pages that need generic calls
+  Future<List<dynamic>> _getList(String path, Map<String, String>? q) async {
+    final r = await http.get(_u(path, q));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+  Future<dynamic> _postJson(String path, Object body) async {
+    final r = await http.post(_u(path), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode < 200 || r.statusCode >= 300) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> _delete(String path) async {
+    final r = await http.delete(_u(path));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    }
+  }
+  Future<List<String>> _getRaw(String path) async {
+    final r = await http.get(_u(path));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
+    final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+    return arr.map((e)=> e.toString()).toList();
+  }
+  Future<Map<String, dynamic>> _getJson(String path) async {
+    final r = await http.get(_u(path));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+  Future<void> _putJson(String path, Object body) async {
+    final r = await http.put(_u(path), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode < 200 || r.statusCode >= 300) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+  }
+
+  // Settings: Numbering
+  Future<Map<String, dynamic>> getNumberingConfig(String entity) => _getJson('/api/v1/settings/numbering/$entity');
+  Future<String> previewNumbering(String entity) async {
+    final m = await _getJson('/api/v1/settings/numbering/$entity/preview');
+    return (m['preview'] ?? '').toString();
+  }
+  Future<void> updateNumberingPattern(String entity, String pattern) => _putJson('/api/v1/settings/numbering/$entity', {'pattern': pattern});
+
+  // Purchase orders API (public wrappers)
+  Future<List<String>> listPOStatuses() => _getRaw('/api/v1/purchase-orders/statuses');
+  Future<List<dynamic>> listPurchaseOrders({String? q, String? status, int? limit, int? offset}) {
+    final qp = <String,String>{};
+    if (q != null && q.isNotEmpty) qp['q'] = q;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/purchase-orders', qp.isEmpty? null : qp);
+  }
+  Future<dynamic> createPurchaseOrder(Map<String, dynamic> body) => _postJson('/api/v1/purchase-orders/', body);
+  Future<Map<String, dynamic>> getPurchaseOrder(String id) async {
+    final r = await http.get(_u('/api/v1/purchase-orders/$id'));
+    if (r.statusCode != 200) throw Exception('Nicht gefunden');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> updatePurchaseOrder(String id, Map<String, dynamic> patch) async {
+    final r = await http.patch(_u('/api/v1/purchase-orders/$id'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(patch));
+    if (r.statusCode != 200) throw Exception(utf8.decode(r.bodyBytes));
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> createPurchaseOrderItem(String orderId, Map<String, dynamic> body) async {
+    final r = await http.post(_u('/api/v1/purchase-orders/$orderId/items'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 201) throw Exception(utf8.decode(r.bodyBytes));
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> updatePurchaseOrderItem(String orderId, String itemId, Map<String, dynamic> body) async {
+    final r = await http.patch(_u('/api/v1/purchase-orders/$orderId/items/$itemId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 200) throw Exception(utf8.decode(r.bodyBytes));
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> deletePurchaseOrderItem(String orderId, String itemId) async {
+    final r = await http.delete(_u('/api/v1/purchase-orders/$orderId/items/$itemId'));
+    if (r.statusCode != 204) throw Exception('Fehler: ${r.statusCode}');
+  }
 
   Future<Map<String, dynamic>> version() async {
     final r = await http.get(_u('/version'));

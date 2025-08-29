@@ -6,6 +6,7 @@ import (
     "io"
     "fmt"
     "strconv"
+    "strings"
 
     "github.com/go-chi/chi/v5"
     "github.com/jackc/pgx/v5/pgxpool"
@@ -14,6 +15,8 @@ import (
     "nalaerp3/internal/config"
     "nalaerp3/internal/materials"
     "nalaerp3/internal/contacts"
+    "nalaerp3/internal/purchasing"
+    "nalaerp3/internal/settings"
 )
 
 func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
@@ -21,6 +24,8 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 
     matSvc := materials.NewService(pg, mg, cfg.MongoDB)
     conSvc := contacts.NewService(pg)
+    poSvc := purchasing.NewService(pg)
+    numSvc := settings.NewNumberingService(pg)
 
     r.Route("/materials", func(r chi.Router) {
         r.Get("/types", func(w http.ResponseWriter, req *http.Request) {
@@ -223,6 +228,89 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
             id := chi.URLParam(req, "id")
             pid := chi.URLParam(req, "pid")
             if err := conSvc.DeletePerson(req.Context(), id, pid); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+    })
+
+    // Bestellungen (Purchase Orders)
+    r.Route("/purchase-orders", func(r chi.Router) {
+        r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+            qv := req.URL.Query()
+            lim, off := 0, 0
+            if v := qv.Get("limit"); v != "" { if n, err := strconv.Atoi(v); err == nil { lim = n } }
+            if v := qv.Get("offset"); v != "" { if n, err := strconv.Atoi(v); err == nil { off = n } }
+            f := purchasing.PurchaseOrderFilter{ Q: qv.Get("q"), SupplierID: qv.Get("supplier_id"), Status: qv.Get("status"), Limit: lim, Offset: off }
+            list, err := poSvc.List(req.Context(), f)
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, list)
+        })
+        r.Get("/statuses", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, purchasing.Statuses()) })
+        r.Post("/", func(w http.ResponseWriter, req *http.Request) {
+            var in purchasing.PurchaseOrderCreate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            po, items, err := poSvc.Create(req.Context(), in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusCreated, map[string]any{"bestellung": po, "positionen": items})
+        })
+        r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            po, items, err := poSvc.Get(req.Context(), id)
+            if err != nil { http.Error(w, err.Error(), http.StatusNotFound); return }
+            writeJSON(w, http.StatusOK, map[string]any{"bestellung": po, "positionen": items})
+        })
+        r.Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in purchasing.PurchaseOrderUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            po, items, err := poSvc.Update(req.Context(), id, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusOK, map[string]any{"bestellung": po, "positionen": items})
+        })
+        r.Post("/{id}/items", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in purchasing.PurchaseOrderItemInput
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            it, err := poSvc.CreateItem(req.Context(), id, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusCreated, it)
+        })
+        r.Patch("/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            itemID := chi.URLParam(req, "itemID")
+            var in purchasing.PurchaseOrderItemUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            it, err := poSvc.UpdateItem(req.Context(), id, itemID, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusOK, it)
+        })
+        r.Delete("/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            itemID := chi.URLParam(req, "itemID")
+            if err := poSvc.DeleteItem(req.Context(), id, itemID); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+    })
+
+    // Einstellungen – Nummernkreise
+    r.Route("/settings/numbering", func(r chi.Router) {
+        r.Get("/{entity}", func(w http.ResponseWriter, req *http.Request) {
+            entity := chi.URLParam(req, "entity")
+            cfg, err := numSvc.Get(req.Context(), entity)
+            if err != nil { http.Error(w, err.Error(), http.StatusNotFound); return }
+            writeJSON(w, http.StatusOK, cfg)
+        })
+        r.Get("/{entity}/preview", func(w http.ResponseWriter, req *http.Request) {
+            entity := chi.URLParam(req, "entity")
+            s, err := numSvc.Preview(req.Context(), entity)
+            if err != nil { http.Error(w, err.Error(), http.StatusNotFound); return }
+            writeJSON(w, http.StatusOK, map[string]string{"preview": s})
+        })
+        r.Put("/{entity}", func(w http.ResponseWriter, req *http.Request) {
+            entity := chi.URLParam(req, "entity")
+            var in struct{ Pattern string `json:"pattern"` }
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            if strings.TrimSpace(in.Pattern) == "" { http.Error(w, "Pattern erforderlich", http.StatusBadRequest); return }
+            if err := numSvc.UpdatePattern(req.Context(), entity, in.Pattern); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
             w.WriteHeader(http.StatusNoContent)
         })
     })

@@ -16,6 +16,11 @@
   <body>
     <noscript>Bitte JavaScript aktivieren, um diese Anwendung zu nutzen.</noscript>
     <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations && navigator.serviceWorker.getRegistrations().then(function(regs){
+          regs.forEach(function(reg){ reg.unregister().catch(function(){}); });
+        });
+      }
       window.addEventListener('load', function () {
         console.log('Bootstrapping Flutter…');
         if (typeof _flutter === 'undefined' || !_flutter.loader) {

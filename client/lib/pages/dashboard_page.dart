@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
+import 'settings_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -53,6 +54,18 @@ class DashboardPage extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ContactsScreen(api: ApiClient()),
+                      ),
+                    );
+                  },
+                ),
+                _DashCard(
+                  title: 'Einstellungen',
+                  icon: Icons.settings_rounded,
+                  color: color,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => SettingsPage(api: ApiClient()),
                       ),
                     );
                   },

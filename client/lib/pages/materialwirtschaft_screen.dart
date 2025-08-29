@@ -3,6 +3,7 @@ import '../api.dart';
 import 'materials_page.dart';
 import 'warehouses_page.dart';
 import 'stock_movements_page.dart';
+import 'purchase_orders_page.dart';
 
 class MaterialwirtschaftScreen extends StatefulWidget {
   const MaterialwirtschaftScreen({super.key, required this.api});
@@ -37,6 +38,10 @@ class _MaterialwirtschaftScreenState extends State<MaterialwirtschaftScreen> {
               onPressed: () => setState(() { _section = 2; }),
               child: const Text('Bestand'),
             ),
+            FilledButton.tonal(
+              onPressed: () => setState(() { _section = 3; }),
+              child: const Text('Bestellungen'),
+            ),
           ])
         ],
       ),
@@ -62,7 +67,9 @@ class _MaterialwirtschaftScreenState extends State<MaterialwirtschaftScreen> {
           ? MaterialsPage(api: widget.api)
           : _section==1
             ? WarehousesPage(api: widget.api)
-            : StockMovementsPage(api: widget.api),
+            : _section==2
+              ? StockMovementsPage(api: widget.api)
+              : PurchaseOrdersPage(api: widget.api),
       ),
     );
   }
