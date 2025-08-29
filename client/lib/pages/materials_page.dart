@@ -1,8 +1,8 @@
-import 'dart:html' as html;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../web/browser.dart' as browser;
 
 class MaterialsPage extends StatefulWidget {
   const MaterialsPage({super.key, required this.api});
@@ -138,24 +138,26 @@ class _MaterialsPageState extends State<MaterialsPage> {
       }
     }
   }
-
   Future<void> _uploadFile() async {
     if (selectedId == null) return;
-    final input = html.FileUploadInputElement();
-    input.accept = '*/*';
-    input.click();
-    await input.onChange.first;
-    if (input.files == null || input.files!.isEmpty) return;
-    final f = input.files!.first;
-    final reader = html.FileReader();
-    reader.readAsArrayBuffer(f);
-    await reader.onLoad.first;
-    final data = reader.result as Uint8List;
-    await widget.api.uploadMaterialDocument(selectedId!, f.name, data, contentType: f.type);
-    docs = await widget.api.listMaterialDocuments(selectedId!);
-    setState(() {});
+    final picked = await browser.pickFile(accept: '*/*');
+    if (picked == null) return;
+    try {
+      await widget.api.uploadMaterialDocument(
+        selectedId!, picked.filename, picked.bytes,
+        contentType: picked.contentType,
+      );
+      docs = await widget.api.listMaterialDocuments(selectedId!);
+      if (mounted) setState(() {});
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload fehlgeschlagen: ')));
+      }
+    }
   }
-
   Future<void> _openCreateDialog() async {
     await showDialog(
       context: context,
@@ -376,3 +378,10 @@ class _MaterialsPageState extends State<MaterialsPage> {
     );
   }
 }
+
+
+
+
+
+
+

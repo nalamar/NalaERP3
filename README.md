@@ -91,3 +91,27 @@ Hinweise:
 
 - Upload-Feldname ist `file`. Max. In-Memory-Größe derzeit 32 MB (Server kann größere Dateien streamen; je nach Proxy anpassen).
 - Content-Type beim Download wird aus Postgres übernommen, sonst `application/octet-stream`.
+
+## PDF-Templates & Bestellungen als PDF
+
+Einstellungen für PDF-Templates werden in Postgres gepflegt, Bilder (Logo/Seitenhintergründe) in MongoDB GridFS gespeichert.
+
+- GET `/api/v1/settings/pdf/{entity}` – Template lesen (z. B. `purchase_order`).
+- PUT `/api/v1/settings/pdf/{entity}` – Kopf-/Fußtext und Start-Höhen setzen (`top_first_mm`, `top_other_mm`).
+- POST `/api/v1/settings/pdf/{entity}/upload/{kind}` – Bild hochladen (`kind` = `logo` | `bg-first` | `bg-other`; Feld `file`).
+- DELETE `/api/v1/settings/pdf/{entity}/upload/{kind}` – Bild entfernen.
+
+Bestellung als PDF generieren:
+
+- GET `/api/v1/purchase-orders/{id}/pdf` – liefert `application/pdf` (Dateiname `Bestellung_<Nummer>.pdf`).
+
+Hinweise:
+
+- Seitenhintergründe können separat für erste und folgende Seiten gesetzt werden (`bg-first`, `bg-other`).
+- Der Druckbereich beginnt auf Seite 1 bei `top_first_mm` und auf Folgeseiten bei `top_other_mm`.
+- Ist ein Seitenhintergrund gesetzt, wird er ganzseitig vor dem Inhalt gezeichnet; Logo/Kopftext werden weiterhin angezeigt (optional entfernbar, indem Kopftext leer bleibt und Logo entfernt wird).
+
+Client-UI:
+
+- Unter `Einstellungen` gibt es einen Abschnitt „PDF-Templates“ (Bestellungen), um Kopf-/Fußtext, Start-Höhen sowie Logo und Seitenhintergründe zu pflegen.
+- In der Bestell-Detailansicht befindet sich ein PDF-Button in der App-Bar zum direkten Download.

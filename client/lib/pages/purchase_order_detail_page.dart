@@ -97,6 +97,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
       actions: [
         IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         IconButton(onPressed: _receiveDialog, icon: const Icon(Icons.inventory_2_outlined), tooltip: 'Empfangen'),
+        IconButton(onPressed: (){ widget.api.downloadPurchaseOrderPdf(widget.id); }, icon: const Icon(Icons.picture_as_pdf), tooltip: 'PDF'),
         IconButton(onPressed: _editHeader, icon: const Icon(Icons.edit_note)),
       ],
       ),
