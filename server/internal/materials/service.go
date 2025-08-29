@@ -6,6 +6,7 @@ import (
     "encoding/json"
     "strings"
     "time"
+    "fmt"
 
     "github.com/google/uuid"
     "github.com/jackc/pgx/v5"
@@ -55,7 +56,13 @@ type MaterialCreate struct {
     Attribute       map[string]any `json:"attribute"`
 }
 
-type MaterialFilter struct{}
+type MaterialFilter struct{
+    Q         string
+    Typ       string
+    Kategorie string
+    Limit     int
+    Offset    int
+}
 
 func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, error) {
     if strings.TrimSpace(in.Nummer) == "" || strings.TrimSpace(in.Bezeichnung) == "" {
@@ -94,18 +101,48 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, err
     return &m, nil
 }
 
-func (s *Service) List(ctx context.Context, _ MaterialFilter) ([]Material, error) {
-    rows, err := s.pg.Query(ctx, `
-        SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), kategorie,
+func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error) {
+    // Defaults
+    lim := f.Limit
+    if lim <= 0 || lim > 200 { lim = 50 }
+    off := f.Offset
+
+    // Dynamische WHERE-Klausel
+    sb := strings.Builder{}
+    sb.WriteString(`SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), kategorie,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
-        FROM materials
-        ORDER BY bezeichnung ASC
-        LIMIT 200
-    `)
+        FROM materials`)
+    var conds []string
+    var args []any
+    idx := 1
+    if strings.TrimSpace(f.Q) != "" {
+        conds = append(conds, fmt.Sprintf("(nummer ILIKE $%d OR bezeichnung ILIKE $%d)", idx, idx+1))
+        q := "%" + f.Q + "%"
+        args = append(args, q, q)
+        idx += 2
+    }
+    if strings.TrimSpace(f.Typ) != "" {
+        conds = append(conds, fmt.Sprintf("typ = $%d", idx))
+        args = append(args, f.Typ)
+        idx++
+    }
+    if strings.TrimSpace(f.Kategorie) != "" {
+        conds = append(conds, fmt.Sprintf("kategorie = $%d", idx))
+        args = append(args, f.Kategorie)
+        idx++
+    }
+    if len(conds) > 0 {
+        sb.WriteString(" WHERE ")
+        sb.WriteString(strings.Join(conds, " AND "))
+    }
+    sb.WriteString(" ORDER BY bezeichnung ASC")
+    sb.WriteString(fmt.Sprintf(" LIMIT %d OFFSET %d", lim, off))
+
+    rows, err := s.pg.Query(ctx, sb.String(), args...)
     if err != nil { return nil, err }
     defer rows.Close()
-    out := make([]Material, 0)
+    out := make([]Material, 0, lim)
     for rows.Next() {
         var m Material
         var raw []byte
@@ -316,6 +353,33 @@ func (s *Service) StockByMaterial(ctx context.Context, materialID string) ([]Sto
         }
         r.BatchCode = batchCode
         out = append(out, r)
+    }
+    return out, nil
+}
+
+// Facetten: Typen und Kategorien
+func (s *Service) ListTypes(ctx context.Context) ([]string, error) {
+    rows, err := s.pg.Query(ctx, `SELECT DISTINCT typ FROM materials WHERE TRIM(typ) <> '' ORDER BY typ ASC`)
+    if err != nil { return nil, err }
+    defer rows.Close()
+    out := make([]string, 0)
+    for rows.Next() {
+        var v string
+        if err := rows.Scan(&v); err != nil { return nil, err }
+        out = append(out, v)
+    }
+    return out, nil
+}
+
+func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
+    rows, err := s.pg.Query(ctx, `SELECT DISTINCT kategorie FROM materials WHERE TRIM(kategorie) <> '' ORDER BY kategorie ASC`)
+    if err != nil { return nil, err }
+    defer rows.Close()
+    out := make([]string, 0)
+    for rows.Next() {
+        var v string
+        if err := rows.Scan(&v); err != nil { return nil, err }
+        out = append(out, v)
     }
     return out, nil
 }

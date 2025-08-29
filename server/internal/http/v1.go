@@ -5,6 +5,7 @@ import (
     "net/http"
     "io"
     "fmt"
+    "strconv"
 
     "github.com/go-chi/chi/v5"
     "github.com/jackc/pgx/v5/pgxpool"
@@ -12,14 +13,26 @@ import (
     "go.mongodb.org/mongo-driver/mongo"
     "nalaerp3/internal/config"
     "nalaerp3/internal/materials"
+    "nalaerp3/internal/contacts"
 )
 
 func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
     r := chi.NewRouter()
 
     matSvc := materials.NewService(pg, mg, cfg.MongoDB)
+    conSvc := contacts.NewService(pg)
 
     r.Route("/materials", func(r chi.Router) {
+        r.Get("/types", func(w http.ResponseWriter, req *http.Request) {
+            list, err := matSvc.ListTypes(req.Context())
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, list)
+        })
+        r.Get("/categories", func(w http.ResponseWriter, req *http.Request) {
+            list, err := matSvc.ListCategories(req.Context())
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, list)
+        })
         r.Post("/", func(w http.ResponseWriter, req *http.Request) {
             var in materials.MaterialCreate
             if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
@@ -35,7 +48,18 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
         })
 
         r.Get("/", func(w http.ResponseWriter, req *http.Request) {
-            list, err := matSvc.List(req.Context(), materials.MaterialFilter{})
+            q := req.URL.Query()
+            lim := 0; off := 0
+            if v := q.Get("limit"); v != "" { if n, err := strconv.Atoi(v); err == nil { lim = n } }
+            if v := q.Get("offset"); v != "" { if n, err := strconv.Atoi(v); err == nil { off = n } }
+            filter := materials.MaterialFilter{
+                Q: q.Get("q"),
+                Typ: q.Get("typ"),
+                Kategorie: q.Get("kategorie"),
+                Limit: lim,
+                Offset: off,
+            }
+            list, err := matSvc.List(req.Context(), filter)
             if err != nil {
                 http.Error(w, err.Error(), http.StatusInternalServerError)
                 return
@@ -96,6 +120,110 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
                 return
             }
             writeJSON(w, http.StatusOK, docs)
+        })
+    })
+
+    // Kontakte (CRM)
+    r.Route("/contacts", func(r chi.Router) {
+        r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+            q := req.URL.Query()
+            lim := 0; off := 0
+            if v := q.Get("limit"); v != "" { if n, err := strconv.Atoi(v); err == nil { lim = n } }
+            if v := q.Get("offset"); v != "" { if n, err := strconv.Atoi(v); err == nil { off = n } }
+            filter := contacts.ContactFilter{ Q: q.Get("q"), Rolle: q.Get("rolle"), Typ: q.Get("typ"), Limit: lim, Offset: off }
+            list, err := conSvc.List(req.Context(), filter)
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, list)
+        })
+        r.Get("/roles", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, contacts.Roles()) })
+        r.Get("/types", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, contacts.Types()) })
+        r.Post("/", func(w http.ResponseWriter, req *http.Request) {
+            var in contacts.ContactCreate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.Create(req.Context(), in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusCreated, out)
+        })
+        r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            c, err := conSvc.Get(req.Context(), id)
+            if err != nil { http.Error(w, err.Error(), http.StatusNotFound); return }
+            writeJSON(w, http.StatusOK, c)
+        })
+        r.Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in contacts.ContactUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.Update(req.Context(), id, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusOK, out)
+        })
+        r.Delete("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            if err := conSvc.DeleteSoft(req.Context(), id); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+
+        // Addresses
+        r.Get("/{id}/addresses", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            out, err := conSvc.ListAddresses(req.Context(), id)
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, out)
+        })
+        r.Post("/{id}/addresses", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in contacts.AddressCreate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.CreateAddress(req.Context(), id, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusCreated, out)
+        })
+        r.Patch("/{id}/addresses/{addrID}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            addrID := chi.URLParam(req, "addrID")
+            var in contacts.AddressUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.UpdateAddress(req.Context(), id, addrID, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusOK, out)
+        })
+        r.Delete("/{id}/addresses/{addrID}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            addrID := chi.URLParam(req, "addrID")
+            if err := conSvc.DeleteAddress(req.Context(), id, addrID); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+
+        // Persons
+        r.Get("/{id}/persons", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            out, err := conSvc.ListPersons(req.Context(), id)
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, out)
+        })
+        r.Post("/{id}/persons", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in contacts.PersonCreate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.CreatePerson(req.Context(), id, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusCreated, out)
+        })
+        r.Patch("/{id}/persons/{pid}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            pid := chi.URLParam(req, "pid")
+            var in contacts.PersonUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            out, err := conSvc.UpdatePerson(req.Context(), id, pid, in)
+            if err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            writeJSON(w, http.StatusOK, out)
+        })
+        r.Delete("/{id}/persons/{pid}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            pid := chi.URLParam(req, "pid")
+            if err := conSvc.DeletePerson(req.Context(), id, pid); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
         })
     })
 

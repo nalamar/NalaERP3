@@ -19,6 +19,14 @@ class _MaterialsPageState extends State<MaterialsPage> {
   List<dynamic> stock = [];
   List<dynamic> docs = [];
   List<dynamic> warehouses = [];
+  // Suche & Pagination
+  final searchCtrl = TextEditingController();
+  int limit = 20;
+  int offset = 0;
+  String? filterTyp;
+  String? filterKat;
+  List<String> types = [];
+  List<String> categories = [];
 
   final formKey = GlobalKey<FormState>();
   final nummerCtrl = TextEditingController();
@@ -34,12 +42,27 @@ class _MaterialsPageState extends State<MaterialsPage> {
   void initState() {
     super.initState();
     _reload();
+    _loadFacets();
+  }
+
+  Future<void> _loadFacets() async {
+    try {
+      final t = await widget.api.listMaterialTypes();
+      final c = await widget.api.listMaterialCategories();
+      setState(() { types = t; categories = c; });
+    } catch (e) { debugPrint('Facets error: $e'); }
   }
 
   Future<void> _reload() async {
     setState(() => loading = true);
     try {
-      items = await widget.api.listMaterials();
+      offset = 0;
+      items = await widget.api.listMaterials(
+        q: searchCtrl.text.trim(),
+        typ: filterTyp == null || filterTyp!.isEmpty ? null : filterTyp,
+        kategorie: filterKat == null || filterKat!.isEmpty ? null : filterKat,
+        limit: limit, offset: offset,
+      );
     } catch (e) {
       if (mounted) {
         debugPrint('Fehler beim Laden Materialien: $e');
@@ -47,6 +70,20 @@ class _MaterialsPageState extends State<MaterialsPage> {
       }
     } finally {
       setState(() => loading = false);
+    }
+  }
+
+  Future<void> _loadMore() async {
+    final q = searchCtrl.text.trim();
+    final next = await widget.api.listMaterials(
+      q: q.isNotEmpty ? q : null,
+      typ: filterTyp == null || filterTyp!.isEmpty ? null : filterTyp,
+      kategorie: filterKat == null || filterKat!.isEmpty ? null : filterKat,
+      limit: limit, offset: offset + limit,
+    );
+    if (next.isNotEmpty) {
+      offset += limit;
+      setState(() { items.addAll(next); });
     }
   }
 
@@ -188,6 +225,53 @@ class _MaterialsPageState extends State<MaterialsPage> {
                   children: [
                     const Text('Materialien', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const Spacer(),
+                    SizedBox(
+                      width: 260,
+                      child: TextField(
+                        controller: searchCtrl,
+                        decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: 'Suchen (Nummer/Bezeichnung)',
+                          suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { searchCtrl.clear(); _reload(); })),
+                        onSubmitted: (_) => _reload(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 180,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(isDense: true, labelText: 'Typ'),
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: filterTyp,
+                          hint: const Text('Alle'),
+                          items: [
+                            const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
+                            for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
+                          ],
+                          onChanged: (v){ setState((){ filterTyp = v; }); _reload(); },
+                          underline: const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 180,
+                      child: InputDecorator(
+                        decoration: const InputDecoration(isDense: true, labelText: 'Kategorie'),
+                        child: DropdownButton<String?>(
+                          isExpanded: true,
+                          value: filterKat,
+                          hint: const Text('Alle'),
+                          items: [
+                            const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
+                            for (final k in categories) DropdownMenuItem<String?>(value: k, child: Text(k)),
+                          ],
+                          onChanged: (v){ setState((){ filterKat = v; }); _reload(); },
+                          underline: const SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.tonal(onPressed: _reload, child: const Text('Suchen')),
                     IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
                   ],
                 ),
@@ -195,15 +279,25 @@ class _MaterialsPageState extends State<MaterialsPage> {
               if (loading) const LinearProgressIndicator(minHeight: 2),
               Expanded(
                 child: ListView.builder(
-                  itemCount: items.length,
+                  itemCount: items.length + 1,
                   itemBuilder: (ctx, i) {
-                    final m = items[i] as Map<String, dynamic>;
-                    final sel = m['id'] == selectedId;
-                    return ListTile(
-                      selected: sel,
-                      title: Text('${m['bezeichnung']}'),
-                      subtitle: Text('${m['nummer']}  •  ${m['typ']}  •  ${m['einheit']}'),
-                      onTap: () => _select(m['id'] as String),
+                    if (i < items.length) {
+                      final m = items[i] as Map<String, dynamic>;
+                      final sel = m['id'] == selectedId;
+                      return ListTile(
+                        selected: sel,
+                        title: Text('${m['bezeichnung']}'),
+                        subtitle: Text('${m['nummer']}  •  ${m['typ']}  •  ${m['einheit']}'),
+                        onTap: () => _select(m['id'] as String),
+                      );
+                    }
+                    final canLoadMore = items.isNotEmpty && items.length % limit == 0;
+                    if (!canLoadMore) return const SizedBox.shrink();
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Center(
+                        child: FilledButton.icon(onPressed: _loadMore, icon: const Icon(Icons.expand_more), label: const Text('Mehr laden')),
+                      ),
                     );
                   },
                 ),
