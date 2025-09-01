@@ -31,11 +31,24 @@ RUN --mount=type=cache,target=/go/pkg/mod go mod tidy
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -trimpath -ldflags="-s -w -X 'nalaerp3/internal/version.Version=${VERSION}' -X 'nalaerp3/internal/version.Commit=${COMMIT}' -X 'nalaerp3/internal/version.BuildTime=${BUILD_TIME}'" -o /out/api ./cmd/api
 
-FROM gcr.io/distroless/static-debian12
+FROM debian:bookworm-slim
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=Europe/Berlin
-USER nonroot:nonroot
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates \
+      imagemagick \
+      inkscape \
+      libreoffice \
+      fonts-dejavu \
+      ghostscript \
+      librsvg2-bin \
+      libwmf0.2-7 \
+      libwmf-bin \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /
 COPY --from=builder /out/api /api
 EXPOSE 8080
+USER nobody
 ENTRYPOINT ["/api"]

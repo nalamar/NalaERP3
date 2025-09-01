@@ -13,7 +13,9 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final poPatternCtrl = TextEditingController(text: 'PO-{YYYY}-{NNNN}');
-  String preview = '';
+  final prjPatternCtrl = TextEditingController(text: 'PRJ-{YYYY}-{NNNN}');
+  String previewPO = '';
+  String previewPRJ = '';
   bool loading = false;
   // PDF Template Controls (purchase_order)
   final poHeaderCtrl = TextEditingController();
@@ -35,23 +37,41 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final cfg = await widget.api.getNumberingConfig('purchase_order');
       poPatternCtrl.text = (cfg['pattern'] ?? 'PO-{YYYY}-{NNNN}').toString();
-      await _updatePreview();
+      final pcfg = await widget.api.getNumberingConfig('project');
+      prjPatternCtrl.text = (pcfg['pattern'] ?? 'PRJ-{YYYY}-{NNNN}').toString();
+      await _updatePreviewPO();
+      await _updatePreviewPRJ();
       await _loadPdfTemplate();
     } catch (e) { /* ignore */ }
     setState(()=> loading = false);
   }
 
-  Future<void> _updatePreview() async {
+  Future<void> _updatePreviewPO() async {
     try {
       final p = await widget.api.previewNumbering('purchase_order');
-      setState(()=> preview = p);
-    } catch (e) { setState(()=> preview = ''); }
+      setState(()=> previewPO = p);
+    } catch (e) { setState(()=> previewPO = ''); }
+  }
+  Future<void> _updatePreviewPRJ() async {
+    try {
+      final p = await widget.api.previewNumbering('project');
+      setState(()=> previewPRJ = p);
+    } catch (e) { setState(()=> previewPRJ = ''); }
   }
 
-  Future<void> _save() async {
+  Future<void> _savePO() async {
     try {
       await widget.api.updateNumberingPattern('purchase_order', poPatternCtrl.text.trim());
-      await _updatePreview();
+      await _updatePreviewPO();
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert'))); }
+    } catch (e) {
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); }
+    }
+  }
+  Future<void> _savePRJ() async {
+    try {
+      await widget.api.updateNumberingPattern('project', prjPatternCtrl.text.trim());
+      await _updatePreviewPRJ();
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert'))); }
     } catch (e) {
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); }
@@ -150,16 +170,43 @@ class _SettingsPageState extends State<SettingsPage> {
                       TextField(
                         controller: poPatternCtrl,
                         decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PO-{YYYY}-{NNNN}'),
-                        onChanged: (_) { _updatePreview(); },
+                        onChanged: (_) { _updatePreviewPO(); },
                       ),
                       const SizedBox(height: 8),
-                      Text('Vorschau: $preview'),
+                      Text('Vorschau: $previewPO'),
                       const SizedBox(height: 8),
                       const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
                       const SizedBox(height: 8),
                       Align(
                         alignment: Alignment.centerRight,
-                        child: FilledButton.icon(onPressed: _save, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                        child: FilledButton.icon(onPressed: _savePO, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Projekte'),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: prjPatternCtrl,
+                        decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
+                        onChanged: (_) { _updatePreviewPRJ(); },
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Vorschau: $previewPRJ'),
+                      const SizedBox(height: 8),
+                      const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: FilledButton.icon(onPressed: _savePRJ, icon: const Icon(Icons.save), label: const Text('Speichern')),
                       ),
                     ],
                   ),

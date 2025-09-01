@@ -9,6 +9,7 @@ require (
 	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/redis/go-redis/v9 v9.5.3
 	go.mongodb.org/mongo-driver v1.16.0
+	modernc.org/sqlite v1.30.1
 )
 
 require (

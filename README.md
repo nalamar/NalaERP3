@@ -115,3 +115,29 @@ Client-UI:
 
 - Unter `Einstellungen` gibt es einen Abschnitt „PDF-Templates“ (Bestellungen), um Kopf-/Fußtext, Start-Höhen sowie Logo und Seitenhintergründe zu pflegen.
 - In der Bestell-Detailansicht befindet sich ein PDF-Button in der App-Bar zum direkten Download.
+
+## Logikal-Import & Re-Import
+
+Quelle: SQLite-Export aus LogiKal (Struktur siehe `logi.sql`). Der Import liest Projekt-Metadaten, Lose (Phasen), Positionen (Elevations), Varianten (SingleElevations) und Materiallisten.
+
+- Projektidentifikation: per Angebots-/Auftragsnummer oder `xGUID`. Bei Re-Import wird das bestehende Projekt aktualisiert.
+- Lose (Phasen):
+  - Ableitung über `ElevationGroups.PhaseId`. Für jede Phase wird ein Los mit Nummer = `PhaseId` angelegt/aktualisiert.
+  - Re-Import: Lose mit numerischer Nummer, die im aktuellen Import nicht vorkommen, werden gelöscht (inkl. abhängiger Positionen/Varianten). Nicht-numerische Lose bleiben unangetastet.
+- Positionen (Elevations):
+  - Zuordnung zu Los über `ElevationGroupId -> PhaseId` (ein Los kann mehrere Positionen haben).
+  - Matching-Reihenfolge: `external_guid` innerhalb des Loses, danach Name innerhalb des Loses; ansonsten wird eine neue Position mit laufender Nummer im Los angelegt.
+  - Re-Import-Bereinigung:
+    - In allen vom Import betroffenen Losen werden Positionen gelöscht, die im aktuellen Import nicht mehr vorkommen.
+    - Alte Dubletten mit gleicher `external_guid` in anderen Losen werden entfernt (z. B. nach korrigierter Zuordnung).
+- Varianten (SingleElevations):
+  - Varianten hängen an der Hauptelevation einer Gruppe (Alternative==0 bevorzugt).
+  - Matching über `external_guid`, sonst Name. Fehlende Varianten werden angelegt, bestehende aktualisiert.
+  - Re-Import: Varianten, die zu einer Elevation nicht mehr im Export vorkommen, werden gelöscht.
+- Materiallisten (Profile/Artikel/Glas):
+  - Pro Variante wird die Materialliste vollständig ersetzt. Vorheriger Zustand wird fürs Undo protokolliert.
+- Änderungsprotokoll und Undo:
+  - Jeder Import erzeugt einen Import-Run mit Change-Logs (`created|updated|deleted|replaced` für `phase|elevation|variant|materials`).
+  - UI/API: Auflistung unter Projekt → „Importe“; Änderungen je Import einsehbar. Ein Undo stellt den vorherigen Zustand (soweit protokolliert) wieder her.
+
+Hinweis: Die Löschregeln sind bewusst konservativ – nur Artefakte, die eindeutig nicht mehr im aktuellen Export vorkommen, oder alte Dubletten per `external_guid`, werden entfernt.

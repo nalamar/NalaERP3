@@ -11,7 +11,8 @@ class ApiClient {
 
   static String _defaultBaseUrl() {
     final host = (Uri.base.host.isEmpty ? 'localhost' : Uri.base.host);
-    return 'http://$host:8080';
+    final scheme = (Uri.base.scheme.isEmpty ? 'http' : Uri.base.scheme);
+    return '$scheme://$host:8080';
   }
 
   Uri _u(String path, [Map<String, String>? q]) => Uri.parse('$baseUrl$path').replace(queryParameters: q);
@@ -87,6 +88,144 @@ class ApiClient {
     final url = _u('/api/v1/purchase-orders/$id/pdf').toString();
     browser.downloadUrl(url, filename: filename);
   }
+
+  // -------- Projects --------
+  Future<List<dynamic>> listProjects({String? q, String? status, int? limit, int? offset}) async {
+    final qp = <String,String>{};
+    if (q != null && q.isNotEmpty) qp['q'] = q;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/projects', qp.isEmpty ? null : qp);
+  }
+  Future<Map<String, dynamic>> createProject(Map<String, dynamic> body) async {
+    final r = await http.post(_u('/api/v1/projects/'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 201) { throw Exception(utf8.decode(r.bodyBytes)); }
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> getProject(String id) => _getJson('/api/v1/projects/$id');
+
+  Future<Map<String, dynamic>> importLogikalProject(String filename, Uint8List bytes, {String? contentType}) async {
+    final uri = _u('/api/v1/projects/import/logikal');
+    // 1) Versuche Multipart (stabil im Web, kein Custom-Header nötig)
+    try {
+      final req = http.MultipartRequest('POST', uri);
+      MediaType? mt;
+      if (contentType != null && contentType.isNotEmpty) {
+        try { mt = MediaType.parse(contentType); } catch (_) { mt = null; }
+      }
+      req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mt));
+      final streamed = await req.send();
+      final r = await http.Response.fromStream(streamed);
+      if (r.statusCode == 201) {
+        return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+      }
+      // Fallback auf Raw nur wenn Server nicht 2xx liefert
+    } catch (_) {
+      // gehe zu Raw
+    }
+    // 2) Fallback: Raw POST (application/octet-stream) mit X-Filename
+    final headers = <String, String>{
+      'Content-Type': 'application/octet-stream',
+      'X-Filename': filename,
+    };
+    final r = await http.post(uri, headers: headers, body: bytes);
+    if (r.statusCode != 201) {
+      throw Exception('Import fehlgeschlagen: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    }
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> analyzeLogikalProject(String filename, Uint8List bytes, {String? contentType}) async {
+    final uri = _u('/api/v1/projects/analyze/logikal');
+    try {
+      final req = http.MultipartRequest('POST', uri);
+      MediaType? mt;
+      if (contentType != null && contentType.isNotEmpty) {
+        try { mt = MediaType.parse(contentType); } catch (_) { mt = null; }
+      }
+      req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mt));
+      final streamed = await req.send();
+      final r = await http.Response.fromStream(streamed);
+      if (r.statusCode != 200) { throw Exception('Analyse fehlgeschlagen: ${r.statusCode} ${utf8.decode(r.bodyBytes)}'); }
+      return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    } catch (_) {
+      final headers = <String, String>{ 'Content-Type': 'application/octet-stream', 'X-Filename': filename };
+      final r = await http.post(uri, headers: headers, body: bytes);
+      if (r.statusCode != 200) { throw Exception('Analyse fehlgeschlagen: ${r.statusCode} ${utf8.decode(r.bodyBytes)}'); }
+      return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+    }
+  }
+
+  // -------- Project tree --------
+  Future<List<dynamic>> listProjectPhases(String projectId) => _getList('/api/v1/projects/$projectId/phases');
+  Future<Map<String, dynamic>> createPhase(String projectId, Map<String, dynamic> body) async {
+    final r = await http.post(_u('/api/v1/projects/$projectId/phases'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 201) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> getPhase(String projectId, String phaseId) => _getJson('/api/v1/projects/$projectId/phases/$phaseId');
+  Future<Map<String, dynamic>> updatePhase(String projectId, String phaseId, Map<String, dynamic> patch) async {
+    final r = await http.patch(_u('/api/v1/projects/$projectId/phases/$phaseId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(patch));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> deletePhase(String projectId, String phaseId) async {
+    final r = await http.delete(_u('/api/v1/projects/$projectId/phases/$phaseId'));
+    if (r.statusCode != 204) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+  }
+  Future<List<dynamic>> listPhaseElevations(String projectId, String phaseId) => _getList('/api/v1/projects/$projectId/phases/$phaseId/elevations');
+  Future<Map<String, dynamic>> createElevation(String projectId, String phaseId, Map<String, dynamic> body) async {
+    final r = await http.post(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 201) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> getElevation(String projectId, String phaseId, String elevationId) => _getJson('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId');
+  Future<Map<String, dynamic>> updateElevation(String projectId, String phaseId, String elevationId, Map<String, dynamic> patch) async {
+    final r = await http.patch(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(patch));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> deleteElevation(String projectId, String phaseId, String elevationId) async {
+    final r = await http.delete(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'));
+    if (r.statusCode != 204) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+  }
+  Future<List<dynamic>> listElevationVariants(String projectId, String elevationId) => _getList('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations');
+  Future<Map<String, dynamic>> createVariant(String projectId, String elevationId, Map<String, dynamic> body) async {
+    final r = await http.post(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(body));
+    if (r.statusCode != 201) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<Map<String, dynamic>> getVariant(String projectId, String elevationId, String variantId) => _getJson('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId');
+  Future<Map<String, dynamic>> updateVariant(String projectId, String elevationId, String variantId, Map<String, dynamic> patch) async {
+    final r = await http.patch(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(patch));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> deleteVariant(String projectId, String elevationId, String variantId) async {
+    final r = await http.delete(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'));
+    if (r.statusCode != 204) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+  }
+  Future<Map<String, dynamic>> getVariantMaterials(String projectId, String variantId) => _getJson('/api/v1/projects/$projectId/single-elevations/$variantId/materials');
+  Future<void> linkVariantMaterial(String projectId, String variantId, String kind, String itemId, String materialId) async {
+    final r = await http.patch(_u('/api/v1/projects/$projectId/single-elevations/$variantId/materials/$kind/$itemId'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'material_id': materialId}));
+    if (r.statusCode != 204) { throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}'); }
+  }
+
+  // -------- Project import logs --------
+  Future<List<dynamic>> listProjectImports(String projectId) => _getList('/api/v1/projects/$projectId/imports');
+  Future<List<dynamic>> listImportChanges(String projectId, String importId) => _getList('/api/v1/projects/$projectId/imports/$importId/changes');
+  Future<void> uploadProjectAssets(String projectId, String filename, Uint8List bytes) async {
+    final uri = _u('/api/v1/projects/$projectId/assets');
+    final req = http.MultipartRequest('POST', uri);
+    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: MediaType('application', 'zip')));
+    final streamed = await req.send();
+    final resp = await http.Response.fromStream(streamed);
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception('Assets-Upload fehlgeschlagen: ${resp.statusCode} ${utf8.decode(resp.bodyBytes)}');
+    }
+  }
+  String projectAssetUrl(String projectId, String relPath) => _u('/api/v1/projects/$projectId/assets', {'path': relPath}).toString();
 
   // -------- Purchase Orders --------
   Future<List<String>> listPOStatuses() async => (await _getList('/api/v1/purchase-orders/statuses')).map((e)=> e.toString()).toList();
@@ -292,4 +431,3 @@ class ApiClient {
     browser.downloadUrl(url, filename: filename);
   }
 }
-

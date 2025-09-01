@@ -2,6 +2,7 @@ package config
 
 import (
     "os"
+    "strconv"
 )
 
 type Config struct {
@@ -13,6 +14,11 @@ type Config struct {
     RedisAddr    string
     RedisDB      int
     RedisPass    string
+
+    // Image conversion settings
+    EmfPngDPI    int
+    EmfPngMinWidth int
+    EmfPngTargetWidth int
 }
 
 func getenv(key, def string) string {
@@ -39,6 +45,35 @@ func Load() *Config {
     cfg.RedisAddr = getenv("REDIS_ADDR", "redis:6379")
     cfg.RedisPass = getenv("REDIS_PASSWORD", "")
     // Redis DB Index optional; Standard 0 – einfach über Env weglasssen
+    // EMF->PNG DPI (Standard 300)
+    if v := os.Getenv("EMF_PNG_DPI"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            cfg.EmfPngDPI = n
+        } else {
+            cfg.EmfPngDPI = 300
+        }
+    } else {
+        cfg.EmfPngDPI = 300
+    }
+    // EMF->PNG minimale Breite (Standard 600)
+    if v := os.Getenv("EMF_PNG_MIN_WIDTH"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            cfg.EmfPngMinWidth = n
+        } else {
+            cfg.EmfPngMinWidth = 600
+        }
+    } else {
+        cfg.EmfPngMinWidth = 600
+    }
+    // EMF->PNG Zielbreite (Standard 1200)
+    if v := os.Getenv("EMF_PNG_TARGET_WIDTH"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            cfg.EmfPngTargetWidth = n
+        } else {
+            cfg.EmfPngTargetWidth = 1200
+        }
+    } else {
+        cfg.EmfPngTargetWidth = 1200
+    }
     return cfg
 }
-

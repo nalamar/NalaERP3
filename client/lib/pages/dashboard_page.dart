@@ -3,6 +3,7 @@ import '../api.dart';
 import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
+import 'projects_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -42,6 +43,18 @@ class DashboardPage extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => MaterialwirtschaftScreen(api: ApiClient()),
+                      ),
+                    );
+                  },
+                ),
+                _DashCard(
+                  title: 'Projekte',
+                  icon: Icons.workspaces_rounded,
+                  color: color,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ProjectsPage(api: ApiClient()),
                       ),
                     );
                   },

@@ -64,10 +64,11 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
     srv := &http.Server{
         Addr:              cfg.APIAddr,
         Handler:           mux,
-        ReadTimeout:       10 * time.Second,
-        ReadHeaderTimeout: 10 * time.Second,
-        WriteTimeout:      15 * time.Second,
-        IdleTimeout:       60 * time.Second,
+        // Für Datei-Uploads (z. B. Logikal) großzügigere Timeouts
+        ReadTimeout:       300 * time.Second,
+        ReadHeaderTimeout: 15 * time.Second,
+        WriteTimeout:      300 * time.Second,
+        IdleTimeout:       120 * time.Second,
     }
 
     return &Server{Cfg: cfg, HTTP: srv}, nil
