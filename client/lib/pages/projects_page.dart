@@ -314,7 +314,9 @@ class _PhaseTileState extends State<_PhaseTile> {
 
   @override
   Widget build(BuildContext context) {
-    final title = '${widget.phase['nummer']}: ${widget.phase['name']}';
+    final phName = (widget.phase['name']?.toString() ?? '').trim();
+    final phNum = (widget.phase['nummer']?.toString() ?? '').trim();
+    final title = phName.isNotEmpty ? phName : (phNum.isNotEmpty ? 'Los $phNum' : 'Los');
     return ExpansionTile(
       title: Row(children: [
         Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
@@ -322,6 +324,7 @@ class _PhaseTileState extends State<_PhaseTile> {
         IconButton(onPressed: _deletePhase, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
         IconButton(onPressed: _addElevation, icon: const Icon(Icons.add_box_rounded), tooltip: 'Position hinzufügen'),
       ]),
+      subtitle: phName.isNotEmpty && phNum.isNotEmpty ? Text('Los: $phNum') : null,
       initiallyExpanded: false,
       onExpansionChanged: (open) { if (open && _elevations == null) { _load(); } },
       children: [
@@ -372,6 +375,35 @@ class _ElevationTile extends StatefulWidget {
 class _ElevationTileState extends State<_ElevationTile> {
   List<dynamic>? _variants;
   String? _error;
+  String _normKey(String k) => k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  dynamic _looseGet(Map<String, dynamic> m, List<String> desired) {
+    // direct
+    for (final entry in m.entries) {
+      final nk = _normKey(entry.key);
+      for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+    }
+    // common nested containers
+    for (final c in ['properties','props','attributes','meta']) {
+      final v = m[c];
+      if (v is Map<String, dynamic>) {
+        for (final entry in v.entries) {
+          final nk = _normKey(entry.key);
+          for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+        }
+      }
+    }
+    return null;
+  }
+  String _fmt4Local(dynamic v) {
+    if (v == null) return '-';
+    num? n;
+    if (v is num) n = v; else n = num.tryParse(v.toString());
+    if (n == null) return '-';
+    var s = n.toDouble().toStringAsFixed(4);
+    while (s.contains('.') && s.endsWith('0')) { s = s.substring(0, s.length - 1); }
+    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+    return s;
+  }
   Future<void> _load() async {
     try {
       final list = await widget.api.listElevationVariants(widget.projectId, widget.elevation['id'] as String);
@@ -383,6 +415,18 @@ class _ElevationTileState extends State<_ElevationTile> {
     final title = '${widget.elevation['nummer']}: ${widget.elevation['name']} (Menge ${widget.elevation['menge']})';
     final serie = (widget.elevation['serie'] as String?)?.trim() ?? '';
     final surf = (widget.elevation['oberflaeche'] as String?)?.trim() ?? '';
+    // Kurzbeschreibung oberhalb von Serie/Oberfläche
+    final autoDesc = (_looseGet(widget.elevation, ['AutoDescription']) ?? '').toString().trim();
+    final wOut = _looseGet(widget.elevation, ['Width_Output','Width Output','width_output','Width']);
+    final wUnit = (_looseGet(widget.elevation, ['Width_unit','Width_Unit','width_unit']) ?? 'mm').toString();
+    final lOut = _looseGet(widget.elevation, ['Lenght_Output','Length_Output','length_output','Lenght','Length','height_mm','length_mm']);
+    final lUnit = (_looseGet(widget.elevation, ['Lenght_Unit','Length_Unit','length_unit']) ?? 'mm').toString();
+    final shortDescParts = <String>[];
+    if (autoDesc.isNotEmpty) shortDescParts.add(autoDesc);
+    if (wOut != null && lOut != null) {
+      shortDescParts.add('${_fmt4Local(wOut)} $wUnit x ${_fmt4Local(lOut)} $lUnit');
+    }
+    final shortDesc = shortDescParts.join(' ');
     final subs = <String>[];
     if (serie.isNotEmpty) subs.add('Serie: $serie');
     if (surf.isNotEmpty) subs.add('Oberfläche: $surf');
@@ -402,6 +446,10 @@ class _ElevationTileState extends State<_ElevationTile> {
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, overflow: TextOverflow.ellipsis),
+            if (shortDesc.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(shortDesc, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+            ],
             if (serie.isNotEmpty || surf.isNotEmpty) ...[
               const SizedBox(height: 4),
               if (serie.isNotEmpty) Text('Serie: $serie', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black54)),
@@ -525,6 +573,35 @@ class _VariantTileState extends State<_VariantTile> {
   Map<String, dynamic>? _materials;
   String? _error;
   bool _saving = false;
+  // Helpers to robustly read imported keys with varying spelling/case/spacing
+  String _normKey(String k) => k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  dynamic _looseGet(Map<String, dynamic> m, List<String> desired) {
+    for (final entry in m.entries) {
+      final nk = _normKey(entry.key);
+      for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+    }
+    for (final c in ['properties','props','attributes','meta']) {
+      final v = m[c];
+      if (v is Map<String, dynamic>) {
+        for (final entry in v.entries) {
+          final nk = _normKey(entry.key);
+          for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+        }
+      }
+    }
+    return null;
+  }
+  dynamic _firstNonNull(Map<String, dynamic> m, List<String> keys) {
+    for (final k in keys) {
+      if (m.containsKey(k) && m[k] != null && m[k].toString().isNotEmpty) return m[k];
+    }
+    return null;
+  }
+  num? _numVal(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v;
+    return num.tryParse(v.toString().trim());
+  }
   Future<void> _load() async {
     try {
       final m = await widget.api.getVariantMaterials(widget.projectId, widget.variant['id'] as String);
@@ -552,13 +629,22 @@ class _VariantTileState extends State<_VariantTile> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['profiles'] ?? []) as List).map((p) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.straighten_rounded),
-              title: Text(((p as Map<String, dynamic>)['article_code'] ?? (p)['description'] ?? '').toString()),
-              subtitle: Text('Länge ${(p)['length_mm'] ?? '-'} mm, Menge ${(p)['qty'] ?? 1} ${(p)['unit'] ?? ''}${((p)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(p)['material_nummer'] : ''}'),
-              trailing: _buildMaterialActions(p as Map<String, dynamic>, 'profiles'),
-            ))),
+            ...List<Widget>.from(((_materials!['profiles'] ?? []) as List).map((p0) {
+              final p = (p0 as Map<String, dynamic>);
+              _ensureComputedQtyForProfile(p);
+              final lenVal = _looseGet(p, ['Lenght_Output','Length_Output','length_output','Lenght','Length','length_mm']);
+              final lenUnit = (_looseGet(p, ['Lenght_Unit','Length_Unit','length_unit']) ?? 'mm').toString();
+              final lenStr = _fmt4(lenVal);
+              final qtyStr = _qtyDisplayForProfile(p);
+              final linkedStr = ((p)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(p)['material_nummer'] : '';
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.straighten_rounded),
+                title: Text(((p)['article_code'] ?? (p)['description'] ?? '').toString()),
+                subtitle: Text('Länge $lenStr $lenUnit, Menge $qtyStr$linkedStr'),
+                trailing: _buildMaterialActions(p, 'profiles'),
+              );
+            })),
             const SizedBox(height: 12),
             const Text('Artikel', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
@@ -599,6 +685,57 @@ class _VariantTileState extends State<_VariantTile> {
     if (ok != true) return;
     try { await widget.api.deleteVariant(widget.projectId, widget.elevationId, widget.variant['id'] as String); await widget.onChanged(); }
     catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e'))); }
+  }
+
+  String _fmt4(dynamic v) {
+    if (v == null) return '-';
+    num? n;
+    if (v is num) n = v;
+    else { n = num.tryParse(v.toString()); }
+    if (n == null) return '-';
+    final d = n.toDouble();
+    String s = d.toStringAsFixed(4);
+    // remove trailing zeros and dot
+    while (s.contains('.') && s.endsWith('0')) { s = s.substring(0, s.length - 1); }
+    if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+    return s;
+  }
+
+  void _ensureComputedQtyForProfile(Map<String, dynamic> it) async {
+    // Compute only if linked and not yet computed
+    final mid = (it['material_id'] ?? '').toString();
+    if (mid.isEmpty) return;
+    if (it['__qty_computed'] == true || it['__qty_loading'] == true) return;
+    it['__qty_loading'] = true;
+    try {
+      final mat = await widget.api.getMaterial(mid);
+      num? baseLen = _numVal(mat['length_mm']);
+      baseLen ??= 6000; // Default 6000 mm
+      final dynLen = _looseGet(it, ['Lenght_Output','Length_Output','length_output','Lenght','Length','length_mm']);
+      final len = (_numVal(dynLen) ?? 0).toDouble();
+      final qty = baseLen > 0 ? (len / baseLen) : 0.0;
+      it['__computed_qty'] = qty;
+      it['__qty_computed'] = true;
+      if (mounted) setState(() {});
+    } catch (_) {
+      // ignore errors; keep defaults
+    } finally {
+      it['__qty_loading'] = false;
+    }
+  }
+
+  String _qtyDisplayForProfile(Map<String, dynamic> it) {
+    final mid = (it['material_id'] ?? '').toString();
+    if (mid.isNotEmpty) {
+      final q = it['__computed_qty'];
+      if (q is num) return '${_fmt4(q)} Stk.';
+      if (it['__qty_loading'] == true) return '…';
+      // linked but failed to compute; fall back
+    }
+    final q = it['qty'];
+    final u = (it['unit'] ?? '').toString();
+    if (q is num) return '${_fmt4(q)} ${u.isNotEmpty ? u : ''}'.trim();
+    return '${q ?? 1} ${u.isNotEmpty ? u : ''}'.trim();
   }
 
   Widget _buildMaterialActions(Map<String, dynamic> it, String kind) {

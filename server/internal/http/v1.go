@@ -39,6 +39,7 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
     poSvc := purchasing.NewService(pg)
     numSvc := settings.NewNumberingService(pg)
     pdfSvc := settings.NewPDFService(pg)
+    unitSvc := settings.NewUnitService(pg)
     projSvc := projects.NewService(pg)
 
     r.Route("/materials", func(r chi.Router) {
@@ -94,6 +95,30 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
                 return
             }
             writeJSON(w, http.StatusOK, m)
+        })
+
+        r.Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            var in materials.MaterialUpdate
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+                http.Error(w, "Ungültige Eingabe", http.StatusBadRequest)
+                return
+            }
+            out, err := matSvc.Update(req.Context(), id, in)
+            if err != nil {
+                http.Error(w, err.Error(), http.StatusBadRequest)
+                return
+            }
+            writeJSON(w, http.StatusOK, out)
+        })
+
+        r.Delete("/{id}", func(w http.ResponseWriter, req *http.Request) {
+            id := chi.URLParam(req, "id")
+            if err := matSvc.DeleteSoft(req.Context(), id); err != nil {
+                http.Error(w, err.Error(), http.StatusBadRequest)
+                return
+            }
+            w.WriteHeader(http.StatusNoContent)
         })
 
         r.Get("/{id}/stock", func(w http.ResponseWriter, req *http.Request) {
@@ -910,6 +935,26 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
             entity := chi.URLParam(req, "entity")
             kind := chi.URLParam(req, "kind")
             if err := pdfSvc.SetImage(req.Context(), entity, mapPDFKind(kind), nil); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+    })
+
+    // Einstellungen – Einheiten (für Materialeinheiten, Dimensionen etc.)
+    r.Route("/settings/units", func(r chi.Router) {
+        r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+            list, err := unitSvc.List(req.Context())
+            if err != nil { http.Error(w, err.Error(), http.StatusInternalServerError); return }
+            writeJSON(w, http.StatusOK, list)
+        })
+        r.Post("/", func(w http.ResponseWriter, req *http.Request) {
+            var in struct{ Code, Name string }
+            if err := json.NewDecoder(req.Body).Decode(&in); err != nil { http.Error(w, "Ungültige Eingabe", http.StatusBadRequest); return }
+            if err := unitSvc.Upsert(req.Context(), in.Code, in.Name); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
+            w.WriteHeader(http.StatusNoContent)
+        })
+        r.Delete("/{code}", func(w http.ResponseWriter, req *http.Request) {
+            code := chi.URLParam(req, "code")
+            if err := unitSvc.Delete(req.Context(), code); err != nil { http.Error(w, err.Error(), http.StatusBadRequest); return }
             w.WriteHeader(http.StatusNoContent)
         })
     })

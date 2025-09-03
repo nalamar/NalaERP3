@@ -16,6 +16,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
   List<dynamic> items = [];
   bool loading = false;
   String? selectedId;
+  Map<String, dynamic>? selected;
   List<dynamic> stock = [];
   List<dynamic> docs = [];
   List<dynamic> warehouses = [];
@@ -27,6 +28,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
   String? filterKat;
   List<String> types = [];
   List<String> categories = [];
+  List<Map<String, dynamic>> units = [];
 
   final formKey = GlobalKey<FormState>();
   final nummerCtrl = TextEditingController();
@@ -34,8 +36,11 @@ class _MaterialsPageState extends State<MaterialsPage> {
   final typCtrl = TextEditingController(text: 'rohstoff');
   final normCtrl = TextEditingController();
   final wnrCtrl = TextEditingController();
-  final einheitCtrl = TextEditingController(text: 'kg');
+  String? _unitSel = null;
   final dichteCtrl = TextEditingController(text: '0');
+  final laengeCtrl = TextEditingController();
+  final breiteCtrl = TextEditingController();
+  final hoeheCtrl = TextEditingController();
   final katCtrl = TextEditingController(text: '');
 
   @override
@@ -49,7 +54,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
     try {
       final t = await widget.api.listMaterialTypes();
       final c = await widget.api.listMaterialCategories();
-      setState(() { types = t; categories = c; });
+      final u = await widget.api.listUnits();
+      setState(() { types = t; categories = c; units = u; });
     } catch (e) { debugPrint('Facets error: $e'); }
   }
 
@@ -89,11 +95,44 @@ class _MaterialsPageState extends State<MaterialsPage> {
 
   Future<void> _select(String id) async {
     setState(() => selectedId = id);
+    selected = await widget.api.getMaterial(id);
     stock = await widget.api.stockByMaterial(id);
     // Lade Lagerliste, um Namen/Codes statt IDs anzeigen zu können
     try { warehouses = await widget.api.listWarehouses(); } catch (_) {}
     docs = await widget.api.listMaterialDocuments(id);
     setState(() {});
+  }
+
+  Future<void> _editSelected() async {
+    if (selectedId == null) return;
+    final m = selected ?? await widget.api.getMaterial(selectedId!);
+    final res = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _EditMaterialDialog(initial: m, api: widget.api, units: units),
+    );
+    if (res == null) return;
+    try {
+      await widget.api.updateMaterial(selectedId!, res);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material aktualisiert')));
+      await _select(selectedId!);
+      await _reload();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aktualisieren fehlgeschlagen: $e')));
+    }
+  }
+
+  Future<void> _deleteSelected() async {
+    if (selectedId == null) return;
+    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Material löschen'), content: const Text('Wirklich löschen? (wird deaktiviert)'), actions: [TextButton(onPressed: ()=> Navigator.pop(context, false), child: const Text('Abbrechen')), FilledButton(onPressed: ()=> Navigator.pop(context, true), child: const Text('Löschen'))]));
+    if (ok != true) return;
+    try {
+      await widget.api.deleteMaterial(selectedId!);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material gelöscht')));
+      selectedId = null; selected = null; stock = []; docs = [];
+      await _reload();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e')));
+    }
   }
 
   String _warehouseLabel(String id){
@@ -119,8 +158,11 @@ class _MaterialsPageState extends State<MaterialsPage> {
       'typ': typCtrl.text.trim(),
       'norm': normCtrl.text.trim(),
       'werkstoffnummer': wnrCtrl.text.trim(),
-      'einheit': einheitCtrl.text.trim(),
+      'einheit': (_unitSel ?? '').trim(),
       'dichte': double.tryParse(dichteCtrl.text.trim()) ?? 0,
+      if (laengeCtrl.text.trim().isNotEmpty) 'length_mm': double.tryParse(laengeCtrl.text.trim()),
+      if (breiteCtrl.text.trim().isNotEmpty) 'width_mm': double.tryParse(breiteCtrl.text.trim()),
+      if (hoeheCtrl.text.trim().isNotEmpty) 'height_mm': double.tryParse(hoeheCtrl.text.trim()),
       'kategorie': katCtrl.text.trim(),
       'attribute': {},
     };
@@ -181,7 +223,14 @@ class _MaterialsPageState extends State<MaterialsPage> {
                     child: TextFormField(controller: bezCtrl, decoration: const InputDecoration(labelText: 'Bezeichnung'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null),
                   ),
                   SizedBox(width: 140, child: TextFormField(controller: typCtrl, decoration: const InputDecoration(labelText: 'Typ'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
-                  SizedBox(width: 120, child: TextFormField(controller: einheitCtrl, decoration: const InputDecoration(labelText: 'Einheit'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
+                  SizedBox(width: 160, child: DropdownButtonFormField<String>(
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Einheit'),
+                    value: _unitSel,
+                    items: [for (final u in units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
+                    onChanged: (v){ _unitSel = v; },
+                    validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,
+                  )),
                   SizedBox(width: 120, child: TextFormField(controller: dichteCtrl, decoration: const InputDecoration(labelText: 'Dichte'),
                     validator: (v){
                       if (v==null||v.trim().isEmpty) return null;
@@ -194,6 +243,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
                   SizedBox(width: 140, child: TextFormField(controller: normCtrl, decoration: const InputDecoration(labelText: 'Norm'))),
                   SizedBox(width: 180, child: TextFormField(controller: wnrCtrl, decoration: const InputDecoration(labelText: 'Werkstoffnummer'))),
                   SizedBox(width: 160, child: TextFormField(controller: katCtrl, decoration: const InputDecoration(labelText: 'Kategorie'))),
+                  SizedBox(width: 120, child: TextFormField(controller: laengeCtrl, decoration: const InputDecoration(labelText: 'Länge (mm)'), keyboardType: TextInputType.number)),
+                  SizedBox(width: 120, child: TextFormField(controller: breiteCtrl, decoration: const InputDecoration(labelText: 'Breite (mm)'), keyboardType: TextInputType.number)),
+                  SizedBox(width: 120, child: TextFormField(controller: hoeheCtrl, decoration: const InputDecoration(labelText: 'Höhe (mm)'), keyboardType: TextInputType.number)),
                 ],
               ),
             ),
@@ -227,54 +279,39 @@ class _MaterialsPageState extends State<MaterialsPage> {
                   children: [
                     const Text('Materialien', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const Spacer(),
-                    SizedBox(
-                      width: 260,
-                      child: TextField(
-                        controller: searchCtrl,
-                        decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: 'Suchen (Nummer/Bezeichnung)',
-                          suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { searchCtrl.clear(); _reload(); })),
-                        onSubmitted: (_) => _reload(),
-                      ),
-                    ),
+                    SizedBox(width: 260, height: 40, child: TextField(
+                      controller: searchCtrl,
+                      textAlignVertical: TextAlignVertical.center,
+                      decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), prefixIcon: const Icon(Icons.search), hintText: 'Suchen (Nummer/Bezeichnung)',
+                        suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { searchCtrl.clear(); _reload(); })),
+                      onSubmitted: (_) => _reload(),
+                    )),
                     const SizedBox(width: 8),
-                    SizedBox(
-                      width: 180,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(isDense: true, labelText: 'Typ'),
-                        child: DropdownButton<String?>(
-                          isExpanded: true,
-                          value: filterTyp,
-                          hint: const Text('Alle'),
-                          items: [
-                            const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                            for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
-                          ],
-                          onChanged: (v){ setState((){ filterTyp = v; }); _reload(); },
-                          underline: const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
+                      isDense: true,
+                      decoration: const InputDecoration(isDense: true, labelText: 'Typ', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                      value: filterTyp,
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
+                        for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
+                      ],
+                      onChanged: (v){ setState((){ filterTyp = v; }); _reload(); },
+                    )),
                     const SizedBox(width: 8),
-                    SizedBox(
-                      width: 180,
-                      child: InputDecorator(
-                        decoration: const InputDecoration(isDense: true, labelText: 'Kategorie'),
-                        child: DropdownButton<String?>(
-                          isExpanded: true,
-                          value: filterKat,
-                          hint: const Text('Alle'),
-                          items: [
-                            const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                            for (final k in categories) DropdownMenuItem<String?>(value: k, child: Text(k)),
-                          ],
-                          onChanged: (v){ setState((){ filterKat = v; }); _reload(); },
-                          underline: const SizedBox.shrink(),
-                        ),
-                      ),
-                    ),
+                    SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
+                      isDense: true,
+                      decoration: const InputDecoration(isDense: true, labelText: 'Kategorie', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                      value: filterKat,
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
+                        for (final k in categories) DropdownMenuItem<String?>(value: k, child: Text(k)),
+                      ],
+                      onChanged: (v){ setState((){ filterKat = v; }); _reload(); },
+                    )),
                     const SizedBox(width: 8),
-                    FilledButton.tonal(onPressed: _reload, child: const Text('Suchen')),
-                    IconButton(onPressed: _reload, icon: const Icon(Icons.refresh)),
+                    SizedBox(height: 40, child: FilledButton.tonal(onPressed: _reload, style: FilledButton.styleFrom(minimumSize: const Size(100, 40)), child: const Text('Suchen'))),
+                    const SizedBox(width: 4),
+                    SizedBox(height: 40, width: 40, child: IconButton(onPressed: _reload, padding: EdgeInsets.zero, constraints: const BoxConstraints.tightFor(width: 40, height: 40), icon: const Icon(Icons.refresh))),
                   ],
                 ),
               ),
@@ -286,10 +323,32 @@ class _MaterialsPageState extends State<MaterialsPage> {
                     if (i < items.length) {
                       final m = items[i] as Map<String, dynamic>;
                       final sel = m['id'] == selectedId;
+                      String dims(){
+                        String fmt(num? v){
+                          if (v == null) return '';
+                          final d = v.toDouble();
+                          if ((d - d.round()).abs() < 0.001) return d.round().toString();
+                          return d.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+                        }
+                        final l = m['length_mm'] as num?;
+                        final w = m['width_mm'] as num?;
+                        final h = m['height_mm'] as num?;
+                        final parts = <String>[];
+                        if (l != null) parts.add(fmt(l));
+                        if (w != null) parts.add(fmt(w));
+                        if (h != null) parts.add(fmt(h));
+                        if (parts.isEmpty) return '';
+                        return parts.join('×') + ' mm';
+                      }
+                      final dim = dims();
                       return ListTile(
                         selected: sel,
                         title: Text('${m['bezeichnung']}'),
-                        subtitle: Text('${m['nummer']}  •  ${m['typ']}  •  ${m['einheit']}'),
+                        subtitle: Text([
+                          '${m['nummer']}',
+                          '${m['typ']}',
+                          if (dim.isNotEmpty) dim else '${m['einheit']}',
+                        ].where((e)=> (e!=null && e.toString().trim().isNotEmpty)).join('  •  ')),
                         onTap: () => _select(m['id'] as String),
                       );
                     }
@@ -317,6 +376,21 @@ class _MaterialsPageState extends State<MaterialsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Abstand nach unten, damit die Kopfzeile nicht mit der linken Suchzeile kollidiert
+                      const SizedBox(height: 56),
+                      if (selected != null) ...[
+                        Row(children: [
+                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                            Text('${selected!['bezeichnung']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text('Nr.: ${selected!['nummer']}  •  Typ: ${selected!['typ']}  •  Einheit: ${selected!['einheit']}'),
+                            if ((selected!['kategorie']??'').toString().isNotEmpty) Text('Kategorie: ${selected!['kategorie']}'),
+                          ])),
+                          IconButton(onPressed: _editSelected, icon: const Icon(Icons.edit)),
+                          IconButton(onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
+                        ]),
+                        const SizedBox(height: 12),
+                      ],
                       Row(children: [
                         const Text('Bestand', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const Spacer(),
@@ -375,6 +449,119 @@ class _MaterialsPageState extends State<MaterialsPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _EditMaterialDialog extends StatefulWidget {
+  const _EditMaterialDialog({required this.initial, required this.api, required this.units});
+  final Map<String, dynamic> initial;
+  final ApiClient api;
+  final List<Map<String, dynamic>> units;
+  @override
+  State<_EditMaterialDialog> createState() => _EditMaterialDialogState();
+}
+
+class _EditMaterialDialogState extends State<_EditMaterialDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final nummer = TextEditingController(text: widget.initial['nummer']?.toString() ?? '');
+  late final bez = TextEditingController(text: widget.initial['bezeichnung']?.toString() ?? '');
+  late final typ = TextEditingController(text: widget.initial['typ']?.toString() ?? '');
+  late final norm = TextEditingController(text: widget.initial['norm']?.toString() ?? '');
+  late final wnr = TextEditingController(text: widget.initial['werkstoffnummer']?.toString() ?? '');
+  String? einheit;
+  List<Map<String, dynamic>> _units = const [];
+  bool _unitsLoading = false;
+  late final dichte = TextEditingController(text: (widget.initial['dichte'] ?? 0).toString());
+  late final laenge = TextEditingController(text: (widget.initial['length_mm'] ?? '').toString());
+  late final breite = TextEditingController(text: (widget.initial['width_mm'] ?? '').toString());
+  late final hoehe  = TextEditingController(text: (widget.initial['height_mm'] ?? '').toString());
+  late final kat = TextEditingController(text: widget.initial['kategorie']?.toString() ?? '');
+
+  @override
+  void initState() {
+    super.initState();
+    // Übernehme Einheiten aus Parametern, lade ansonsten nach
+    _units = widget.units;
+    if (_units.isEmpty) { _loadUnitsFallback(); }
+  }
+
+  Future<void> _loadUnitsFallback() async {
+    try {
+      setState(() => _unitsLoading = true);
+      final list = await widget.api.listUnits();
+      if (mounted) setState(() => _units = list);
+    } catch (_) {
+      // ignore – wenn es fehlschlägt, bleibt die Liste leer
+    } finally {
+      if (mounted) setState(() => _unitsLoading = false);
+    }
+  }
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Material bearbeiten'),
+      content: SizedBox(
+        width: 520,
+        child: Form(
+          key: _formKey,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(child: TextFormField(controller: nummer, decoration: const InputDecoration(labelText: 'Nummer'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
+              const SizedBox(width: 8),
+              Expanded(child: TextFormField(controller: bez, decoration: const InputDecoration(labelText: 'Bezeichnung'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
+            ]),
+            Row(children: [
+              Expanded(child: TextFormField(controller: typ, decoration: const InputDecoration(labelText: 'Typ'))),
+              const SizedBox(width: 8),
+              Expanded(child: TextFormField(controller: norm, decoration: const InputDecoration(labelText: 'Norm'))),
+            ]),
+            Row(children: [
+              Expanded(child: TextFormField(controller: wnr, decoration: const InputDecoration(labelText: 'Werkstoffnummer'))),
+              const SizedBox(width: 8),
+              SizedBox(width: 160, child: DropdownButtonFormField<String>(
+                isDense: true,
+                decoration: const InputDecoration(labelText: 'Einheit'),
+                value: einheit ?? widget.initial['einheit']?.toString(),
+                items: [for (final u in _units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
+                onChanged: (v){ einheit = v; },
+                validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,
+              )),
+              const SizedBox(width: 8),
+              SizedBox(width: 120, child: TextFormField(controller: dichte, decoration: const InputDecoration(labelText: 'Dichte'), keyboardType: TextInputType.number))
+            ]),
+            Row(children: [
+              Expanded(child: TextFormField(controller: kat, decoration: const InputDecoration(labelText: 'Kategorie'))),
+            ]),
+            Row(children: [
+              Expanded(child: TextFormField(controller: laenge, decoration: const InputDecoration(labelText: 'Länge (mm)'), keyboardType: TextInputType.number)),
+              const SizedBox(width: 8),
+              Expanded(child: TextFormField(controller: breite, decoration: const InputDecoration(labelText: 'Breite (mm)'), keyboardType: TextInputType.number)),
+              const SizedBox(width: 8),
+              Expanded(child: TextFormField(controller: hoehe, decoration: const InputDecoration(labelText: 'Höhe (mm)'), keyboardType: TextInputType.number)),
+            ]),
+          ]),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Abbrechen')),
+        FilledButton(onPressed: (){
+          if (!_formKey.currentState!.validate()) return;
+          Navigator.pop(context, {
+            'nummer': nummer.text.trim(),
+            'bezeichnung': bez.text.trim(),
+            'typ': typ.text.trim(),
+            'norm': norm.text.trim(),
+            'werkstoffnummer': wnr.text.trim(),
+            'einheit': (einheit ?? widget.initial['einheit']?.toString() ?? '').trim(),
+            'dichte': double.tryParse(dichte.text.trim()),
+            'kategorie': kat.text.trim(),
+            'length_mm': double.tryParse(laenge.text.trim()),
+            'width_mm': double.tryParse(breite.text.trim()),
+            'height_mm': double.tryParse(hoehe.text.trim()),
+          });
+        }, child: const Text('Speichern')),
+      ],
     );
   }
 }

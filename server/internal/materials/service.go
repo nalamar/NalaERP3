@@ -34,6 +34,9 @@ type Material struct {
     Werkstoffnummer    string                 `json:"werkstoffnummer"`
     Einheit            string                 `json:"einheit"`
     Dichte             float64                `json:"dichte"`
+    LengthMM           *float64               `json:"length_mm"`
+    WidthMM            *float64               `json:"width_mm"`
+    HeightMM           *float64               `json:"height_mm"`
     Kategorie          string                 `json:"kategorie"`
     Aktiv              bool                   `json:"aktiv"`
     Attribute          map[string]any         `json:"attribute"`
@@ -52,8 +55,27 @@ type MaterialCreate struct {
     Werkstoffnummer string         `json:"werkstoffnummer"`
     Einheit         string         `json:"einheit"`
     Dichte          float64        `json:"dichte"`
+    LengthMM        *float64       `json:"length_mm"`
+    WidthMM         *float64       `json:"width_mm"`
+    HeightMM        *float64       `json:"height_mm"`
     Kategorie       string         `json:"kategorie"`
     Attribute       map[string]any `json:"attribute"`
+}
+
+type MaterialUpdate struct {
+    Nummer          *string         `json:"nummer"`
+    Bezeichnung     *string         `json:"bezeichnung"`
+    Typ             *string         `json:"typ"`
+    Norm            *string         `json:"norm"`
+    Werkstoffnummer *string         `json:"werkstoffnummer"`
+    Einheit         *string         `json:"einheit"`
+    Dichte          *float64        `json:"dichte"`
+    LengthMM        *float64        `json:"length_mm"`
+    WidthMM         *float64        `json:"width_mm"`
+    HeightMM        *float64        `json:"height_mm"`
+    Kategorie       *string         `json:"kategorie"`
+    Attribute       *map[string]any `json:"attribute"`
+    Aktiv           *bool           `json:"aktiv"`
 }
 
 type MaterialFilter struct{
@@ -75,13 +97,13 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, err
     var m Material
     err := s.pg.QueryRow(ctx, `
         INSERT INTO materials (
-            id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, dichte, kategorie, attributes
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
-        RETURNING id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), kategorie,
+            id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, dichte, length_mm, width_mm, height_mm, kategorie, attributes
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+        RETURNING id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
                   COALESCE(attributes,'{}'::jsonb), COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                   COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
-    `, id, in.Nummer, in.Bezeichnung, in.Typ, in.Norm, in.Werkstoffnummer, in.Einheit, in.Dichte, in.Kategorie, toJSONB(in.Attribute)).Scan(
-        &m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.Kategorie,
+    `, id, in.Nummer, in.Bezeichnung, in.Typ, in.Norm, in.Werkstoffnummer, in.Einheit, in.Dichte, in.LengthMM, in.WidthMM, in.HeightMM, in.Kategorie, toJSONB(in.Attribute)).Scan(
+        &m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
         new([]byte), &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm,
     )
     if err != nil {
@@ -101,6 +123,47 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, err
     return &m, nil
 }
 
+func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate) (*Material, error) {
+    if strings.TrimSpace(id) == "" { return nil, errors.New("ID erforderlich") }
+    sets := make([]string, 0)
+    args := make([]any, 0)
+    idx := 1
+    add := func(col string, v any) { sets = append(sets, fmt.Sprintf("%s=$%d", col, idx)); args = append(args, v); idx++ }
+    if u.Nummer != nil {
+        if strings.TrimSpace(*u.Nummer) == "" { return nil, errors.New("Nummer erforderlich") }
+        add("nummer", *u.Nummer)
+    }
+    if u.Bezeichnung != nil {
+        if strings.TrimSpace(*u.Bezeichnung) == "" { return nil, errors.New("Bezeichnung erforderlich") }
+        add("bezeichnung", *u.Bezeichnung)
+    }
+    if u.Typ != nil { add("typ", *u.Typ) }
+    if u.Norm != nil { add("norm", *u.Norm) }
+    if u.Werkstoffnummer != nil { add("werkstoffnummer", *u.Werkstoffnummer) }
+    if u.Einheit != nil {
+        if strings.TrimSpace(*u.Einheit) == "" { return nil, errors.New("Einheit erforderlich") }
+        add("einheit", *u.Einheit)
+    }
+    if u.Dichte != nil { add("dichte", *u.Dichte) }
+    if u.LengthMM != nil { add("length_mm", *u.LengthMM) }
+    if u.WidthMM != nil { add("width_mm", *u.WidthMM) }
+    if u.HeightMM != nil { add("height_mm", *u.HeightMM) }
+    if u.Kategorie != nil { add("kategorie", *u.Kategorie) }
+    if u.Attribute != nil { add("attributes", toJSONB(*u.Attribute)) }
+    if u.Aktiv != nil { add("aktiv", *u.Aktiv) }
+    if len(sets) == 0 { return s.Get(ctx, id) }
+    args = append(args, id)
+    q := fmt.Sprintf("UPDATE materials SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+    if _, err := s.pg.Exec(ctx, q, args...); err != nil { return nil, err }
+    return s.Get(ctx, id)
+}
+
+func (s *Service) DeleteSoft(ctx context.Context, id string) error {
+    if strings.TrimSpace(id) == "" { return errors.New("ID erforderlich") }
+    if _, err := s.pg.Exec(ctx, `UPDATE materials SET aktiv=false WHERE id=$1`, id); err != nil { return err }
+    return nil
+}
+
 func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error) {
     // Defaults
     lim := f.Limit
@@ -109,7 +172,7 @@ func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error
 
     // Dynamische WHERE-Klausel
     sb := strings.Builder{}
-    sb.WriteString(`SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), kategorie,
+    sb.WriteString(`SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
         FROM materials`)
@@ -146,7 +209,7 @@ func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error
     for rows.Next() {
         var m Material
         var raw []byte
-        if err := rows.Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.Kategorie,
+        if err := rows.Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
             &raw, &m.Aktiv, &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm); err != nil {
             return nil, err
         }
@@ -163,11 +226,11 @@ func (s *Service) Get(ctx context.Context, id string) (*Material, error) {
     var m Material
     var raw []byte
     err := s.pg.QueryRow(ctx, `
-        SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), kategorie,
+        SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
         FROM materials WHERE id=$1
-    `, id).Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.Kategorie,
+    `, id).Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
         &raw, &m.Aktiv, &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm)
     if err != nil {
         if errors.Is(err, pgx.ErrNoRows) { return nil, errors.New("Material nicht gefunden") }

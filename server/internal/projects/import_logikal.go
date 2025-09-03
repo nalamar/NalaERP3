@@ -156,6 +156,21 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
         _ = rows.Close()
     }
 
+    // Optional: Phasen-Namen aus Phases-Tabelle lesen, wenn vorhanden
+    namesByPhaseID := make(map[int64]string)
+    if rows, err := db.QueryContext(ctx, `SELECT PhaseId, COALESCE(Name,'') FROM Phases`); err == nil {
+        for rows.Next() {
+            var pid sql.NullInt64; var name sql.NullString
+            if e := rows.Scan(&pid, &name); e == nil {
+                if pid.Valid && name.Valid {
+                    n := strings.TrimSpace(name.String)
+                    if n != "" { namesByPhaseID[pid.Int64] = n }
+                }
+            }
+        }
+        _ = rows.Close()
+    }
+
     phaseByPhaseID := make(map[int64]*Phase)
     // Wenn keine PhaseIds gefunden: eine Standard-Phase anlegen
     if len(phaseIDs) == 0 {
@@ -170,22 +185,24 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
         i := 0
         for pid := range phaseIDs {
             num := fmt.Sprintf("%d", pid)
+            desiredName := fmt.Sprintf("Los %d", pid)
+            if n, ok := namesByPhaseID[pid]; ok && strings.TrimSpace(n) != "" { desiredName = n }
             var ph Phase
             if err := s.pg.QueryRow(ctx, `SELECT id, project_id, nummer, name, COALESCE(beschreibung,''), sort_order, angelegt_am FROM project_phases WHERE project_id=$1 AND nummer=$2`, p.ID, num).Scan(
                 &ph.ID, &ph.ProjectID, &ph.Nummer, &ph.Name, &ph.Beschreibung, &ph.SortOrder, &ph.Angelegt,
             ); err == nil {
                 before := snapPhase(ph.ID)
-                _, _ = s.pg.Exec(ctx, `UPDATE project_phases SET name=$1, sort_order=$2 WHERE id=$3`, fmt.Sprintf("Los %d", pid), i, ph.ID)
+                _, _ = s.pg.Exec(ctx, `UPDATE project_phases SET name=$1, sort_order=$2 WHERE id=$3`, desiredName, i, ph.ID)
                 phaseByPhaseID[pid] = &ph
                 cnt.updatedPhases++
                 after := snapPhase(ph.ID)
-                logChange("phase", "updated", ph.ID, fmt.Sprintf("phase:%d", pid), fmt.Sprintf("Phase aktualisiert: %s", ph.Name), before, after)
+                logChange("phase", "updated", ph.ID, fmt.Sprintf("phase:%d", pid), fmt.Sprintf("Phase aktualisiert: %s", desiredName), before, after)
             } else {
-                ph2, err := s.CreatePhase(ctx, p.ID, PhaseCreate{ Nummer: num, Name: fmt.Sprintf("Los %d", pid), SortOrder: i })
+                ph2, err := s.CreatePhase(ctx, p.ID, PhaseCreate{ Nummer: num, Name: desiredName, SortOrder: i })
                 if err != nil { return nil, "", fmt.Errorf("phase %d: %w", pid, err) }
                 phaseByPhaseID[pid] = ph2
                 cnt.createdPhases++
-                logChange("phase", "created", ph2.ID, fmt.Sprintf("phase:%d", pid), fmt.Sprintf("Phase erstellt: %s", ph2.Name), nil, snapPhase(ph2.ID))
+                logChange("phase", "created", ph2.ID, fmt.Sprintf("phase:%d", pid), fmt.Sprintf("Phase erstellt: %s", desiredName), nil, snapPhase(ph2.ID))
             }
             i++
         }
@@ -390,6 +407,19 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
         }
 
         // 2) Profiles (write now with reverse map). Vor dem Insert die bisherigen Materialien pro Variante löschen (idempotent)
+        autoLink := func(kind, itemID, supplier, code string) {
+            code = strings.TrimSpace(code)
+            if code == "" { return }
+            var mid string
+            // 1) exakter Match über Material-Nummer = Artikelcode
+            _ = s.pg.QueryRow(ctx, `SELECT id FROM materials WHERE nummer=$1`, code).Scan(&mid)
+            if strings.TrimSpace(mid) == "" { return }
+            switch strings.ToLower(kind) {
+            case "profiles": _, _ = s.pg.Exec(ctx, `UPDATE single_elevation_profiles SET material_id=$1 WHERE id=$2`, mid, itemID)
+            case "articles": _, _ = s.pg.Exec(ctx, `UPDATE single_elevation_articles SET material_id=$1 WHERE id=$2`, mid, itemID)
+            case "glass":    _, _ = s.pg.Exec(ctx, `UPDATE single_elevation_glass SET material_id=$1 WHERE id=$2`, mid, itemID)
+            }
+        }
         cleared := make(map[string]struct{})
         if rows, err := db.QueryContext(ctx, `SELECT InsertionId, COALESCE(ArticleCode,''), COALESCE(Description,''), COALESCE(CAST(LK_SupplierID AS TEXT),''), COALESCE(Length,0), COALESCE(Amount,0), COALESCE(Length_Unit,'') FROM Profiles`); err == nil {
             for rows.Next() {
@@ -406,8 +436,10 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
                     logChange("materials", "replaced", seID, "", "Materialliste ersetzt (Profile/Artikel/Glas neu aufgebaut)", before, nil)
                 }
                 // Insert into single_elevation_profiles
+                iid := uuidStr()
                 if _, err := s.pg.Exec(ctx, `INSERT INTO single_elevation_profiles (id, single_elevation_id, supplier_code, article_code, description, length_mm, qty, unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-                    uuidStr(), seID, nullIfEmpty(supplier), nullIfEmpty(code), nullIfEmpty(desc), nullIfZeroFloat(length), nullIfZeroInt(amt), nullIfEmpty(unit)); err != nil { return nil, "", err }
+                    iid, seID, nullIfEmpty(supplier), nullIfEmpty(code), nullIfEmpty(desc), nullIfZeroFloat(length), nullIfZeroInt(amt), nullIfEmpty(unit)); err != nil { return nil, "", err }
+                autoLink("profiles", iid, supplier, code)
             }
             _ = rows.Close()
         }
@@ -427,8 +459,10 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
                     cnt.materialsReplaced++
                     logChange("materials", "replaced", seID, "", "Materialliste ersetzt (Profile/Artikel/Glas neu aufgebaut)", before, nil)
                 }
+                iid := uuidStr()
                 if _, err := s.pg.Exec(ctx, `INSERT INTO single_elevation_articles (id, single_elevation_id, supplier_code, article_code, description, qty, unit) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-                    uuidStr(), seID, nullIfEmpty(supplier), nullIfEmpty(code), nullIfEmpty(desc), nullIfZeroInt(amt), nullIfEmpty(unit)); err != nil { return nil, "", err }
+                    iid, seID, nullIfEmpty(supplier), nullIfEmpty(code), nullIfEmpty(desc), nullIfZeroInt(amt), nullIfEmpty(unit)); err != nil { return nil, "", err }
+                autoLink("articles", iid, supplier, code)
             }
             _ = rows.Close()
         }
@@ -448,8 +482,10 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
                     cnt.materialsReplaced++
                     logChange("materials", "replaced", seID, "", "Materialliste ersetzt (Profile/Artikel/Glas neu aufgebaut)", before, nil)
                 }
+                iid := uuidStr()
                 if _, err := s.pg.Exec(ctx, `INSERT INTO single_elevation_glass (id, single_elevation_id, configuration, description, qty) VALUES ($1,$2,$3,$4,$5)`,
-                    uuidStr(), seID, nullIfEmpty(conf), nullIfEmpty(desc), qty); err != nil { return nil, "", err }
+                    iid, seID, nullIfEmpty(conf), nullIfEmpty(desc), qty); err != nil { return nil, "", err }
+                // optional: autoLink("glass", iid, "", conf) // bewusst weggelassen, um Fehlverknüpfungen zu vermeiden
             }
             _ = rows.Close()
         }

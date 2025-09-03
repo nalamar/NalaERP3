@@ -26,6 +26,12 @@ class _SettingsPageState extends State<SettingsPage> {
   String? poBgFirstDocId;
   String? poBgOtherDocId;
 
+  // Einheiten
+  List<Map<String, dynamic>> _units = [];
+  final _unitCodeCtrl = TextEditingController();
+  final _unitNameCtrl = TextEditingController();
+  bool _unitsLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -42,8 +48,45 @@ class _SettingsPageState extends State<SettingsPage> {
       await _updatePreviewPO();
       await _updatePreviewPRJ();
       await _loadPdfTemplate();
+      await _loadUnits();
     } catch (e) { /* ignore */ }
     setState(()=> loading = false);
+  }
+
+  Future<void> _loadUnits() async {
+    try {
+      setState(()=> _unitsLoading = true);
+      final list = await widget.api.listUnits();
+      setState(()=> _units = list);
+    } catch (e) { /* ignore */ }
+    finally { setState(()=> _unitsLoading = false); }
+  }
+
+  Future<void> _saveUnit() async {
+    final code = _unitCodeCtrl.text.trim();
+    final name = _unitNameCtrl.text.trim();
+    if (code.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code erforderlich'))); return; }
+    try {
+      await widget.api.upsertUnit(code, name);
+      _unitCodeCtrl.clear();
+      _unitNameCtrl.clear();
+      await _loadUnits();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Einheit gespeichert')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    }
+  }
+
+  Future<void> _deleteUnit(String code) async {
+    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Einheit löschen'), content: Text('Code "$code" wirklich löschen?'), actions: [TextButton(onPressed: ()=> Navigator.pop(context, false), child: const Text('Abbrechen')), FilledButton(onPressed: ()=> Navigator.pop(context, true), child: const Text('Löschen'))]));
+    if (ok != true) return;
+    try {
+      await widget.api.deleteUnit(code);
+      await _loadUnits();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Einheit gelöscht')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    }
   }
 
   Future<void> _updatePreviewPO() async {
@@ -157,103 +200,153 @@ class _SettingsPageState extends State<SettingsPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Nummernkreise', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Bestellungen'),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: poPatternCtrl,
-                        decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PO-{YYYY}-{NNNN}'),
-                        onChanged: (_) { _updatePreviewPO(); },
+              ExpansionTile(
+                title: const Text('Nummernkreise', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                initiallyExpanded: false,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Bestellungen'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: poPatternCtrl,
+                            decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PO-{YYYY}-{NNNN}'),
+                            onChanged: (_) { _updatePreviewPO(); },
+                          ),
+                          const SizedBox(height: 8),
+                          Text('Vorschau: $previewPO'),
+                          const SizedBox(height: 8),
+                          const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(onPressed: _savePO, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      Text('Vorschau: $previewPO'),
-                      const SizedBox(height: 8),
-                      const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.icon(onPressed: _savePO, icon: const Icon(Icons.save), label: const Text('Speichern')),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Projekte'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: prjPatternCtrl,
+                            decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
+                            onChanged: (_) { _updatePreviewPRJ(); },
+                          ),
+                          const SizedBox(height: 8),
+                          Text('Vorschau: $previewPRJ'),
+                          const SizedBox(height: 8),
+                          const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(onPressed: _savePRJ, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Projekte'),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: prjPatternCtrl,
-                        decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
-                        onChanged: (_) { _updatePreviewPRJ(); },
-                      ),
-                      const SizedBox(height: 8),
-                      Text('Vorschau: $previewPRJ'),
-                      const SizedBox(height: 8),
-                      const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
-                      const SizedBox(height: 8),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.icon(onPressed: _savePRJ, icon: const Icon(Icons.save), label: const Text('Speichern')),
-                      ),
-                    ],
+              ExpansionTile(
+                title: const Text('Maßeinheiten', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                initiallyExpanded: false,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Row(children: [
+                          Expanded(child: TextField(controller: _unitCodeCtrl, decoration: const InputDecoration(labelText: 'Code (z. B. kg, mm)'))),
+                          const SizedBox(width: 8),
+                          Expanded(child: TextField(controller: _unitNameCtrl, decoration: const InputDecoration(labelText: 'Name (optional, z. B. Kilogramm)'))),
+                          const SizedBox(width: 8),
+                          FilledButton.icon(onPressed: _saveUnit, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                        ]),
+                        const SizedBox(height: 12),
+                        if (_unitsLoading) const LinearProgressIndicator(minHeight: 2),
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _units.length,
+                          itemBuilder: (ctx, i){
+                            final u = _units[i];
+                            final code = (u['code'] ?? '').toString();
+                            final name = (u['name'] ?? '').toString();
+                            return ListTile(
+                              dense: true,
+                              leading: const Icon(Icons.straighten_rounded),
+                              title: Text(code),
+                              subtitle: name.isNotEmpty ? Text(name) : null,
+                              trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: ()=> _deleteUnit(code)),
+                              onTap: (){ _unitCodeCtrl.text = code; _unitNameCtrl.text = name; },
+                            );
+                          },
+                        ),
+                      ]),
+                    ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 24),
-              const Text('PDF-Templates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               const SizedBox(height: 12),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Bestellungen (purchase_order)'),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: poHeaderCtrl,
-                        maxLines: 3,
-                        decoration: const InputDecoration(labelText: 'Kopftext', hintText: 'z. B. Firmenname, Adresse, Kontaktdaten'),
+              ExpansionTile(
+                title: const Text('PDF-Templates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                initiallyExpanded: false,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Bestellungen (purchase_order)'),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: poHeaderCtrl,
+                            maxLines: 3,
+                            decoration: const InputDecoration(labelText: 'Kopftext', hintText: 'z. B. Firmenname, Adresse, Kontaktdaten'),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: poFooterCtrl,
+                            maxLines: 2,
+                            decoration: const InputDecoration(labelText: 'Fußtext', hintText: 'z. B. Bankdaten, USt-IdNr.'),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(children: [
+                            Expanded(child: TextField(controller: poTopFirstCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Seite 1 (mm)'), keyboardType: TextInputType.number)),
+                            const SizedBox(width: 12),
+                            Expanded(child: TextField(controller: poTopOtherCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Folgeseiten (mm)'), keyboardType: TextInputType.number)),
+                          ]),
+                          const SizedBox(height: 12),
+                          Wrap(spacing: 12, runSpacing: 8, children: [
+                            _imageRow('Logo', poLogoDocId, onUpload: () => _pickAndUpload('logo')),
+                            _imageRow('Hintergrund (Seite 1)', poBgFirstDocId, onUpload: () => _pickAndUpload('bg-first')),
+                            _imageRow('Hintergrund (Folge)', poBgOtherDocId, onUpload: () => _pickAndUpload('bg-other')),
+                          ]),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: FilledButton.icon(onPressed: _savePdfTemplate, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: poFooterCtrl,
-                        maxLines: 2,
-                        decoration: const InputDecoration(labelText: 'Fußtext', hintText: 'z. B. Bankdaten, USt-IdNr.'),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        Expanded(child: TextField(controller: poTopFirstCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Seite 1 (mm)'), keyboardType: TextInputType.number)),
-                        const SizedBox(width: 12),
-                        Expanded(child: TextField(controller: poTopOtherCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Folgeseiten (mm)'), keyboardType: TextInputType.number)),
-                      ]),
-                      const SizedBox(height: 12),
-                      Wrap(spacing: 12, runSpacing: 8, children: [
-                        _imageRow('Logo', poLogoDocId, onUpload: () => _pickAndUpload('logo')),
-                        _imageRow('Hintergrund (Seite 1)', poBgFirstDocId, onUpload: () => _pickAndUpload('bg-first')),
-                        _imageRow('Hintergrund (Folge)', poBgOtherDocId, onUpload: () => _pickAndUpload('bg-other')),
-                      ]),
-                      const SizedBox(height: 12),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: FilledButton.icon(onPressed: _savePdfTemplate, icon: const Icon(Icons.save), label: const Text('Speichern')),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),

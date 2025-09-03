@@ -281,6 +281,15 @@ class ApiClient {
     if (r.statusCode != 200) throw Exception('Nicht gefunden');
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+  Future<Map<String, dynamic>> updateMaterial(String id, Map<String, dynamic> patch) async {
+    final r = await http.patch(_u('/api/v1/materials/$id'), headers: {'Content-Type': 'application/json'}, body: jsonEncode(patch));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    return jsonDecode(utf8.decode(r.bodyBytes));
+  }
+  Future<void> deleteMaterial(String id) async {
+    final r = await http.delete(_u('/api/v1/materials/$id'));
+    if (r.statusCode != 204) throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+  }
   Future<List<dynamic>> stockByMaterial(String id) async {
     final r = await http.get(_u('/api/v1/materials/$id/stock'));
     if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
@@ -307,6 +316,25 @@ class ApiClient {
     if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
+  }
+  // Settings – Units
+  Future<List<Map<String, dynamic>>> listUnits() async {
+    final r = await http.get(_u('/api/v1/settings/units/'));
+    if (r.statusCode != 200) throw Exception('Fehler: ${r.statusCode}');
+    final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+    return arr.map((e) => e as Map<String, dynamic>).toList();
+  }
+  Future<void> upsertUnit(String code, String name) async {
+    final r = await http.post(_u('/api/v1/settings/units/'), headers: {'Content-Type': 'application/json'}, body: jsonEncode({'code': code, 'name': name}));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    }
+  }
+  Future<void> deleteUnit(String code) async {
+    final r = await http.delete(_u('/api/v1/settings/units/$code'));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      throw Exception('Fehler: ${r.statusCode} ${utf8.decode(r.bodyBytes)}');
+    }
   }
 
   // -------- Contacts --------
