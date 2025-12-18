@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
-import 'dart:typed_data';
 import '../web/browser.dart' as browser;
 
 class SettingsPage extends StatefulWidget {

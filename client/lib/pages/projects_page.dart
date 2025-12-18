@@ -70,7 +70,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         itemBuilder: (context, index) {
                           final p = _projects[index] as Map<String, dynamic>;
                           return ListTile(
-                            leading: CircleAvatar(backgroundColor: color.withOpacity(0.12), child: Icon(Icons.work_outline_rounded, color: color)),
+                            leading: CircleAvatar(backgroundColor: color.withValues(alpha: 0.12), child: Icon(Icons.work_outline_rounded, color: color)),
                             title: Text(p['name']?.toString() ?? 'Projekt'),
                             subtitle: Text(p['nummer']?.toString() ?? ''),
                             onTap: () {
@@ -526,7 +526,7 @@ class _NoImagePlaceholder extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) {
-    final bg = Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5);
+    final bg = Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5);
     final fg = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       width: 200,
@@ -591,12 +591,6 @@ class _VariantTileState extends State<_VariantTile> {
     }
     return null;
   }
-  dynamic _firstNonNull(Map<String, dynamic> m, List<String> keys) {
-    for (final k in keys) {
-      if (m.containsKey(k) && m[k] != null && m[k].toString().isNotEmpty) return m[k];
-    }
-    return null;
-  }
   num? _numVal(dynamic v) {
     if (v == null) return null;
     if (v is num) return v;
@@ -630,7 +624,7 @@ class _VariantTileState extends State<_VariantTile> {
             const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
             ...List<Widget>.from(((_materials!['profiles'] ?? []) as List).map((p0) {
-              final p = (p0 as Map<String, dynamic>);
+              final p = p0 as Map<String, dynamic>;
               _ensureComputedQtyForProfile(p);
               final lenVal = _looseGet(p, ['Lenght_Output','Length_Output','length_output','Lenght','Length','length_mm']);
               final lenUnit = (_looseGet(p, ['Lenght_Unit','Length_Unit','length_unit']) ?? 'mm').toString();
@@ -648,23 +642,31 @@ class _VariantTileState extends State<_VariantTile> {
             const SizedBox(height: 12),
             const Text('Artikel', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['articles'] ?? []) as List).map((a) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.extension_rounded),
-              title: Text(((a as Map<String, dynamic>)['article_code'] ?? (a)['description'] ?? '').toString()),
-              subtitle: Text('Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(a)['material_nummer'] : ''}'),
-              trailing: _buildMaterialActions(a as Map<String, dynamic>, 'articles'),
-            ))),
+            ...List<Widget>.from(((_materials!['articles'] ?? []) as List).map((a0) {
+              final a = a0 as Map<String, dynamic>;
+              final materialLink = ((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(a)['material_nummer'] : '';
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.extension_rounded),
+                title: Text(((a)['article_code'] ?? (a)['description'] ?? '').toString()),
+                subtitle: Text('Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}$materialLink'),
+                trailing: _buildMaterialActions(a, 'articles'),
+              );
+            })),
             const SizedBox(height: 12),
             const Text('Glas', style: TextStyle(fontWeight: FontWeight.bold)),
             const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['glass'] ?? []) as List).map((g) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.window_rounded),
-              title: Text(((g as Map<String, dynamic>)['configuration'] ?? (g)['description'] ?? '').toString()),
-              subtitle: Text('Menge ${(g)['qty'] ?? 1}${((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(g)['material_nummer'] : ''}'),
-              trailing: _buildMaterialActions(g as Map<String, dynamic>, 'glass'),
-            ))),
+            ...List<Widget>.from(((_materials!['glass'] ?? []) as List).map((g0) {
+              final g = g0 as Map<String, dynamic>;
+              final materialLink = ((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(g)['material_nummer'] : '';
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.window_rounded),
+                title: Text(((g)['configuration'] ?? (g)['description'] ?? '').toString()),
+                subtitle: Text('Menge ${(g)['qty'] ?? 1}$materialLink'),
+                trailing: _buildMaterialActions(g, 'glass'),
+              );
+            })),
           ]),
         ),
       ],

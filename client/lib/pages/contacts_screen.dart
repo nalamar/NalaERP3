@@ -105,7 +105,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     SizedBox(
                       width: 180,
                       child: DropdownButtonFormField<String>(
-                        value: newTyp,
+                        initialValue: newTyp,
                         items: [for (final t in (typen.isEmpty ? ['org','person']: typen)) DropdownMenuItem(value: t, child: Text(t))],
                         onChanged: (v)=> setState(()=> newTyp = v ?? 'org'),
                         decoration: const InputDecoration(labelText: 'Typ'),
@@ -114,7 +114,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     SizedBox(
                       width: 200,
                       child: DropdownButtonFormField<String>(
-                        value: newRolle,
+                        initialValue: newRolle,
                         items: [for (final r in (rollen.isEmpty ? ['customer','supplier','both','other'] : rollen)) DropdownMenuItem(value: r, child: Text(r))],
                         onChanged: (v)=> setState(()=> newRolle = v ?? 'customer'),
                         decoration: const InputDecoration(labelText: 'Rolle'),
@@ -139,7 +139,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     SizedBox(
                       width: 200,
                       child: DropdownButtonFormField<String>(
-                        value: addrArt,
+                        initialValue: addrArt,
                         items: const [
                           DropdownMenuItem(value: 'billing', child: Text('Rechnung')),
                           DropdownMenuItem(value: 'shipping', child: Text('Lieferung')),

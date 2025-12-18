@@ -51,8 +51,8 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         width: 600,
         child: SingleChildScrollView(
           child: Wrap(spacing: 12, runSpacing: 12, children: [
-            SizedBox(width: 160, child: DropdownButtonFormField<String>(value: typ, items: const [DropdownMenuItem(value:'org',child:Text('org')), DropdownMenuItem(value:'person',child:Text('person'))], onChanged: (v){ typ = v ?? 'org'; }, decoration: const InputDecoration(labelText: 'Typ'))),
-            SizedBox(width: 200, child: DropdownButtonFormField<String>(value: rolle, items: const [DropdownMenuItem(value:'customer',child:Text('customer')), DropdownMenuItem(value:'supplier',child:Text('supplier')), DropdownMenuItem(value:'both',child:Text('both')), DropdownMenuItem(value:'other',child:Text('other'))], onChanged: (v){ rolle = v ?? 'other'; }, decoration: const InputDecoration(labelText: 'Rolle'))),
+            SizedBox(width: 160, child: DropdownButtonFormField<String>(initialValue: typ, items: const [DropdownMenuItem(value:'org',child:Text('org')), DropdownMenuItem(value:'person',child:Text('person'))], onChanged: (v){ typ = v ?? 'org'; }, decoration: const InputDecoration(labelText: 'Typ'))),
+            SizedBox(width: 200, child: DropdownButtonFormField<String>(initialValue: rolle, items: const [DropdownMenuItem(value:'customer',child:Text('customer')), DropdownMenuItem(value:'supplier',child:Text('supplier')), DropdownMenuItem(value:'both',child:Text('both')), DropdownMenuItem(value:'other',child:Text('other'))], onChanged: (v){ rolle = v ?? 'other'; }, decoration: const InputDecoration(labelText: 'Rolle'))),
             SizedBox(width: 260, child: TextFormField(controller: name, decoration: const InputDecoration(labelText: 'Name'))),
             SizedBox(width: 260, child: TextFormField(controller: email, decoration: const InputDecoration(labelText: 'E-Mail'))),
             SizedBox(width: 180, child: TextFormField(controller: tel, decoration: const InputDecoration(labelText: 'Telefon'))),
@@ -116,7 +116,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         width: 600,
         child: SingleChildScrollView(
           child: Wrap(spacing: 12, runSpacing: 12, children: [
-            SizedBox(width: 200, child: DropdownButtonFormField<String>(value: art, items: const [DropdownMenuItem(value:'billing',child:Text('Rechnung')), DropdownMenuItem(value:'shipping',child:Text('Lieferung')), DropdownMenuItem(value:'other',child:Text('Sonstige'))], onChanged: (v){ art = v ?? 'billing'; }, decoration: const InputDecoration(labelText: 'Art'))),
+            SizedBox(width: 200, child: DropdownButtonFormField<String>(initialValue: art, items: const [DropdownMenuItem(value:'billing',child:Text('Rechnung')), DropdownMenuItem(value:'shipping',child:Text('Lieferung')), DropdownMenuItem(value:'other',child:Text('Sonstige'))], onChanged: (v){ art = v ?? 'billing'; }, decoration: const InputDecoration(labelText: 'Art'))),
             SizedBox(width: 320, child: TextFormField(controller: z1, decoration: const InputDecoration(labelText: 'Zeile 1'))),
             SizedBox(width: 320, child: TextFormField(controller: z2, decoration: const InputDecoration(labelText: 'Zeile 2'))),
             SizedBox(width: 140, child: TextFormField(controller: plz, decoration: const InputDecoration(labelText: 'PLZ'))),
@@ -127,14 +127,14 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         ),
       ),
       actions: [
-        if (!isNew) TextButton(onPressed: () async { try { await widget.api.deleteContactAddress(widget.id, (addr!['id'] as String)); Navigator.of(ctx).pop(); await _loadAll(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Löschen')),
+        if (!isNew) TextButton(onPressed: () async { try { await widget.api.deleteContactAddress(widget.id, (addr['id'] as String)); Navigator.of(ctx).pop(); await _loadAll(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Löschen')),
         TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
         FilledButton(onPressed: () async {
           try {
             if (isNew) {
               await widget.api.createContactAddress(widget.id, {'art': art, 'zeile1': z1.text.trim(), 'zeile2': z2.text.trim(), 'plz': plz.text.trim(), 'ort': ort.text.trim(), 'land': land.text.trim(), 'is_primary': primary});
             } else {
-              await widget.api.updateContactAddress(widget.id, (addr!['id'] as String), {'art': art, 'zeile1': z1.text.trim(), 'zeile2': z2.text.trim(), 'plz': plz.text.trim(), 'ort': ort.text.trim(), 'land': land.text.trim(), 'is_primary': primary});
+              await widget.api.updateContactAddress(widget.id, (addr['id'] as String), {'art': art, 'zeile1': z1.text.trim(), 'zeile2': z2.text.trim(), 'plz': plz.text.trim(), 'ort': ort.text.trim(), 'land': land.text.trim(), 'is_primary': primary});
             }
             if (mounted) Navigator.of(ctx).pop();
             await _loadAll();
@@ -172,14 +172,14 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         ),
       ),
       actions: [
-        if (!isNew) TextButton(onPressed: () async { try { await widget.api.deleteContactPerson(widget.id, (pers!['id'] as String)); Navigator.of(ctx).pop(); await _loadAll(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Löschen')),
+        if (!isNew) TextButton(onPressed: () async { try { await widget.api.deleteContactPerson(widget.id, (pers['id'] as String)); Navigator.of(ctx).pop(); await _loadAll(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Löschen')),
         TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
         FilledButton(onPressed: () async {
           try {
             if (isNew) {
               await widget.api.createContactPerson(widget.id, {'anrede': anr.text.trim(), 'vorname': v.text.trim(), 'nachname': n.text.trim(), 'position': pos.text.trim(), 'email': em.text.trim(), 'telefon': ph.text.trim(), 'mobil': mo.text.trim(), 'is_primary': primary});
             } else {
-              await widget.api.updateContactPerson(widget.id, (pers!['id'] as String), {'anrede': anr.text.trim(), 'vorname': v.text.trim(), 'nachname': n.text.trim(), 'position': pos.text.trim(), 'email': em.text.trim(), 'telefon': ph.text.trim(), 'mobil': mo.text.trim(), 'is_primary': primary});
+              await widget.api.updateContactPerson(widget.id, (pers['id'] as String), {'anrede': anr.text.trim(), 'vorname': v.text.trim(), 'nachname': n.text.trim(), 'position': pos.text.trim(), 'email': em.text.trim(), 'telefon': ph.text.trim(), 'mobil': mo.text.trim(), 'is_primary': primary});
             }
             if (mounted) Navigator.of(ctx).pop();
             await _loadAll();

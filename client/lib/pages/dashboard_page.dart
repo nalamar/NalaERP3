@@ -4,6 +4,9 @@ import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
+import 'invoices_page.dart';
+import 'bank_statements_page.dart';
+import 'employees_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key});
@@ -20,7 +23,7 @@ class DashboardPage extends StatelessWidget {
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.08), Colors.white],
+            colors: [color.withValues(alpha: 0.08), Colors.white],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -42,7 +45,8 @@ class DashboardPage extends StatelessWidget {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => MaterialwirtschaftScreen(api: ApiClient()),
+                        builder: (_) =>
+                            MaterialwirtschaftScreen(api: ApiClient()),
                       ),
                     );
                   },
@@ -72,6 +76,42 @@ class DashboardPage extends StatelessWidget {
                   },
                 ),
                 _DashCard(
+                  title: 'Finanzen',
+                  icon: Icons.receipt_long_rounded,
+                  color: color,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => InvoicesPage(api: ApiClient()),
+                      ),
+                    );
+                  },
+                ),
+                _DashCard(
+                  title: 'Bank',
+                  icon: Icons.account_balance_rounded,
+                  color: color,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => BankStatementsPage(api: ApiClient()),
+                      ),
+                    );
+                  },
+                ),
+                _DashCard(
+                  title: 'Personal',
+                  icon: Icons.badge_rounded,
+                  color: color,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => EmployeesPage(api: ApiClient()),
+                      ),
+                    );
+                  },
+                ),
+                _DashCard(
                   title: 'Einstellungen',
                   icon: Icons.settings_rounded,
                   color: color,
@@ -93,7 +133,11 @@ class DashboardPage extends StatelessWidget {
 }
 
 class _DashCard extends StatelessWidget {
-  const _DashCard({required this.title, required this.icon, required this.color, required this.onTap});
+  const _DashCard(
+      {required this.title,
+      required this.icon,
+      required this.color,
+      required this.onTap});
   final String title;
   final IconData icon;
   final Color color;
@@ -110,15 +154,25 @@ class _DashCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 12, offset: const Offset(0,6))],
-          border: Border.all(color: color.withOpacity(0.2)),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black12,
+                blurRadius: 12,
+                offset: const Offset(0, 6))
+          ],
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(backgroundColor: color.withOpacity(0.12), radius: 28, child: Icon(icon, color: color, size: 30)),
+            CircleAvatar(
+                backgroundColor: color.withValues(alpha: 0.12),
+                radius: 28,
+                child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
           ],
         ),
       ),

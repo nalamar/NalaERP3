@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../web/browser.dart' as browser;
@@ -226,7 +224,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                   SizedBox(width: 160, child: DropdownButtonFormField<String>(
                     isDense: true,
                     decoration: const InputDecoration(labelText: 'Einheit'),
-                    value: _unitSel,
+                    initialValue: _unitSel,
                     items: [for (final u in units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
                     onChanged: (v){ _unitSel = v; },
                     validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,
@@ -290,7 +288,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                     SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
                       isDense: true,
                       decoration: const InputDecoration(isDense: true, labelText: 'Typ', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-                      value: filterTyp,
+                      initialValue: filterTyp,
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
                         for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
@@ -301,7 +299,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                     SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
                       isDense: true,
                       decoration: const InputDecoration(isDense: true, labelText: 'Kategorie', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-                      value: filterKat,
+                      initialValue: filterKat,
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
                         for (final k in categories) DropdownMenuItem<String?>(value: k, child: Text(k)),
@@ -348,7 +346,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                           '${m['nummer']}',
                           '${m['typ']}',
                           if (dim.isNotEmpty) dim else '${m['einheit']}',
-                        ].where((e)=> (e!=null && e.toString().trim().isNotEmpty)).join('  •  ')),
+                        ].where((e)=> e.toString().trim().isNotEmpty).join('  •  ')),
                         onTap: () => _select(m['id'] as String),
                       );
                     }
@@ -471,7 +469,6 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
   late final wnr = TextEditingController(text: widget.initial['werkstoffnummer']?.toString() ?? '');
   String? einheit;
   List<Map<String, dynamic>> _units = const [];
-  bool _unitsLoading = false;
   late final dichte = TextEditingController(text: (widget.initial['dichte'] ?? 0).toString());
   late final laenge = TextEditingController(text: (widget.initial['length_mm'] ?? '').toString());
   late final breite = TextEditingController(text: (widget.initial['width_mm'] ?? '').toString());
@@ -488,14 +485,11 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
 
   Future<void> _loadUnitsFallback() async {
     try {
-      setState(() => _unitsLoading = true);
       final list = await widget.api.listUnits();
       if (mounted) setState(() => _units = list);
     } catch (_) {
       // ignore – wenn es fehlschlägt, bleibt die Liste leer
-    } finally {
-      if (mounted) setState(() => _unitsLoading = false);
-    }
+    } finally {}
   }
   @override
   Widget build(BuildContext context) {
@@ -522,7 +516,7 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
               SizedBox(width: 160, child: DropdownButtonFormField<String>(
                 isDense: true,
                 decoration: const InputDecoration(labelText: 'Einheit'),
-                value: einheit ?? widget.initial['einheit']?.toString(),
+                initialValue: einheit ?? widget.initial['einheit']?.toString(),
                 items: [for (final u in _units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
                 onChanged: (v){ einheit = v; },
                 validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,

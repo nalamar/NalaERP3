@@ -3,27 +3,13 @@ CREATE TABLE IF NOT EXISTS projects (
     id UUID PRIMARY KEY,
     nummer TEXT NOT NULL,
     name TEXT NOT NULL,
-    kunde_id TEXT NULL,
+    kunde_id UUID NULL,
     status TEXT NOT NULL DEFAULT 'neu',
     angelegt_am TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_nummer ON projects (nummer);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects (status);
-
--- Sicherstellen, dass kunde_id als TEXT vorliegt (ältere Migrationen nutzten UUID)
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_name = 'projects' AND column_name = 'kunde_id' AND data_type <> 'text'
-    ) THEN
-        ALTER TABLE projects
-        ALTER COLUMN kunde_id TYPE text USING kunde_id::text;
-    END IF;
-EXCEPTION WHEN undefined_table THEN
-    NULL;
-END$$;
 
 -- Optional: FK zu contacts (falls vorhanden); tolerieren, wenn Tabelle nicht existiert
 DO $$
@@ -35,5 +21,7 @@ BEGIN
         ADD CONSTRAINT fk_projects_kunde FOREIGN KEY (kunde_id) REFERENCES contacts(id) ON DELETE SET NULL;
     END IF;
 EXCEPTION WHEN duplicate_object THEN
+    -- Constraint bereits vorhanden
     NULL;
 END$$;
+
