@@ -60,8 +60,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       final r = await widget.api.listContactRoles();
       final t = await widget.api.listContactTypes();
-      setState(() { rollen = r; typen = t; });
-    } catch (e) { debugPrint('Facets error: $e'); }
+      setState(() {
+        rollen = r;
+        typen = t;
+      });
+    } catch (e) {
+      debugPrint('Facets error: $e');
+    }
   }
 
   Future<void> _reload() async {
@@ -69,22 +74,35 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       offset = 0;
       items = await widget.api.listContacts(
-        q: searchCtrl.text.trim(), rolle: filterRolle, typ: filterTyp, limit: limit, offset: offset,
+        q: searchCtrl.text.trim(),
+        rolle: filterRolle,
+        typ: filterTyp,
+        limit: limit,
+        offset: offset,
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kontakte konnten nicht geladen werden: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Kontakte konnten nicht geladen werden: $e')));
       }
-    } finally { setState(() => loading = false); }
+    } finally {
+      setState(() => loading = false);
+    }
   }
 
   Future<void> _loadMore() async {
     final next = await widget.api.listContacts(
-      q: searchCtrl.text.trim(), rolle: filterRolle, typ: filterTyp, limit: limit, offset: offset + limit,
+      q: searchCtrl.text.trim(),
+      rolle: filterRolle,
+      typ: filterTyp,
+      limit: limit,
+      offset: offset + limit,
     );
     if (next.isNotEmpty) {
       offset += limit;
-      setState(() { items.addAll(next); });
+      setState(() {
+        items.addAll(next);
+      });
     }
   }
 
@@ -106,8 +124,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       width: 180,
                       child: DropdownButtonFormField<String>(
                         initialValue: newTyp,
-                        items: [for (final t in (typen.isEmpty ? ['org','person']: typen)) DropdownMenuItem(value: t, child: Text(t))],
-                        onChanged: (v)=> setState(()=> newTyp = v ?? 'org'),
+                        items: [
+                          for (final t
+                              in (typen.isEmpty ? ['org', 'person'] : typen))
+                            DropdownMenuItem(value: t, child: Text(t))
+                        ],
+                        onChanged: (v) => setState(() => newTyp = v ?? 'org'),
                         decoration: const InputDecoration(labelText: 'Typ'),
                       ),
                     ),
@@ -115,54 +137,171 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       width: 200,
                       child: DropdownButtonFormField<String>(
                         initialValue: newRolle,
-                        items: [for (final r in (rollen.isEmpty ? ['customer','supplier','both','other'] : rollen)) DropdownMenuItem(value: r, child: Text(r))],
-                        onChanged: (v)=> setState(()=> newRolle = v ?? 'customer'),
+                        items: [
+                          for (final r in (rollen.isEmpty
+                              ? ['customer', 'supplier', 'both', 'other']
+                              : rollen))
+                            DropdownMenuItem(value: r, child: Text(r))
+                        ],
+                        onChanged: (v) =>
+                            setState(() => newRolle = v ?? 'customer'),
                         decoration: const InputDecoration(labelText: 'Rolle'),
                       ),
                     ),
-                    SizedBox(width: 260, child: TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
-                    SizedBox(width: 260, child: TextFormField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'E-Mail'))),
-                    SizedBox(width: 180, child: TextFormField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon'))),
-                    SizedBox(width: 180, child: TextFormField(controller: ustCtrl, decoration: const InputDecoration(labelText: 'USt-IdNr.'))),
-                    SizedBox(width: 180, child: TextFormField(controller: taxCtrl, decoration: const InputDecoration(labelText: 'Steuernummer'))),
-                    SizedBox(width: 120, child: TextFormField(controller: currCtrl, decoration: const InputDecoration(labelText: 'Währung'))),
+                    SizedBox(
+                        width: 260,
+                        child: TextFormField(
+                            controller: nameCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Name'),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Pflichtfeld'
+                                : null)),
+                    SizedBox(
+                        width: 260,
+                        child: TextFormField(
+                            controller: emailCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'E-Mail'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: phoneCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Telefon'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: ustCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'USt-IdNr.'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: taxCtrl,
+                            decoration: const InputDecoration(
+                                labelText: 'Steuernummer'))),
+                    SizedBox(
+                        width: 120,
+                        child: TextFormField(
+                            controller: currCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Währung'))),
                   ]),
                   const SizedBox(height: 12),
-                  const Text('Primäradresse', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Primäradresse',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 12, runSpacing: 12, children: [
-                    SizedBox(width: 320, child: TextFormField(controller: addrZ1, decoration: const InputDecoration(labelText: 'Zeile 1'))),
-                    SizedBox(width: 320, child: TextFormField(controller: addrZ2, decoration: const InputDecoration(labelText: 'Zeile 2'))),
-                    SizedBox(width: 140, child: TextFormField(controller: addrPLZ, decoration: const InputDecoration(labelText: 'PLZ'))),
-                    SizedBox(width: 220, child: TextFormField(controller: addrOrt, decoration: const InputDecoration(labelText: 'Ort'))),
-                    SizedBox(width: 120, child: TextFormField(controller: addrLand, decoration: const InputDecoration(labelText: 'Land'))),
+                    SizedBox(
+                        width: 320,
+                        child: TextFormField(
+                            controller: addrZ1,
+                            decoration:
+                                const InputDecoration(labelText: 'Zeile 1'))),
+                    SizedBox(
+                        width: 320,
+                        child: TextFormField(
+                            controller: addrZ2,
+                            decoration:
+                                const InputDecoration(labelText: 'Zeile 2'))),
+                    SizedBox(
+                        width: 140,
+                        child: TextFormField(
+                            controller: addrPLZ,
+                            decoration:
+                                const InputDecoration(labelText: 'PLZ'))),
+                    SizedBox(
+                        width: 220,
+                        child: TextFormField(
+                            controller: addrOrt,
+                            decoration:
+                                const InputDecoration(labelText: 'Ort'))),
+                    SizedBox(
+                        width: 120,
+                        child: TextFormField(
+                            controller: addrLand,
+                            decoration:
+                                const InputDecoration(labelText: 'Land'))),
                     SizedBox(
                       width: 200,
                       child: DropdownButtonFormField<String>(
                         initialValue: addrArt,
                         items: const [
-                          DropdownMenuItem(value: 'billing', child: Text('Rechnung')),
-                          DropdownMenuItem(value: 'shipping', child: Text('Lieferung')),
-                          DropdownMenuItem(value: 'other', child: Text('Sonstige')),
+                          DropdownMenuItem(
+                              value: 'billing', child: Text('Rechnung')),
+                          DropdownMenuItem(
+                              value: 'shipping', child: Text('Lieferung')),
+                          DropdownMenuItem(
+                              value: 'other', child: Text('Sonstige')),
                         ],
-                        onChanged: (v)=> setState(()=> addrArt = v ?? 'billing'),
+                        onChanged: (v) =>
+                            setState(() => addrArt = v ?? 'billing'),
                         decoration: const InputDecoration(labelText: 'Art'),
                       ),
                     ),
-                    Row(children: [Checkbox(value: addrPrimary, onChanged: (v)=> setState(()=> addrPrimary = v ?? true)), const Text('Primär')]),
+                    Row(children: [
+                      Checkbox(
+                          value: addrPrimary,
+                          onChanged: (v) =>
+                              setState(() => addrPrimary = v ?? true)),
+                      const Text('Primär')
+                    ]),
                   ]),
                   const SizedBox(height: 12),
-                  const Text('Ansprechpartner (optional)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Ansprechpartner (optional)',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   Wrap(spacing: 12, runSpacing: 12, children: [
-                    SizedBox(width: 120, child: TextFormField(controller: pAnrede, decoration: const InputDecoration(labelText: 'Anrede'))),
-                    SizedBox(width: 180, child: TextFormField(controller: pVorname, decoration: const InputDecoration(labelText: 'Vorname'))),
-                    SizedBox(width: 180, child: TextFormField(controller: pNachname, decoration: const InputDecoration(labelText: 'Nachname'))),
-                    SizedBox(width: 220, child: TextFormField(controller: pPosition, decoration: const InputDecoration(labelText: 'Position'))),
-                    SizedBox(width: 220, child: TextFormField(controller: pEmail, decoration: const InputDecoration(labelText: 'E-Mail'))),
-                    SizedBox(width: 180, child: TextFormField(controller: pPhone, decoration: const InputDecoration(labelText: 'Telefon'))),
-                    SizedBox(width: 180, child: TextFormField(controller: pMobil, decoration: const InputDecoration(labelText: 'Mobil'))),
-                    Row(children: [Checkbox(value: personPrimary, onChanged: (v)=> setState(()=> personPrimary = v ?? true)), const Text('Primär')]),
+                    SizedBox(
+                        width: 120,
+                        child: TextFormField(
+                            controller: pAnrede,
+                            decoration:
+                                const InputDecoration(labelText: 'Anrede'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: pVorname,
+                            decoration:
+                                const InputDecoration(labelText: 'Vorname'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: pNachname,
+                            decoration:
+                                const InputDecoration(labelText: 'Nachname'))),
+                    SizedBox(
+                        width: 220,
+                        child: TextFormField(
+                            controller: pPosition,
+                            decoration:
+                                const InputDecoration(labelText: 'Position'))),
+                    SizedBox(
+                        width: 220,
+                        child: TextFormField(
+                            controller: pEmail,
+                            decoration:
+                                const InputDecoration(labelText: 'E-Mail'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: pPhone,
+                            decoration:
+                                const InputDecoration(labelText: 'Telefon'))),
+                    SizedBox(
+                        width: 180,
+                        child: TextFormField(
+                            controller: pMobil,
+                            decoration:
+                                const InputDecoration(labelText: 'Mobil'))),
+                    Row(children: [
+                      Checkbox(
+                          value: personPrimary,
+                          onChanged: (v) =>
+                              setState(() => personPrimary = v ?? true)),
+                      const Text('Primär')
+                    ]),
                   ]),
                 ],
               ),
@@ -170,7 +309,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Abbrechen')),
           FilledButton.icon(
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
@@ -183,7 +324,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   'telefon': phoneCtrl.text.trim(),
                   'ust_id': ustCtrl.text.trim(),
                   'steuernummer': taxCtrl.text.trim(),
-                  'waehrung': currCtrl.text.trim().isEmpty ? 'EUR' : currCtrl.text.trim().toUpperCase(),
+                  'waehrung': currCtrl.text.trim().isEmpty
+                      ? 'EUR'
+                      : currCtrl.text.trim().toUpperCase(),
                 });
                 final id = contact['id'] as String;
                 if (addrZ1.text.trim().isNotEmpty) {
@@ -197,7 +340,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     'is_primary': addrPrimary,
                   });
                 }
-                if (pVorname.text.trim().isNotEmpty || pNachname.text.trim().isNotEmpty) {
+                if (pVorname.text.trim().isNotEmpty ||
+                    pNachname.text.trim().isNotEmpty) {
                   await widget.api.createContactPerson(id, {
                     'anrede': pAnrede.text.trim(),
                     'vorname': pVorname.text.trim(),
@@ -210,17 +354,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   });
                 }
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kontakt angelegt')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Kontakt angelegt')));
                   Navigator.of(ctx).pop();
                   await _reload();
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Fehler: $e')));
                 }
               }
             },
-            icon: const Icon(Icons.check), label: const Text('Anlegen'),
+            icon: const Icon(Icons.check),
+            label: const Text('Anlegen'),
           )
         ],
       ),
@@ -229,29 +376,40 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: color,
+        backgroundColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         foregroundColor: Colors.white,
         title: const Text('Kontakte'),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(onPressed: _openCreateDialog, child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(
+          onPressed: _openCreateDialog, child: const Icon(Icons.add)),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
-                const Text('Liste', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Text('Liste',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 SizedBox(
                   width: 260,
                   child: TextField(
                     controller: searchCtrl,
-                    decoration: InputDecoration(isDense: true, prefixIcon: const Icon(Icons.search), hintText: 'Suchen (Name/E-Mail/Telefon)',
-                      suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { searchCtrl.clear(); _reload(); })),
+                    decoration: InputDecoration(
+                        isDense: true,
+                        prefixIcon: const Icon(Icons.search),
+                        hintText: 'Suchen (Name/E-Mail/Telefon)',
+                        suffixIcon: IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              searchCtrl.clear();
+                              _reload();
+                            })),
                     onSubmitted: (_) => _reload(),
                   ),
                 ),
@@ -259,16 +417,24 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 SizedBox(
                   width: 160,
                   child: InputDecorator(
-                    decoration: const InputDecoration(isDense: true, labelText: 'Rolle'),
+                    decoration: const InputDecoration(
+                        isDense: true, labelText: 'Rolle'),
                     child: DropdownButton<String?>(
                       isExpanded: true,
                       value: filterRolle,
                       hint: const Text('Alle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final r in (rollen.isEmpty? ['customer','supplier','both','other']:rollen)) DropdownMenuItem<String?>(value: r, child: Text(r)),
+                        const DropdownMenuItem<String?>(
+                            value: null, child: Text('Alle')),
+                        for (final r in (rollen.isEmpty
+                            ? ['customer', 'supplier', 'both', 'other']
+                            : rollen))
+                          DropdownMenuItem<String?>(value: r, child: Text(r)),
                       ],
-                      onChanged: (v){ setState(()=> filterRolle = v); _reload(); },
+                      onChanged: (v) {
+                        setState(() => filterRolle = v);
+                        _reload();
+                      },
                       underline: const SizedBox.shrink(),
                     ),
                   ),
@@ -277,16 +443,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 SizedBox(
                   width: 160,
                   child: InputDecorator(
-                    decoration: const InputDecoration(isDense: true, labelText: 'Typ'),
+                    decoration:
+                        const InputDecoration(isDense: true, labelText: 'Typ'),
                     child: DropdownButton<String?>(
                       isExpanded: true,
                       value: filterTyp,
                       hint: const Text('Alle'),
                       items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final t in (typen.isEmpty? ['org','person']:typen)) DropdownMenuItem<String?>(value: t, child: Text(t)),
+                        const DropdownMenuItem<String?>(
+                            value: null, child: Text('Alle')),
+                        for (final t
+                            in (typen.isEmpty ? ['org', 'person'] : typen))
+                          DropdownMenuItem<String?>(value: t, child: Text(t)),
                       ],
-                      onChanged: (v){ setState(()=> filterTyp = v); _reload(); },
+                      onChanged: (v) {
+                        setState(() => filterTyp = v);
+                        _reload();
+                      },
                       underline: const SizedBox.shrink(),
                     ),
                   ),
@@ -304,21 +477,30 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   final rolle = (c['rolle'] ?? '').toString();
                   final typ = (c['typ'] ?? '').toString();
                   return ListTile(
-                    leading: Icon(typ=='person'? Icons.person : Icons.apartment),
+                    leading:
+                        Icon(typ == 'person' ? Icons.person : Icons.apartment),
                     title: Text((c['name'] ?? '').toString()),
-                    subtitle: Text('${c['email'] ?? ''}  •  ${c['telefon'] ?? ''}  •  ${rolle.isNotEmpty? rolle : typ}'),
+                    subtitle: Text(
+                        '${c['email'] ?? ''}  •  ${c['telefon'] ?? ''}  •  ${rolle.isNotEmpty ? rolle : typ}'),
                     onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ContactDetailScreen(api: widget.api, id: c['id'] as String)))
-                        .then((_) => _reload());
+                      Navigator.of(context)
+                          .push(MaterialPageRoute(
+                              builder: (_) => ContactDetailScreen(
+                                  api: widget.api, id: c['id'] as String)))
+                          .then((_) => _reload());
                     },
                   );
                 }
-                final canLoadMore = items.isNotEmpty && items.length % limit == 0;
+                final canLoadMore =
+                    items.isNotEmpty && items.length % limit == 0;
                 if (!canLoadMore) return const SizedBox.shrink();
                 return Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Center(
-                    child: FilledButton.icon(onPressed: _loadMore, icon: const Icon(Icons.expand_more), label: const Text('Mehr laden')),
+                    child: FilledButton.icon(
+                        onPressed: _loadMore,
+                        icon: const Icon(Icons.expand_more),
+                        label: const Text('Mehr laden')),
                   ),
                 );
               },
