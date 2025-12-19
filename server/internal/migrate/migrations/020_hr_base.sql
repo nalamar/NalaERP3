@@ -23,8 +23,19 @@ CREATE TABLE IF NOT EXISTS hr_employees (
 );
 CREATE INDEX IF NOT EXISTS idx_hr_employees_active ON hr_employees(active);
 
-ALTER TABLE hr_teams
-    ADD CONSTRAINT fk_hr_teams_lead FOREIGN KEY (lead_employee_id) REFERENCES hr_employees(id) DEFERRABLE INITIALLY DEFERRED;
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint c
+        JOIN pg_class t ON t.oid = c.conrelid
+        WHERE c.conname = 'fk_hr_teams_lead'
+          AND t.relname = 'hr_teams'
+    ) THEN
+        ALTER TABLE hr_teams
+            ADD CONSTRAINT fk_hr_teams_lead FOREIGN KEY (lead_employee_id) REFERENCES hr_employees(id) DEFERRABLE INITIALLY DEFERRED;
+    END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS hr_leave_requests (
     id UUID PRIMARY KEY,
