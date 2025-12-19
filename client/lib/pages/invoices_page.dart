@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
 
@@ -239,236 +240,293 @@ class _InvoicesPageState extends State<InvoicesPage> {
         labelStyle: TextStyle(color: c));
   }
 
+  Widget _glassPanel(Widget child,
+      {EdgeInsets padding = const EdgeInsets.all(12)}) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.04)
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 24,
+                  offset: const Offset(0, 16)),
+              BoxShadow(
+                  color: scheme.primary.withValues(alpha: 0.16),
+                  blurRadius: 28,
+                  offset: const Offset(-10, -8)),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final sel = selected;
     return Scaffold(
-      appBar: AppBar(title: const Text('Ausgangsrechnungen')),
+      appBar: AppBar(
+        title: const Text('Ausgangsrechnungen'),
+        backgroundColor: Colors.transparent,
+      ),
       floatingActionButton: FloatingActionButton(
           onPressed: _createInvoiceDialog, child: const Icon(Icons.add)),
-      body: Row(
-        children: [
-          SizedBox(
-            width: 380,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(
+            children: [
+              Expanded(
+                flex: 4,
+                child: _glassPanel(
+                  Column(
                     children: [
-                      const Text('Rechnungen',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      SizedBox(
-                        width: 150,
-                        child: TextField(
-                          controller: searchCtrl,
-                          decoration: InputDecoration(
-                            isDense: true,
-                            hintText: 'Suche (Nummer/ID)',
-                            suffixIcon: IconButton(
-                              icon: const Icon(Icons.clear),
-                              onPressed: () {
-                                searchCtrl.clear();
-                                _resetAndLoad();
-                              },
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
+                          children: [
+                            const Text('Rechnungen',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold)),
+                            const Spacer(),
+                            IconButton(
+                                onPressed: _resetAndLoad,
+                                icon: const Icon(Icons.refresh)),
+                          ],
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: searchCtrl,
+                              decoration: const InputDecoration(
+                                  hintText: 'Suche (Nummer/ID)',
+                                  prefixIcon: Icon(Icons.search_rounded)),
+                              onSubmitted: (_) => _resetAndLoad(),
                             ),
                           ),
-                          onSubmitted: (_) => _resetAndLoad(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 140,
-                        child: TextField(
-                          controller: contactCtrl,
-                          decoration: const InputDecoration(
-                              isDense: true, hintText: 'Kontakt-ID'),
-                          onSubmitted: (_) => _resetAndLoad(),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      DropdownButton<String?>(
-                        value: statusFilter,
-                        hint: const Text('Status'),
-                        items: const [
-                          DropdownMenuItem(value: null, child: Text('Alle')),
-                          DropdownMenuItem(
-                              value: 'draft', child: Text('Draft')),
-                          DropdownMenuItem(
-                              value: 'booked', child: Text('Gebucht')),
-                          DropdownMenuItem(
-                              value: 'partial', child: Text('Teilgezahlt')),
-                          DropdownMenuItem(
-                              value: 'paid', child: Text('Bezahlt')),
-                        ],
-                        onChanged: (v) {
-                          setState(() => statusFilter = v);
-                          _resetAndLoad();
-                        },
-                      ),
-                      IconButton(
-                          onPressed: _resetAndLoad,
-                          icon: const Icon(Icons.refresh)),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      Text(
-                          'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
-                      const Spacer(),
-                      IconButton(
-                          tooltip: 'Zurück',
-                          onPressed: offset == 0 ? null : () => _changePage(-1),
-                          icon: const Icon(Icons.chevron_left)),
-                      IconButton(
-                          tooltip: 'Weiter',
-                          onPressed: items.length < limit
-                              ? null
-                              : () => _changePage(1),
-                          icon: const Icon(Icons.chevron_right)),
-                    ],
-                  ),
-                ),
-                if (loading) const LinearProgressIndicator(minHeight: 2),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: items.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) {
-                      final it = items[i] as Map<String, dynamic>;
-                      final id = it['id']?.toString() ?? '';
-                      final num = it['nummer']?.toString() ??
-                          it['number']?.toString() ??
-                          '';
-                      final gross = it['gross_amount'] ?? 0;
-                      final paid = it['paid_amount'] ?? 0;
-                      final open = (gross - paid);
-                      final cname =
-                          (it['contact_name'] ?? it['contact_id'] ?? '')
-                              .toString();
-                      return ListTile(
-                        selected: sel != null && sel['id'] == id,
-                        title: Text(num.isEmpty ? id : num),
-                        subtitle: Text(
-                            '$cname  •  Status: ${it['status']}  •  Brutto: $gross  •  Offen: ${open.toStringAsFixed(2)}'),
-                        trailing: _statusChip((it['status'] ?? '').toString()),
-                        onTap: () {
-                          setState(() => selected = it);
-                          _loadDetail(id);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(
-            child: sel == null
-                ? const Center(child: Text('Bitte Rechnung auswählen'))
-                : Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                  sel['nummer']?.toString() ??
-                                      sel['number']?.toString() ??
-                                      sel['id'],
-                                  style: const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold)),
-                              const SizedBox(width: 12),
-                              _statusChip((sel['status'] ?? '').toString()),
-                              const Spacer(),
-                              if ((sel['status'] ?? '') == 'draft')
-                                FilledButton.icon(
-                                    onPressed: _bookSelected,
-                                    icon: const Icon(Icons.check),
-                                    label: const Text('Buchen')),
-                              const SizedBox(width: 8),
-                              FilledButton.icon(
-                                  onPressed: _addPayment,
-                                  icon: const Icon(Icons.payments),
-                                  label: const Text('Zahlung')),
-                            ],
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: 150,
+                            child: TextField(
+                              controller: contactCtrl,
+                              decoration:
+                                  const InputDecoration(hintText: 'Kontakt-ID'),
+                              onSubmitted: (_) => _resetAndLoad(),
+                            ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                              'Kontakt: ${sel['contact_name'] ?? ''} (${sel['contact_id'] ?? ''})'),
-                          Text(
-                              'Datum: ${sel['invoice_date'] ?? ''}  Fällig: ${sel['due_date'] ?? ''}'),
-                          const SizedBox(height: 8),
-                          Text(
-                              'Brutto: ${sel['gross_amount'] ?? ''}  Offen: ${(sel['gross_amount'] ?? 0) - (sel['paid_amount'] ?? 0)}'),
-                          const SizedBox(height: 12),
-                          const Text('Positionen',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          ...List<Widget>.from(
-                              ((sel['items'] ?? []) as List).map((it) {
-                            final m = it as Map<String, dynamic>;
-                            final net =
-                                (m['qty'] ?? 0) * (m['unit_price'] ?? 0);
-                            return ListTile(
-                              dense: true,
-                              title: Text(m['description']?.toString() ?? ''),
-                              subtitle: Text(
-                                  'Menge ${m['qty']} x ${m['unit_price']}  •  Steuer ${m['tax_code'] ?? ''}  •  Konto ${m['account_code'] ?? ''}'),
-                              trailing: Text(net.toString()),
-                            );
-                          })),
-                          const SizedBox(height: 12),
-                          const Text('Zahlungen',
-                              style: TextStyle(fontWeight: FontWeight.bold)),
-                          FutureBuilder<List<dynamic>>(
-                            future: widget.api
-                                .listInvoicePayments(sel['id'].toString()),
-                            builder: (context, snap) {
-                              if (snap.connectionState ==
-                                  ConnectionState.waiting)
-                                return const Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child:
-                                        LinearProgressIndicator(minHeight: 2));
-                              if (snap.hasError)
-                                return Padding(
-                                    padding: const EdgeInsets.all(8),
-                                    child: Text('Fehler: ${snap.error}'));
-                              final pays = snap.data ?? [];
-                              if (pays.isEmpty)
-                                return const Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: Text('Keine Zahlungen'));
-                              return Column(children: [
-                                ...pays.map((p) {
-                                  final m = p as Map<String, dynamic>;
-                                  return ListTile(
-                                    dense: true,
-                                    title: Text(
-                                        'Betrag ${m['amount']} ${m['currency']}'),
-                                    subtitle: Text(
-                                        '${m['method']}  •  ${m['reference'] ?? ''}'),
-                                  );
-                                })
-                              ]);
+                          const SizedBox(width: 10),
+                          DropdownButton<String?>(
+                            value: statusFilter,
+                            hint: const Text('Status'),
+                            items: const [
+                              DropdownMenuItem(
+                                  value: null, child: Text('Alle')),
+                              DropdownMenuItem(
+                                  value: 'draft', child: Text('Draft')),
+                              DropdownMenuItem(
+                                  value: 'booked', child: Text('Gebucht')),
+                              DropdownMenuItem(
+                                  value: 'partial', child: Text('Teilgezahlt')),
+                              DropdownMenuItem(
+                                  value: 'paid', child: Text('Bezahlt')),
+                            ],
+                            onChanged: (v) {
+                              setState(() => statusFilter = v);
+                              _resetAndLoad();
                             },
                           ),
                         ],
                       ),
-                    ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        child: Row(
+                          children: [
+                            Text(
+                                'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
+                            const Spacer(),
+                            IconButton(
+                                tooltip: 'Zurück',
+                                onPressed:
+                                    offset == 0 ? null : () => _changePage(-1),
+                                icon: const Icon(Icons.chevron_left)),
+                            IconButton(
+                                tooltip: 'Weiter',
+                                onPressed: items.length < limit
+                                    ? null
+                                    : () => _changePage(1),
+                                icon: const Icon(Icons.chevron_right)),
+                          ],
+                        ),
+                      ),
+                      if (loading) const LinearProgressIndicator(minHeight: 2),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: items.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1, color: Colors.white24),
+                          itemBuilder: (ctx, i) {
+                            final it = items[i] as Map<String, dynamic>;
+                            final id = it['id']?.toString() ?? '';
+                            final num = it['nummer']?.toString() ??
+                                it['number']?.toString() ??
+                                '';
+                            final gross = it['gross_amount'] ?? 0;
+                            final paid = it['paid_amount'] ?? 0;
+                            final open = (gross - paid);
+                            final cname =
+                                (it['contact_name'] ?? it['contact_id'] ?? '')
+                                    .toString();
+                            return ListTile(
+                              selected: sel != null && sel['id'] == id,
+                              title: Text(num.isEmpty ? id : num),
+                              subtitle: Text(
+                                  '$cname  ·  Status: ${it['status']}  ·  Brutto: $gross  ·  Offen: ${open.toStringAsFixed(2)}'),
+                              trailing:
+                                  _statusChip((it['status'] ?? '').toString()),
+                              onTap: () {
+                                setState(() => selected = it);
+                                _loadDetail(id);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
+                  padding: const EdgeInsets.all(14),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                flex: 7,
+                child: _glassPanel(
+                  sel == null
+                      ? const Center(child: Text('Bitte Rechnung auswaehlen'))
+                      : Padding(
+                          padding: const EdgeInsets.all(6),
+                          child: SingleChildScrollView(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                        sel['nummer']?.toString() ??
+                                            sel['number']?.toString() ??
+                                            sel['id'],
+                                        style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold)),
+                                    const SizedBox(width: 12),
+                                    _statusChip(
+                                        (sel['status'] ?? '').toString()),
+                                    const Spacer(),
+                                    if ((sel['status'] ?? '') == 'draft')
+                                      FilledButton.icon(
+                                          onPressed: _bookSelected,
+                                          icon: const Icon(Icons.check),
+                                          label: const Text('Buchen')),
+                                    const SizedBox(width: 8),
+                                    FilledButton.icon(
+                                        onPressed: _addPayment,
+                                        icon: const Icon(Icons.payments),
+                                        label: const Text('Zahlung')),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                    'Kontakt: ${sel['contact_name'] ?? ''} (${sel['contact_id'] ?? ''})'),
+                                Text(
+                                    'Datum: ${sel['invoice_date'] ?? ''}  Fällig: ${sel['due_date'] ?? ''}'),
+                                const SizedBox(height: 8),
+                                Text(
+                                    'Brutto: ${sel['gross_amount'] ?? ''}  Offen: ${(sel['gross_amount'] ?? 0) - (sel['paid_amount'] ?? 0)}'),
+                                const SizedBox(height: 12),
+                                const Text('Positionen',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 6),
+                                ...List<Widget>.from(
+                                    ((sel['items'] ?? []) as List).map((it) {
+                                  final m = it as Map<String, dynamic>;
+                                  final net =
+                                      (m['qty'] ?? 0) * (m['unit_price'] ?? 0);
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(
+                                        m['description']?.toString() ?? ''),
+                                    subtitle: Text(
+                                        'Menge ${m['qty']} x ${m['unit_price']}  ·  Steuer ${m['tax_code'] ?? ''}  ·  Konto ${m['account_code'] ?? ''}'),
+                                    trailing: Text(net.toString()),
+                                  );
+                                })),
+                                const SizedBox(height: 12),
+                                const Text('Zahlungen',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                FutureBuilder<List<dynamic>>(
+                                  future: widget.api.listInvoicePayments(
+                                      sel['id'].toString()),
+                                  builder: (context, snap) {
+                                    if (snap.connectionState ==
+                                        ConnectionState.waiting) {
+                                      return const Padding(
+                                          padding: EdgeInsets.all(8),
+                                          child: LinearProgressIndicator(
+                                              minHeight: 2));
+                                    }
+                                    if (snap.hasError) {
+                                      return Padding(
+                                          padding: const EdgeInsets.all(8),
+                                          child: Text('Fehler: ${snap.error}'));
+                                    }
+                                    final pays = snap.data ?? [];
+                                    if (pays.isEmpty) {
+                                      return const Padding(
+                                          padding: EdgeInsets.all(8),
+                                          child: Text('Keine Zahlungen'));
+                                    }
+                                    return Column(children: [
+                                      ...pays.map((p) {
+                                        final m = p as Map<String, dynamic>;
+                                        return ListTile(
+                                          dense: true,
+                                          title: Text(
+                                              'Betrag ${m['amount']} ${m['currency']}'),
+                                          subtitle: Text(
+                                              '${m['method']}  ·  ${m['reference'] ?? ''}'),
+                                        );
+                                      })
+                                    ]);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

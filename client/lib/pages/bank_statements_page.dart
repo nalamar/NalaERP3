@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
 
@@ -78,7 +79,7 @@ class _BankStatementsPageState extends State<BankStatementsPage> {
                         final open =
                             (m['gross_amount'] ?? 0) - (m['paid_amount'] ?? 0);
                         final label =
-                            '$num • offen ${open.toStringAsFixed(2)} • ${m['contact_name'] ?? m['contact_id'] ?? ''}';
+                            '$num · offen ${open.toStringAsFixed(2)} · ${m['contact_name'] ?? m['contact_id'] ?? ''}';
                         return DropdownMenuItem(
                             value: m['id'].toString(), child: Text(label));
                       })
@@ -124,62 +125,111 @@ class _BankStatementsPageState extends State<BankStatementsPage> {
     }
   }
 
+  Widget _glassPanel(Widget child) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(18),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.04)
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            boxShadow: [
+              BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 24,
+                  offset: const Offset(0, 16)),
+              BoxShadow(
+                  color: scheme.primary.withValues(alpha: 0.16),
+                  blurRadius: 28,
+                  offset: const Offset(-10, -8)),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bankauszüge'),
+        backgroundColor: Colors.transparent,
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
-      body: Column(
-        children: [
-          if (loading) const LinearProgressIndicator(minHeight: 2),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: _glassPanel(
+            Column(
               children: [
-                Text(
-                    'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
-                const Spacer(),
-                IconButton(
-                    onPressed: offset == 0 ? null : () => _changePage(-1),
-                    icon: const Icon(Icons.chevron_left)),
-                IconButton(
-                    onPressed:
-                        items.length < limit ? null : () => _changePage(1),
-                    icon: const Icon(Icons.chevron_right)),
+                if (loading) const LinearProgressIndicator(minHeight: 2),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                  child: Row(
+                    children: [
+                      Text(
+                          'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
+                      const Spacer(),
+                      IconButton(
+                          onPressed: offset == 0 ? null : () => _changePage(-1),
+                          icon: const Icon(Icons.chevron_left)),
+                      IconButton(
+                          onPressed: items.length < limit
+                              ? null
+                              : () => _changePage(1),
+                          icon: const Icon(Icons.chevron_right)),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: items.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: Colors.white24),
+                    itemBuilder: (ctx, i) {
+                      final it = items[i] as Map<String, dynamic>;
+                      final amt = it['amount'];
+                      final cur = it['currency'];
+                      final ref = (it['reference'] ?? '').toString();
+                      final cp = (it['counterparty'] ?? '').toString();
+                      final matched =
+                          it['matched_payment_id']?.toString() ?? '';
+                      return ListTile(
+                        title: Text('$amt $cur   ·   $cp'),
+                        subtitle:
+                            Text(ref.isEmpty ? '(ohne Verwendungszweck)' : ref),
+                        trailing: matched.isNotEmpty
+                            ? const Chip(
+                                label: Text('gematcht'),
+                                backgroundColor: Colors.greenAccent)
+                            : FilledButton.tonal(
+                                onPressed: () => _match(it['id'].toString()),
+                                child: const Text('Match'),
+                              ),
+                      );
+                    },
+                  ),
+                ),
               ],
             ),
           ),
-          Expanded(
-            child: ListView.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (ctx, i) {
-                final it = items[i] as Map<String, dynamic>;
-                final amt = it['amount'];
-                final cur = it['currency'];
-                final ref = (it['reference'] ?? '').toString();
-                final cp = (it['counterparty'] ?? '').toString();
-                final matched = it['matched_payment_id']?.toString() ?? '';
-                return ListTile(
-                  title: Text('$amt $cur  •  $cp'),
-                  subtitle: Text(ref.isEmpty ? '(ohne Verwendungszweck)' : ref),
-                  trailing: matched.isNotEmpty
-                      ? const Chip(
-                          label: Text('gematcht'),
-                          backgroundColor: Colors.greenAccent)
-                      : FilledButton.tonal(
-                          onPressed: () => _match(it['id'].toString()),
-                          child: const Text('Match'),
-                        ),
-                );
-              },
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
