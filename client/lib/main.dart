@@ -33,7 +33,7 @@ class NalaERPApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.fromSeed(
       seedColor: const Color(0xFF2EDBBD),
-      brightness: Brightness.light,
+      brightness: Brightness.dark,
     );
     return MaterialApp(
       title: 'NalaERP3',
@@ -133,6 +133,16 @@ class NalaERPApp extends StatelessWidget {
             shadowColor: colorScheme.primary.withValues(alpha: 0.25),
             elevation: 3,
           ),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: const Color(0xFF0F172A),
+          surfaceTintColor: Colors.transparent,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          titleTextStyle: const TextStyle(
+              color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
+          contentTextStyle:
+              const TextStyle(color: Colors.white70, fontSize: 14),
         ),
       ),
     );
