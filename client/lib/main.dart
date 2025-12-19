@@ -84,7 +84,8 @@ class NalaERPApp extends StatelessWidget {
         useMaterial3: true,
         colorScheme: colorScheme,
         scaffoldBackgroundColor: Colors.transparent,
-        textTheme: GoogleFonts.outfitTextTheme(),
+        textTheme: GoogleFonts.outfitTextTheme()
+            .apply(bodyColor: Colors.white, displayColor: Colors.white),
         appBarTheme: AppBarTheme(
           backgroundColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
