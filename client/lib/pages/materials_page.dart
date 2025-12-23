@@ -396,103 +396,125 @@ class _MaterialsPageState extends State<MaterialsPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.all(12),
-                  child: Row(
-                    children: [
-                      const Text('Materialien',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      SizedBox(
-                          width: 260,
-                          height: 40,
-                          child: TextField(
-                            controller: searchCtrl,
-                            textAlignVertical: TextAlignVertical.center,
-                            decoration: InputDecoration(
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10),
-                                prefixIcon: const Icon(Icons.search),
-                                hintText: 'Suchen (Nummer/Bezeichnung)',
-                                suffixIcon: IconButton(
-                                    icon: const Icon(Icons.clear),
-                                    onPressed: () {
-                                      searchCtrl.clear();
-                                      _reload();
-                                    })),
-                            onSubmitted: (_) => _reload(),
-                          )),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                          width: 180,
-                          height: 40,
-                          child: DropdownButtonFormField<String?>(
-                            isDense: true,
-                            decoration: const InputDecoration(
-                                isDense: true,
-                                labelText: 'Typ',
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10)),
-                            initialValue: filterTyp,
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                  value: null, child: Text('Alle')),
-                              for (final t in types)
-                                DropdownMenuItem<String?>(
-                                    value: t, child: Text(t)),
-                            ],
-                            onChanged: (v) {
-                              setState(() {
-                                filterTyp = v;
-                              });
-                              _reload();
-                            },
-                          )),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                          width: 180,
-                          height: 40,
-                          child: DropdownButtonFormField<String?>(
-                            isDense: true,
-                            decoration: const InputDecoration(
-                                isDense: true,
-                                labelText: 'Kategorie',
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 10)),
-                            initialValue: filterKat,
-                            items: [
-                              const DropdownMenuItem<String?>(
-                                  value: null, child: Text('Alle')),
-                              for (final k in categories)
-                                DropdownMenuItem<String?>(
-                                    value: k, child: Text(k)),
-                            ],
-                            onChanged: (v) {
-                              setState(() {
-                                filterKat = v;
-                              });
-                              _reload();
-                            },
-                          )),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                          height: 40,
-                          child: FilledButton.tonal(
-                              onPressed: _reload,
-                              style: FilledButton.styleFrom(
-                                  minimumSize: const Size(100, 40)),
-                              child: const Text('Suchen'))),
-                      const SizedBox(width: 4),
-                      SizedBox(
-                          height: 40,
-                          width: 40,
-                          child: IconButton(
-                              onPressed: _reload,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints.tightFor(
-                                  width: 40, height: 40),
-                              icon: const Icon(Icons.refresh))),
-                    ],
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.white.withValues(alpha: 0.12),
+                          Colors.white.withValues(alpha: 0.05)
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.14)),
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.22),
+                            blurRadius: 18,
+                            offset: const Offset(0, 12))
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    child: Row(
+                      children: [
+                        const Text('Materialien',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
+                        const Spacer(),
+                        SizedBox(
+                            width: 260,
+                            height: 40,
+                            child: TextField(
+                              controller: searchCtrl,
+                              textAlignVertical: TextAlignVertical.center,
+                              decoration: InputDecoration(
+                                  isDense: true,
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10),
+                                  prefixIcon: const Icon(Icons.search),
+                                  hintText: 'Suchen (Nummer/Bezeichnung)',
+                                  suffixIcon: IconButton(
+                                      icon: const Icon(Icons.clear),
+                                      onPressed: () {
+                                        searchCtrl.clear();
+                                        _reload();
+                                      })),
+                              onSubmitted: (_) => _reload(),
+                            )),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                            width: 180,
+                            height: 40,
+                            child: DropdownButtonFormField<String?>(
+                              isDense: true,
+                              decoration: const InputDecoration(
+                                  isDense: true,
+                                  labelText: 'Typ',
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10)),
+                              initialValue: filterTyp,
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('Alle')),
+                                for (final t in types)
+                                  DropdownMenuItem<String?>(
+                                      value: t, child: Text(t)),
+                              ],
+                              onChanged: (v) {
+                                setState(() {
+                                  filterTyp = v;
+                                });
+                                _reload();
+                              },
+                            )),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                            width: 180,
+                            height: 40,
+                            child: DropdownButtonFormField<String?>(
+                              isDense: true,
+                              decoration: const InputDecoration(
+                                  isDense: true,
+                                  labelText: 'Kategorie',
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 10)),
+                              initialValue: filterKat,
+                              items: [
+                                const DropdownMenuItem<String?>(
+                                    value: null, child: Text('Alle')),
+                                for (final k in categories)
+                                  DropdownMenuItem<String?>(
+                                      value: k, child: Text(k)),
+                              ],
+                              onChanged: (v) {
+                                setState(() {
+                                  filterKat = v;
+                                });
+                                _reload();
+                              },
+                            )),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                            height: 40,
+                            child: FilledButton.tonal(
+                                onPressed: _reload,
+                                style: FilledButton.styleFrom(
+                                    minimumSize: const Size(100, 40)),
+                                child: const Text('Suchen'))),
+                        const SizedBox(width: 4),
+                        SizedBox(
+                            height: 40,
+                            width: 40,
+                            child: IconButton(
+                                onPressed: _reload,
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints.tightFor(
+                                    width: 40, height: 40),
+                                icon: const Icon(Icons.refresh))),
+                      ],
+                    ),
                   ),
                 ),
                 if (loading) const LinearProgressIndicator(minHeight: 2),
