@@ -95,7 +95,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                 SizedBox(
                   width: 280,
                   child: DropdownButtonFormField<String>(
-                    value: materialId,
+                    initialValue: materialId,
                     decoration: const InputDecoration(labelText: 'Material'),
                     items: [for (final m in materials) DropdownMenuItem(value: m['id'] as String, child: Text('${m['nummer']} – ${m['bezeichnung']}'))],
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Material wählen':null,
@@ -105,7 +105,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                 SizedBox(
                   width: 240,
                   child: DropdownButtonFormField<String>(
-                    value: warehouseId,
+                    initialValue: warehouseId,
                     decoration: const InputDecoration(labelText: 'Lager'),
                     items: [for (final w in warehouses) DropdownMenuItem(value: w['id'] as String, child: Text('${w['code']} – ${w['name']}'))],
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Lager wählen':null,
@@ -115,7 +115,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                 SizedBox(
                   width: 220,
                   child: DropdownButtonFormField<String>(
-                    value: locationId,
+                    initialValue: locationId,
                     decoration: const InputDecoration(labelText: 'Lagerplatz'),
                     hint: const Text('Optional'),
                     items: [for (final l in locations) DropdownMenuItem(value: l['id'] as String, child: Text('${l['code']} – ${l['name']}'))],
@@ -133,7 +133,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                 SizedBox(
                   width: 200,
                   child: DropdownButtonFormField<String>(
-                    value: _types.contains(typeCtrl.text.trim()) ? typeCtrl.text.trim() : null,
+                    initialValue: _types.contains(typeCtrl.text.trim()) ? typeCtrl.text.trim() : null,
                     items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t))],
                     decoration: const InputDecoration(labelText: 'Typ'),
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Typ wählen':null,

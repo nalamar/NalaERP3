@@ -126,7 +126,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
               SizedBox(
                 width: 320,
                 child: DropdownButtonFormField<String>(
-                  value: supplierId,
+                  initialValue: supplierId,
                   decoration: const InputDecoration(labelText: 'Lieferant'),
                   items: [for (final s in suppliers) DropdownMenuItem(value: s['id'] as String, child: Text((s['name']??'').toString()))],
                   onChanged: (v)=> setState(()=> supplierId = v),
@@ -162,7 +162,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
               SizedBox(
                 width: 180,
                 child: DropdownButtonFormField<String>(
-                  value: status,
+                  initialValue: status,
                   decoration: const InputDecoration(labelText: 'Status'),
                   items: [for (final st in (statuses.isEmpty? ['draft','ordered','received','canceled'] : statuses)) DropdownMenuItem(value: st, child: Text(st))],
                   onChanged: (v)=> setState(()=> status = v ?? 'draft'),
@@ -176,7 +176,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
               SizedBox(
                 width: 320,
                 child: DropdownButtonFormField<String>(
-                  value: itemMaterialId,
+                  initialValue: itemMaterialId,
                   decoration: const InputDecoration(labelText: 'Material'),
                   items: [for (final m in materials) DropdownMenuItem(value: m['id'] as String, child: Text('${m['nummer']} – ${m['bezeichnung']}'))],
                   onChanged: (v)=> setState(()=> itemMaterialId = v),
@@ -211,7 +211,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                 }
               ]
             };
-            final resp = await widget.api.createPurchaseOrder(body);
+            await widget.api.createPurchaseOrder(body);
             if (mounted) Navigator.of(ctx).pop();
             await _reload();
           } catch (e) {

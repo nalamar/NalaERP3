@@ -98,7 +98,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
         width: 500,
         child: SingleChildScrollView(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            DropdownButtonFormField<String>(value: st, items: [for(final s in (statuses.isEmpty? ['draft','ordered','received','canceled']: statuses)) DropdownMenuItem(value: s, child: Text(s))], onChanged: (v)=> st = v, decoration: const InputDecoration(labelText: 'Status')),
+            DropdownButtonFormField<String>(initialValue: st, items: [for(final s in (statuses.isEmpty? ['draft','ordered','received','canceled']: statuses)) DropdownMenuItem(value: s, child: Text(s))], onChanged: (v)=> st = v, decoration: const InputDecoration(labelText: 'Status')),
             TextFormField(controller: curCtrl, decoration: const InputDecoration(labelText: 'Währung')),
             TextFormField(controller: note, decoration: const InputDecoration(labelText: 'Notiz')),
           ]),
@@ -206,14 +206,14 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
             const Text('Ziel-Lager und -Platz wählen. Es werden alle Positionen gebucht.'),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: whId,
+              initialValue: whId,
               items: [for (final w in warehouses) DropdownMenuItem(value: w['id'] as String, child: Text('${w['code']} – ${w['name']}'))],
               onChanged: (v) async { setStateDlg(()=> whId = v); if (v != null) { try { locations = await widget.api.listLocations(v); setState(()=>{}); setStateDlg(()=>{});} catch(_){ locations = []; } } },
               decoration: const InputDecoration(labelText: 'Lager'),
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: locId,
+              initialValue: locId,
               items: [for (final l in locations) DropdownMenuItem(value: l['id'] as String, child: Text('${l['code']} – ${l['name']}'))],
               onChanged: (v){ setStateDlg(()=> locId = v); },
               decoration: const InputDecoration(labelText: 'Lagerplatz (optional)'),
@@ -273,7 +273,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
             SizedBox(
               width: 320,
               child: DropdownButtonFormField<String>(
-                value: materialId,
+                initialValue: materialId,
                 items: [for (final m in materials) DropdownMenuItem(value: m['id'] as String, child: Text('${m['nummer']} – ${m['bezeichnung']}'))],
                 onChanged: (v)=> materialId = v,
                 decoration: const InputDecoration(labelText: 'Material'),
