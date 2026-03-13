@@ -15,3 +15,17 @@ void downloadUrl(String url, {String? filename}) {
   // no-op in non-web
 }
 
+void downloadBytes(Uint8List bytes, {required String filename, String contentType = 'application/octet-stream'}) {
+  // no-op in non-web
+}
+
+String? readStorage(String key) => null;
+
+void writeStorage(String key, String value) {
+  // no-op in non-web
+}
+
+void removeStorage(String key) {
+  // no-op in non-web
+}
+

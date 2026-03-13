@@ -1,9 +1,8 @@
 package apihttp
 
 import (
-    "encoding/json"
-    "net/http"
-    "time"
+	"encoding/json"
+	"net/http"
 
     "github.com/go-chi/chi/v5"
     "github.com/go-chi/chi/v5/middleware"
@@ -40,7 +39,9 @@ func NewRouter() http.Handler {
 
     r.Use(middleware.RequestID)
     r.Use(middleware.RealIP)
-    r.Use(middleware.Recoverer)
+    r.Use(requestContextMiddleware)
+    r.Use(requestLoggerMiddleware)
+    r.Use(panicRecoveryMiddleware)
     r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
     r.Use(corsMiddleware)
     r.Use(func(next http.Handler) http.Handler {
@@ -50,13 +51,8 @@ func NewRouter() http.Handler {
         })
     })
 
-    r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        _ = json.NewEncoder(w).Encode(map[string]any{
-            "status": "ok",
-            "zeit":   time.Now().Format(time.RFC3339),
-        })
-    })
+    r.Get("/livez", liveHandler())
+    r.Get("/healthz", liveHandler())
 
     r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -86,7 +82,9 @@ func NewRouterWithDeps(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg
 
     r.Use(middleware.RequestID)
     r.Use(middleware.RealIP)
-    r.Use(middleware.Recoverer)
+    r.Use(requestContextMiddleware)
+    r.Use(requestLoggerMiddleware)
+    r.Use(panicRecoveryMiddleware)
     r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
     r.Use(corsMiddleware)
     r.Use(func(next http.Handler) http.Handler {
@@ -97,10 +95,9 @@ func NewRouterWithDeps(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg
     })
 
     // Basis
-    r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        _ = json.NewEncoder(w).Encode(map[string]any{"status": "ok", "zeit": time.Now().Format(time.RFC3339)})
-    })
+    r.Get("/livez", liveHandler())
+    r.Get("/readyz", readyHandler(pg, mg, rd))
+    r.Get("/healthz", readyHandler(pg, mg, rd))
     r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
         w.Header().Set("Content-Type", "application/json; charset=utf-8")
         _ = json.NewEncoder(w).Encode(map[string]any{"version": version.Version, "commit": version.Commit, "build_time": version.BuildTime})

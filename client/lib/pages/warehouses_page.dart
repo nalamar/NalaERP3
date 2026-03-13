@@ -166,12 +166,15 @@ class _WarehousesPageState extends State<WarehousesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final canWrite = widget.api.hasPermission('warehouses.write');
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openCreateDialog,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: canWrite
+          ? FloatingActionButton(
+              onPressed: _openCreateDialog,
+              child: const Icon(Icons.add),
+            )
+          : null,
       body: Row(
         children: [
           Expanded(

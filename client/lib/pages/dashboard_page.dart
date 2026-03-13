@@ -6,16 +6,88 @@ import 'settings_page.dart';
 import 'projects_page.dart';
 
 class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
+  const DashboardPage({
+    super.key,
+    required this.api,
+    required this.onLogout,
+    required this.permissions,
+  });
+  final ApiClient api;
+  final Future<void> Function() onLogout;
+  final Set<String> permissions;
+
+  bool _can(String permission) => permissions.contains(permission);
 
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
+    final cards = <Widget>[
+      if (_can('materials.read'))
+        _DashCard(
+          title: 'Materialwirtschaft',
+          icon: Icons.inventory_2_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MaterialwirtschaftScreen(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('projects.read'))
+        _DashCard(
+          title: 'Projekte',
+          icon: Icons.workspaces_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ProjectsPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('contacts.read'))
+        _DashCard(
+          title: 'Kontakte',
+          icon: Icons.people_alt_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ContactsScreen(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('settings.manage'))
+        _DashCard(
+          title: 'Einstellungen',
+          icon: Icons.settings_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SettingsPage(api: api),
+              ),
+            );
+          },
+        ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('NalaERP3'),
         backgroundColor: color,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: () async => onLogout(),
+            icon: const Icon(Icons.logout_rounded),
+            tooltip: 'Abmelden',
+          ),
+        ],
       ),
       body: Container(
         decoration: BoxDecoration(
@@ -30,61 +102,16 @@ class DashboardPage extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 900),
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: Wrap(
-              alignment: WrapAlignment.center,
-              runSpacing: 24,
-              spacing: 24,
-              children: [
-                _DashCard(
-                  title: 'Materialwirtschaft',
-                  icon: Icons.inventory_2_rounded,
-                  color: color,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => MaterialwirtschaftScreen(api: ApiClient()),
-                      ),
-                    );
-                  },
-                ),
-                _DashCard(
-                  title: 'Projekte',
-                  icon: Icons.workspaces_rounded,
-                  color: color,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ProjectsPage(api: ApiClient()),
-                      ),
-                    );
-                  },
-                ),
-                _DashCard(
-                  title: 'Kontakte',
-                  icon: Icons.people_alt_rounded,
-                  color: color,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => ContactsScreen(api: ApiClient()),
-                      ),
-                    );
-                  },
-                ),
-                _DashCard(
-                  title: 'Einstellungen',
-                  icon: Icons.settings_rounded,
-                  color: color,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => SettingsPage(api: ApiClient()),
-                      ),
-                    );
-                  },
-                ),
-              ],
-            ),
+            child: cards.isEmpty
+                ? const Center(
+                    child: Text('Für diesen Benutzer sind aktuell keine Bereiche freigeschaltet.'),
+                  )
+                : Wrap(
+                    alignment: WrapAlignment.center,
+                    runSpacing: 24,
+                    spacing: 24,
+                    children: cards,
+                  ),
           ),
         ),
       ),

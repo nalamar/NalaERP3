@@ -53,3 +53,21 @@ void downloadUrl(String url, {String? filename}) {
   if (filename != null && filename.isNotEmpty) a.download = filename;
   a.click();
 }
+
+void downloadBytes(Uint8List bytes, {required String filename, String contentType = 'application/octet-stream'}) {
+  final blob = html.Blob([bytes], contentType);
+  final url = html.Url.createObjectUrlFromBlob(blob);
+  final a = html.AnchorElement(href: url)..download = filename;
+  a.click();
+  html.Url.revokeObjectUrl(url);
+}
+
+String? readStorage(String key) => html.window.localStorage[key];
+
+void writeStorage(String key, String value) {
+  html.window.localStorage[key] = value;
+}
+
+void removeStorage(String key) {
+  html.window.localStorage.remove(key);
+}

@@ -34,6 +34,46 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   List<dynamic> suppliers = [];
   List<dynamic> materials = [];
 
+  Map<String, dynamic>? get _selectedSupplier {
+    final id = supplierId;
+    if (id == null || id.isEmpty) return null;
+    for (final supplier in suppliers) {
+      final mapped = supplier as Map<String, dynamic>;
+      if ((mapped['id'] ?? '').toString() == id) {
+        return mapped;
+      }
+    }
+    return null;
+  }
+
+  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+    if (error is ApiException) {
+      switch (error.code) {
+        case 'validation_error':
+          return error.message;
+        case 'not_found':
+          return 'Bestellung nicht gefunden oder nicht mehr verfügbar.';
+        case 'internal_error':
+          return 'Serverfehler. Bitte erneut versuchen.';
+      }
+      return error.message;
+    }
+    return '$fallback: $error';
+  }
+
+  String _supplierCommercialSummary(Map<String, dynamic> supplier) {
+    final parts = <String>[];
+    final creditorNo = (supplier['kreditor_nr'] ?? '').toString().trim();
+    final paymentTerms = (supplier['zahlungsbedingungen'] ?? '').toString().trim();
+    final taxCountry = (supplier['steuer_land'] ?? '').toString().trim();
+    final taxExempt = supplier['steuerbefreit'] == true;
+    if (creditorNo.isNotEmpty) parts.add('Kreditor-Nr.: $creditorNo');
+    if (paymentTerms.isNotEmpty) parts.add('Zahlungsbedingungen: $paymentTerms');
+    if (taxCountry.isNotEmpty) parts.add('Steuerland: $taxCountry');
+    if (taxExempt) parts.add('Steuerbefreit');
+    return parts.join(' • ');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -60,7 +100,11 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       offset = 0;
       items = await widget.api.listPurchaseOrders(q: searchCtrl.text.trim(), status: filterStatus, limit: limit, offset: offset);
     } catch (e) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Bestellungen konnten nicht geladen werden: $e'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_errorMessage(e, fallback: 'Bestellungen konnten nicht geladen werden'))),
+        );
+      }
     } finally { setState(()=> loading = false); }
   }
 
@@ -88,6 +132,31 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                   onChanged: (v)=> setState(()=> supplierId = v),
                 ),
               ),
+              if (_selectedSupplier != null)
+                SizedBox(
+                  width: 520,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          (_selectedSupplier!['name'] ?? '').toString(),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _supplierCommercialSummary(_selectedSupplier!),
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               SizedBox(width: 160, child: TextFormField(controller: numberCtrl, decoration: const InputDecoration(labelText: 'Bestellnummer'))),
               SizedBox(width: 120, child: TextFormField(controller: currencyCtrl, decoration: const InputDecoration(labelText: 'Währung'))),
               SizedBox(
@@ -145,7 +214,13 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
             final resp = await widget.api.createPurchaseOrder(body);
             if (mounted) Navigator.of(ctx).pop();
             await _reload();
-          } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_errorMessage(e))),
+              );
+            }
+          }
         }, icon: const Icon(Icons.check), label: const Text('Anlegen')),
       ],
     ));
@@ -153,9 +228,12 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final canWrite = widget.api.hasPermission('purchase_orders.write');
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(onPressed: _openCreateDialog, child: const Icon(Icons.add)),
+      floatingActionButton: canWrite
+          ? FloatingActionButton(onPressed: _openCreateDialog, child: const Icon(Icons.add))
+          : null,
       body: Column(
         children: [
           Padding(

@@ -1,0 +1,187 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      server: ${{ steps.filter.outputs.server }}
+      integration: ${{ steps.filter.outputs.integration }}
+      client: ${{ steps.filter.outputs.client }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            server:
+              - 'server/**'
+              - '.github/workflows/ci.yml'
+              - '.env.example'
+              - 'README.md'
+            integration:
+              - 'server/**'
+              - 'docker-compose.test.yml'
+              - '.github/workflows/ci.yml'
+              - '.env.example'
+              - 'README.md'
+            client:
+              - 'client/**'
+              - '.github/workflows/ci.yml'
+              - '.env.example'
+              - 'README.md'
+            docker:
+              - 'server/**'
+              - 'client/**'
+              - 'server/Dockerfile'
+              - 'client/Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/ci.yml'
+              - 'README.md'
+
+  server:
+    name: Server
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          files="$(find . -name '*.go' -not -path './vendor/*')"
+          test -z "$(gofmt -l $files)"
+
+      - name: Run unit tests
+        run: go test ./...
+
+      - name: Build API
+        run: go build ./cmd/api
+
+  integration:
+    name: Integration
+    runs-on: ubuntu-latest
+    needs:
+      - changes
+      - server
+    if: needs.changes.outputs.integration == 'true'
+    defaults:
+      run:
+        working-directory: server
+    env:
+      NALA_INTEGRATION: "1"
+      TEST_POSTGRES_DSN: postgres://nala:secret@localhost:55432/nalaerp_test?sslmode=disable
+      TEST_MONGO_URI: mongodb://localhost:57017
+      TEST_MONGO_DB: nalaerp_test
+      TEST_REDIS_ADDR: localhost:56379
+      TEST_REDIS_PASSWORD: ""
+      TEST_JWT_SECRET: integration-secret
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Start integration services
+        working-directory: .
+        run: docker compose -f docker-compose.test.yml up -d --wait
+
+      - name: Run integration tests
+        run: go test ./internal/http
+
+      - name: Stop integration services
+        if: always()
+        working-directory: .
+        run: docker compose -f docker-compose.test.yml down -v
+
+  client:
+    name: Client
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.client == 'true'
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run widget tests
+        run: flutter test
+
+      - name: Build web client
+        run: flutter build web --release --no-wasm-dry-run
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build server image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: false
+          tags: nalaerp3/server:ci
+          build-args: |
+            VERSION=${{ github.ref_name }}
+            COMMIT=${{ github.sha }}
+            BUILD_TIME=${{ github.run_id }}
+
+      - name: Build client image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./client
+          file: ./client/Dockerfile
+          push: false
+          tags: nalaerp3/client:ci

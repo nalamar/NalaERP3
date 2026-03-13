@@ -1,6 +1,38 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 
+String _purchaseOrderErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+  if (error is ApiException) {
+    switch (error.code) {
+      case 'validation_error':
+        return error.message;
+      case 'not_found':
+        return 'Bestellung oder Position nicht gefunden oder nicht mehr verfügbar.';
+      case 'internal_error':
+        return 'Serverfehler. Bitte erneut versuchen.';
+    }
+    return error.message;
+  }
+  return '$fallback: $error';
+}
+
+String _contactCommercialSummary(Map<String, dynamic> contact, {bool supplier = false}) {
+  final parts = <String>[];
+  final paymentTerms = (contact['zahlungsbedingungen'] ?? '').toString().trim();
+  final reference = supplier
+      ? (contact['kreditor_nr'] ?? '').toString().trim()
+      : (contact['debitor_nr'] ?? '').toString().trim();
+  final taxCountry = (contact['steuer_land'] ?? '').toString().trim();
+  final taxExempt = contact['steuerbefreit'] == true;
+  if (reference.isNotEmpty) {
+    parts.add('${supplier ? 'Kreditor-Nr.' : 'Debitor-Nr.'}: $reference');
+  }
+  if (paymentTerms.isNotEmpty) parts.add('Zahlungsbedingungen: $paymentTerms');
+  if (taxCountry.isNotEmpty) parts.add('Steuerland: $taxCountry');
+  if (taxExempt) parts.add('Steuerbefreit');
+  return parts.join(' • ');
+}
+
 class PurchaseOrderDetailPage extends StatefulWidget {
   const PurchaseOrderDetailPage({super.key, required this.api, required this.id});
   final ApiClient api;
@@ -52,7 +84,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
       try { warehouses = await widget.api.listWarehouses(); } catch(_){ warehouses = []; }
       setState(() { po = order; items = pos; supplier = supp; });
     } catch (e) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Laden fehlgeschlagen: $e'))); }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e, fallback: 'Laden fehlgeschlagen')))); }
     } finally { setState(()=> loading = false); }
   }
 
@@ -79,7 +111,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
             await widget.api.updatePurchaseOrder(widget.id, {'status': st, 'waehrung': curCtrl.text.trim().isEmpty? 'EUR': curCtrl.text.trim().toUpperCase(), 'notiz': note.text.trim()});
             await _load();
             if (mounted) Navigator.of(ctx).pop();
-          } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } }
+          } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e)))); } }
         }, child: const Text('Speichern')),
       ],
     ));
@@ -115,6 +147,13 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
                     Text('Währung: ${(order['waehrung'] ?? 'EUR').toString()}'),
                     if (supplier != null) Text('Lieferant: ${(supplier!['name'] ?? '').toString()}'),
                   ]),
+                  if (supplier != null && _contactCommercialSummary(supplier!, supplier: true).isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      _contactCommercialSummary(supplier!, supplier: true),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const Divider(),
                 ],
                 const Text('Positionen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -184,7 +223,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
         ),
         actions: [
           TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
-          FilledButton.icon(onPressed: () async { try { await _receiveNow(whId, locId, setReceived); if (mounted) Navigator.of(ctx).pop(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, icon: const Icon(Icons.check), label: const Text('Buchen')),
+          FilledButton.icon(onPressed: () async { try { await _receiveNow(whId, locId, setReceived); if (mounted) Navigator.of(ctx).pop(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e)))); } } }, icon: const Icon(Icons.check), label: const Text('Buchen')),
         ],
       );
     }));
@@ -254,7 +293,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
       ),
       actions: [
         TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
-        FilledButton(onPressed: () async { try { await widget.api.createPurchaseOrderItem(widget.id, {'material_id': materialId, 'bezeichnung': desc.text.trim(), 'menge': double.tryParse(qty.text.trim()) ?? 0, 'einheit': uom.text.trim(), 'preis': double.tryParse(price.text.trim()) ?? 0, 'waehrung': cur.text.trim().isEmpty? currency : cur.text.trim().toUpperCase(), if (deliv!=null) 'liefertermin': DateTime(deliv!.year, deliv!.month, deliv!.day).toIso8601String()}); if (mounted) Navigator.of(ctx).pop(); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Hinzufügen')),
+        FilledButton(onPressed: () async { try { await widget.api.createPurchaseOrderItem(widget.id, {'material_id': materialId, 'bezeichnung': desc.text.trim(), 'menge': double.tryParse(qty.text.trim()) ?? 0, 'einheit': uom.text.trim(), 'preis': double.tryParse(price.text.trim()) ?? 0, 'waehrung': cur.text.trim().isEmpty? currency : cur.text.trim().toUpperCase(), if (deliv!=null) 'liefertermin': DateTime(deliv!.year, deliv!.month, deliv!.day).toIso8601String()}); if (mounted) Navigator.of(ctx).pop(); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e)))); } } }, child: const Text('Hinzufügen')),
       ],
     ));
   }
@@ -289,13 +328,13 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
       ),
       actions: [
         TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
-        FilledButton(onPressed: () async { try { await widget.api.updatePurchaseOrderItem(widget.id, (it['id'] as String), {'bezeichnung': desc.text.trim(), 'menge': double.tryParse(qty.text.trim()), 'einheit': uom.text.trim(), 'preis': double.tryParse(price.text.trim()), 'waehrung': cur.text.trim().isEmpty? currency : cur.text.trim().toUpperCase(), if (deliv!=null) 'liefertermin': DateTime(deliv!.year, deliv!.month, deliv!.day).toIso8601String()}); if (mounted) Navigator.of(ctx).pop(); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }, child: const Text('Speichern')),
+        FilledButton(onPressed: () async { try { await widget.api.updatePurchaseOrderItem(widget.id, (it['id'] as String), {'bezeichnung': desc.text.trim(), 'menge': double.tryParse(qty.text.trim()), 'einheit': uom.text.trim(), 'preis': double.tryParse(price.text.trim()), 'waehrung': cur.text.trim().isEmpty? currency : cur.text.trim().toUpperCase(), if (deliv!=null) 'liefertermin': DateTime(deliv!.year, deliv!.month, deliv!.day).toIso8601String()}); if (mounted) Navigator.of(ctx).pop(); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e)))); } } }, child: const Text('Speichern')),
       ],
     ));
   }
 
   Future<void> _deleteItem(Map<String, dynamic> it) async {
     final ok = await showDialog<bool>(context: context, builder: (ctx)=> AlertDialog(title: const Text('Position löschen'), content: const Text('Position wirklich löschen?'), actions: [TextButton(onPressed: ()=> Navigator.of(ctx).pop(false), child: const Text('Abbrechen')), FilledButton(onPressed: ()=> Navigator.of(ctx).pop(true), child: const Text('Löschen'))]));
-    if (ok == true) { try { await widget.api.deletePurchaseOrderItem(widget.id, (it['id'] as String)); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); } } }
+    if (ok == true) { try { await widget.api.deletePurchaseOrderItem(widget.id, (it['id'] as String)); await _load(); } catch (e) { if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_purchaseOrderErrorMessage(e)))); } } }
   }
 }

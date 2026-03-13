@@ -1,8 +1,35 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../web/browser.dart' as browser;
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+
+String _projectErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+  if (error is ApiException) {
+    switch (error.code) {
+      case 'validation_error':
+        return error.message;
+      case 'not_found':
+        return 'Projekt oder Import nicht gefunden oder nicht mehr verfügbar.';
+      case 'internal_error':
+        return 'Serverfehler. Bitte erneut versuchen.';
+    }
+    return error.message;
+  }
+  return '$fallback: $error';
+}
+
+String _customerCommercialSummary(Map<String, dynamic> customer) {
+  final parts = <String>[];
+  final debtorNo = (customer['debitor_nr'] ?? '').toString().trim();
+  final paymentTerms = (customer['zahlungsbedingungen'] ?? '').toString().trim();
+  final taxCountry = (customer['steuer_land'] ?? '').toString().trim();
+  final taxExempt = customer['steuerbefreit'] == true;
+  if (debtorNo.isNotEmpty) parts.add('Debitor-Nr.: $debtorNo');
+  if (paymentTerms.isNotEmpty) parts.add('Zahlungsbedingungen: $paymentTerms');
+  if (taxCountry.isNotEmpty) parts.add('Steuerland: $taxCountry');
+  if (taxExempt) parts.add('Steuerbefreit');
+  return parts.join(' • ');
+}
 
 class ProjectsPage extends StatefulWidget {
   const ProjectsPage({super.key, required this.api});
@@ -18,6 +45,10 @@ class _ProjectsPageState extends State<ProjectsPage> {
   List<dynamic> _projects = const [];
   bool _importing = false;
 
+  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+    return _projectErrorMessage(error, fallback: fallback);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -30,7 +61,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
       final list = await widget.api.listProjects();
       setState(() { _projects = list; });
     } catch (e) {
-      setState(() { _error = e.toString(); });
+      setState(() { _error = _errorMessage(e, fallback: 'Projekte konnten nicht geladen werden'); });
     } finally {
       if (mounted) setState(() { _loading = false; });
     }
@@ -39,10 +70,13 @@ class _ProjectsPageState extends State<ProjectsPage> {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
+    final canWrite = widget.api.hasPermission('projects.write');
     return Scaffold(
       appBar: AppBar(title: const Text('Projekte'), backgroundColor: color, foregroundColor: Colors.white, actions: [
-        TextButton.icon(onPressed: _analyzeLogikal, icon: const Icon(Icons.search_rounded, color: Colors.white), label: const Text('Analyse Logikal', style: TextStyle(color: Colors.white))),
-        TextButton.icon(onPressed: _importing ? null : _importLogikal, icon: const Icon(Icons.upload_file_rounded, color: Colors.white), label: const Text('Import Logikal', style: TextStyle(color: Colors.white))),
+        if (canWrite) ...[
+          TextButton.icon(onPressed: _analyzeLogikal, icon: const Icon(Icons.search_rounded, color: Colors.white), label: const Text('Analyse Logikal', style: TextStyle(color: Colors.white))),
+          TextButton.icon(onPressed: _importing ? null : _importLogikal, icon: const Icon(Icons.upload_file_rounded, color: Colors.white), label: const Text('Import Logikal', style: TextStyle(color: Colors.white))),
+        ],
         const SizedBox(width: 8),
       ]),
       body: Padding(
@@ -60,7 +94,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
                             const SizedBox(height: 12),
                             const Text('Noch keine Projekte.'),
                             const SizedBox(height: 8),
-                            FilledButton.icon(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt anlegen')),
+                            if (canWrite)
+                              FilledButton.icon(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt anlegen')),
                           ],
                         ),
                       )
@@ -74,13 +109,15 @@ class _ProjectsPageState extends State<ProjectsPage> {
                             title: Text(p['name']?.toString() ?? 'Projekt'),
                             subtitle: Text(p['nummer']?.toString() ?? ''),
                             onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: p))).then((_) => _load());
+                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: p, canWrite: canWrite))).then((_) => _load());
                             },
                           );
                         },
                       ),
       ),
-      floatingActionButton: FloatingActionButton.extended(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt')),
+      floatingActionButton: canWrite
+          ? FloatingActionButton.extended(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt'))
+          : null,
     );
   }
 
@@ -127,7 +164,9 @@ class _ProjectsPageState extends State<ProjectsPage> {
             if (mounted) {
               Navigator.of(context, rootNavigator: true).pop();
               setState(() { _importing = false; });
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Assets-Upload fehlgeschlagen: $e')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_errorMessage(e, fallback: 'Assets-Upload fehlgeschlagen'))),
+              );
             }
           }
         }
@@ -140,7 +179,9 @@ class _ProjectsPageState extends State<ProjectsPage> {
       if (!mounted) return;
       try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
       setState(() { _importing = false; });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import fehlgeschlagen: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, fallback: 'Import fehlgeschlagen'))),
+      );
     }
   }
 
@@ -152,7 +193,10 @@ class _ProjectsPageState extends State<ProjectsPage> {
       if (!mounted) return;
       await showDialog(context: context, builder: (_) => _AnalysisDialog(summary: res));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Analyse fehlgeschlagen: $e')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, fallback: 'Analyse fehlgeschlagen'))),
+      );
     }
   }
 
@@ -166,6 +210,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
       if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name ist erforderlich'))); return;
     }
     try {
+      final canWrite = widget.api.hasPermission('projects.write');
       final body = {
         if ((res['nummer'] ?? '').toString().trim().isNotEmpty) 'nummer': res['nummer'],
         'name': res['name'],
@@ -176,17 +221,21 @@ class _ProjectsPageState extends State<ProjectsPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Projekt erstellt: ${created['name']}')));
       await _load();
       // direkt öffnen
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: created))).then((_) => _load());
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: created, canWrite: canWrite))).then((_) => _load());
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erstellen fehlgeschlagen: $e')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, fallback: 'Erstellen fehlgeschlagen'))),
+      );
     }
   }
 }
 
 class ProjectDetailPage extends StatefulWidget {
-  const ProjectDetailPage({super.key, required this.api, required this.project});
+  const ProjectDetailPage({super.key, required this.api, required this.project, required this.canWrite});
   final ApiClient api;
   final Map<String, dynamic> project;
+  final bool canWrite;
 
   @override
   State<ProjectDetailPage> createState() => _ProjectDetailPageState();
@@ -208,7 +257,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     try {
       final list = await widget.api.listProjectPhases(widget.project['id'] as String);
       setState(() { _phases = list; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Projektstruktur konnte nicht geladen werden');
+      });
+    }
     finally { if (mounted) setState(() { _loading = false; }); }
   }
 
@@ -223,7 +276,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           backgroundColor: color,
           foregroundColor: Colors.white,
           actions: [
-            IconButton(onPressed: _addPhase, icon: const Icon(Icons.playlist_add_rounded), tooltip: 'Los hinzufügen'),
+            if (widget.canWrite)
+              IconButton(onPressed: _addPhase, icon: const Icon(Icons.playlist_add_rounded), tooltip: 'Los hinzufügen'),
             const SizedBox(width: 6),
           ],
           bottom: TabBar(
@@ -239,7 +293,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         ),
         body: TabBarView(children: [
           _buildStructureTab(),
-          ImportLogTab(api: widget.api, projectId: widget.project['id'] as String),
+          ImportLogTab(api: widget.api, projectId: widget.project['id'] as String, canWrite: widget.canWrite),
         ]),
       ),
     );
@@ -252,7 +306,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       itemCount: _phases.length,
       itemBuilder: (context, index) {
         final ph = _phases[index] as Map<String, dynamic>;
-        return _PhaseTile(api: widget.api, projectId: widget.project['id'] as String, phase: ph, onChanged: _load);
+        return _PhaseTile(api: widget.api, projectId: widget.project['id'] as String, phase: ph, onChanged: _load, canWrite: widget.canWrite);
       },
     );
     final right = Padding(
@@ -261,7 +315,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const Text('Aktionen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          FilledButton.icon(onPressed: () {/* TODO: Bestellung */}, icon: const Icon(Icons.shopping_cart_checkout_rounded), label: const Text('Bestellung')),
+          if (widget.canWrite)
+            FilledButton.icon(onPressed: () {/* TODO: Bestellung */}, icon: const Icon(Icons.shopping_cart_checkout_rounded), label: const Text('Bestellung')),
           const SizedBox(height: 8),
           FilledButton.icon(onPressed: null, icon: const Icon(Icons.request_quote_rounded), label: const Text('Rechnung schreiben (bald)')),
           const SizedBox(height: 24),
@@ -287,16 +342,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     );
     if (res == null) return;
     try { await widget.api.createPhase(widget.project['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Anlegen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
   }
 }
 
 class _PhaseTile extends StatefulWidget {
-  const _PhaseTile({required this.api, required this.projectId, required this.phase, required this.onChanged});
+  const _PhaseTile({required this.api, required this.projectId, required this.phase, required this.onChanged, required this.canWrite});
   final ApiClient api;
   final String projectId;
   final Map<String, dynamic> phase;
   final Future<void> Function() onChanged;
+  final bool canWrite;
   @override
   State<_PhaseTile> createState() => _PhaseTileState();
 }
@@ -309,7 +365,11 @@ class _PhaseTileState extends State<_PhaseTile> {
     try {
       final list = await widget.api.listPhaseElevations(widget.projectId, widget.phase['id'] as String);
       setState(() { _elevations = list; _error = null; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Positionen konnten nicht geladen werden');
+      });
+    }
   }
 
   @override
@@ -320,9 +380,11 @@ class _PhaseTileState extends State<_PhaseTile> {
     return ExpansionTile(
       title: Row(children: [
         Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
-        IconButton(onPressed: _editPhase, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-        IconButton(onPressed: _deletePhase, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
-        IconButton(onPressed: _addElevation, icon: const Icon(Icons.add_box_rounded), tooltip: 'Position hinzufügen'),
+        if (widget.canWrite) ...[
+          IconButton(onPressed: _editPhase, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
+          IconButton(onPressed: _deletePhase, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
+          IconButton(onPressed: _addElevation, icon: const Icon(Icons.add_box_rounded), tooltip: 'Position hinzufügen'),
+        ],
       ]),
       subtitle: phName.isNotEmpty && phNum.isNotEmpty ? Text('Los: $phNum') : null,
       initiallyExpanded: false,
@@ -330,7 +392,7 @@ class _PhaseTileState extends State<_PhaseTile> {
       children: [
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
         if (_elevations == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_elevations != null) for (final e in _elevations!) _ElevationTile(api: widget.api, projectId: widget.projectId, phaseId: widget.phase['id'] as String, elevation: e as Map<String, dynamic>, onChanged: _load),
+        if (_elevations != null) for (final e in _elevations!) _ElevationTile(api: widget.api, projectId: widget.projectId, phaseId: widget.phase['id'] as String, elevation: e as Map<String, dynamic>, onChanged: _load, canWrite: widget.canWrite),
       ],
     );
   }
@@ -342,13 +404,13 @@ class _PhaseTileState extends State<_PhaseTile> {
     );
     if (res == null) return;
     try { await widget.api.updatePhase(widget.projectId, widget.phase['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Speichern fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
   }
   Future<void> _deletePhase() async {
     final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Los wirklich löschen?'));
     if (ok != true) return;
     try { await widget.api.deletePhase(widget.projectId, widget.phase['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
   }
   Future<void> _addElevation() async {
     final res = await showDialog<Map<String, dynamic>>(
@@ -357,17 +419,18 @@ class _PhaseTileState extends State<_PhaseTile> {
     );
     if (res == null) return;
     try { await widget.api.createElevation(widget.projectId, widget.phase['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Anlegen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
   }
 }
 
 class _ElevationTile extends StatefulWidget {
-  const _ElevationTile({required this.api, required this.projectId, required this.phaseId, required this.elevation, required this.onChanged});
+  const _ElevationTile({required this.api, required this.projectId, required this.phaseId, required this.elevation, required this.onChanged, required this.canWrite});
   final ApiClient api;
   final String projectId;
   final String phaseId;
   final Map<String, dynamic> elevation;
   final Future<void> Function() onChanged;
+  final bool canWrite;
   @override
   State<_ElevationTile> createState() => _ElevationTileState();
 }
@@ -408,7 +471,11 @@ class _ElevationTileState extends State<_ElevationTile> {
     try {
       final list = await widget.api.listElevationVariants(widget.projectId, widget.elevation['id'] as String);
       setState(() { _variants = list; _error = null; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Varianten konnten nicht geladen werden');
+      });
+    }
   }
   @override
   Widget build(BuildContext context) {
@@ -457,16 +524,18 @@ class _ElevationTileState extends State<_ElevationTile> {
             ],
           ]),
         ),
-        IconButton(onPressed: _editElevation, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-        IconButton(onPressed: _deleteElevation, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
-        IconButton(onPressed: _addVariant, icon: const Icon(Icons.add_circle_outline_rounded), tooltip: 'Variante hinzufügen'),
+        if (widget.canWrite) ...[
+          IconButton(onPressed: _editElevation, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
+          IconButton(onPressed: _deleteElevation, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
+          IconButton(onPressed: _addVariant, icon: const Icon(Icons.add_circle_outline_rounded), tooltip: 'Variante hinzufügen'),
+        ],
       ]),
       subtitle: null,
       onExpansionChanged: (open) { if (open && _variants == null) { _load(); } },
       children: [
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
         if (_variants == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_variants != null) for (final v in _variants!) _VariantTile(api: widget.api, projectId: widget.projectId, elevationId: widget.elevation['id'] as String, variant: v as Map<String, dynamic>, onChanged: _load),
+        if (_variants != null) for (final v in _variants!) _VariantTile(api: widget.api, projectId: widget.projectId, elevationId: widget.elevation['id'] as String, variant: v as Map<String, dynamic>, onChanged: _load, canWrite: widget.canWrite),
       ],
     );
   }
@@ -478,13 +547,13 @@ class _ElevationTileState extends State<_ElevationTile> {
     );
     if (res == null) return;
     try { await widget.api.updateElevation(widget.projectId, widget.phaseId, widget.elevation['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Speichern fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
   }
   Future<void> _deleteElevation() async {
     final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Position wirklich löschen?'));
     if (ok != true) return;
     try { await widget.api.deleteElevation(widget.projectId, widget.phaseId, widget.elevation['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
   }
   Future<void> _addVariant() async {
     final res = await showDialog<Map<String, dynamic>>(
@@ -493,7 +562,7 @@ class _ElevationTileState extends State<_ElevationTile> {
     );
     if (res == null) return;
     try { await widget.api.createVariant(widget.projectId, widget.elevation['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Anlegen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
   }
 }
 
@@ -559,12 +628,13 @@ class _ProgressDialog extends StatelessWidget {
 }
 
 class _VariantTile extends StatefulWidget {
-  const _VariantTile({required this.api, required this.projectId, required this.elevationId, required this.variant, required this.onChanged});
+  const _VariantTile({required this.api, required this.projectId, required this.elevationId, required this.variant, required this.onChanged, required this.canWrite});
   final ApiClient api;
   final String projectId;
   final String elevationId;
   final Map<String, dynamic> variant;
   final Future<void> Function() onChanged;
+  final bool canWrite;
   @override
   State<_VariantTile> createState() => _VariantTileState();
 }
@@ -606,7 +676,11 @@ class _VariantTileState extends State<_VariantTile> {
     try {
       final m = await widget.api.getVariantMaterials(widget.projectId, widget.variant['id'] as String);
       setState(() { _materials = m; _error = null; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Materialdaten konnten nicht geladen werden');
+      });
+    }
   }
   @override
   Widget build(BuildContext context) {
@@ -616,8 +690,10 @@ class _VariantTileState extends State<_VariantTile> {
       leading: const Icon(Icons.category_rounded),
       title: Row(children: [
         Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
-        IconButton(onPressed: _editVariant, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-        IconButton(onPressed: _deleteVariant, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
+        if (widget.canWrite) ...[
+          IconButton(onPressed: _editVariant, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
+          IconButton(onPressed: _deleteVariant, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
+        ],
       ]),
       subtitle: Text('Menge $menge'),
       onExpansionChanged: (open) { if (open && _materials == null) { _load(); } },
@@ -678,13 +754,13 @@ class _VariantTileState extends State<_VariantTile> {
     );
     if (res == null) return;
     try { await widget.api.updateVariant(widget.projectId, widget.elevationId, widget.variant['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Speichern fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
   }
   Future<void> _deleteVariant() async {
     final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Variante wirklich löschen?'));
     if (ok != true) return;
     try { await widget.api.deleteVariant(widget.projectId, widget.elevationId, widget.variant['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e'))); }
+    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
   }
 
   String _fmt4(dynamic v) {
@@ -739,6 +815,9 @@ class _VariantTileState extends State<_VariantTile> {
   }
 
   Widget _buildMaterialActions(Map<String, dynamic> it, String kind) {
+    if (!widget.canWrite) {
+      return const SizedBox.shrink();
+    }
     final linked = (it['material_id'] as String?)?.isNotEmpty == true;
     if (!linked) {
       return OutlinedButton.icon(onPressed: _saving ? null : () => _adoptMaterial(it, kind), icon: const Icon(Icons.download_done_rounded), label: const Text('Übernehmen'));
@@ -756,7 +835,7 @@ class _VariantTileState extends State<_VariantTile> {
       if (!mounted) return; await _load();
       if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verknüpfung gelöst')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lösen fehlgeschlagen: $e')));
+      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Lösen fehlgeschlagen'))));
     } finally {
       if (mounted) setState(() { _saving = false; });
     }
@@ -786,7 +865,7 @@ class _VariantTileState extends State<_VariantTile> {
       if (!mounted) return; await _load();
       if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verknüpfung aktualisiert')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aktualisierung fehlgeschlagen: $e')));
+      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Aktualisierung fehlgeschlagen'))));
     } finally {
       if (mounted) setState(() { _saving = false; });
     }
@@ -848,7 +927,7 @@ class _VariantTileState extends State<_VariantTile> {
             await _load();
             return;
           } catch (e) {
-            if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Verknüpfung fehlgeschlagen: $e')));
+            if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Verknüpfung fehlgeschlagen'))));
             return;
           }
         }
@@ -866,7 +945,7 @@ class _VariantTileState extends State<_VariantTile> {
       }
       if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material übernommen und verknüpft')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Übernahme fehlgeschlagen: $e')));
+      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Übernahme fehlgeschlagen'))));
     } finally {
       if (mounted) setState(() { _saving = false; });
     }
@@ -987,9 +1066,10 @@ class _MaterialSelectDialogState extends State<_MaterialSelectDialog> {
 }
 
 class ImportLogTab extends StatefulWidget {
-  const ImportLogTab({super.key, required this.api, required this.projectId});
+  const ImportLogTab({super.key, required this.api, required this.projectId, required this.canWrite});
   final ApiClient api;
   final String projectId;
+  final bool canWrite;
   @override
   State<ImportLogTab> createState() => _ImportLogTabState();
 }
@@ -1050,7 +1130,11 @@ class _ImportLogTabState extends State<ImportLogTab> {
         _imports = list;
         _hasDeletions = hasDel; _delPhases = dP; _delElevs = dE; _delVars = dV;
       });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Importprotokoll konnte nicht geladen werden');
+      });
+    }
     finally { if (mounted) setState(() { _loading = false; }); }
   }
 
@@ -1100,7 +1184,7 @@ class _ImportLogTabState extends State<ImportLogTab> {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final imp = _imports[index] as Map<String, dynamic>;
-            return _ImportTile(api: widget.api, projectId: widget.projectId, importRun: imp, filterKind: _filterKind, filterAction: _filterAction, onUndo: _load);
+            return _ImportTile(api: widget.api, projectId: widget.projectId, importRun: imp, filterKind: _filterKind, filterAction: _filterAction, onUndo: _load, canWrite: widget.canWrite);
           },
         ),
       ),
@@ -1109,13 +1193,14 @@ class _ImportLogTabState extends State<ImportLogTab> {
 }
 
 class _ImportTile extends StatefulWidget {
-  const _ImportTile({required this.api, required this.projectId, required this.importRun, this.filterKind = '', this.filterAction = '', this.onUndo});
+  const _ImportTile({required this.api, required this.projectId, required this.importRun, this.filterKind = '', this.filterAction = '', this.onUndo, required this.canWrite});
   final ApiClient api;
   final String projectId;
   final Map<String, dynamic> importRun;
   final String filterKind;
   final String filterAction;
   final Future<void> Function()? onUndo;
+  final bool canWrite;
   @override
   State<_ImportTile> createState() => _ImportTileState();
 }
@@ -1132,7 +1217,11 @@ class _ImportTileState extends State<_ImportTile> {
       if (widget.filterKind.isNotEmpty) { list = list.where((e) => (e as Map<String, dynamic>)['kind'] == widget.filterKind).toList(); }
       if (widget.filterAction.isNotEmpty) { list = list.where((e) => (e as Map<String, dynamic>)['action'] == widget.filterAction).toList(); }
       setState(() { _changes = list; _error = null; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Importänderungen konnten nicht geladen werden');
+      });
+    }
   }
 
   @override
@@ -1152,7 +1241,8 @@ class _ImportTileState extends State<_ImportTile> {
             const SizedBox(width: 8),
             TextButton.icon(onPressed: _downloadJSON, icon: const Icon(Icons.code_rounded), label: const Text('JSON')),
             const Spacer(),
-            TextButton.icon(onPressed: _undo, icon: const Icon(Icons.undo_rounded), label: const Text('Rückgängig')),
+            if (widget.canWrite)
+              TextButton.icon(onPressed: _undo, icon: const Icon(Icons.undo_rounded), label: const Text('Rückgängig')),
           ]),
         ),
         if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
@@ -1173,27 +1263,31 @@ class _ImportTileState extends State<_ImportTile> {
   }
 
   void _downloadCSV() {
-    final url = widget.api.baseUrl + '/api/v1/projects/${widget.projectId}/imports/${widget.importRun['id']}/changes?format=csv';
-    browser.downloadUrl(url, filename: 'import-${widget.importRun['id']}.csv');
+    widget.api.downloadProjectImportChangesCsv(
+      widget.projectId,
+      widget.importRun['id'] as String,
+      filename: 'import-${widget.importRun['id']}.csv',
+    );
   }
   void _downloadJSON() {
-    final url = widget.api.baseUrl + '/api/v1/projects/${widget.projectId}/imports/${widget.importRun['id']}/changes';
-    browser.downloadUrl(url, filename: 'import-${widget.importRun['id']}.json');
+    widget.api.downloadProjectImportChangesJson(
+      widget.projectId,
+      widget.importRun['id'] as String,
+      filename: 'import-${widget.importRun['id']}.json',
+    );
   }
   Future<void> _undo() async {
     final ok = await showDialog<bool>(context: context, builder: (_) => const _ConfirmDialog(text: 'Diesen Import wirklich rückgängig machen?'));
     if (ok != true) return;
     try {
-      final uri = Uri.parse(widget.api.baseUrl + '/api/v1/projects/${widget.projectId}/imports/${widget.importRun['id']}/undo');
-      final resp = await http.post(uri);
-      if (resp.statusCode != 200) throw Exception('Fehler: ${resp.statusCode} ${resp.body}');
+      await widget.api.undoProjectImport(widget.projectId, widget.importRun['id'] as String);
       if (widget.onUndo != null) await widget.onUndo!();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import rückgängig gemacht.')));
       setState(() { _changes = null; });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Rückgängig fehlgeschlagen: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Rückgängig fehlgeschlagen'))));
     }
   }
 }
@@ -1373,6 +1467,13 @@ class _ProjectCreateDialogState extends State<_ProjectCreateDialog> {
               const SizedBox(width: 8),
               OutlinedButton.icon(onPressed: _pickCustomer, icon: const Icon(Icons.search_rounded), label: const Text('Auswählen')),
             ]),
+            if (_customer != null && _customerCommercialSummary(_customer!).isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                _customerCommercialSummary(_customer!),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
@@ -1480,7 +1581,11 @@ class _ContactPickerDialogState extends State<_ContactPickerDialog> {
     try {
       final list = await widget.api.listContacts(q: qCtrl.text.trim(), rolle: 'customer', limit: 50);
       setState(() { _items = list; });
-    } catch (e) { setState(() { _error = e.toString(); }); }
+    } catch (e) {
+      setState(() {
+        _error = _projectErrorMessage(e, fallback: 'Kunden konnten nicht geladen werden');
+      });
+    }
     finally { if (mounted) setState(() { _loading = false; }); }
   }
 
@@ -1505,7 +1610,12 @@ class _ContactPickerDialogState extends State<_ContactPickerDialog> {
               itemCount: _items.length,
               itemBuilder: (context, index) {
                 final c = _items[index] as Map<String, dynamic>;
-                final subtitle = [c['email'], c['telefon']].whereType<String>().where((s) => s.isNotEmpty).join(' • ');
+                final subtitleParts = <String>[
+                  (c['email'] ?? '').toString().trim(),
+                  (c['telefon'] ?? '').toString().trim(),
+                  _customerCommercialSummary(c),
+                ].where((s) => s.isNotEmpty).toList();
+                final subtitle = subtitleParts.join(' • ');
                 return ListTile(
                   leading: const Icon(Icons.person_outline_rounded),
                   title: Text(c['name']?.toString() ?? ''),

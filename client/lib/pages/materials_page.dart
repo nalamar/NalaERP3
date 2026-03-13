@@ -43,6 +43,21 @@ class _MaterialsPageState extends State<MaterialsPage> {
   final hoeheCtrl = TextEditingController();
   final katCtrl = TextEditingController(text: '');
 
+  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+    if (error is ApiException) {
+      switch (error.code) {
+        case 'validation_error':
+          return error.message;
+        case 'not_found':
+          return 'Material nicht gefunden oder nicht mehr verfügbar.';
+        case 'internal_error':
+          return 'Serverfehler. Bitte erneut versuchen.';
+      }
+      return error.message;
+    }
+    return '$fallback: $error';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -72,7 +87,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
     } catch (e) {
       if (mounted) {
         debugPrint('Fehler beim Laden Materialien: $e');
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Materialien konnten nicht geladen werden: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_errorMessage(e, fallback: 'Materialien konnten nicht geladen werden'))),
+        );
       }
     } finally {
       setState(() => loading = false);
@@ -117,7 +134,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       await _select(selectedId!);
       await _reload();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Aktualisieren fehlgeschlagen: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, fallback: 'Aktualisieren fehlgeschlagen'))),
+      );
     }
   }
 
@@ -131,7 +150,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       selectedId = null; selected = null; stock = []; docs = [];
       await _reload();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Löschen fehlgeschlagen: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_errorMessage(e, fallback: 'Löschen fehlgeschlagen'))),
+      );
     }
   }
 
@@ -176,7 +197,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       await _reload();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_errorMessage(e))),
+        );
       }
     }
   }
@@ -196,7 +219,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload fehlgeschlagen: ')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_errorMessage(e, fallback: 'Upload fehlgeschlagen'))),
+        );
       }
     }
   }
@@ -261,12 +286,15 @@ class _MaterialsPageState extends State<MaterialsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final canWrite = widget.api.hasPermission('materials.write');
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openCreateDialog,
-        child: const Icon(Icons.add),
-      ),
+      floatingActionButton: canWrite
+          ? FloatingActionButton(
+              onPressed: _openCreateDialog,
+              child: const Icon(Icons.add),
+            )
+          : null,
       body: Row(
         children: [
           Expanded(
@@ -386,8 +414,10 @@ class _MaterialsPageState extends State<MaterialsPage> {
                             Text('Nr.: ${selected!['nummer']}  •  Typ: ${selected!['typ']}  •  Einheit: ${selected!['einheit']}'),
                             if ((selected!['kategorie']??'').toString().isNotEmpty) Text('Kategorie: ${selected!['kategorie']}'),
                           ])),
-                          IconButton(onPressed: _editSelected, icon: const Icon(Icons.edit)),
-                          IconButton(onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
+                          if (canWrite) ...[
+                            IconButton(onPressed: _editSelected, icon: const Icon(Icons.edit)),
+                            IconButton(onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
+                          ],
                         ]),
                         const SizedBox(height: 12),
                       ],
@@ -419,7 +449,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
                       Row(children: [
                         const Text('Dokumente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const Spacer(),
-                        FilledButton.icon(onPressed: _uploadFile, icon: const Icon(Icons.upload_file), label: const Text('Upload')),
+                        if (canWrite)
+                          FilledButton.icon(onPressed: _uploadFile, icon: const Icon(Icons.upload_file), label: const Text('Upload')),
                       ]),
                       const SizedBox(height: 8),
                       Expanded(

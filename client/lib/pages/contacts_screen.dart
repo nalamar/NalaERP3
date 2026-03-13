@@ -15,8 +15,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool loading = false;
   final searchCtrl = TextEditingController();
   String? filterRolle;
+  String? filterStatus;
   String? filterTyp;
   List<String> rollen = [];
+  List<String> statuses = [];
   List<String> typen = [];
   int limit = 20;
   int offset = 0;
@@ -25,12 +27,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
   final formKey = GlobalKey<FormState>();
   String newTyp = 'org';
   String newRolle = 'customer';
+  String newStatus = 'active';
   final nameCtrl = TextEditingController();
   final emailCtrl = TextEditingController();
   final phoneCtrl = TextEditingController();
   final ustCtrl = TextEditingController();
   final taxCtrl = TextEditingController();
   final currCtrl = TextEditingController(text: 'EUR');
+  final paymentTermsCtrl = TextEditingController();
+  final debtorCtrl = TextEditingController();
+  final creditorCtrl = TextEditingController();
+  final taxCountryCtrl = TextEditingController(text: 'DE');
+  bool taxExempt = false;
   // Address
   bool addrPrimary = true;
   String addrArt = 'billing';
@@ -49,6 +57,67 @@ class _ContactsScreenState extends State<ContactsScreen> {
   final pPhone = TextEditingController();
   final pMobil = TextEditingController();
 
+  String _roleLabel(String value) {
+    switch (value) {
+      case 'customer':
+        return 'Kunde';
+      case 'supplier':
+        return 'Lieferant';
+      case 'partner':
+        return 'Partner';
+      case 'both':
+        return 'Kunde & Lieferant';
+      case 'other':
+        return 'Sonstige';
+      default:
+        return value;
+    }
+  }
+
+  String _statusLabel(String value) {
+    switch (value) {
+      case 'lead':
+        return 'Interessent';
+      case 'active':
+        return 'Aktiv';
+      case 'inactive':
+        return 'Inaktiv';
+      case 'blocked':
+        return 'Gesperrt';
+      default:
+        return value;
+    }
+  }
+
+  String _typeLabel(String value) {
+    switch (value) {
+      case 'org':
+        return 'Organisation';
+      case 'person':
+        return 'Person';
+      default:
+        return value;
+    }
+  }
+
+  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+    if (error is ApiException) {
+      switch (error.code) {
+        case 'validation_error':
+          if (error.message.toLowerCase().contains('bereits vorhanden')) {
+            return 'Mögliche Dublette: ${error.message}';
+          }
+          return error.message;
+        case 'not_found':
+          return 'Kontakt nicht gefunden oder nicht mehr verfügbar.';
+        case 'internal_error':
+          return 'Serverfehler. Bitte erneut versuchen.';
+      }
+      return error.message;
+    }
+    return '$fallback: $error';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -59,8 +128,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Future<void> _loadFacets() async {
     try {
       final r = await widget.api.listContactRoles();
+      final s = await widget.api.listContactStatuses();
       final t = await widget.api.listContactTypes();
-      setState(() { rollen = r; typen = t; });
+      setState(() { rollen = r; statuses = s; typen = t; });
     } catch (e) { debugPrint('Facets error: $e'); }
   }
 
@@ -69,18 +139,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
     try {
       offset = 0;
       items = await widget.api.listContacts(
-        q: searchCtrl.text.trim(), rolle: filterRolle, typ: filterTyp, limit: limit, offset: offset,
+        q: searchCtrl.text.trim(), rolle: filterRolle, status: filterStatus, typ: filterTyp, limit: limit, offset: offset,
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kontakte konnten nicht geladen werden: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(_errorMessage(e, fallback: 'Kontakte konnten nicht geladen werden'))),
+        );
       }
     } finally { setState(() => loading = false); }
   }
 
   Future<void> _loadMore() async {
     final next = await widget.api.listContacts(
-      q: searchCtrl.text.trim(), rolle: filterRolle, typ: filterTyp, limit: limit, offset: offset + limit,
+      q: searchCtrl.text.trim(), rolle: filterRolle, status: filterStatus, typ: filterTyp, limit: limit, offset: offset + limit,
     );
     if (next.isNotEmpty) {
       offset += limit;
@@ -106,7 +178,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       width: 180,
                       child: DropdownButtonFormField<String>(
                         value: newTyp,
-                        items: [for (final t in (typen.isEmpty ? ['org','person']: typen)) DropdownMenuItem(value: t, child: Text(t))],
+                        items: [for (final t in (typen.isEmpty ? ['org','person']: typen)) DropdownMenuItem(value: t, child: Text(_typeLabel(t)))],
                         onChanged: (v)=> setState(()=> newTyp = v ?? 'org'),
                         decoration: const InputDecoration(labelText: 'Typ'),
                       ),
@@ -115,9 +187,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       width: 200,
                       child: DropdownButtonFormField<String>(
                         value: newRolle,
-                        items: [for (final r in (rollen.isEmpty ? ['customer','supplier','both','other'] : rollen)) DropdownMenuItem(value: r, child: Text(r))],
+                        items: [for (final r in (rollen.isEmpty ? ['customer','supplier','partner','both','other'] : rollen)) DropdownMenuItem(value: r, child: Text(_roleLabel(r)))],
                         onChanged: (v)=> setState(()=> newRolle = v ?? 'customer'),
                         decoration: const InputDecoration(labelText: 'Rolle'),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 180,
+                      child: DropdownButtonFormField<String>(
+                        value: newStatus,
+                        items: [for (final s in (statuses.isEmpty ? ['lead','active','inactive','blocked'] : statuses)) DropdownMenuItem(value: s, child: Text(_statusLabel(s)))],
+                        onChanged: (v)=> setState(()=> newStatus = v ?? 'active'),
+                        decoration: const InputDecoration(labelText: 'Status'),
                       ),
                     ),
                     SizedBox(width: 260, child: TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
@@ -126,6 +207,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     SizedBox(width: 180, child: TextFormField(controller: ustCtrl, decoration: const InputDecoration(labelText: 'USt-IdNr.'))),
                     SizedBox(width: 180, child: TextFormField(controller: taxCtrl, decoration: const InputDecoration(labelText: 'Steuernummer'))),
                     SizedBox(width: 120, child: TextFormField(controller: currCtrl, decoration: const InputDecoration(labelText: 'Währung'))),
+                    SizedBox(width: 220, child: TextFormField(controller: paymentTermsCtrl, decoration: const InputDecoration(labelText: 'Zahlungsbedingungen'))),
+                    SizedBox(width: 180, child: TextFormField(controller: debtorCtrl, decoration: const InputDecoration(labelText: 'Debitor-Nr.'))),
+                    SizedBox(width: 180, child: TextFormField(controller: creditorCtrl, decoration: const InputDecoration(labelText: 'Kreditor-Nr.'))),
+                    SizedBox(width: 120, child: TextFormField(controller: taxCountryCtrl, decoration: const InputDecoration(labelText: 'Steuerland'))),
+                    Row(children: [Checkbox(value: taxExempt, onChanged: (v)=> setState(()=> taxExempt = v ?? false)), const Text('Steuerbefreit')]),
                   ]),
                   const SizedBox(height: 12),
                   const Text('Primäradresse', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -178,12 +264,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 final contact = await widget.api.createContact({
                   'typ': newTyp,
                   'rolle': newRolle,
+                  'status': newStatus,
                   'name': nameCtrl.text.trim(),
                   'email': emailCtrl.text.trim(),
                   'telefon': phoneCtrl.text.trim(),
                   'ust_id': ustCtrl.text.trim(),
                   'steuernummer': taxCtrl.text.trim(),
                   'waehrung': currCtrl.text.trim().isEmpty ? 'EUR' : currCtrl.text.trim().toUpperCase(),
+                  'zahlungsbedingungen': paymentTermsCtrl.text.trim(),
+                  'debitor_nr': debtorCtrl.text.trim(),
+                  'kreditor_nr': creditorCtrl.text.trim(),
+                  'steuer_land': taxCountryCtrl.text.trim().isEmpty ? 'DE' : taxCountryCtrl.text.trim().toUpperCase(),
+                  'steuerbefreit': taxExempt,
                 });
                 final id = contact['id'] as String;
                 if (addrZ1.text.trim().isNotEmpty) {
@@ -216,7 +308,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 }
               } catch (e) {
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_errorMessage(e))),
+                  );
                 }
               }
             },
@@ -230,6 +324,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
+    final canWrite = widget.api.hasPermission('contacts.write');
     return Scaffold(
       appBar: AppBar(
         backgroundColor: color,
@@ -237,7 +332,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
         title: const Text('Kontakte'),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(onPressed: _openCreateDialog, child: const Icon(Icons.add)),
+      floatingActionButton: canWrite
+          ? FloatingActionButton(onPressed: _openCreateDialog, child: const Icon(Icons.add))
+          : null,
       body: Column(
         children: [
           Padding(
@@ -266,9 +363,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       hint: const Text('Alle'),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final r in (rollen.isEmpty? ['customer','supplier','both','other']:rollen)) DropdownMenuItem<String?>(value: r, child: Text(r)),
+                        for (final r in (rollen.isEmpty? ['customer','supplier','partner','both','other']:rollen)) DropdownMenuItem<String?>(value: r, child: Text(_roleLabel(r))),
                       ],
                       onChanged: (v){ setState(()=> filterRolle = v); _reload(); },
+                      underline: const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 160,
+                  child: InputDecorator(
+                    decoration: const InputDecoration(isDense: true, labelText: 'Status'),
+                    child: DropdownButton<String?>(
+                      isExpanded: true,
+                      value: filterStatus,
+                      hint: const Text('Alle'),
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
+                        for (final s in (statuses.isEmpty? ['lead','active','inactive','blocked']:statuses)) DropdownMenuItem<String?>(value: s, child: Text(_statusLabel(s))),
+                      ],
+                      onChanged: (v){ setState(()=> filterStatus = v); _reload(); },
                       underline: const SizedBox.shrink(),
                     ),
                   ),
@@ -284,7 +399,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       hint: const Text('Alle'),
                       items: [
                         const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final t in (typen.isEmpty? ['org','person']:typen)) DropdownMenuItem<String?>(value: t, child: Text(t)),
+                        for (final t in (typen.isEmpty? ['org','person']:typen)) DropdownMenuItem<String?>(value: t, child: Text(_typeLabel(t))),
                       ],
                       onChanged: (v){ setState(()=> filterTyp = v); _reload(); },
                       underline: const SizedBox.shrink(),
@@ -306,7 +421,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   return ListTile(
                     leading: Icon(typ=='person'? Icons.person : Icons.apartment),
                     title: Text((c['name'] ?? '').toString()),
-                    subtitle: Text('${c['email'] ?? ''}  •  ${c['telefon'] ?? ''}  •  ${rolle.isNotEmpty? rolle : typ}'),
+                    subtitle: Text('${c['email'] ?? ''}  •  ${c['telefon'] ?? ''}  •  ${rolle.isNotEmpty? _roleLabel(rolle) : _typeLabel(typ)}  •  ${_statusLabel((c['status'] ?? 'active').toString())}'),
                     onTap: () {
                       Navigator.of(context).push(MaterialPageRoute(builder: (_) => ContactDetailScreen(api: widget.api, id: c['id'] as String)))
                         .then((_) => _reload());

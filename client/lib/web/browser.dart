@@ -16,3 +16,12 @@ Future<PickedFile?> pickFile({String? accept}) async {
 
 void downloadUrl(String url, {String? filename}) => impl.downloadUrl(url, filename: filename);
 
+void downloadBytes(Uint8List bytes, {required String filename, String contentType = 'application/octet-stream'}) =>
+    impl.downloadBytes(bytes, filename: filename, contentType: contentType);
+
+String? readStorage(String key) => impl.readStorage(key);
+
+void writeStorage(String key, String value) => impl.writeStorage(key, value);
+
+void removeStorage(String key) => impl.removeStorage(key);
+

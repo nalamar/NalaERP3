@@ -40,7 +40,7 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
             if m, e := db.ConnectMongo(ctx, cfg.MongoURI); e == nil { mgConn = m } else { err = e }
         }
         if rdConn == nil {
-            if r, e := db.ConnectRedis(ctx, cfg.RedisAddr, cfg.RedisPass, 0); e == nil { rdConn = r } else { err = e }
+            if r, e := db.ConnectRedis(ctx, cfg.RedisAddr, cfg.RedisPass, cfg.RedisDB); e == nil { rdConn = r } else { err = e }
         }
         if pgConn != nil && mgConn != nil && rdConn != nil { break }
         time.Sleep(1500 * time.Millisecond)

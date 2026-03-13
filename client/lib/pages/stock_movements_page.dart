@@ -178,17 +178,24 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final canWrite = widget.api.hasPermission('stock_movements.write');
     return Scaffold(
       floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
-      floatingActionButton: FloatingActionButton(onPressed: _openDialog, child: const Icon(Icons.add)),
+      floatingActionButton: canWrite
+          ? FloatingActionButton(onPressed: _openDialog, child: const Icon(Icons.add))
+          : null,
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text('Bestandsbewegungen', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            SizedBox(height: 8),
-            Text('Neue Bewegung über den + Button unten links erfassen.'),
+          children: [
+            const Text('Bestandsbewegungen', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Text(
+              canWrite
+                  ? 'Neue Bewegung über den + Button unten links erfassen.'
+                  : 'Für diesen Benutzer ist nur die Ansicht freigeschaltet.',
+            ),
           ],
         ),
       ),

@@ -30,6 +30,47 @@ Deutschsprachiges ERP für die Metallbau-Branche. Client-Server-Architektur mit 
 - Versionen: Aktuelle Hauptversionen (Go 1.24, Postgres 17, Mongo 7, Redis 7).
 - Nächste Schritte: Materialverwaltung Domainmodell + REST-Endpunkte, DB-Schemata (Migrations), Uploads (Mongo GridFS), Auth (JWT + Redis), Tests.
 
+## API-Integrationstests
+
+Für die ersten API-Integrationstests gibt es eine separate Compose-Umgebung in `docker-compose.test.yml`.
+
+1. Test-Abhängigkeiten starten:
+
+```bash
+docker compose -f docker-compose.test.yml up -d
+```
+
+2. Test-Umgebung setzen:
+
+```bash
+set NALA_INTEGRATION=1
+set TEST_POSTGRES_DSN=postgres://nala:secret@localhost:55432/nalaerp_test?sslmode=disable
+set TEST_MONGO_URI=mongodb://localhost:57017
+set TEST_MONGO_DB=nalaerp_test
+set TEST_REDIS_ADDR=localhost:56379
+```
+
+3. Tests ausführen:
+
+```bash
+cd server
+go test ./internal/http ./internal/...
+```
+
+Aktuell ist der erste End-to-End-Check für `GET /readyz` und `GET /livez` vorbereitet. Weitere API-Integrationstests sollten auf demselben Helper unter `server/internal/testutil` aufsetzen.
+
+## CI
+
+Eine erste GitHub-Actions-Pipeline liegt unter `.github/workflows/ci.yml`.
+
+- `Server`: prüft Go-Formatierung, führt `go test ./...` aus und baut `./cmd/api`.
+- `Integration`: startet `docker-compose.test.yml`, setzt `NALA_INTEGRATION=1` plus die `TEST_*`-Variablen und führt die HTTP-Integrationstests aus.
+- `Client`: führt `flutter analyze`, `flutter test` und `flutter build web --release --no-wasm-dry-run` aus.
+- `Docker`: baut `server/Dockerfile` und `client/Dockerfile` in CI einmal vollständig durch, ohne Images zu veröffentlichen.
+
+Die Compose-basierten API-Integrationstests laufen damit bewusst getrennt vom schnellen Basis-Serverjob, damit Unit- und Integrationsfeedback unabhängig bleiben.
+Zusätzlich erkennt die Pipeline geänderte Pfade vorab und startet Server-, Client-, Integrations- und Docker-Jobs nur dann, wenn die jeweils relevanten Dateien betroffen sind.
+
 ## Dokumente (Upload/Download)
 
 Dokumente werden in MongoDB GridFS (Bucket `fs`) gespeichert und in Postgres über die Tabelle `material_documents` mit Materialien verknüpft.

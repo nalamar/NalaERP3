@@ -14,6 +14,9 @@ type Config struct {
     RedisAddr    string
     RedisDB      int
     RedisPass    string
+    JWTSecret    string
+    AccessTokenTTLMinutes int
+    SessionTTLHours int
 
     // Image conversion settings
     EmfPngDPI    int
@@ -44,7 +47,24 @@ func Load() *Config {
     cfg.MongoDB = getenv("MONGO_DB", "nalaerp")
     cfg.RedisAddr = getenv("REDIS_ADDR", "redis:6379")
     cfg.RedisPass = getenv("REDIS_PASSWORD", "")
-    // Redis DB Index optional; Standard 0 – einfach über Env weglasssen
+    if v := os.Getenv("REDIS_DB"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+            cfg.RedisDB = n
+        }
+    }
+    cfg.JWTSecret = getenv("JWT_SECRET", "dev-secret-change-me")
+    cfg.AccessTokenTTLMinutes = 15
+    if v := os.Getenv("ACCESS_TOKEN_TTL_MINUTES"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            cfg.AccessTokenTTLMinutes = n
+        }
+    }
+    cfg.SessionTTLHours = 12
+    if v := os.Getenv("SESSION_TTL_HOURS"); v != "" {
+        if n, err := strconv.Atoi(v); err == nil && n > 0 {
+            cfg.SessionTTLHours = n
+        }
+    }
     // EMF->PNG DPI (Standard 300)
     if v := os.Getenv("EMF_PNG_DPI"); v != "" {
         if n, err := strconv.Atoi(v); err == nil && n > 0 {
