@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../web/browser.dart' as browser;
 import 'dart:convert';
+import 'quotes_page.dart';
 
 String _projectErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
   if (error is ApiException) {
@@ -318,7 +319,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           if (widget.canWrite)
             FilledButton.icon(onPressed: () {/* TODO: Bestellung */}, icon: const Icon(Icons.shopping_cart_checkout_rounded), label: const Text('Bestellung')),
           const SizedBox(height: 8),
-          FilledButton.icon(onPressed: null, icon: const Icon(Icons.request_quote_rounded), label: const Text('Rechnung schreiben (bald)')),
+          if (widget.api.hasPermission('quotes.write'))
+            FilledButton.icon(onPressed: _openQuoteCreateFlow, icon: const Icon(Icons.add_chart_rounded), label: const Text('Angebot erfassen')),
+          if (widget.api.hasPermission('quotes.write'))
+            const SizedBox(height: 8),
+          FilledButton.icon(onPressed: _downloadQuotePdf, icon: const Icon(Icons.request_quote_rounded), label: const Text('Angebot PDF')),
           const SizedBox(height: 24),
           const Text('Weitere Links', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
@@ -343,6 +348,37 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     if (res == null) return;
     try { await widget.api.createPhase(widget.project['id'] as String, res); await _load(); }
     catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
+  }
+
+  Future<void> _downloadQuotePdf() async {
+    try {
+      final number = (widget.project['nummer']?.toString() ?? '').trim();
+      await widget.api.downloadProjectQuotePdf(
+        widget.project['id'] as String,
+        filename: number.isEmpty ? null : 'Angebot_$number.pdf',
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Angebots-PDF wird heruntergeladen')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Angebots-PDF konnte nicht erzeugt werden'))),
+      );
+    }
+  }
+
+  Future<void> _openQuoteCreateFlow() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QuotesPage(
+          api: widget.api,
+          initialProjectId: widget.project['id']?.toString(),
+          openCreateOnStart: true,
+        ),
+      ),
+    );
   }
 }
 

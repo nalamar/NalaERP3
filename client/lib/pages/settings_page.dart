@@ -63,6 +63,32 @@ class _SettingsPageState extends State<SettingsPage> {
   String? poLogoDocId;
   String? poBgFirstDocId;
   String? poBgOtherDocId;
+  final invoiceHeaderCtrl = TextEditingController();
+  final invoiceFooterCtrl = TextEditingController();
+  final invoiceTopFirstCtrl = TextEditingController(text: '30');
+  final invoiceTopOtherCtrl = TextEditingController(text: '20');
+  String invoiceEffectiveHeaderText = '';
+  String invoiceEffectiveFooterText = '';
+  String invoiceEffectiveDisplayName = '';
+  String invoiceEffectiveClaim = '';
+  String invoiceEffectivePrimaryColor = '';
+  String invoiceEffectiveAccentColor = '';
+  String? invoiceLogoDocId;
+  String? invoiceBgFirstDocId;
+  String? invoiceBgOtherDocId;
+  final quoteHeaderCtrl = TextEditingController();
+  final quoteFooterCtrl = TextEditingController();
+  final quoteTopFirstCtrl = TextEditingController(text: '30');
+  final quoteTopOtherCtrl = TextEditingController(text: '20');
+  String quoteEffectiveHeaderText = '';
+  String quoteEffectiveFooterText = '';
+  String quoteEffectiveDisplayName = '';
+  String quoteEffectiveClaim = '';
+  String quoteEffectivePrimaryColor = '';
+  String quoteEffectiveAccentColor = '';
+  String? quoteLogoDocId;
+  String? quoteBgFirstDocId;
+  String? quoteBgOtherDocId;
 
   // Einheiten
   List<Map<String, dynamic>> _units = [];
@@ -89,7 +115,9 @@ class _SettingsPageState extends State<SettingsPage> {
       prjPatternCtrl.text = (pcfg['pattern'] ?? 'PRJ-{YYYY}-{NNNN}').toString();
       await _updatePreviewPO();
       await _updatePreviewPRJ();
-      await _loadPdfTemplate();
+      await _loadPdfTemplate('purchase_order');
+      await _loadPdfTemplate('invoice_out');
+      await _loadPdfTemplate('quote');
       await _loadUnits();
     } catch (e) { /* ignore */ }
     setState(()=> loading = false);
@@ -422,36 +450,106 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _loadPdfTemplate() async {
+  Future<void> _loadPdfTemplate(String entity) async {
     try {
-      final t = await widget.api.getPdfTemplate('purchase_order');
-      poHeaderCtrl.text = (t['header_text'] ?? '').toString();
-      poFooterCtrl.text = (t['footer_text'] ?? '').toString();
+      final t = await widget.api.getPdfTemplate(entity);
+      final headerText = (t['header_text'] ?? '').toString();
+      final footerText = (t['footer_text'] ?? '').toString();
       final tf = double.tryParse('${t['top_first_mm'] ?? '30'}') ?? 30;
       final to = double.tryParse('${t['top_other_mm'] ?? '20'}') ?? 20;
-      poTopFirstCtrl.text = tf.toStringAsFixed(0);
-      poTopOtherCtrl.text = to.toStringAsFixed(0);
-      poEffectiveHeaderText = (t['effective_header_text'] ?? '').toString();
-      poEffectiveFooterText = (t['effective_footer_text'] ?? '').toString();
-      poEffectiveDisplayName = (t['effective_display_name'] ?? '').toString();
-      poEffectiveClaim = (t['effective_claim'] ?? '').toString();
-      poEffectivePrimaryColor =
-          (t['effective_primary_color'] ?? '').toString();
-      poEffectiveAccentColor = (t['effective_accent_color'] ?? '').toString();
-      poLogoDocId = (t['logo_doc_id'] as String?);
-      poBgFirstDocId = (t['bg_first_doc_id'] as String?);
-      poBgOtherDocId = (t['bg_other_doc_id'] as String?);
+      if (entity == 'purchase_order') {
+        poHeaderCtrl.text = headerText;
+        poFooterCtrl.text = footerText;
+        poTopFirstCtrl.text = tf.toStringAsFixed(0);
+        poTopOtherCtrl.text = to.toStringAsFixed(0);
+        poEffectiveHeaderText = (t['effective_header_text'] ?? '').toString();
+        poEffectiveFooterText = (t['effective_footer_text'] ?? '').toString();
+        poEffectiveDisplayName = (t['effective_display_name'] ?? '').toString();
+        poEffectiveClaim = (t['effective_claim'] ?? '').toString();
+        poEffectivePrimaryColor =
+            (t['effective_primary_color'] ?? '').toString();
+        poEffectiveAccentColor = (t['effective_accent_color'] ?? '').toString();
+        poLogoDocId = t['logo_doc_id'] as String?;
+        poBgFirstDocId = t['bg_first_doc_id'] as String?;
+        poBgOtherDocId = t['bg_other_doc_id'] as String?;
+      } else if (entity == 'invoice_out') {
+        invoiceHeaderCtrl.text = headerText;
+        invoiceFooterCtrl.text = footerText;
+        invoiceTopFirstCtrl.text = tf.toStringAsFixed(0);
+        invoiceTopOtherCtrl.text = to.toStringAsFixed(0);
+        invoiceEffectiveHeaderText =
+            (t['effective_header_text'] ?? '').toString();
+        invoiceEffectiveFooterText =
+            (t['effective_footer_text'] ?? '').toString();
+        invoiceEffectiveDisplayName =
+            (t['effective_display_name'] ?? '').toString();
+        invoiceEffectiveClaim = (t['effective_claim'] ?? '').toString();
+        invoiceEffectivePrimaryColor =
+            (t['effective_primary_color'] ?? '').toString();
+        invoiceEffectiveAccentColor =
+            (t['effective_accent_color'] ?? '').toString();
+        invoiceLogoDocId = t['logo_doc_id'] as String?;
+        invoiceBgFirstDocId = t['bg_first_doc_id'] as String?;
+        invoiceBgOtherDocId = t['bg_other_doc_id'] as String?;
+      } else if (entity == 'quote') {
+        quoteHeaderCtrl.text = headerText;
+        quoteFooterCtrl.text = footerText;
+        quoteTopFirstCtrl.text = tf.toStringAsFixed(0);
+        quoteTopOtherCtrl.text = to.toStringAsFixed(0);
+        quoteEffectiveHeaderText = (t['effective_header_text'] ?? '').toString();
+        quoteEffectiveFooterText = (t['effective_footer_text'] ?? '').toString();
+        quoteEffectiveDisplayName = (t['effective_display_name'] ?? '').toString();
+        quoteEffectiveClaim = (t['effective_claim'] ?? '').toString();
+        quoteEffectivePrimaryColor =
+            (t['effective_primary_color'] ?? '').toString();
+        quoteEffectiveAccentColor =
+            (t['effective_accent_color'] ?? '').toString();
+        quoteLogoDocId = t['logo_doc_id'] as String?;
+        quoteBgFirstDocId = t['bg_first_doc_id'] as String?;
+        quoteBgOtherDocId = t['bg_other_doc_id'] as String?;
+      }
       if (mounted) setState((){});
     } catch (_) {
       // ignore
     }
   }
 
-  Future<void> _savePdfTemplate() async {
+  Future<void> _savePdfTemplate(String entity) async {
     try {
-      final tf = double.tryParse(poTopFirstCtrl.text.trim().replaceAll(',', '.')) ?? 30;
-      final to = double.tryParse(poTopOtherCtrl.text.trim().replaceAll(',', '.')) ?? 20;
-      await widget.api.updatePdfTemplate('purchase_order', headerText: poHeaderCtrl.text, footerText: poFooterCtrl.text, topFirstMm: tf, topOtherMm: to);
+      final isPurchaseOrder = entity == 'purchase_order';
+      final isInvoiceOut = entity == 'invoice_out';
+      final headerCtrl = isPurchaseOrder
+          ? poHeaderCtrl
+          : isInvoiceOut
+              ? invoiceHeaderCtrl
+              : quoteHeaderCtrl;
+      final footerCtrl = isPurchaseOrder
+          ? poFooterCtrl
+          : isInvoiceOut
+              ? invoiceFooterCtrl
+              : quoteFooterCtrl;
+      final topFirstCtrl = isPurchaseOrder
+          ? poTopFirstCtrl
+          : isInvoiceOut
+              ? invoiceTopFirstCtrl
+              : quoteTopFirstCtrl;
+      final topOtherCtrl = isPurchaseOrder
+          ? poTopOtherCtrl
+          : isInvoiceOut
+              ? invoiceTopOtherCtrl
+              : quoteTopOtherCtrl;
+      final tf =
+          double.tryParse(topFirstCtrl.text.trim().replaceAll(',', '.')) ?? 30;
+      final to =
+          double.tryParse(topOtherCtrl.text.trim().replaceAll(',', '.')) ?? 20;
+      await widget.api.updatePdfTemplate(
+        entity,
+        headerText: headerCtrl.text,
+        footerText: footerCtrl.text,
+        topFirstMm: tf,
+        topOtherMm: to,
+      );
+      await _loadPdfTemplate(entity);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF-Template gespeichert')));
       }
@@ -462,16 +560,26 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _pickAndUpload(String kind) async {
+  Future<void> _pickAndUpload(String entity, String kind) async {
     final picked = await browser.pickFile(accept: 'image/*,application/pdf');
     if (picked == null) return;
     try {
-      final res = await widget.api.uploadPdfImage('purchase_order', kind, picked.filename, picked.bytes, contentType: picked.contentType);
+      final res = await widget.api.uploadPdfImage(entity, kind, picked.filename, picked.bytes, contentType: picked.contentType);
       final id = (res['document_id'] ?? '').toString();
       setState((){
-        if (kind == 'logo') poLogoDocId = id;
-        if (kind == 'bg-first') poBgFirstDocId = id;
-        if (kind == 'bg-other') poBgOtherDocId = id;
+        if (entity == 'purchase_order') {
+          if (kind == 'logo') poLogoDocId = id;
+          if (kind == 'bg-first') poBgFirstDocId = id;
+          if (kind == 'bg-other') poBgOtherDocId = id;
+        } else if (entity == 'invoice_out') {
+          if (kind == 'logo') invoiceLogoDocId = id;
+          if (kind == 'bg-first') invoiceBgFirstDocId = id;
+          if (kind == 'bg-other') invoiceBgOtherDocId = id;
+        } else if (entity == 'quote') {
+          if (kind == 'logo') quoteLogoDocId = id;
+          if (kind == 'bg-first') quoteBgFirstDocId = id;
+          if (kind == 'bg-other') quoteBgOtherDocId = id;
+        }
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
     } catch (e) {
@@ -479,15 +587,25 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _deleteImage(String kind) async {
+  Future<void> _deleteImage(String entity, String kind) async {
     try {
-      await widget.api.deletePdfImage('purchase_order', kind);
+      await widget.api.deletePdfImage(entity, kind);
       setState((){
-        if (kind == 'logo') poLogoDocId = null;
-        if (kind == 'bg-first') poBgFirstDocId = null;
-        if (kind == 'bg-other') poBgOtherDocId = null;
+        if (entity == 'purchase_order') {
+          if (kind == 'logo') poLogoDocId = null;
+          if (kind == 'bg-first') poBgFirstDocId = null;
+          if (kind == 'bg-other') poBgOtherDocId = null;
+        } else if (entity == 'invoice_out') {
+          if (kind == 'logo') invoiceLogoDocId = null;
+          if (kind == 'bg-first') invoiceBgFirstDocId = null;
+          if (kind == 'bg-other') invoiceBgOtherDocId = null;
+        } else if (entity == 'quote') {
+          if (kind == 'logo') quoteLogoDocId = null;
+          if (kind == 'bg-first') quoteBgFirstDocId = null;
+          if (kind == 'bg-other') quoteBgOtherDocId = null;
+        }
       });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bild entfernt')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bild entfernt')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
@@ -810,83 +928,61 @@ class _SettingsPageState extends State<SettingsPage> {
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Bestellungen (purchase_order)'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: poHeaderCtrl,
-                            maxLines: 3,
-                            decoration: const InputDecoration(labelText: 'Kopftext', hintText: 'z. B. Firmenname, Adresse, Kontaktdaten'),
-                          ),
-                          if (poEffectiveHeaderText.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektiver Kopftext: $poEffectiveHeaderText',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          if (poEffectiveDisplayName.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektiver Brand-Name: $poEffectiveDisplayName',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          if (poEffectiveClaim.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektiver Claim: $poEffectiveClaim',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: poFooterCtrl,
-                            maxLines: 2,
-                            decoration: const InputDecoration(labelText: 'Fußtext', hintText: 'z. B. Bankdaten, USt-IdNr.'),
-                          ),
-                          if (poEffectiveFooterText.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektiver Fußtext: $poEffectiveFooterText',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          if (poEffectivePrimaryColor.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektive Primärfarbe: $poEffectivePrimaryColor',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          if (poEffectiveAccentColor.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              'Effektive Akzentfarbe: $poEffectiveAccentColor',
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ],
-                          const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(child: TextField(controller: poTopFirstCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Seite 1 (mm)'), keyboardType: TextInputType.number)),
-                            const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: poTopOtherCtrl, decoration: const InputDecoration(labelText: 'Start Höhe Folgeseiten (mm)'), keyboardType: TextInputType.number)),
-                          ]),
-                          const SizedBox(height: 12),
-                          Wrap(spacing: 12, runSpacing: 8, children: [
-                            _imageRow('Logo', poLogoDocId, onUpload: () => _pickAndUpload('logo')),
-                            _imageRow('Hintergrund (Seite 1)', poBgFirstDocId, onUpload: () => _pickAndUpload('bg-first')),
-                            _imageRow('Hintergrund (Folge)', poBgOtherDocId, onUpload: () => _pickAndUpload('bg-other')),
-                          ]),
-                          const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(onPressed: _savePdfTemplate, icon: const Icon(Icons.save), label: const Text('Speichern')),
-                          ),
-                        ],
-                      ),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _buildPdfTemplateCard(
+                          title: 'Bestellungen (purchase_order)',
+                          entity: 'purchase_order',
+                          headerCtrl: poHeaderCtrl,
+                          footerCtrl: poFooterCtrl,
+                          topFirstCtrl: poTopFirstCtrl,
+                          topOtherCtrl: poTopOtherCtrl,
+                          effectiveHeaderText: poEffectiveHeaderText,
+                          effectiveFooterText: poEffectiveFooterText,
+                          effectiveDisplayName: poEffectiveDisplayName,
+                          effectiveClaim: poEffectiveClaim,
+                          effectivePrimaryColor: poEffectivePrimaryColor,
+                          effectiveAccentColor: poEffectiveAccentColor,
+                          logoDocId: poLogoDocId,
+                          bgFirstDocId: poBgFirstDocId,
+                          bgOtherDocId: poBgOtherDocId,
+                        ),
+                        const Divider(height: 32),
+                        _buildPdfTemplateCard(
+                          title: 'Ausgangsrechnungen (invoice_out)',
+                          entity: 'invoice_out',
+                          headerCtrl: invoiceHeaderCtrl,
+                          footerCtrl: invoiceFooterCtrl,
+                          topFirstCtrl: invoiceTopFirstCtrl,
+                          topOtherCtrl: invoiceTopOtherCtrl,
+                          effectiveHeaderText: invoiceEffectiveHeaderText,
+                          effectiveFooterText: invoiceEffectiveFooterText,
+                          effectiveDisplayName: invoiceEffectiveDisplayName,
+                          effectiveClaim: invoiceEffectiveClaim,
+                          effectivePrimaryColor: invoiceEffectivePrimaryColor,
+                          effectiveAccentColor: invoiceEffectiveAccentColor,
+                          logoDocId: invoiceLogoDocId,
+                          bgFirstDocId: invoiceBgFirstDocId,
+                          bgOtherDocId: invoiceBgOtherDocId,
+                        ),
+                        const Divider(height: 32),
+                        _buildPdfTemplateCard(
+                          title: 'Angebote (quote)',
+                          entity: 'quote',
+                          headerCtrl: quoteHeaderCtrl,
+                          footerCtrl: quoteFooterCtrl,
+                          topFirstCtrl: quoteTopFirstCtrl,
+                          topOtherCtrl: quoteTopOtherCtrl,
+                          effectiveHeaderText: quoteEffectiveHeaderText,
+                          effectiveFooterText: quoteEffectiveFooterText,
+                          effectiveDisplayName: quoteEffectiveDisplayName,
+                          effectiveClaim: quoteEffectiveClaim,
+                          effectivePrimaryColor: quoteEffectivePrimaryColor,
+                          effectiveAccentColor: quoteEffectiveAccentColor,
+                          logoDocId: quoteLogoDocId,
+                          bgFirstDocId: quoteBgFirstDocId,
+                          bgOtherDocId: quoteBgOtherDocId,
+                        ),
+                      ]),
                     ),
                   ),
                 ],
@@ -898,7 +994,142 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _imageRow(String label, String? docId, {required VoidCallback onUpload}) {
+  Widget _buildPdfTemplateCard({
+    required String title,
+    required String entity,
+    required TextEditingController headerCtrl,
+    required TextEditingController footerCtrl,
+    required TextEditingController topFirstCtrl,
+    required TextEditingController topOtherCtrl,
+    required String effectiveHeaderText,
+    required String effectiveFooterText,
+    required String effectiveDisplayName,
+    required String effectiveClaim,
+    required String effectivePrimaryColor,
+    required String effectiveAccentColor,
+    required String? logoDocId,
+    required String? bgFirstDocId,
+    required String? bgOtherDocId,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title),
+        const SizedBox(height: 8),
+        TextField(
+          controller: headerCtrl,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            labelText: 'Kopftext',
+            hintText: 'z. B. Firmenname, Adresse, Kontaktdaten',
+          ),
+        ),
+        if (effectiveHeaderText.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektiver Kopftext: $effectiveHeaderText',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        if (effectiveDisplayName.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektiver Brand-Name: $effectiveDisplayName',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        if (effectiveClaim.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektiver Claim: $effectiveClaim',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: 8),
+        TextField(
+          controller: footerCtrl,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Fußtext',
+            hintText: 'z. B. Bankdaten, USt-IdNr.',
+          ),
+        ),
+        if (effectiveFooterText.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektiver Fußtext: $effectiveFooterText',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        if (effectivePrimaryColor.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektive Primärfarbe: $effectivePrimaryColor',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        if (effectiveAccentColor.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            'Effektive Akzentfarbe: $effectiveAccentColor',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(
+            child: TextField(
+              controller: topFirstCtrl,
+              decoration:
+                  const InputDecoration(labelText: 'Start Höhe Seite 1 (mm)'),
+              keyboardType: TextInputType.number,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: topOtherCtrl,
+              decoration: const InputDecoration(
+                  labelText: 'Start Höhe Folgeseiten (mm)'),
+              keyboardType: TextInputType.number,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Wrap(spacing: 12, runSpacing: 8, children: [
+          _imageRow(
+            'Logo',
+            logoDocId,
+            onUpload: () => _pickAndUpload(entity, 'logo'),
+            onDelete: () => _deleteImage(entity, 'logo'),
+          ),
+          _imageRow(
+            'Hintergrund (Seite 1)',
+            bgFirstDocId,
+            onUpload: () => _pickAndUpload(entity, 'bg-first'),
+            onDelete: () => _deleteImage(entity, 'bg-first'),
+          ),
+          _imageRow(
+            'Hintergrund (Folge)',
+            bgOtherDocId,
+            onUpload: () => _pickAndUpload(entity, 'bg-other'),
+            onDelete: () => _deleteImage(entity, 'bg-other'),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerRight,
+          child: FilledButton.icon(
+            onPressed: () => _savePdfTemplate(entity),
+            icon: const Icon(Icons.save),
+            label: const Text('Speichern'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _imageRow(String label, String? docId, {required VoidCallback onUpload, required VoidCallback onDelete}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -911,7 +1142,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(width: 8),
           TextButton.icon(onPressed: (){ widget.api.downloadDocument(docId, filename: 'preview'); }, icon: const Icon(Icons.visibility), label: const Text('Anzeigen')),
           const SizedBox(width: 8),
-          TextButton.icon(onPressed: (){ _deleteImage(_kindFromLabel(label)); }, icon: const Icon(Icons.delete), label: const Text('Entfernen')),
+          TextButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete), label: const Text('Entfernen')),
         ] else ...[
           const Text('— nicht gesetzt —'),
         ],
@@ -919,14 +1150,5 @@ class _SettingsPageState extends State<SettingsPage> {
         OutlinedButton.icon(onPressed: onUpload, icon: const Icon(Icons.upload), label: const Text('Hochladen')),
       ],
     );
-  }
-
-  String _kindFromLabel(String label) {
-    switch (label) {
-      case 'Logo': return 'logo';
-      case 'Hintergrund (Seite 1)': return 'bg-first';
-      case 'Hintergrund (Folge)': return 'bg-other';
-      default: return 'logo';
-    }
   }
 }

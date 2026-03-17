@@ -381,6 +381,119 @@ class ApiClient {
     );
   }
 
+  Future<List<dynamic>> listInvoicesOut({String? q, String? status, String? contactId, int? limit, int? offset}) async {
+    final qp = <String, String>{};
+    if (q != null && q.isNotEmpty) qp['q'] = q;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
+    if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/invoices-out', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> createInvoiceOut(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/invoices-out/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getInvoiceOut(String id) => _getJson('/api/v1/invoices-out/$id');
+
+  Future<Map<String, dynamic>> bookInvoiceOut(String id) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(_u('/api/v1/invoices-out/$id/book'), headers: headers),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> addInvoicePayment(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/invoices-out/$id/payments'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> listInvoicePayments(String id) => _getList('/api/v1/invoices-out/$id/payments');
+
+  Future<void> downloadInvoiceOutPdf(String id, {String? filename}) async {
+    final r = await _getBytesResponse('/api/v1/invoices-out/$id/pdf');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Rechnung_$id.pdf',
+      contentType: r.headers['content-type'] ?? 'application/pdf',
+    );
+  }
+
+  Future<List<dynamic>> listQuotes({String? q, String? status, String? contactId, String? projectId, int? limit, int? offset}) async {
+    final qp = <String, String>{};
+    if (q != null && q.isNotEmpty) qp['q'] = q;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
+    if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
+    if (projectId != null && projectId.isNotEmpty) qp['project_id'] = projectId;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/quotes', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> createQuote(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getQuote(String id) => _getJson('/api/v1/quotes/$id');
+
+  Future<Map<String, dynamic>> updateQuote(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/quotes/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateQuoteStatus(String id, String status) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$id/status'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'status': status}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<void> downloadQuotePdf(String id, {String? filename}) async {
+    final r = await _getBytesResponse('/api/v1/quotes/$id/pdf');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Angebot_$id.pdf',
+      contentType: r.headers['content-type'] ?? 'application/pdf',
+    );
+  }
+
   // -------- Projects --------
   Future<List<dynamic>> listProjects({String? q, String? status, int? limit, int? offset}) async {
     final qp = <String,String>{};
@@ -402,6 +515,14 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
   Future<Map<String, dynamic>> getProject(String id) => _getJson('/api/v1/projects/$id');
+  Future<void> downloadProjectQuotePdf(String id, {String? filename}) async {
+    final r = await _getBytesResponse('/api/v1/projects/$id/quote-pdf');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Angebot_$id.pdf',
+      contentType: r.headers['content-type'] ?? 'application/pdf',
+    );
+  }
 
   Future<Map<String, dynamic>> importLogikalProject(String filename, Uint8List bytes, {String? contentType}) async {
     final uri = _u('/api/v1/projects/import/logikal');

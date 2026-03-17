@@ -393,3 +393,182 @@ func TestCompanyBrandingSettingsFlow(t *testing.T) {
 		t.Fatalf("expected footer text, got %q", updated.DocumentFooterText)
 	}
 }
+
+func TestPDFTemplateSettingsFlowForInvoiceOutUsesBrandingFallbacks(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-pdf@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-pdf@example.com", "Secret123!")
+
+	brandingBody := []byte(`{
+		"display_name":"NALA Metallbau",
+		"claim":"Praezision in Metall",
+		"primary_color":"#1f4b99",
+		"accent_color":"d97706",
+		"document_header_text":"Globaler Kopfbereich",
+		"document_footer_text":"Globaler Fussbereich"
+	}`)
+	brandingReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/company/branding", bytes.NewReader(brandingBody))
+	brandingReq.Header.Set("Authorization", "Bearer "+accessToken)
+	brandingReq.Header.Set("Content-Type", "application/json")
+	brandingRec := httptest.NewRecorder()
+	handler.ServeHTTP(brandingRec, brandingReq)
+	if brandingRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for branding update, got %d with body %s", brandingRec.Code, brandingRec.Body.String())
+	}
+
+	templateBody := []byte(`{
+		"header_text":"",
+		"footer_text":"",
+		"top_first_mm":42,
+		"top_other_mm":24
+	}`)
+	templateReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/pdf/invoice_out", bytes.NewReader(templateBody))
+	templateReq.Header.Set("Authorization", "Bearer "+accessToken)
+	templateReq.Header.Set("Content-Type", "application/json")
+	templateRec := httptest.NewRecorder()
+	handler.ServeHTTP(templateRec, templateReq)
+	if templateRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for pdf template update, got %d with body %s", templateRec.Code, templateRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/pdf/invoice_out", nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invoice_out pdf template, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var payload struct {
+		Entity                string  `json:"entity"`
+		HeaderText            string  `json:"header_text"`
+		FooterText            string  `json:"footer_text"`
+		TopFirstMM            float64 `json:"top_first_mm"`
+		TopOtherMM            float64 `json:"top_other_mm"`
+		EffectiveHeaderText   string  `json:"effective_header_text"`
+		EffectiveFooterText   string  `json:"effective_footer_text"`
+		EffectiveDisplayName  string  `json:"effective_display_name"`
+		EffectiveClaim        string  `json:"effective_claim"`
+		EffectivePrimaryColor string  `json:"effective_primary_color"`
+		EffectiveAccentColor  string  `json:"effective_accent_color"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode pdf template response: %v", err)
+	}
+	if payload.Entity != "invoice_out" {
+		t.Fatalf("expected entity invoice_out, got %q", payload.Entity)
+	}
+	if payload.HeaderText != "" || payload.FooterText != "" {
+		t.Fatalf("expected raw template texts to stay empty, got header=%q footer=%q", payload.HeaderText, payload.FooterText)
+	}
+	if payload.TopFirstMM != 42 || payload.TopOtherMM != 24 {
+		t.Fatalf("expected persisted top offsets, got %#v", payload)
+	}
+	if payload.EffectiveHeaderText != "Globaler Kopfbereich" {
+		t.Fatalf("expected branding header fallback, got %q", payload.EffectiveHeaderText)
+	}
+	if payload.EffectiveFooterText != "Globaler Fussbereich" {
+		t.Fatalf("expected branding footer fallback, got %q", payload.EffectiveFooterText)
+	}
+	if payload.EffectiveDisplayName != "NALA Metallbau" {
+		t.Fatalf("expected display name fallback, got %q", payload.EffectiveDisplayName)
+	}
+	if payload.EffectiveClaim != "Praezision in Metall" {
+		t.Fatalf("expected claim fallback, got %q", payload.EffectiveClaim)
+	}
+	if payload.EffectivePrimaryColor != "#1F4B99" {
+		t.Fatalf("expected normalized primary color, got %q", payload.EffectivePrimaryColor)
+	}
+	if payload.EffectiveAccentColor != "#D97706" {
+		t.Fatalf("expected normalized accent color, got %q", payload.EffectiveAccentColor)
+	}
+}
+
+func TestPDFTemplateSettingsFlowForQuoteUsesBrandingFallbacks(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-pdf-quote@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-pdf-quote@example.com", "Secret123!")
+
+	brandingBody := []byte(`{
+		"display_name":"NALA Metallbau",
+		"claim":"Praezision in Metall",
+		"primary_color":"#0f766e",
+		"accent_color":"f59e0b",
+		"document_header_text":"Angebots-Kopf global",
+		"document_footer_text":"Angebots-Fuss global"
+	}`)
+	brandingReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/company/branding", bytes.NewReader(brandingBody))
+	brandingReq.Header.Set("Authorization", "Bearer "+accessToken)
+	brandingReq.Header.Set("Content-Type", "application/json")
+	brandingRec := httptest.NewRecorder()
+	handler.ServeHTTP(brandingRec, brandingReq)
+	if brandingRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for branding update, got %d with body %s", brandingRec.Code, brandingRec.Body.String())
+	}
+
+	templateBody := []byte(`{
+		"header_text":"",
+		"footer_text":"",
+		"top_first_mm":38,
+		"top_other_mm":21
+	}`)
+	templateReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/pdf/quote", bytes.NewReader(templateBody))
+	templateReq.Header.Set("Authorization", "Bearer "+accessToken)
+	templateReq.Header.Set("Content-Type", "application/json")
+	templateRec := httptest.NewRecorder()
+	handler.ServeHTTP(templateRec, templateReq)
+	if templateRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for quote pdf template update, got %d with body %s", templateRec.Code, templateRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/pdf/quote", nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote pdf template, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var payload struct {
+		Entity                string  `json:"entity"`
+		TopFirstMM            float64 `json:"top_first_mm"`
+		TopOtherMM            float64 `json:"top_other_mm"`
+		EffectiveHeaderText   string  `json:"effective_header_text"`
+		EffectiveFooterText   string  `json:"effective_footer_text"`
+		EffectiveDisplayName  string  `json:"effective_display_name"`
+		EffectiveClaim        string  `json:"effective_claim"`
+		EffectivePrimaryColor string  `json:"effective_primary_color"`
+		EffectiveAccentColor  string  `json:"effective_accent_color"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode quote pdf template response: %v", err)
+	}
+	if payload.Entity != "quote" {
+		t.Fatalf("expected entity quote, got %q", payload.Entity)
+	}
+	if payload.TopFirstMM != 38 || payload.TopOtherMM != 21 {
+		t.Fatalf("expected persisted quote top offsets, got %#v", payload)
+	}
+	if payload.EffectiveHeaderText != "Angebots-Kopf global" {
+		t.Fatalf("expected quote branding header fallback, got %q", payload.EffectiveHeaderText)
+	}
+	if payload.EffectiveFooterText != "Angebots-Fuss global" {
+		t.Fatalf("expected quote branding footer fallback, got %q", payload.EffectiveFooterText)
+	}
+	if payload.EffectiveDisplayName != "NALA Metallbau" {
+		t.Fatalf("expected display name fallback, got %q", payload.EffectiveDisplayName)
+	}
+	if payload.EffectiveClaim != "Praezision in Metall" {
+		t.Fatalf("expected claim fallback, got %q", payload.EffectiveClaim)
+	}
+	if payload.EffectivePrimaryColor != "#0F766E" {
+		t.Fatalf("expected normalized primary color, got %q", payload.EffectivePrimaryColor)
+	}
+	if payload.EffectiveAccentColor != "#F59E0B" {
+		t.Fatalf("expected normalized accent color, got %q", payload.EffectiveAccentColor)
+	}
+}

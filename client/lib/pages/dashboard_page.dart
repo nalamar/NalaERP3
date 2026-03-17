@@ -4,6 +4,7 @@ import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
+import 'quotes_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -44,6 +45,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProjectsPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('quotes.read'))
+        _DashCard(
+          title: 'Angebote',
+          icon: Icons.request_quote_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => QuotesPage(api: api),
               ),
             );
           },

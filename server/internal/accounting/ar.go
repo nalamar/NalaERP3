@@ -34,6 +34,7 @@ type InvoiceOut struct {
 	Number      *string            `json:"number,omitempty"`
 	Status      string             `json:"status"`
 	ContactID   string             `json:"contact_id"`
+	ContactName string             `json:"contact_name"`
 	InvoiceDate time.Time          `json:"invoice_date"`
 	DueDate     *time.Time         `json:"due_date,omitempty"`
 	Currency    string             `json:"currency"`
@@ -79,9 +80,11 @@ func (s *ARService) Get(ctx context.Context, id uuid.UUID) (*InvoiceOut, error) 
 	var inv InvoiceOut
 	var number sql.NullString
 	var due sql.NullTime
-	err := s.pg.QueryRow(ctx, `SELECT id, nummer, status, contact_id, invoice_date, due_date, currency, net_amount, tax_amount, gross_amount, paid_amount
-		FROM invoices_out WHERE id=$1`, id).Scan(
-		&inv.ID, &number, &inv.Status, &inv.ContactID, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount,
+	err := s.pg.QueryRow(ctx, `SELECT i.id, i.nummer, i.status, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.net_amount, i.tax_amount, i.gross_amount, i.paid_amount
+		FROM invoices_out i
+		LEFT JOIN contacts c ON c.id = i.contact_id
+		WHERE i.id=$1`, id).Scan(
+		&inv.ID, &number, &inv.Status, &inv.ContactID, &inv.ContactName, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount,
 	)
 	if err != nil {
 		return nil, err

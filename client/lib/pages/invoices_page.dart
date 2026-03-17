@@ -445,6 +445,12 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                           icon: const Icon(Icons.check),
                                           label: const Text('Buchen')),
                                     const SizedBox(width: 8),
+                                    IconButton(
+                                        onPressed: () => widget.api
+                                            .downloadInvoiceOutPdf(
+                                                sel['id'].toString()),
+                                        icon: const Icon(Icons.picture_as_pdf),
+                                        tooltip: 'PDF'),
                                     FilledButton.icon(
                                         onPressed: _addPayment,
                                         icon: const Icon(Icons.payments),

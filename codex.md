@@ -14,7 +14,7 @@ Regeln (niemals brechen):
 
 === CODEX STATE [START] ===
 Aktueller Hierarchy-Pfad: Epic 3 / Feature 2.1 / Task 5 / Subtask 3.2
-Erledigt: [Liste aller abgeschlossenen Leaves]
+Erledigt: [Liste aller abgeschlossenen Leaves, nur Nummerierung]
 Nächste zu bearbeitende Subtask: [genaue Beschreibung]
 Aktueller Git-Stand: [kurze Zusammenfassung der letzten Änderungen]
 Zusammenfassung für Fortsetzung (max 1200 Tokens): 
