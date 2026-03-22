@@ -10,6 +10,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"nalaerp3/internal/accounting"
+	"nalaerp3/internal/projects"
 	"nalaerp3/internal/settings"
 )
 
@@ -32,35 +34,61 @@ type QuoteInput struct {
 }
 
 type Quote struct {
-	ID          uuid.UUID        `json:"id"`
-	Number      string           `json:"number"`
-	ProjectID   string           `json:"project_id"`
-	ProjectName string           `json:"project_name"`
-	ContactID   string           `json:"contact_id"`
-	ContactName string           `json:"contact_name"`
-	Status      string           `json:"status"`
-	QuoteDate   time.Time        `json:"quote_date"`
-	ValidUntil  *time.Time       `json:"valid_until,omitempty"`
-	Currency    string           `json:"currency"`
-	Note        string           `json:"note"`
-	NetAmount   float64          `json:"net_amount"`
-	TaxAmount   float64          `json:"tax_amount"`
-	GrossAmount float64          `json:"gross_amount"`
-	Items       []QuoteItemInput `json:"items"`
+	ID                 uuid.UUID        `json:"id"`
+	Number             string           `json:"number"`
+	ProjectID          string           `json:"project_id"`
+	ProjectName        string           `json:"project_name"`
+	ContactID          string           `json:"contact_id"`
+	ContactName        string           `json:"contact_name"`
+	Status             string           `json:"status"`
+	AcceptedAt         *time.Time       `json:"accepted_at,omitempty"`
+	LinkedInvoiceOutID string           `json:"linked_invoice_out_id,omitempty"`
+	LinkedSalesOrderID string           `json:"linked_sales_order_id,omitempty"`
+	QuoteDate          time.Time        `json:"quote_date"`
+	ValidUntil         *time.Time       `json:"valid_until,omitempty"`
+	Currency           string           `json:"currency"`
+	Note               string           `json:"note"`
+	NetAmount          float64          `json:"net_amount"`
+	TaxAmount          float64          `json:"tax_amount"`
+	GrossAmount        float64          `json:"gross_amount"`
+	Items              []QuoteItemInput `json:"items"`
 }
 
 type QuoteListItem struct {
-	ID          uuid.UUID  `json:"id"`
-	Number      string     `json:"number"`
-	ProjectID   string     `json:"project_id"`
-	ProjectName string     `json:"project_name"`
-	ContactID   string     `json:"contact_id"`
-	ContactName string     `json:"contact_name"`
-	Status      string     `json:"status"`
-	QuoteDate   time.Time  `json:"quote_date"`
-	ValidUntil  *time.Time `json:"valid_until,omitempty"`
-	Currency    string     `json:"currency"`
-	GrossAmount float64    `json:"gross_amount"`
+	ID                 uuid.UUID  `json:"id"`
+	Number             string     `json:"number"`
+	ProjectID          string     `json:"project_id"`
+	ProjectName        string     `json:"project_name"`
+	ContactID          string     `json:"contact_id"`
+	ContactName        string     `json:"contact_name"`
+	Status             string     `json:"status"`
+	AcceptedAt         *time.Time `json:"accepted_at,omitempty"`
+	LinkedInvoiceOutID string     `json:"linked_invoice_out_id,omitempty"`
+	LinkedSalesOrderID string     `json:"linked_sales_order_id,omitempty"`
+	QuoteDate          time.Time  `json:"quote_date"`
+	ValidUntil         *time.Time `json:"valid_until,omitempty"`
+	Currency           string     `json:"currency"`
+	GrossAmount        float64    `json:"gross_amount"`
+}
+
+type ConvertToInvoiceInput struct {
+	InvoiceDate    time.Time  `json:"invoice_date"`
+	DueDate        *time.Time `json:"due_date,omitempty"`
+	RevenueAccount string     `json:"revenue_account"`
+}
+
+type ConvertToInvoiceResult struct {
+	Quote   *Quote                 `json:"quote"`
+	Invoice *accounting.InvoiceOut `json:"invoice"`
+}
+
+type AcceptInput struct {
+	ProjectStatus string `json:"project_status"`
+}
+
+type AcceptResult struct {
+	Quote   *Quote            `json:"quote"`
+	Project *projects.Project `json:"project,omitempty"`
 }
 
 type QuoteFilter struct {
@@ -158,12 +186,15 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Quote, error) {
 	var out Quote
 	var projectID sql.NullString
 	var validUntil sql.NullTime
-	err := s.pg.QueryRow(ctx, `SELECT q.id, q.nummer, q.project_id::text, COALESCE(p.name,''), q.contact_id, COALESCE(c.name,''), q.status, q.quote_date, q.valid_until, q.currency, COALESCE(q.note,''), q.net_amount, q.tax_amount, q.gross_amount
+	var acceptedAt sql.NullTime
+	var linkedInvoiceOutID uuid.NullUUID
+	var linkedSalesOrderID uuid.NullUUID
+	err := s.pg.QueryRow(ctx, `SELECT q.id, q.nummer, q.project_id::text, COALESCE(p.name,''), q.contact_id, COALESCE(c.name,''), q.status, q.accepted_at, q.linked_invoice_out_id, q.linked_sales_order_id, q.quote_date, q.valid_until, q.currency, COALESCE(q.note,''), q.net_amount, q.tax_amount, q.gross_amount
 		FROM quotes q
 		LEFT JOIN projects p ON p.id = q.project_id
 		LEFT JOIN contacts c ON c.id = q.contact_id
 		WHERE q.id=$1`, id).Scan(
-		&out.ID, &out.Number, &projectID, &out.ProjectName, &out.ContactID, &out.ContactName, &out.Status, &out.QuoteDate, &validUntil, &out.Currency, &out.Note, &out.NetAmount, &out.TaxAmount, &out.GrossAmount,
+		&out.ID, &out.Number, &projectID, &out.ProjectName, &out.ContactID, &out.ContactName, &out.Status, &acceptedAt, &linkedInvoiceOutID, &linkedSalesOrderID, &out.QuoteDate, &validUntil, &out.Currency, &out.Note, &out.NetAmount, &out.TaxAmount, &out.GrossAmount,
 	)
 	if err != nil {
 		return nil, err
@@ -174,6 +205,16 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Quote, error) {
 	if validUntil.Valid {
 		t := validUntil.Time
 		out.ValidUntil = &t
+	}
+	if acceptedAt.Valid {
+		t := acceptedAt.Time
+		out.AcceptedAt = &t
+	}
+	if linkedInvoiceOutID.Valid {
+		out.LinkedInvoiceOutID = linkedInvoiceOutID.UUID.String()
+	}
+	if linkedSalesOrderID.Valid {
+		out.LinkedSalesOrderID = linkedSalesOrderID.UUID.String()
 	}
 	rows, err := s.pg.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, id)
 	if err != nil {
@@ -217,7 +258,7 @@ func (s *Service) List(ctx context.Context, f QuoteFilter) ([]QuoteListItem, err
 	if len(conds) > 0 {
 		where = " WHERE " + strings.Join(conds, " AND ")
 	}
-	query := `SELECT q.id, q.nummer, COALESCE(q.project_id::text,''), COALESCE(p.name,''), q.contact_id, COALESCE(c.name,''), q.status, q.quote_date, q.valid_until, q.currency, q.gross_amount
+	query := `SELECT q.id, q.nummer, COALESCE(q.project_id::text,''), COALESCE(p.name,''), q.contact_id, COALESCE(c.name,''), q.status, q.accepted_at, q.linked_invoice_out_id, q.linked_sales_order_id, q.quote_date, q.valid_until, q.currency, q.gross_amount
 		FROM quotes q
 		LEFT JOIN projects p ON p.id = q.project_id
 		LEFT JOIN contacts c ON c.id = q.contact_id` + where + `
@@ -232,12 +273,25 @@ func (s *Service) List(ctx context.Context, f QuoteFilter) ([]QuoteListItem, err
 	for rows.Next() {
 		var item QuoteListItem
 		var validUntil sql.NullTime
-		if err := rows.Scan(&item.ID, &item.Number, &item.ProjectID, &item.ProjectName, &item.ContactID, &item.ContactName, &item.Status, &item.QuoteDate, &validUntil, &item.Currency, &item.GrossAmount); err != nil {
+		var acceptedAt sql.NullTime
+		var linkedInvoiceOutID uuid.NullUUID
+		var linkedSalesOrderID uuid.NullUUID
+		if err := rows.Scan(&item.ID, &item.Number, &item.ProjectID, &item.ProjectName, &item.ContactID, &item.ContactName, &item.Status, &acceptedAt, &linkedInvoiceOutID, &linkedSalesOrderID, &item.QuoteDate, &validUntil, &item.Currency, &item.GrossAmount); err != nil {
 			return nil, err
 		}
 		if validUntil.Valid {
 			t := validUntil.Time
 			item.ValidUntil = &t
+		}
+		if acceptedAt.Valid {
+			t := acceptedAt.Time
+			item.AcceptedAt = &t
+		}
+		if linkedInvoiceOutID.Valid {
+			item.LinkedInvoiceOutID = linkedInvoiceOutID.UUID.String()
+		}
+		if linkedSalesOrderID.Valid {
+			item.LinkedSalesOrderID = linkedSalesOrderID.UUID.String()
 		}
 		out = append(out, item)
 	}
@@ -251,10 +305,133 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string)
 	default:
 		return nil, errors.New("ungültiger Status")
 	}
-	if _, err := s.pg.Exec(ctx, `UPDATE quotes SET status=$2 WHERE id=$1`, id, status); err != nil {
+	var currentStatus string
+	var linkedInvoiceOutID uuid.NullUUID
+	var linkedSalesOrderID uuid.NullUUID
+	if err := s.pg.QueryRow(ctx, `SELECT status, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1`, id).Scan(&currentStatus, &linkedInvoiceOutID, &linkedSalesOrderID); err != nil {
 		return nil, err
 	}
+	if (linkedInvoiceOutID.Valid || linkedSalesOrderID.Valid) && currentStatus != status {
+		return nil, errors.New("Angebot mit Folgebeleg kann nicht manuell umgestellt werden")
+	}
+	if status == "accepted" {
+		if _, err := s.pg.Exec(ctx, `UPDATE quotes SET status=$2, accepted_at=COALESCE(accepted_at, now()) WHERE id=$1`, id, status); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := s.pg.Exec(ctx, `UPDATE quotes SET status=$2, accepted_at=NULL WHERE id=$1`, id, status); err != nil {
+			return nil, err
+		}
+	}
 	return s.Get(ctx, id)
+}
+
+func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput) (*ConvertToInvoiceResult, error) {
+	if arSvc == nil {
+		return nil, errors.New("invoice service fehlt")
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	var contactID string
+	var currency string
+	var linkedInvoiceOutID uuid.NullUUID
+	var linkedSalesOrderID uuid.NullUUID
+	err = tx.QueryRow(ctx, `SELECT status, contact_id, currency, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1 FOR UPDATE`, id).Scan(&status, &contactID, &currency, &linkedInvoiceOutID, &linkedSalesOrderID)
+	if err != nil {
+		return nil, err
+	}
+	if linkedInvoiceOutID.Valid {
+		return nil, errors.New("Angebot wurde bereits in eine Rechnung überführt")
+	}
+	if linkedSalesOrderID.Valid {
+		return nil, errors.New("Angebot wurde bereits in einen Auftrag überführt")
+	}
+	switch status {
+	case "sent", "accepted":
+	default:
+		return nil, errors.New("nur versendete oder angenommene Angebote können in Rechnungen überführt werden")
+	}
+	rows, err := tx.Query(ctx, `SELECT description, qty, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]accounting.InvoiceItemInput, 0)
+	revenueAccount := strings.TrimSpace(in.RevenueAccount)
+	if revenueAccount == "" {
+		revenueAccount = "8000"
+	}
+	for rows.Next() {
+		var description string
+		var qty float64
+		var unitPrice float64
+		var taxCode string
+		if err := rows.Scan(&description, &qty, &unitPrice, &taxCode); err != nil {
+			return nil, err
+		}
+		items = append(items, accounting.InvoiceItemInput{
+			Description: description,
+			Qty:         qty,
+			UnitPrice:   unitPrice,
+			TaxCode:     taxCode,
+			AccountCode: revenueAccount,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(items) == 0 {
+		return nil, errors.New("keine Positionen")
+	}
+	if in.InvoiceDate.IsZero() {
+		in.InvoiceDate = time.Now()
+	}
+	invoice, err := arSvc.CreateFromQuoteTx(ctx, tx, id, accounting.InvoiceOutInput{
+		ContactID:   contactID,
+		InvoiceDate: in.InvoiceDate,
+		DueDate:     in.DueDate,
+		Currency:    currency,
+		Items:       items,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE quotes SET status='accepted', accepted_at=COALESCE(accepted_at, now()), linked_invoice_out_id=$2 WHERE id=$1`, id, invoice.ID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	quote, err := s.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &ConvertToInvoiceResult{
+		Quote:   quote,
+		Invoice: invoice,
+	}, nil
+}
+
+func (s *Service) Accept(ctx context.Context, id uuid.UUID, projectSvc *projects.Service, in AcceptInput) (*AcceptResult, error) {
+	quote, err := s.UpdateStatus(ctx, id, "accepted")
+	if err != nil {
+		return nil, err
+	}
+	result := &AcceptResult{Quote: quote}
+	if projectSvc != nil && strings.TrimSpace(in.ProjectStatus) != "" && strings.TrimSpace(quote.ProjectID) != "" {
+		project, err := projectSvc.UpdateStatus(ctx, quote.ProjectID, strings.TrimSpace(in.ProjectStatus))
+		if err != nil {
+			return nil, err
+		}
+		result.Project = project
+	}
+	return result, nil
 }
 
 func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput) (*Quote, error) {

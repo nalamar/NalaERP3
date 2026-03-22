@@ -4,7 +4,9 @@ import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
+import 'invoices_page.dart';
 import 'quotes_page.dart';
+import 'sales_orders_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -58,6 +60,33 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => QuotesPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('invoices_out.read'))
+        _DashCard(
+          title: 'Rechnungen',
+          icon: Icons.receipt_long_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => InvoicesPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('sales_orders.read'))
+        _DashCard(
+          title: 'Aufträge',
+          subtitle: 'Teilfaktura, Folgebelege, PDF',
+          icon: Icons.assignment_turned_in_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => SalesOrdersPage(api: api),
               ),
             );
           },
@@ -134,8 +163,9 @@ class DashboardPage extends StatelessWidget {
 }
 
 class _DashCard extends StatelessWidget {
-  const _DashCard({required this.title, required this.icon, required this.color, required this.onTap});
+  const _DashCard({required this.title, required this.icon, required this.color, required this.onTap, this.subtitle});
   final String title;
+  final String? subtitle;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -160,6 +190,17 @@ class _DashCard extends StatelessWidget {
             CircleAvatar(backgroundColor: color.withOpacity(0.12), radius: 28, child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 12),
             Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            if (subtitle != null) ...[
+              const SizedBox(height: 6),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: Text(
+                  subtitle!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                ),
+              ),
+            ],
           ],
         ),
       ),

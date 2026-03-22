@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
+import 'invoices_page.dart';
+import 'sales_orders_page.dart';
 
 String _quoteErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
   if (error is ApiException) {
@@ -14,11 +16,13 @@ class QuotesPage extends StatefulWidget {
     super.key,
     required this.api,
     this.initialProjectId,
+    this.initialQuoteId,
     this.openCreateOnStart = false,
   });
 
   final ApiClient api;
   final String? initialProjectId;
+  final String? initialQuoteId;
   final bool openCreateOnStart;
 
   @override
@@ -29,6 +33,8 @@ class _QuotesPageState extends State<QuotesPage> {
   bool _loading = true;
   List<dynamic> _items = const [];
   Map<String, dynamic>? _selected;
+  Map<String, dynamic>? _linkedSalesOrder;
+  List<dynamic> _salesOrderInvoices = const [];
   final _searchCtrl = TextEditingController();
   final _projectCtrl = TextEditingController();
   String? _statusFilter;
@@ -38,6 +44,10 @@ class _QuotesPageState extends State<QuotesPage> {
     super.initState();
     if (widget.initialProjectId != null && widget.initialProjectId!.trim().isNotEmpty) {
       _projectCtrl.text = widget.initialProjectId!.trim();
+    }
+    final initialQuoteId = widget.initialQuoteId?.trim();
+    if (initialQuoteId != null && initialQuoteId.isNotEmpty) {
+      _searchCtrl.text = initialQuoteId;
     }
     _load();
     if (widget.openCreateOnStart) {
@@ -66,6 +76,11 @@ class _QuotesPageState extends State<QuotesPage> {
       final selectedId = _selected?['id']?.toString();
       if (selectedId != null && selectedId.isNotEmpty) {
         await _loadDetail(selectedId);
+      } else {
+        final initialQuoteId = widget.initialQuoteId?.trim();
+        if (initialQuoteId != null && initialQuoteId.isNotEmpty) {
+          await _loadDetail(initialQuoteId);
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -81,7 +96,50 @@ class _QuotesPageState extends State<QuotesPage> {
     try {
       final detail = await widget.api.getQuote(id);
       if (mounted) setState(() => _selected = detail);
+      await _loadLinkedSalesOrder(detail['linked_sales_order_id']?.toString());
+      await _loadSalesOrderInvoices(detail['linked_sales_order_id']?.toString());
     } catch (_) {}
+  }
+
+  Future<void> _loadLinkedSalesOrder(String? salesOrderId) async {
+    final normalized = salesOrderId?.trim() ?? '';
+    if (normalized.isEmpty) {
+      if (mounted) setState(() => _linkedSalesOrder = null);
+      return;
+    }
+    try {
+      final salesOrder = await widget.api.getSalesOrder(normalized);
+      if (mounted) setState(() => _linkedSalesOrder = salesOrder);
+    } catch (_) {
+      if (mounted) setState(() => _linkedSalesOrder = null);
+    }
+  }
+
+  Future<void> _loadSalesOrderInvoices(String? salesOrderId) async {
+    final normalized = salesOrderId?.trim() ?? '';
+    if (normalized.isEmpty) {
+      if (mounted) setState(() => _salesOrderInvoices = const []);
+      return;
+    }
+    try {
+      final invoices = await widget.api.listInvoicesOut(
+        sourceSalesOrderId: normalized,
+        limit: 20,
+      );
+      if (mounted) setState(() => _salesOrderInvoices = invoices);
+    } catch (_) {
+      if (mounted) setState(() => _salesOrderInvoices = const []);
+    }
+  }
+
+  double _toDouble(dynamic value) {
+    if (value is num) return value.toDouble();
+    return double.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  String _formatMoney(num? value, String currency) {
+    final normalizedCurrency = currency.isEmpty ? 'EUR' : currency;
+    return '${(value ?? 0).toDouble().toStringAsFixed(2)} $normalizedCurrency';
   }
 
   Future<void> _openCreateDialog({String? projectId}) async {
@@ -140,11 +198,169 @@ class _QuotesPageState extends State<QuotesPage> {
     }
   }
 
+  Future<void> _openInvoice(String invoiceId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InvoicesPage(
+          api: widget.api,
+          initialInvoiceId: invoiceId,
+          showWorkflowHint: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _openSalesOrder(String salesOrderId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SalesOrdersPage(
+          api: widget.api,
+          initialSalesOrderId: salesOrderId,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _load();
+  }
+
+  Future<void> _acceptQuoteFlow() async {
+    final selected = _selected;
+    final id = selected?['id']?.toString();
+    if (id == null) return;
+    final projectId = (selected?['project_id'] ?? '').toString();
+    final request = await showDialog<_QuoteAcceptRequest>(
+      context: context,
+      builder: (_) => _QuoteAcceptDialog(
+        allowProjectUpdate: projectId.isNotEmpty && widget.api.hasPermission('projects.write'),
+      ),
+    );
+    if (request == null) return;
+    try {
+      final result = await widget.api.acceptQuote(
+        id,
+        projectStatus: request.projectStatus,
+      );
+      final updatedQuote = ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
+      final project = ((result['project'] as Map?) ?? const {}).cast<String, dynamic>();
+      if (!mounted) return;
+      setState(() => _selected = updatedQuote);
+      await _load();
+      if (!mounted) return;
+      final projectStatus = (project['status'] ?? '').toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            projectStatus.isEmpty
+                ? 'Angebot wurde angenommen'
+                : 'Angebot wurde angenommen und Projekt auf $projectStatus gesetzt',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Annahme fehlgeschlagen'))),
+      );
+    }
+  }
+
+  Future<void> _convertToInvoice() async {
+    final selected = _selected;
+    final id = selected?['id']?.toString();
+    if (id == null) return;
+    final request = await showDialog<_QuoteConvertRequest>(
+      context: context,
+      builder: (_) => const _QuoteConvertDialog(),
+    );
+    if (request == null) return;
+    try {
+      final result = await widget.api.convertQuoteToInvoice(
+        id,
+        revenueAccount: request.revenueAccount,
+        invoiceDate: DateTime.now(),
+        dueDate: request.dueDate,
+      );
+      final updatedQuote = ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
+      final invoice = ((result['invoice'] as Map?) ?? const {}).cast<String, dynamic>();
+      final invoiceId = (invoice['id'] ?? '').toString();
+      if (!mounted) return;
+      setState(() => _selected = updatedQuote);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            invoiceId.isEmpty
+                ? 'Rechnung wurde aus dem Angebot erzeugt'
+                : 'Rechnung $invoiceId wurde aus dem Angebot erzeugt',
+          ),
+        ),
+      );
+      if (invoiceId.isNotEmpty && widget.api.hasPermission('invoices_out.read')) {
+        await _openInvoice(invoiceId);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Rechnungserzeugung fehlgeschlagen'))),
+      );
+    }
+  }
+
+  Future<void> _convertToSalesOrder() async {
+    final selected = _selected;
+    final id = selected?['id']?.toString();
+    if (id == null) return;
+    try {
+      final result = await widget.api.convertQuoteToSalesOrder(id);
+      final salesOrder = result;
+      final salesOrderId = (salesOrder['id'] ?? '').toString();
+      if (!mounted) return;
+      await _loadDetail(id);
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            salesOrderId.isEmpty
+                ? 'Auftrag wurde aus dem Angebot erzeugt'
+                : 'Auftrag $salesOrderId wurde aus dem Angebot erzeugt',
+          ),
+        ),
+      );
+      if (salesOrderId.isNotEmpty && widget.api.hasPermission('sales_orders.read')) {
+        await _openSalesOrder(salesOrderId);
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Auftragserzeugung fehlgeschlagen'))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
+    final linkedSalesOrder = _linkedSalesOrder;
     final selectedStatus = (selected?['status'] ?? '').toString();
+    final linkedInvoiceId = (selected?['linked_invoice_out_id'] ?? '').toString();
+    final linkedSalesOrderId = (selected?['linked_sales_order_id'] ?? '').toString();
+    final salesOrderInvoices = _salesOrderInvoices
+        .cast<Map>()
+        .map((item) => item.cast<String, dynamic>())
+        .toList();
+    final salesOrderInvoiceCount = salesOrderInvoices.length;
+    final hasLinkedInvoice = linkedInvoiceId.isNotEmpty;
+    final hasLinkedSalesOrder = linkedSalesOrderId.isNotEmpty;
+    final hasFollowUp = hasLinkedInvoice || hasLinkedSalesOrder;
     final canWrite = widget.api.hasPermission('quotes.write');
+    final canConvertInvoices = widget.api.hasPermission('invoices_out.write');
+    final canOpenInvoices = widget.api.hasPermission('invoices_out.read');
+    final canConvertSalesOrders = widget.api.hasPermission('sales_orders.write');
+    final canOpenSalesOrders = widget.api.hasPermission('sales_orders.read');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Angebote'),
@@ -225,7 +441,7 @@ class _QuotesPageState extends State<QuotesPage> {
                                       selected: id != null && id == selectedId,
                                       title: Text((item['number'] ?? 'Angebot').toString()),
                                       subtitle: Text(
-                                        '${item['contact_name'] ?? '-'}  •  ${(item['status'] ?? '').toString()}  •  ${(item['gross_amount'] ?? 0).toString()} ${(item['currency'] ?? 'EUR')}',
+                                        '${item['contact_name'] ?? '-'}  •  ${(item['status'] ?? '').toString()}  •  ${_formatMoney(item['gross_amount'] as num?, (item['currency'] ?? 'EUR').toString())}',
                                       ),
                                       onTap: id == null ? null : () => _loadDetail(id),
                                     );
@@ -277,6 +493,17 @@ class _QuotesPageState extends State<QuotesPage> {
                                 Chip(label: Text('Status: $selectedStatus')),
                                 Chip(label: Text('Kunde: ${(selected['contact_name'] ?? '-').toString()}')),
                                 Chip(label: Text('Projekt: ${(selected['project_name'] ?? '-').toString()}')),
+                                if (hasLinkedInvoice) Chip(label: Text('Rechnung: $linkedInvoiceId')),
+                                if (hasLinkedSalesOrder)
+                                  Chip(
+                                    label: Text(
+                                      linkedSalesOrder == null
+                                          ? 'Auftrag: $linkedSalesOrderId'
+                                          : 'Auftrag: ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
+                                    ),
+                                  ),
+                                if (salesOrderInvoiceCount > 0)
+                                  Chip(label: Text('Folgebelege: $salesOrderInvoiceCount')),
                               ],
                             ),
                             const SizedBox(height: 12),
@@ -284,6 +511,65 @@ class _QuotesPageState extends State<QuotesPage> {
                             const SizedBox(height: 4),
                             Text('Quote-Date: ${(selected['quote_date'] ?? '').toString()}'),
                             Text('Gueltig bis: ${(selected['valid_until'] ?? '-').toString()}'),
+                            if ((selected['accepted_at'] ?? '').toString().isNotEmpty)
+                              Text('Angenommen am: ${(selected['accepted_at'] ?? '').toString()}'),
+                            if (hasLinkedSalesOrder) ...[
+                              const SizedBox(height: 16),
+                              Card(
+                                margin: EdgeInsets.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        linkedSalesOrder == null
+                                            ? 'Verknüpfter Auftrag wird geladen'
+                                            : 'Verknüpfter Auftrag ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      if (linkedSalesOrder != null) ...[
+                                        Text('Status: ${(linkedSalesOrder['status'] ?? '-').toString()}'),
+                                        Text('Auftragswert: ${_formatMoney(linkedSalesOrder['gross_amount'] as num?, (linkedSalesOrder['currency'] ?? 'EUR').toString())}'),
+                                        Text('Positionen: ${((linkedSalesOrder['items'] as List?) ?? const []).length}'),
+                                        if (salesOrderInvoiceCount > 0) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            'Rechnungen aus Auftrag ($salesOrderInvoiceCount)',
+                                            style: const TextStyle(fontWeight: FontWeight.w600),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          ...salesOrderInvoices.map((invoice) {
+                                            final invoiceId = (invoice['id'] ?? '').toString();
+                                            final invoiceNumber = (invoice['number'] ?? invoice['nummer'] ?? invoiceId).toString();
+                                            final isLatest = invoiceId.isNotEmpty && invoiceId == linkedInvoiceId;
+                                            final invoiceCurrency = (invoice['currency'] ?? linkedSalesOrder['currency'] ?? 'EUR').toString();
+                                            final invoiceGross = _toDouble(invoice['gross_amount']);
+                                            final invoiceOpen = invoiceGross - _toDouble(invoice['paid_amount']);
+                                            return ListTile(
+                                              dense: true,
+                                              contentPadding: EdgeInsets.zero,
+                                              title: Text(invoiceNumber),
+                                              subtitle: Text(
+                                                '${isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'}  •  ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
+                                              ),
+                                              trailing: canOpenInvoices
+                                                  ? TextButton(
+                                                      onPressed: () => _openInvoice(invoiceId),
+                                                      child: const Text('Öffnen'),
+                                                    )
+                                                  : null,
+                                            );
+                                          }),
+                                        ],
+                                      ] else
+                                        const Text('Status und Wert werden nachgeladen.'),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             const Text('Positionen', style: TextStyle(fontWeight: FontWeight.bold)),
                             const SizedBox(height: 8),
@@ -293,12 +579,16 @@ class _QuotesPageState extends State<QuotesPage> {
                                 separatorBuilder: (_, __) => const Divider(height: 1),
                                 itemBuilder: (context, index) {
                                   final item = (selected['items'] as List)[index] as Map<String, dynamic>;
+                                  final currency = (selected['currency'] ?? 'EUR').toString();
+                                  final qty = _toDouble(item['qty']);
+                                  final unitPrice = _toDouble(item['unit_price']);
+                                  final lineNet = qty * unitPrice;
                                   return ListTile(
                                     title: Text((item['description'] ?? 'Position').toString()),
                                     subtitle: Text(
-                                      'Menge ${(item['qty'] ?? 0)} ${(item['unit'] ?? '')}  •  Steuer ${(item['tax_code'] ?? '').toString()}',
+                                      'Menge ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 2)} ${(item['unit'] ?? '')}  •  Einzelpreis ${_formatMoney(unitPrice, currency)}  •  Steuer ${(item['tax_code'] ?? '').toString()}',
                                     ),
-                                    trailing: Text('${item['unit_price'] ?? 0}'),
+                                    trailing: Text(_formatMoney(lineNet, currency)),
                                   );
                                 },
                               ),
@@ -309,10 +599,10 @@ class _QuotesPageState extends State<QuotesPage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
-                                  Text('Netto: ${(selected['net_amount'] ?? 0)} ${(selected['currency'] ?? 'EUR')}'),
-                                  Text('Steuer: ${(selected['tax_amount'] ?? 0)} ${(selected['currency'] ?? 'EUR')}'),
+                                  Text('Netto: ${_formatMoney(_toDouble(selected['net_amount']), (selected['currency'] ?? 'EUR').toString())}'),
+                                  Text('Steuer: ${_formatMoney(_toDouble(selected['tax_amount']), (selected['currency'] ?? 'EUR').toString())}'),
                                   Text(
-                                    'Brutto: ${(selected['gross_amount'] ?? 0)} ${(selected['currency'] ?? 'EUR')}',
+                                    'Brutto: ${_formatMoney(_toDouble(selected['gross_amount']), (selected['currency'] ?? 'EUR').toString())}',
                                     style: const TextStyle(fontWeight: FontWeight.bold),
                                   ),
                                 ],
@@ -324,16 +614,65 @@ class _QuotesPageState extends State<QuotesPage> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  if (selectedStatus != 'draft')
+                                  if (!hasFollowUp && selectedStatus != 'draft')
                                     OutlinedButton(onPressed: () => _updateStatus('draft'), child: const Text('Auf Entwurf')),
-                                  if (selectedStatus != 'sent')
+                                  if (!hasFollowUp && selectedStatus != 'sent')
                                     FilledButton(onPressed: () => _updateStatus('sent'), child: const Text('Versendet')),
-                                  if (selectedStatus != 'accepted')
-                                    FilledButton.tonal(onPressed: () => _updateStatus('accepted'), child: const Text('Angenommen')),
-                                  if (selectedStatus != 'rejected')
+                                  if (!hasFollowUp && selectedStatus != 'accepted')
+                                    FilledButton.tonalIcon(
+                                      onPressed: _acceptQuoteFlow,
+                                      icon: const Icon(Icons.task_alt_rounded),
+                                      label: const Text('Annahme'),
+                                    ),
+                                  if (!hasFollowUp && selectedStatus != 'rejected')
                                     FilledButton.tonal(onPressed: () => _updateStatus('rejected'), child: const Text('Abgelehnt')),
+                                  if (!hasFollowUp &&
+                                      canConvertInvoices &&
+                                      (selectedStatus == 'sent' || selectedStatus == 'accepted'))
+                                    FilledButton.icon(
+                                      onPressed: _convertToInvoice,
+                                      icon: const Icon(Icons.receipt_long_rounded),
+                                      label: const Text('In Rechnung'),
+                                    ),
+                                  if (!hasFollowUp &&
+                                      canConvertSalesOrders &&
+                                      selectedStatus == 'accepted')
+                                    FilledButton.icon(
+                                      onPressed: _convertToSalesOrder,
+                                      icon: const Icon(Icons.assignment_turned_in_rounded),
+                                      label: const Text('In Auftrag'),
+                                    ),
+                                  if (hasLinkedInvoice && canOpenInvoices)
+                                    FilledButton.icon(
+                                      onPressed: () => _openInvoice(linkedInvoiceId),
+                                      icon: const Icon(Icons.open_in_new_rounded),
+                                      label: const Text('Rechnung öffnen'),
+                                    ),
+                                  if (hasLinkedSalesOrder && canOpenSalesOrders)
+                                    FilledButton.icon(
+                                      onPressed: () => _openSalesOrder(linkedSalesOrderId),
+                                      icon: const Icon(Icons.open_in_new_rounded),
+                                      label: const Text('Auftrag öffnen'),
+                                    ),
                                 ],
                               ),
+                              if (hasFollowUp) ...[
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Dieses Angebot hat bereits einen Folgebeleg. Weitere manuelle Statuswechsel sind gesperrt.',
+                                ),
+                              ] else if ((selectedStatus == 'sent' || selectedStatus == 'accepted') &&
+                                  !canConvertInvoices) ...[
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Für die Rechnungsumwandlung ist zusätzlich die Berechtigung invoices_out.write erforderlich.',
+                                ),
+                              ] else if (selectedStatus == 'accepted' && !canConvertSalesOrders) ...[
+                                const SizedBox(height: 8),
+                                const Text(
+                                  'Für die Auftragsumwandlung ist zusätzlich die Berechtigung sales_orders.write erforderlich.',
+                                ),
+                              ],
                             ],
                           ],
                         ),
@@ -343,6 +682,207 @@ class _QuotesPageState extends State<QuotesPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _QuoteConvertRequest {
+  const _QuoteConvertRequest({
+    required this.revenueAccount,
+    this.dueDate,
+  });
+
+  final String revenueAccount;
+  final DateTime? dueDate;
+}
+
+class _QuoteAcceptRequest {
+  const _QuoteAcceptRequest({
+    this.projectStatus,
+  });
+
+  final String? projectStatus;
+}
+
+class _QuoteAcceptDialog extends StatefulWidget {
+  const _QuoteAcceptDialog({
+    required this.allowProjectUpdate,
+  });
+
+  final bool allowProjectUpdate;
+
+  @override
+  State<_QuoteAcceptDialog> createState() => _QuoteAcceptDialogState();
+}
+
+class _QuoteAcceptDialogState extends State<_QuoteAcceptDialog> {
+  bool _updateProject = true;
+  late final TextEditingController _projectStatusCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _updateProject = widget.allowProjectUpdate;
+    _projectStatusCtrl = TextEditingController(text: 'beauftragt');
+  }
+
+  @override
+  void dispose() {
+    _projectStatusCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Angebot annehmen'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Das Angebot wird auf angenommen gesetzt, ohne sofort eine Rechnung zu erzeugen.',
+            ),
+            if (widget.allowProjectUpdate) ...[
+              const SizedBox(height: 16),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: _updateProject,
+                onChanged: (value) => setState(() => _updateProject = value),
+                title: const Text('Projektstatus fortschreiben'),
+                subtitle: const Text('Zum Beispiel auf beauftragt setzen'),
+              ),
+              if (_updateProject)
+                TextField(
+                  controller: _projectStatusCtrl,
+                  decoration: const InputDecoration(labelText: 'Neuer Projektstatus'),
+                ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).pop(
+              _QuoteAcceptRequest(
+                projectStatus: widget.allowProjectUpdate && _updateProject
+                    ? _projectStatusCtrl.text.trim()
+                    : null,
+              ),
+            );
+          },
+          child: const Text('Annehmen'),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuoteConvertDialog extends StatefulWidget {
+  const _QuoteConvertDialog();
+
+  @override
+  State<_QuoteConvertDialog> createState() => _QuoteConvertDialogState();
+}
+
+class _QuoteConvertDialogState extends State<_QuoteConvertDialog> {
+  late final TextEditingController _revenueAccountCtrl;
+  DateTime? _dueDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _revenueAccountCtrl = TextEditingController(text: '8000');
+  }
+
+  @override
+  void dispose() {
+    _revenueAccountCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDueDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? now.add(const Duration(days: 14)),
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _dueDate = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final dueDateLabel = _dueDate == null
+        ? 'Keine Fälligkeit gesetzt'
+        : MaterialLocalizations.of(context).formatMediumDate(_dueDate!);
+    return AlertDialog(
+      title: const Text('Angebot in Rechnung überführen'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Es wird eine neue Ausgangsrechnung im Status Entwurf erzeugt und das Angebot auf angenommen gesetzt.',
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _revenueAccountCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Erlöskonto',
+                helperText: 'Standard ist 8000',
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(child: Text('Fälligkeit: $dueDateLabel')),
+                TextButton.icon(
+                  onPressed: _pickDueDate,
+                  icon: const Icon(Icons.event_rounded),
+                  label: const Text('Wählen'),
+                ),
+              ],
+            ),
+            if (_dueDate != null)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: () => setState(() => _dueDate = null),
+                  child: const Text('Fälligkeit entfernen'),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          onPressed: () {
+            Navigator.of(context).pop(
+              _QuoteConvertRequest(
+                revenueAccount: _revenueAccountCtrl.text.trim().isEmpty ? '8000' : _revenueAccountCtrl.text.trim(),
+                dueDate: _dueDate,
+              ),
+            );
+          },
+          child: const Text('Rechnung erzeugen'),
+        ),
+      ],
     );
   }
 }

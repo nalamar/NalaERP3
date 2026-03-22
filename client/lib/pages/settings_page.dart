@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'dart:typed_data';
 import '../web/browser.dart' as browser;
+import 'sales_orders_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.api});
@@ -89,6 +90,19 @@ class _SettingsPageState extends State<SettingsPage> {
   String? quoteLogoDocId;
   String? quoteBgFirstDocId;
   String? quoteBgOtherDocId;
+  final salesOrderHeaderCtrl = TextEditingController();
+  final salesOrderFooterCtrl = TextEditingController();
+  final salesOrderTopFirstCtrl = TextEditingController(text: '30');
+  final salesOrderTopOtherCtrl = TextEditingController(text: '20');
+  String salesOrderEffectiveHeaderText = '';
+  String salesOrderEffectiveFooterText = '';
+  String salesOrderEffectiveDisplayName = '';
+  String salesOrderEffectiveClaim = '';
+  String salesOrderEffectivePrimaryColor = '';
+  String salesOrderEffectiveAccentColor = '';
+  String? salesOrderLogoDocId;
+  String? salesOrderBgFirstDocId;
+  String? salesOrderBgOtherDocId;
 
   // Einheiten
   List<Map<String, dynamic>> _units = [];
@@ -118,6 +132,7 @@ class _SettingsPageState extends State<SettingsPage> {
       await _loadPdfTemplate('purchase_order');
       await _loadPdfTemplate('invoice_out');
       await _loadPdfTemplate('quote');
+      await _loadPdfTemplate('sales_order');
       await _loadUnits();
     } catch (e) { /* ignore */ }
     setState(()=> loading = false);
@@ -507,6 +522,25 @@ class _SettingsPageState extends State<SettingsPage> {
         quoteLogoDocId = t['logo_doc_id'] as String?;
         quoteBgFirstDocId = t['bg_first_doc_id'] as String?;
         quoteBgOtherDocId = t['bg_other_doc_id'] as String?;
+      } else if (entity == 'sales_order') {
+        salesOrderHeaderCtrl.text = headerText;
+        salesOrderFooterCtrl.text = footerText;
+        salesOrderTopFirstCtrl.text = tf.toStringAsFixed(0);
+        salesOrderTopOtherCtrl.text = to.toStringAsFixed(0);
+        salesOrderEffectiveHeaderText =
+            (t['effective_header_text'] ?? '').toString();
+        salesOrderEffectiveFooterText =
+            (t['effective_footer_text'] ?? '').toString();
+        salesOrderEffectiveDisplayName =
+            (t['effective_display_name'] ?? '').toString();
+        salesOrderEffectiveClaim = (t['effective_claim'] ?? '').toString();
+        salesOrderEffectivePrimaryColor =
+            (t['effective_primary_color'] ?? '').toString();
+        salesOrderEffectiveAccentColor =
+            (t['effective_accent_color'] ?? '').toString();
+        salesOrderLogoDocId = t['logo_doc_id'] as String?;
+        salesOrderBgFirstDocId = t['bg_first_doc_id'] as String?;
+        salesOrderBgOtherDocId = t['bg_other_doc_id'] as String?;
       }
       if (mounted) setState((){});
     } catch (_) {
@@ -518,26 +552,35 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final isPurchaseOrder = entity == 'purchase_order';
       final isInvoiceOut = entity == 'invoice_out';
+      final isQuote = entity == 'quote';
       final headerCtrl = isPurchaseOrder
           ? poHeaderCtrl
           : isInvoiceOut
               ? invoiceHeaderCtrl
-              : quoteHeaderCtrl;
+              : isQuote
+                  ? quoteHeaderCtrl
+                  : salesOrderHeaderCtrl;
       final footerCtrl = isPurchaseOrder
           ? poFooterCtrl
           : isInvoiceOut
               ? invoiceFooterCtrl
-              : quoteFooterCtrl;
+              : isQuote
+                  ? quoteFooterCtrl
+                  : salesOrderFooterCtrl;
       final topFirstCtrl = isPurchaseOrder
           ? poTopFirstCtrl
           : isInvoiceOut
               ? invoiceTopFirstCtrl
-              : quoteTopFirstCtrl;
+              : isQuote
+                  ? quoteTopFirstCtrl
+                  : salesOrderTopFirstCtrl;
       final topOtherCtrl = isPurchaseOrder
           ? poTopOtherCtrl
           : isInvoiceOut
               ? invoiceTopOtherCtrl
-              : quoteTopOtherCtrl;
+              : isQuote
+                  ? quoteTopOtherCtrl
+                  : salesOrderTopOtherCtrl;
       final tf =
           double.tryParse(topFirstCtrl.text.trim().replaceAll(',', '.')) ?? 30;
       final to =
@@ -579,6 +622,10 @@ class _SettingsPageState extends State<SettingsPage> {
           if (kind == 'logo') quoteLogoDocId = id;
           if (kind == 'bg-first') quoteBgFirstDocId = id;
           if (kind == 'bg-other') quoteBgOtherDocId = id;
+        } else if (entity == 'sales_order') {
+          if (kind == 'logo') salesOrderLogoDocId = id;
+          if (kind == 'bg-first') salesOrderBgFirstDocId = id;
+          if (kind == 'bg-other') salesOrderBgOtherDocId = id;
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
@@ -603,12 +650,22 @@ class _SettingsPageState extends State<SettingsPage> {
           if (kind == 'logo') quoteLogoDocId = null;
           if (kind == 'bg-first') quoteBgFirstDocId = null;
           if (kind == 'bg-other') quoteBgOtherDocId = null;
+        } else if (entity == 'sales_order') {
+          if (kind == 'logo') salesOrderLogoDocId = null;
+          if (kind == 'bg-first') salesOrderBgFirstDocId = null;
+          if (kind == 'bg-other') salesOrderBgOtherDocId = null;
         }
       });
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bild entfernt')));
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
+  }
+
+  Future<void> _openSalesOrders() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => SalesOrdersPage(api: widget.api)),
+    );
   }
 
   @override
@@ -982,6 +1039,26 @@ class _SettingsPageState extends State<SettingsPage> {
                           bgFirstDocId: quoteBgFirstDocId,
                           bgOtherDocId: quoteBgOtherDocId,
                         ),
+                        const Divider(height: 32),
+                        _buildPdfTemplateCard(
+                          title: 'Aufträge (sales_order)',
+                          entity: 'sales_order',
+                          headerCtrl: salesOrderHeaderCtrl,
+                          footerCtrl: salesOrderFooterCtrl,
+                          topFirstCtrl: salesOrderTopFirstCtrl,
+                          topOtherCtrl: salesOrderTopOtherCtrl,
+                          effectiveHeaderText: salesOrderEffectiveHeaderText,
+                          effectiveFooterText: salesOrderEffectiveFooterText,
+                          effectiveDisplayName: salesOrderEffectiveDisplayName,
+                          effectiveClaim: salesOrderEffectiveClaim,
+                          effectivePrimaryColor:
+                              salesOrderEffectivePrimaryColor,
+                          effectiveAccentColor:
+                              salesOrderEffectiveAccentColor,
+                          logoDocId: salesOrderLogoDocId,
+                          bgFirstDocId: salesOrderBgFirstDocId,
+                          bgOtherDocId: salesOrderBgOtherDocId,
+                        ),
                       ]),
                     ),
                   ),
@@ -1011,11 +1088,31 @@ class _SettingsPageState extends State<SettingsPage> {
     required String? bgFirstDocId,
     required String? bgOtherDocId,
   }) {
+    final showSalesOrderNavigation = entity == 'sales_order';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(title),
         const SizedBox(height: 8),
+        if (showSalesOrderNavigation) ...[
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Dieses Template steuert den PDF-/Druckpfad fuer Auftraege.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: _openSalesOrders,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Auftraege oeffnen'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+        ],
         TextField(
           controller: headerCtrl,
           maxLines: 3,

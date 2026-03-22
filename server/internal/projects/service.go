@@ -63,6 +63,19 @@ type ProjectFilter struct {
 	Offset int
 }
 
+func (s *Service) UpdateStatus(ctx context.Context, id, status string) (*Project, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, errors.New("Projekt-ID erforderlich")
+	}
+	if strings.TrimSpace(status) == "" {
+		return nil, errors.New("Status erforderlich")
+	}
+	if _, err := s.pg.Exec(ctx, `UPDATE projects SET status=$2 WHERE id=$1`, id, strings.TrimSpace(status)); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id)
+}
+
 func (s *Service) Create(ctx context.Context, in ProjectCreate) (*Project, error) {
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("Name erforderlich")

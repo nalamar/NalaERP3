@@ -381,11 +381,19 @@ class ApiClient {
     );
   }
 
-  Future<List<dynamic>> listInvoicesOut({String? q, String? status, String? contactId, int? limit, int? offset}) async {
+  Future<List<dynamic>> listInvoicesOut({
+    String? q,
+    String? status,
+    String? contactId,
+    String? sourceSalesOrderId,
+    int? limit,
+    int? offset,
+  }) async {
     final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
     if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
+    if (sourceSalesOrderId != null && sourceSalesOrderId.isNotEmpty) qp['source_sales_order_id'] = sourceSalesOrderId;
     if (limit != null) qp['limit'] = '$limit';
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/invoices-out', qp.isEmpty ? null : qp);
@@ -485,6 +493,63 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> acceptQuote(
+    String id, {
+    String? projectStatus,
+  }) async {
+    final body = <String, dynamic>{};
+    if (projectStatus != null && projectStatus.trim().isNotEmpty) {
+      body['project_status'] = projectStatus.trim();
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$id/accept'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> convertQuoteToInvoice(
+    String id, {
+    String? revenueAccount,
+    DateTime? invoiceDate,
+    DateTime? dueDate,
+  }) async {
+    final body = <String, dynamic>{};
+    if (revenueAccount != null && revenueAccount.trim().isNotEmpty) {
+      body['revenue_account'] = revenueAccount.trim();
+    }
+    if (invoiceDate != null) {
+      body['invoice_date'] = invoiceDate.toUtc().toIso8601String();
+    }
+    if (dueDate != null) {
+      body['due_date'] = dueDate.toUtc().toIso8601String();
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$id/convert-to-invoice'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$id/convert-to-sales-order'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
   Future<void> downloadQuotePdf(String id, {String? filename}) async {
     final r = await _getBytesResponse('/api/v1/quotes/$id/pdf');
     browser.downloadBytes(
@@ -492,6 +557,122 @@ class ApiClient {
       filename: filename ?? 'Angebot_$id.pdf',
       contentType: r.headers['content-type'] ?? 'application/pdf',
     );
+  }
+
+  Future<List<dynamic>> listSalesOrders({String? q, String? status, String? contactId, String? projectId, int? limit, int? offset}) async {
+    final qp = <String, String>{};
+    if (q != null && q.isNotEmpty) qp['q'] = q;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
+    if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
+    if (projectId != null && projectId.isNotEmpty) qp['project_id'] = projectId;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/sales-orders', qp.isEmpty ? null : qp);
+  }
+
+  Future<List<String>> listSalesOrderStatuses() async {
+    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/sales-orders/statuses'), headers: headers));
+    if (r.statusCode != 200) _throwApiException(r);
+    final arr = jsonDecode(_decodeBody(r)) as List<dynamic>;
+    return arr.map((e) => e.toString()).toList();
+  }
+
+  Future<Map<String, dynamic>> getSalesOrder(String id) => _getJson('/api/v1/sales-orders/$id');
+
+  Future<Map<String, dynamic>> updateSalesOrder(String id, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/sales-orders/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createSalesOrderItem(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/sales-orders/$id/items'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateSalesOrderItem(String id, String itemId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/sales-orders/$id/items/$itemId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> deleteSalesOrderItem(String id, String itemId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.delete(_u('/api/v1/sales-orders/$id/items/$itemId'), headers: headers),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<void> downloadSalesOrderPdf(String id, {String? filename}) async {
+    final r = await _getBytesResponse('/api/v1/sales-orders/$id/pdf');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Auftrag_$id.pdf',
+      contentType: r.headers['content-type'] ?? 'application/pdf',
+    );
+  }
+
+  Future<Map<String, dynamic>> updateSalesOrderStatus(String id, String status) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/sales-orders/$id/status'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'status': status}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> convertSalesOrderToInvoice(
+    String id, {
+    String? revenueAccount,
+    DateTime? invoiceDate,
+    DateTime? dueDate,
+    List<Map<String, dynamic>>? items,
+  }) async {
+    final body = <String, dynamic>{};
+    if (revenueAccount != null && revenueAccount.trim().isNotEmpty) {
+      body['revenue_account'] = revenueAccount.trim();
+    }
+    if (invoiceDate != null) {
+      body['invoice_date'] = invoiceDate.toUtc().toIso8601String();
+    }
+    if (dueDate != null) {
+      body['due_date'] = dueDate.toUtc().toIso8601String();
+    }
+    if (items != null && items.isNotEmpty) {
+      body['items'] = items;
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/sales-orders/$id/convert-to-invoice'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
   // -------- Projects --------

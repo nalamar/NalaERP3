@@ -98,6 +98,32 @@ type QuoteData struct {
 	Items         []QuoteItemData
 }
 
+type SalesOrderData struct {
+	Number          string
+	OrderDate       string
+	Status          string
+	ProjectName     string
+	CustomerName    string
+	SourceQuoteID   string
+	LinkedInvoiceID string
+	Currency        string
+	Note            string
+	NetAmount       float64
+	TaxAmount       float64
+	GrossAmount     float64
+	Items           []SalesOrderItemData
+}
+
+type SalesOrderItemData struct {
+	Pos         int
+	Description string
+	Qty         float64
+	Unit        string
+	UnitPrice   float64
+	TaxCode     string
+	Currency    string
+}
+
 type QuoteItemData struct {
 	Pos             int
 	PhaseLabel      string
@@ -456,6 +482,124 @@ func RenderQuote(ctx context.Context, mg *mongo.Client, dbName string, quote Quo
 	return buf.Bytes(), nil
 }
 
+func RenderSalesOrder(ctx context.Context, mg *mongo.Client, dbName string, order SalesOrderData, tmpl TemplateOptions, imageDocIDs map[string]string) ([]byte, error) {
+	pdf := gofpdf.New("P", "mm", "A4", "")
+	pdf.SetTitle(fmt.Sprintf("Auftrag %s", order.Number), false)
+	pdf.SetAuthor("NalaERP3", false)
+	tr := pdf.UnicodeTranslatorFromDescriptor("cp1252")
+	primary, accent := templateColors(tmpl)
+
+	var imgs ImageSources
+	var err error
+	if imageDocIDs != nil {
+		if id := strings.TrimSpace(imageDocIDs["logo"]); id != "" {
+			imgs.Logo, _ = loadFromGridFS(ctx, mg, dbName, id)
+		}
+		if id := strings.TrimSpace(imageDocIDs["bg_first"]); id != "" {
+			imgs.BgFirst, _ = loadFromGridFS(ctx, mg, dbName, id)
+		}
+		if id := strings.TrimSpace(imageDocIDs["bg_other"]); id != "" {
+			imgs.BgOther, _ = loadFromGridFS(ctx, mg, dbName, id)
+		}
+	}
+
+	pdf.SetHeaderFuncMode(func() {
+		w, h := pdf.GetPageSize()
+		page := pdf.PageNo()
+		if page == 1 {
+			if len(imgs.BgFirst) > 0 {
+				registerAndDrawImage(pdf, "bg_first", bytes.NewReader(imgs.BgFirst), 0, 0, w, h)
+			} else if len(imgs.Logo) > 0 {
+				registerAndDrawImage(pdf, "logo", bytes.NewReader(imgs.Logo), 10, 10, 30, 0)
+			}
+			if len(imgs.BgFirst) == 0 && strings.TrimSpace(tmpl.HeaderText) != "" {
+				pdf.SetFont("Helvetica", "", 9)
+				pdf.SetTextColor(primary.R, primary.G, primary.B)
+				pdf.SetXY(10, 10)
+				pdf.MultiCell(w-20, 4.5, tr(tmpl.HeaderText), "", "R", false)
+				pdf.SetTextColor(0, 0, 0)
+			}
+			pdf.SetY(tmpl.TopFirstMM)
+		} else {
+			if len(imgs.BgOther) > 0 {
+				registerAndDrawImage(pdf, "bg_other", bytes.NewReader(imgs.BgOther), 0, 0, w, h)
+			} else if len(imgs.Logo) > 0 {
+				registerAndDrawImage(pdf, "logo", bytes.NewReader(imgs.Logo), 10, 10, 20, 0)
+			}
+			if len(imgs.BgOther) == 0 && strings.TrimSpace(tmpl.HeaderText) != "" {
+				pdf.SetFont("Helvetica", "", 9)
+				pdf.SetTextColor(primary.R, primary.G, primary.B)
+				pdf.SetXY(10, 10)
+				pdf.MultiCell(w-20, 4.5, tr(tmpl.HeaderText), "", "R", false)
+				pdf.SetTextColor(0, 0, 0)
+			}
+			pdf.SetY(tmpl.TopOtherMM)
+		}
+	}, true)
+
+	pdf.SetFooterFunc(func() {
+		if strings.TrimSpace(tmpl.FooterText) == "" {
+			return
+		}
+		_, h := pdf.GetPageSize()
+		pdf.SetY(h - 15)
+		pdf.SetFont("Helvetica", "", 8)
+		pdf.SetTextColor(accent.R, accent.G, accent.B)
+		pdf.CellFormat(0, 5, tr(tmpl.FooterText), "", 0, "C", false, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+	})
+
+	pdf.AddPage()
+
+	pdf.SetFont("Helvetica", "B", 14)
+	pdf.SetTextColor(primary.R, primary.G, primary.B)
+	pdf.CellFormat(0, 7, tr(fmt.Sprintf("Auftrag %s", order.Number)), "", 1, "L", false, 0, "")
+	pdf.SetFont("Helvetica", "", 10)
+	pdf.SetTextColor(0, 0, 0)
+	pdf.CellFormat(0, 6, tr(fmt.Sprintf("Auftragsdatum: %s    Status: %s", order.OrderDate, order.Status)), "", 1, "L", false, 0, "")
+	if strings.TrimSpace(order.ProjectName) != "" {
+		pdf.CellFormat(0, 6, tr("Projekt: "+order.ProjectName), "", 1, "L", false, 0, "")
+	}
+	if strings.TrimSpace(order.CustomerName) != "" {
+		pdf.CellFormat(0, 6, tr("Kunde: "+order.CustomerName), "", 1, "L", false, 0, "")
+	}
+	if strings.TrimSpace(order.SourceQuoteID) != "" {
+		pdf.CellFormat(0, 6, tr("Quelle Angebot: "+order.SourceQuoteID), "", 1, "L", false, 0, "")
+	}
+	if strings.TrimSpace(order.LinkedInvoiceID) != "" {
+		pdf.CellFormat(0, 6, tr("Folgerechnung: "+order.LinkedInvoiceID), "", 1, "L", false, 0, "")
+	}
+
+	pdf.Ln(3)
+	drawSectionRule(pdf, accent)
+	pdf.Ln(3)
+	renderSalesOrderItemsTable(pdf, tr, order.Items, primary, accent)
+	if strings.TrimSpace(order.Note) != "" {
+		pdf.Ln(4)
+		pdf.SetFont("Helvetica", "", 9)
+		pdf.MultiCell(0, 5, tr("Hinweis: "+order.Note), "", "L", false)
+	}
+	if strings.TrimSpace(order.Currency) != "" {
+		pdf.Ln(4)
+		pdf.SetFont("Helvetica", "B", 10)
+		pdf.SetTextColor(primary.R, primary.G, primary.B)
+		pdf.CellFormat(0, 6, tr("Summen"), "", 1, "R", false, 0, "")
+		pdf.SetFont("Helvetica", "", 9)
+		pdf.SetTextColor(0, 0, 0)
+		pdf.CellFormat(0, 5, tr("Netto: "+money(order.NetAmount, order.Currency)), "", 1, "R", false, 0, "")
+		pdf.CellFormat(0, 5, tr("Steuer: "+money(order.TaxAmount, order.Currency)), "", 1, "R", false, 0, "")
+		pdf.SetTextColor(accent.R, accent.G, accent.B)
+		pdf.CellFormat(0, 5, tr("Brutto: "+money(order.GrossAmount, order.Currency)), "", 1, "R", false, 0, "")
+		pdf.SetTextColor(0, 0, 0)
+	}
+
+	var buf bytes.Buffer
+	if err = pdf.Output(&buf); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
 func renderItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []PurchaseOrderItemData, primary, accent rgbColor) {
 	// Spaltenbreiten
 	colPos := []float64{12, 90, 20, 20, 25, 23}
@@ -556,6 +700,36 @@ func renderQuoteItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []Quo
 		pdf.CellFormat(colPos[7], h, tr(priceText), "1", 0, "R", false, 0, "")
 		pdf.CellFormat(colPos[8], h, tr(totalText), "1", 0, "R", false, 0, "")
 		pdf.CellFormat(colPos[9], h, tr(it.SurfaceLabel), "1", 0, "L", false, 0, "")
+		pdf.Ln(-1)
+	}
+}
+
+func renderSalesOrderItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []SalesOrderItemData, primary, accent rgbColor) {
+	colPos := []float64{12, 82, 18, 18, 28, 20, 22}
+	headers := []string{"Pos", "Bezeichnung", "Menge", "Einheit", "Einzelpreis", "Steuer", "Gesamt"}
+	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetFillColor(primary.R, primary.G, primary.B)
+	pdf.SetTextColor(255, 255, 255)
+	pdf.SetDrawColor(accent.R, accent.G, accent.B)
+	for i, h := range headers {
+		pdf.CellFormat(colPos[i], 7, tr(h), "1", 0, "C", true, 0, "")
+	}
+	pdf.Ln(-1)
+
+	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetTextColor(0, 0, 0)
+	for _, it := range items {
+		total := it.Qty * it.UnitPrice
+		pdf.CellFormat(colPos[0], 6, tr(fmt.Sprintf("%d", it.Pos)), "1", 0, "R", false, 0, "")
+		x, y := pdf.GetXY()
+		pdf.MultiCell(colPos[1], 5, tr(it.Description), "1", "L", false)
+		h := pdf.GetY() - y
+		pdf.SetXY(x+colPos[1], y)
+		pdf.CellFormat(colPos[2], h, tr(trimFloat(it.Qty)), "1", 0, "R", false, 0, "")
+		pdf.CellFormat(colPos[3], h, tr(it.Unit), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(colPos[4], h, tr(money(it.UnitPrice, it.Currency)), "1", 0, "R", false, 0, "")
+		pdf.CellFormat(colPos[5], h, tr(it.TaxCode), "1", 0, "C", false, 0, "")
+		pdf.CellFormat(colPos[6], h, tr(money(total, it.Currency)), "1", 0, "R", false, 0, "")
 		pdf.Ln(-1)
 	}
 }

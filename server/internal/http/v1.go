@@ -32,6 +32,7 @@ import (
 	"nalaerp3/internal/projects"
 	"nalaerp3/internal/purchasing"
 	"nalaerp3/internal/quotes"
+	"nalaerp3/internal/sales"
 	"nalaerp3/internal/settings"
 	"time"
 )
@@ -57,6 +58,7 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 	brandingSvc := settings.NewBrandingService(pg)
 	projSvc := projects.NewService(pg)
 	quoteSvc := quotes.NewService(pg, numSvc)
+	salesSvc := sales.NewService(pg, numSvc)
 
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/login", func(w http.ResponseWriter, req *http.Request) {
@@ -777,11 +779,12 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 				}
 			}
 			list, err := arSvc.List(req.Context(), accounting.InvoiceFilter{
-				Status:    q.Get("status"),
-				ContactID: q.Get("contact_id"),
-				Search:    q.Get("q"),
-				Limit:     lim,
-				Offset:    off,
+				Status:             q.Get("status"),
+				ContactID:          q.Get("contact_id"),
+				SourceSalesOrderID: q.Get("source_sales_order_id"),
+				Search:             q.Get("q"),
+				Limit:              lim,
+				Offset:             off,
 			})
 			if err != nil {
 				writeDomainError(w, req, err)
@@ -966,6 +969,255 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 		})
 	})
 
+	protected.Route("/sales-orders", func(r chi.Router) {
+		r.With(requirePermission("sales_orders.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			lim, off := 0, 0
+			if v := q.Get("limit"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					lim = n
+				}
+			}
+			if v := q.Get("offset"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					off = n
+				}
+			}
+			out, err := salesSvc.List(req.Context(), sales.SalesOrderFilter{
+				Status:    q.Get("status"),
+				ContactID: q.Get("contact_id"),
+				ProjectID: q.Get("project_id"),
+				Search:    q.Get("q"),
+				Limit:     lim,
+				Offset:    off,
+			})
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/statuses", func(w http.ResponseWriter, req *http.Request) {
+			writeJSON(w, http.StatusOK, sales.Statuses())
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			out, err := salesSvc.Get(req.Context(), orderID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			var in sales.SalesOrderUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := salesSvc.Update(req.Context(), orderID, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}/pdf", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			order, err := salesSvc.Get(req.Context(), orderID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+
+			t, err := pdfSvc.Get(req.Context(), "sales_order")
+			if err != nil {
+				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
+				return
+			}
+			effectiveTemplate := *t
+			primaryColor := "#1F4B99"
+			accentColor := "#6B7280"
+			if branding, berr := brandingSvc.Get(req.Context()); berr == nil {
+				effectiveTemplate = settings.ApplyBrandingDefaults(effectiveTemplate, branding)
+				primaryColor = branding.PrimaryColor
+				accentColor = branding.AccentColor
+			}
+
+			data := pdfgen.SalesOrderData{
+				Number:          order.Number,
+				OrderDate:       order.OrderDate.Format("02.01.2006"),
+				Status:          order.Status,
+				ProjectName:     order.ProjectName,
+				CustomerName:    order.ContactName,
+				SourceQuoteID:   order.SourceQuoteID.String(),
+				LinkedInvoiceID: order.LinkedInvoiceOutID,
+				Currency:        order.Currency,
+				Note:            order.Note,
+				NetAmount:       order.NetAmount,
+				TaxAmount:       order.TaxAmount,
+				GrossAmount:     order.GrossAmount,
+				Items:           make([]pdfgen.SalesOrderItemData, 0, len(order.Items)),
+			}
+			for idx, it := range order.Items {
+				data.Items = append(data.Items, pdfgen.SalesOrderItemData{
+					Pos:         idx + 1,
+					Description: it.Description,
+					Qty:         it.Qty,
+					Unit:        it.Unit,
+					UnitPrice:   it.UnitPrice,
+					TaxCode:     it.TaxCode,
+					Currency:    order.Currency,
+				})
+			}
+
+			opts := pdfgen.TemplateOptions{
+				HeaderText:   effectiveTemplate.HeaderText,
+				FooterText:   effectiveTemplate.FooterText,
+				TopFirstMM:   effectiveTemplate.TopFirstMM,
+				TopOtherMM:   effectiveTemplate.TopOtherMM,
+				PrimaryColor: primaryColor,
+				AccentColor:  accentColor,
+			}
+			imgIDs := map[string]string{}
+			if t.LogoDocID != nil {
+				imgIDs["logo"] = *t.LogoDocID
+			}
+			if t.BgFirstDocID != nil {
+				imgIDs["bg_first"] = *t.BgFirstDocID
+			}
+			if t.BgOtherDocID != nil {
+				imgIDs["bg_other"] = *t.BgOtherDocID
+			}
+
+			pdfBytes, err := pdfgen.RenderSalesOrder(req.Context(), mg, cfg.MongoDB, data, opts, imgIDs)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
+				return
+			}
+
+			filename := fmt.Sprintf("Auftrag_%s.pdf", sanitizeFilename(order.Number))
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfBytes)))
+			if _, err := w.Write(pdfBytes); err != nil {
+				return
+			}
+		})
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/status", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			var in struct {
+				Status string `json:"status"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := salesSvc.UpdateStatus(req.Context(), orderID, in.Status)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/items", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			var in sales.SalesOrderItemInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			item, order, err := salesSvc.CreateItem(req.Context(), orderID, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"item": item, "sales_order": order})
+		})
+		r.With(requirePermission("sales_orders.write")).Patch("/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			var in sales.SalesOrderItemUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			item, order, err := salesSvc.UpdateItem(req.Context(), orderID, itemID, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"item": item, "sales_order": order})
+		})
+		r.With(requirePermission("sales_orders.write")).Delete("/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			order, err := salesSvc.DeleteItem(req.Context(), orderID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, order)
+		})
+		r.With(requirePermission("sales_orders.write"), requirePermission("invoices_out.write")).Post("/{id}/convert-to-invoice", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			var in sales.ConvertToInvoiceInput
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			out, err := salesSvc.ConvertToInvoice(req.Context(), orderID, arSvc, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+	})
+
 	protected.Route("/quotes", func(r chi.Router) {
 		r.With(requirePermission("quotes.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
 			q := req.URL.Query()
@@ -1057,6 +1309,77 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 				return
 			}
 			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/accept", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			var in quotes.AcceptInput
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			if strings.TrimSpace(in.ProjectStatus) != "" {
+				permissions, ok := authPermissionsFromContext(req.Context())
+				if !ok {
+					writeAPIError(w, req, http.StatusForbidden, "forbidden", "Berechtigungen fehlen")
+					return
+				}
+				hasProjectsWrite := false
+				for _, permission := range permissions {
+					if permission == "projects.write" || permission == "users.manage" {
+						hasProjectsWrite = true
+						break
+					}
+				}
+				if !hasProjectsWrite {
+					writeAPIError(w, req, http.StatusForbidden, "forbidden", "Projektstatus darf nicht geändert werden")
+					return
+				}
+			}
+			out, err := quoteSvc.Accept(req.Context(), quoteID, projSvc, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write"), requirePermission("invoices_out.write")).Post("/{id}/convert-to-invoice", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			var in quotes.ConvertToInvoiceInput
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			out, err := quoteSvc.ConvertToInvoice(req.Context(), quoteID, arSvc, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("quotes.write"), requirePermission("sales_orders.write")).Post("/{id}/convert-to-sales-order", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			out, err := salesSvc.CreateFromQuote(req.Context(), quoteID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
 		})
 		r.With(requirePermission("quotes.read")).Get("/{id}/pdf", func(w http.ResponseWriter, req *http.Request) {
 			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))

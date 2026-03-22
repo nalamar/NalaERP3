@@ -9,16 +9,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"nalaerp3/internal/settings"
 )
 
 type InvoiceItemInput struct {
-	Description string  `json:"description"`
-	Qty         float64 `json:"qty"`
-	UnitPrice   float64 `json:"unit_price"`
-	TaxCode     string  `json:"tax_code"`
-	AccountCode string  `json:"account_code"`
+	Description            string     `json:"description"`
+	Qty                    float64    `json:"qty"`
+	UnitPrice              float64    `json:"unit_price"`
+	TaxCode                string     `json:"tax_code"`
+	AccountCode            string     `json:"account_code"`
+	SourceSalesOrderItemID *uuid.UUID `json:"source_sales_order_item_id,omitempty"`
 }
 
 type InvoiceOutInput struct {
@@ -30,40 +32,45 @@ type InvoiceOutInput struct {
 }
 
 type InvoiceOut struct {
-	ID          uuid.UUID          `json:"id"`
-	Number      *string            `json:"number,omitempty"`
-	Status      string             `json:"status"`
-	ContactID   string             `json:"contact_id"`
-	ContactName string             `json:"contact_name"`
-	InvoiceDate time.Time          `json:"invoice_date"`
-	DueDate     *time.Time         `json:"due_date,omitempty"`
-	Currency    string             `json:"currency"`
-	NetAmount   float64            `json:"net_amount"`
-	TaxAmount   float64            `json:"tax_amount"`
-	GrossAmount float64            `json:"gross_amount"`
-	PaidAmount  float64            `json:"paid_amount"`
-	Items       []InvoiceItemInput `json:"items"`
+	ID                 uuid.UUID          `json:"id"`
+	Number             *string            `json:"number,omitempty"`
+	Status             string             `json:"status"`
+	SourceQuoteID      *uuid.UUID         `json:"source_quote_id,omitempty"`
+	SourceSalesOrderID *uuid.UUID         `json:"source_sales_order_id,omitempty"`
+	ContactID          string             `json:"contact_id"`
+	ContactName        string             `json:"contact_name"`
+	InvoiceDate        time.Time          `json:"invoice_date"`
+	DueDate            *time.Time         `json:"due_date,omitempty"`
+	Currency           string             `json:"currency"`
+	NetAmount          float64            `json:"net_amount"`
+	TaxAmount          float64            `json:"tax_amount"`
+	GrossAmount        float64            `json:"gross_amount"`
+	PaidAmount         float64            `json:"paid_amount"`
+	Items              []InvoiceItemInput `json:"items"`
 }
 
 type InvoiceListItem struct {
-	ID          uuid.UUID  `json:"id"`
-	Number      *string    `json:"number,omitempty"`
-	Status      string     `json:"status"`
-	ContactID   string     `json:"contact_id"`
-	ContactName string     `json:"contact_name"`
-	InvoiceDate time.Time  `json:"invoice_date"`
-	DueDate     *time.Time `json:"due_date,omitempty"`
-	Currency    string     `json:"currency"`
-	GrossAmount float64    `json:"gross_amount"`
-	PaidAmount  float64    `json:"paid_amount"`
+	ID                 uuid.UUID  `json:"id"`
+	Number             *string    `json:"number,omitempty"`
+	Status             string     `json:"status"`
+	SourceQuoteID      *uuid.UUID `json:"source_quote_id,omitempty"`
+	SourceSalesOrderID *uuid.UUID `json:"source_sales_order_id,omitempty"`
+	ContactID          string     `json:"contact_id"`
+	ContactName        string     `json:"contact_name"`
+	InvoiceDate        time.Time  `json:"invoice_date"`
+	DueDate            *time.Time `json:"due_date,omitempty"`
+	Currency           string     `json:"currency"`
+	GrossAmount        float64    `json:"gross_amount"`
+	PaidAmount         float64    `json:"paid_amount"`
 }
 
 type InvoiceFilter struct {
-	Status    string
-	ContactID string
-	Search    string
-	Limit     int
-	Offset    int
+	Status             string
+	ContactID          string
+	SourceSalesOrderID string
+	Search             string
+	Limit              int
+	Offset             int
 }
 
 type ARService struct {
@@ -80,11 +87,13 @@ func (s *ARService) Get(ctx context.Context, id uuid.UUID) (*InvoiceOut, error) 
 	var inv InvoiceOut
 	var number sql.NullString
 	var due sql.NullTime
-	err := s.pg.QueryRow(ctx, `SELECT i.id, i.nummer, i.status, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.net_amount, i.tax_amount, i.gross_amount, i.paid_amount
+	var sourceQuoteID uuid.NullUUID
+	var sourceSalesOrderID uuid.NullUUID
+	err := s.pg.QueryRow(ctx, `SELECT i.id, i.nummer, i.status, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.net_amount, i.tax_amount, i.gross_amount, i.paid_amount
 		FROM invoices_out i
 		LEFT JOIN contacts c ON c.id = i.contact_id
 		WHERE i.id=$1`, id).Scan(
-		&inv.ID, &number, &inv.Status, &inv.ContactID, &inv.ContactName, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount,
+		&inv.ID, &number, &inv.Status, &sourceQuoteID, &sourceSalesOrderID, &inv.ContactID, &inv.ContactName, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount,
 	)
 	if err != nil {
 		return nil, err
@@ -92,19 +101,29 @@ func (s *ARService) Get(ctx context.Context, id uuid.UUID) (*InvoiceOut, error) 
 	if number.Valid {
 		inv.Number = &number.String
 	}
+	if sourceQuoteID.Valid {
+		inv.SourceQuoteID = &sourceQuoteID.UUID
+	}
+	if sourceSalesOrderID.Valid {
+		inv.SourceSalesOrderID = &sourceSalesOrderID.UUID
+	}
 	if due.Valid {
 		t := due.Time
 		inv.DueDate = &t
 	}
-	rows, err := s.pg.Query(ctx, `SELECT description, qty, unit_price, tax_code, account_code FROM invoice_out_items WHERE invoice_id=$1 ORDER BY position`, id)
+	rows, err := s.pg.Query(ctx, `SELECT description, qty, unit_price, tax_code, account_code, source_sales_order_item_id FROM invoice_out_items WHERE invoice_id=$1 ORDER BY position`, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var it InvoiceItemInput
-		if err := rows.Scan(&it.Description, &it.Qty, &it.UnitPrice, &it.TaxCode, &it.AccountCode); err != nil {
+		var sourceSalesOrderItemID uuid.NullUUID
+		if err := rows.Scan(&it.Description, &it.Qty, &it.UnitPrice, &it.TaxCode, &it.AccountCode, &sourceSalesOrderItemID); err != nil {
 			return nil, err
+		}
+		if sourceSalesOrderItemID.Valid {
+			it.SourceSalesOrderItemID = &sourceSalesOrderItemID.UUID
 		}
 		inv.Items = append(inv.Items, it)
 	}
@@ -125,6 +144,10 @@ func (s *ARService) List(ctx context.Context, f InvoiceFilter) ([]InvoiceListIte
 		args = append(args, f.ContactID)
 		conds = append(conds, fmt.Sprintf("i.contact_id=$%d", len(args)))
 	}
+	if f.SourceSalesOrderID != "" {
+		args = append(args, f.SourceSalesOrderID)
+		conds = append(conds, fmt.Sprintf("i.source_sales_order_id=$%d", len(args)))
+	}
 	if f.Search != "" {
 		args = append(args, "%"+strings.ToLower(f.Search)+"%")
 		conds = append(conds, fmt.Sprintf("(LOWER(i.nummer) LIKE $%d OR LOWER(i.id::text) LIKE $%d)", len(args), len(args)))
@@ -136,7 +159,7 @@ func (s *ARService) List(ctx context.Context, f InvoiceFilter) ([]InvoiceListIte
 		where = "WHERE " + strings.Join(conds, " AND ")
 	}
 	query := `
-SELECT i.id, i.nummer, i.status, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.gross_amount, i.paid_amount
+SELECT i.id, i.nummer, i.status, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.gross_amount, i.paid_amount
 FROM invoices_out i
 LEFT JOIN contacts c ON c.id = i.contact_id
 ` + where + `
@@ -152,11 +175,19 @@ LIMIT $` + fmt.Sprint(len(args)-1) + ` OFFSET $` + fmt.Sprint(len(args))
 		var it InvoiceListItem
 		var num sql.NullString
 		var due sql.NullTime
-		if err := rows.Scan(&it.ID, &num, &it.Status, &it.ContactID, &it.ContactName, &it.InvoiceDate, &due, &it.Currency, &it.GrossAmount, &it.PaidAmount); err != nil {
+		var sourceQuoteID uuid.NullUUID
+		var sourceSalesOrderID uuid.NullUUID
+		if err := rows.Scan(&it.ID, &num, &it.Status, &sourceQuoteID, &sourceSalesOrderID, &it.ContactID, &it.ContactName, &it.InvoiceDate, &due, &it.Currency, &it.GrossAmount, &it.PaidAmount); err != nil {
 			return nil, err
 		}
 		if num.Valid {
 			it.Number = &num.String
+		}
+		if sourceQuoteID.Valid {
+			it.SourceQuoteID = &sourceQuoteID.UUID
+		}
+		if sourceSalesOrderID.Valid {
+			it.SourceSalesOrderID = &sourceSalesOrderID.UUID
 		}
 		if due.Valid {
 			t := due.Time
@@ -169,6 +200,31 @@ LIMIT $` + fmt.Sprint(len(args)-1) + ` OFFSET $` + fmt.Sprint(len(args))
 
 // Create draft invoice
 func (s *ARService) Create(ctx context.Context, in InvoiceOutInput) (*InvoiceOut, error) {
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	out, err := s.createTx(ctx, tx, in, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (s *ARService) CreateFromQuoteTx(ctx context.Context, tx pgx.Tx, quoteID uuid.UUID, in InvoiceOutInput) (*InvoiceOut, error) {
+	return s.createTx(ctx, tx, in, &quoteID, nil)
+}
+
+func (s *ARService) CreateFromSalesOrderTx(ctx context.Context, tx pgx.Tx, salesOrderID uuid.UUID, sourceQuoteID *uuid.UUID, in InvoiceOutInput) (*InvoiceOut, error) {
+	return s.createTx(ctx, tx, in, sourceQuoteID, &salesOrderID)
+}
+
+func (s *ARService) createTx(ctx context.Context, tx pgx.Tx, in InvoiceOutInput, sourceQuoteID, sourceSalesOrderID *uuid.UUID) (*InvoiceOut, error) {
 	if in.ContactID == "" {
 		return nil, errors.New("contact_id fehlt")
 	}
@@ -184,40 +240,34 @@ func (s *ARService) Create(ctx context.Context, in InvoiceOutInput) (*InvoiceOut
 	id := uuid.New()
 	netSum, taxSum := calcTotals(in.Items)
 	gross := netSum + taxSum
-	tx, err := s.pg.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `INSERT INTO invoices_out (id, contact_id, status, invoice_date, due_date, currency, net_amount, tax_amount, gross_amount)
-	VALUES ($1,$2,'draft',$3,$4,$5,$6,$7,$8)`,
-		id, in.ContactID, in.InvoiceDate, in.DueDate, in.Currency, netSum, taxSum, gross)
+	_, err := tx.Exec(ctx, `INSERT INTO invoices_out (id, contact_id, status, invoice_date, due_date, currency, net_amount, tax_amount, gross_amount, source_quote_id, source_sales_order_id)
+	VALUES ($1,$2,'draft',$3,$4,$5,$6,$7,$8,$9,$10)`,
+		id, in.ContactID, in.InvoiceDate, in.DueDate, in.Currency, netSum, taxSum, gross, sourceQuoteID, sourceSalesOrderID)
 	if err != nil {
 		return nil, err
 	}
 	for idx, it := range in.Items {
 		lineID := uuid.New()
-		_, err := tx.Exec(ctx, `INSERT INTO invoice_out_items (id, invoice_id, position, description, qty, unit_price, net_amount, tax_amount, tax_code, account_code)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			lineID, id, idx+1, it.Description, it.Qty, it.UnitPrice, it.Qty*it.UnitPrice, it.UnitPrice*it.Qty*taxRate(it.TaxCode), it.TaxCode, it.AccountCode)
+		_, err := tx.Exec(ctx, `INSERT INTO invoice_out_items (id, invoice_id, position, description, qty, unit_price, net_amount, tax_amount, tax_code, account_code, source_sales_order_item_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+			lineID, id, idx+1, it.Description, it.Qty, it.UnitPrice, it.Qty*it.UnitPrice, it.UnitPrice*it.Qty*taxRate(it.TaxCode), it.TaxCode, it.AccountCode, it.SourceSalesOrderItemID)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
 	return &InvoiceOut{
-		ID:          id,
-		Status:      "draft",
-		ContactID:   in.ContactID,
-		InvoiceDate: in.InvoiceDate,
-		DueDate:     in.DueDate,
-		Currency:    in.Currency,
-		NetAmount:   netSum,
-		TaxAmount:   taxSum,
-		GrossAmount: gross,
-		Items:       in.Items,
+		ID:                 id,
+		Status:             "draft",
+		SourceQuoteID:      sourceQuoteID,
+		SourceSalesOrderID: sourceSalesOrderID,
+		ContactID:          in.ContactID,
+		InvoiceDate:        in.InvoiceDate,
+		DueDate:            in.DueDate,
+		Currency:           in.Currency,
+		NetAmount:          netSum,
+		TaxAmount:          taxSum,
+		GrossAmount:        gross,
+		Items:              in.Items,
 	}, nil
 }
 
@@ -241,7 +291,7 @@ func (s *ARService) Book(ctx context.Context, id uuid.UUID) (*InvoiceOut, error)
 		return nil, errors.New("Rechnung ist nicht im Status draft")
 	}
 	// load items
-	rows, err := tx.Query(ctx, `SELECT description, qty, unit_price, tax_code, account_code FROM invoice_out_items WHERE invoice_id=$1 ORDER BY position`, id)
+	rows, err := tx.Query(ctx, `SELECT description, qty, unit_price, tax_code, account_code, source_sales_order_item_id FROM invoice_out_items WHERE invoice_id=$1 ORDER BY position`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -249,8 +299,12 @@ func (s *ARService) Book(ctx context.Context, id uuid.UUID) (*InvoiceOut, error)
 	items := make([]InvoiceItemInput, 0)
 	for rows.Next() {
 		var it InvoiceItemInput
-		if err := rows.Scan(&it.Description, &it.Qty, &it.UnitPrice, &it.TaxCode, &it.AccountCode); err != nil {
+		var sourceSalesOrderItemID uuid.NullUUID
+		if err := rows.Scan(&it.Description, &it.Qty, &it.UnitPrice, &it.TaxCode, &it.AccountCode, &sourceSalesOrderItemID); err != nil {
 			return nil, err
+		}
+		if sourceSalesOrderItemID.Valid {
+			it.SourceSalesOrderItemID = &sourceSalesOrderItemID.UUID
 		}
 		items = append(items, it)
 	}
