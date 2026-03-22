@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_context.dart';
+import '../widgets/commercial_summary_widgets.dart';
 import '../web/browser.dart' as browser;
 import 'dart:convert';
 import 'quotes_page.dart';
+import 'sales_orders_page.dart';
 
-String _projectErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+String _projectErrorMessage(Object error,
+    {String fallback = 'Vorgang fehlgeschlagen'}) {
   if (error is ApiException) {
     switch (error.code) {
       case 'validation_error':
@@ -22,7 +26,8 @@ String _projectErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschl
 String _customerCommercialSummary(Map<String, dynamic> customer) {
   final parts = <String>[];
   final debtorNo = (customer['debitor_nr'] ?? '').toString().trim();
-  final paymentTerms = (customer['zahlungsbedingungen'] ?? '').toString().trim();
+  final paymentTerms =
+      (customer['zahlungsbedingungen'] ?? '').toString().trim();
   final taxCountry = (customer['steuer_land'] ?? '').toString().trim();
   final taxExempt = customer['steuerbefreit'] == true;
   if (debtorNo.isNotEmpty) parts.add('Debitor-Nr.: $debtorNo');
@@ -46,7 +51,8 @@ class _ProjectsPageState extends State<ProjectsPage> {
   List<dynamic> _projects = const [];
   bool _importing = false;
 
-  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+  String _errorMessage(Object error,
+      {String fallback = 'Vorgang fehlgeschlagen'}) {
     return _projectErrorMessage(error, fallback: fallback);
   }
 
@@ -57,14 +63,25 @@ class _ProjectsPageState extends State<ProjectsPage> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final list = await widget.api.listProjects();
-      setState(() { _projects = list; });
+      setState(() {
+        _projects = list;
+      });
     } catch (e) {
-      setState(() { _error = _errorMessage(e, fallback: 'Projekte konnten nicht geladen werden'); });
+      setState(() {
+        _error =
+            _errorMessage(e, fallback: 'Projekte konnten nicht geladen werden');
+      });
     } finally {
-      if (mounted) setState(() { _loading = false; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+        });
     }
   }
 
@@ -73,13 +90,26 @@ class _ProjectsPageState extends State<ProjectsPage> {
     final color = Theme.of(context).colorScheme.primary;
     final canWrite = widget.api.hasPermission('projects.write');
     return Scaffold(
-      appBar: AppBar(title: const Text('Projekte'), backgroundColor: color, foregroundColor: Colors.white, actions: [
-        if (canWrite) ...[
-          TextButton.icon(onPressed: _analyzeLogikal, icon: const Icon(Icons.search_rounded, color: Colors.white), label: const Text('Analyse Logikal', style: TextStyle(color: Colors.white))),
-          TextButton.icon(onPressed: _importing ? null : _importLogikal, icon: const Icon(Icons.upload_file_rounded, color: Colors.white), label: const Text('Import Logikal', style: TextStyle(color: Colors.white))),
-        ],
-        const SizedBox(width: 8),
-      ]),
+      appBar: AppBar(
+          title: const Text('Projekte'),
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          actions: [
+            if (canWrite) ...[
+              TextButton.icon(
+                  onPressed: _analyzeLogikal,
+                  icon: const Icon(Icons.search_rounded, color: Colors.white),
+                  label: const Text('Analyse Logikal',
+                      style: TextStyle(color: Colors.white))),
+              TextButton.icon(
+                  onPressed: _importing ? null : _importLogikal,
+                  icon: const Icon(Icons.upload_file_rounded,
+                      color: Colors.white),
+                  label: const Text('Import Logikal',
+                      style: TextStyle(color: Colors.white))),
+            ],
+            const SizedBox(width: 8),
+          ]),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: _loading
@@ -91,12 +121,16 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.workspaces_rounded, size: 48, color: Colors.black26),
+                            const Icon(Icons.workspaces_rounded,
+                                size: 48, color: Colors.black26),
                             const SizedBox(height: 12),
                             const Text('Noch keine Projekte.'),
                             const SizedBox(height: 8),
                             if (canWrite)
-                              FilledButton.icon(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt anlegen')),
+                              FilledButton.icon(
+                                  onPressed: _addProject,
+                                  icon: const Icon(Icons.add),
+                                  label: const Text('Projekt anlegen')),
                           ],
                         ),
                       )
@@ -106,18 +140,30 @@ class _ProjectsPageState extends State<ProjectsPage> {
                         itemBuilder: (context, index) {
                           final p = _projects[index] as Map<String, dynamic>;
                           return ListTile(
-                            leading: CircleAvatar(backgroundColor: color.withOpacity(0.12), child: Icon(Icons.work_outline_rounded, color: color)),
+                            leading: CircleAvatar(
+                                backgroundColor: color.withOpacity(0.12),
+                                child: Icon(Icons.work_outline_rounded,
+                                    color: color)),
                             title: Text(p['name']?.toString() ?? 'Projekt'),
                             subtitle: Text(p['nummer']?.toString() ?? ''),
                             onTap: () {
-                              Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: p, canWrite: canWrite))).then((_) => _load());
+                              Navigator.of(context)
+                                  .push(MaterialPageRoute(
+                                      builder: (_) => ProjectDetailPage(
+                                          api: widget.api,
+                                          project: p,
+                                          canWrite: canWrite)))
+                                  .then((_) => _load());
                             },
                           );
                         },
                       ),
       ),
       floatingActionButton: canWrite
-          ? FloatingActionButton.extended(onPressed: _addProject, icon: const Icon(Icons.add), label: const Text('Projekt'))
+          ? FloatingActionButton.extended(
+              onPressed: _addProject,
+              icon: const Icon(Icons.add),
+              label: const Text('Projekt'))
           : null,
     );
   }
@@ -128,24 +174,41 @@ class _ProjectsPageState extends State<ProjectsPage> {
       if (picked == null) return;
       // Debug-Ausgabe
       // ignore: avoid_print
-      print('Import: picked ${picked.filename} bytes=${picked.bytes.length} ct=${picked.contentType}');
-      setState(() { _importing = true; });
+      print(
+          'Import: picked ${picked.filename} bytes=${picked.bytes.length} ct=${picked.contentType}');
+      setState(() {
+        _importing = true;
+      });
       if (mounted) {
-        showDialog(context: context, barrierDismissible: false, builder: (_) => const _ProgressDialog(text: 'Import läuft...'));
+        showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const _ProgressDialog(text: 'Import läuft...'));
       }
-      final res = await widget.api.importLogikalProject(picked.filename, picked.bytes, contentType: picked.contentType);
+      final res = await widget.api.importLogikalProject(
+          picked.filename, picked.bytes,
+          contentType: picked.contentType);
       if (mounted) Navigator.of(context, rootNavigator: true).pop();
-      setState(() { _importing = false; });
+      setState(() {
+        _importing = false;
+      });
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import erfolgreich: ${res['projekt']?['name'] ?? ''}')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text('Import erfolgreich: ${res['projekt']?['name'] ?? ''}')));
       // Optional: nach Assets-ZIP fragen
       final wantAssets = await showDialog<bool>(
         context: context,
         builder: (_) => AlertDialog(
-          content: const Text('Möchten Sie zusätzlich einen Assets-Ordner (ZIP mit Emfs/Rtfs) hochladen?'),
+          content: const Text(
+              'Möchten Sie zusätzlich einen Assets-Ordner (ZIP mit Emfs/Rtfs) hochladen?'),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Nein')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Ja')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Nein')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Ja')),
           ],
         ),
       );
@@ -153,20 +216,37 @@ class _ProjectsPageState extends State<ProjectsPage> {
         final zip = await browser.pickFile(accept: '.zip');
         if (zip != null) {
           try {
-            setState(() { _importing = true; });
+            setState(() {
+              _importing = true;
+            });
             if (mounted) {
-              showDialog(context: context, barrierDismissible: false, builder: (_) => const _ProgressDialog(text: 'Assets werden hochgeladen...'));
+              showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => const _ProgressDialog(
+                      text: 'Assets werden hochgeladen...'));
             }
-            await widget.api.uploadProjectAssets((res['projekt']?['id'] ?? widget.api.toString()).toString(), zip.filename, zip.bytes);
+            await widget.api.uploadProjectAssets(
+                (res['projekt']?['id'] ?? widget.api.toString()).toString(),
+                zip.filename,
+                zip.bytes);
             if (mounted) Navigator.of(context, rootNavigator: true).pop();
-            setState(() { _importing = false; });
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Assets hochgeladen.')));
+            setState(() {
+              _importing = false;
+            });
+            if (mounted)
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Assets hochgeladen.')));
           } catch (e) {
             if (mounted) {
               Navigator.of(context, rootNavigator: true).pop();
-              setState(() { _importing = false; });
+              setState(() {
+                _importing = false;
+              });
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(_errorMessage(e, fallback: 'Assets-Upload fehlgeschlagen'))),
+                SnackBar(
+                    content: Text(_errorMessage(e,
+                        fallback: 'Assets-Upload fehlgeschlagen'))),
               );
             }
           }
@@ -178,10 +258,15 @@ class _ProjectsPageState extends State<ProjectsPage> {
       // ignore: avoid_print
       print('Import-Fehler: $e');
       if (!mounted) return;
-      try { Navigator.of(context, rootNavigator: true).pop(); } catch (_) {}
-      setState(() { _importing = false; });
+      try {
+        Navigator.of(context, rootNavigator: true).pop();
+      } catch (_) {}
+      setState(() {
+        _importing = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorMessage(e, fallback: 'Import fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_errorMessage(e, fallback: 'Import fehlgeschlagen'))),
       );
     }
   }
@@ -190,13 +275,18 @@ class _ProjectsPageState extends State<ProjectsPage> {
     try {
       final picked = await browser.pickFile(accept: '.db,.sqlite,.sqlite3');
       if (picked == null) return;
-      final res = await widget.api.analyzeLogikalProject(picked.filename, picked.bytes, contentType: picked.contentType);
+      final res = await widget.api.analyzeLogikalProject(
+          picked.filename, picked.bytes,
+          contentType: picked.contentType);
       if (!mounted) return;
-      await showDialog(context: context, builder: (_) => _AnalysisDialog(summary: res));
+      await showDialog(
+          context: context, builder: (_) => _AnalysisDialog(summary: res));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorMessage(e, fallback: 'Analyse fehlgeschlagen'))),
+        SnackBar(
+            content:
+                Text(_errorMessage(e, fallback: 'Analyse fehlgeschlagen'))),
       );
     }
   }
@@ -207,33 +297,50 @@ class _ProjectsPageState extends State<ProjectsPage> {
       builder: (ctx) => _ProjectCreateDialog(api: widget.api),
     );
     if (res == null) return;
-    if ((res['name'] as String?) == null || (res['name'] as String).trim().isEmpty) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name ist erforderlich'))); return;
+    if ((res['name'] as String?) == null ||
+        (res['name'] as String).trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Name ist erforderlich')));
+      return;
     }
     try {
       final canWrite = widget.api.hasPermission('projects.write');
       final body = {
-        if ((res['nummer'] ?? '').toString().trim().isNotEmpty) 'nummer': res['nummer'],
+        if ((res['nummer'] ?? '').toString().trim().isNotEmpty)
+          'nummer': res['nummer'],
         'name': res['name'],
-        if ((res['kunde_id'] ?? '').toString().isNotEmpty) 'kunde_id': res['kunde_id'],
+        if ((res['kunde_id'] ?? '').toString().isNotEmpty)
+          'kunde_id': res['kunde_id'],
       };
       final created = await widget.api.createProject(body);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Projekt erstellt: ${created['name']}')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Projekt erstellt: ${created['name']}')));
       await _load();
       // direkt öffnen
-      Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProjectDetailPage(api: widget.api, project: created, canWrite: canWrite))).then((_) => _load());
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+              builder: (_) => ProjectDetailPage(
+                  api: widget.api, project: created, canWrite: canWrite)))
+          .then((_) => _load());
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorMessage(e, fallback: 'Erstellen fehlgeschlagen'))),
+        SnackBar(
+            content:
+                Text(_errorMessage(e, fallback: 'Erstellen fehlgeschlagen'))),
       );
     }
   }
 }
 
 class ProjectDetailPage extends StatefulWidget {
-  const ProjectDetailPage({super.key, required this.api, required this.project, required this.canWrite});
+  const ProjectDetailPage(
+      {super.key,
+      required this.api,
+      required this.project,
+      required this.canWrite});
   final ApiClient api;
   final Map<String, dynamic> project;
   final bool canWrite;
@@ -246,6 +353,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   bool _loading = true;
   String? _error;
   List<dynamic> _phases = const [];
+  ProjectCommercialStats? _commercialSnapshot;
 
   @override
   void initState() {
@@ -254,16 +362,33 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final list = await widget.api.listProjectPhases(widget.project['id'] as String);
-      setState(() { _phases = list; });
+      final projectId = widget.project['id'] as String;
+      final list = await widget.api.listProjectPhases(projectId);
+      final quotes =
+          await widget.api.listQuotes(projectId: projectId, limit: 200);
+      final salesOrders =
+          await widget.api.listSalesOrders(projectId: projectId, limit: 200);
+      setState(() {
+        _phases = list;
+        _commercialSnapshot =
+            summarizeProjectCommercialContext(quotes, salesOrders);
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Projektstruktur konnte nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Projektstruktur konnte nicht geladen werden');
       });
+    } finally {
+      if (mounted)
+        setState(() {
+          _loading = false;
+        });
     }
-    finally { if (mounted) setState(() { _loading = false; }); }
   }
 
   @override
@@ -278,7 +403,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           foregroundColor: Colors.white,
           actions: [
             if (widget.canWrite)
-              IconButton(onPressed: _addPhase, icon: const Icon(Icons.playlist_add_rounded), tooltip: 'Los hinzufügen'),
+              IconButton(
+                  onPressed: _addPhase,
+                  icon: const Icon(Icons.playlist_add_rounded),
+                  tooltip: 'Los hinzufügen'),
             const SizedBox(width: 6),
           ],
           bottom: TabBar(
@@ -294,7 +422,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
         ),
         body: TabBarView(children: [
           _buildStructureTab(),
-          ImportLogTab(api: widget.api, projectId: widget.project['id'] as String, canWrite: widget.canWrite),
+          ImportLogTab(
+              api: widget.api,
+              projectId: widget.project['id'] as String,
+              canWrite: widget.canWrite),
         ]),
       ),
     );
@@ -307,29 +438,63 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       itemCount: _phases.length,
       itemBuilder: (context, index) {
         final ph = _phases[index] as Map<String, dynamic>;
-        return _PhaseTile(api: widget.api, projectId: widget.project['id'] as String, phase: ph, onChanged: _load, canWrite: widget.canWrite);
+        return _PhaseTile(
+            api: widget.api,
+            projectId: widget.project['id'] as String,
+            phase: ph,
+            onChanged: _load,
+            canWrite: widget.canWrite);
       },
     );
     final right = Padding(
       padding: const EdgeInsets.all(16),
       child: SingleChildScrollView(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('Aktionen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        child:
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          const Text('Kaufmännischer Status',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _ProjectCommercialCard(
+            snapshot: _commercialSnapshot,
+            canOpenQuotes: widget.api.hasPermission('quotes.read'),
+            canOpenSalesOrders: widget.api.hasPermission('sales_orders.read'),
+            onOpenQuotes: _openProjectQuotes,
+            onOpenSalesOrders: _openProjectSalesOrders,
+          ),
+          const SizedBox(height: 24),
+          const Text('Aktionen',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
           if (widget.canWrite)
-            FilledButton.icon(onPressed: () {/* TODO: Bestellung */}, icon: const Icon(Icons.shopping_cart_checkout_rounded), label: const Text('Bestellung')),
+            FilledButton.icon(
+                onPressed: () {/* TODO: Bestellung */},
+                icon: const Icon(Icons.shopping_cart_checkout_rounded),
+                label: const Text('Bestellung')),
           const SizedBox(height: 8),
           if (widget.api.hasPermission('quotes.write'))
-            FilledButton.icon(onPressed: _openQuoteCreateFlow, icon: const Icon(Icons.add_chart_rounded), label: const Text('Angebot erfassen')),
+            FilledButton.icon(
+                onPressed: _openQuoteCreateFlow,
+                icon: const Icon(Icons.add_chart_rounded),
+                label: const Text('Angebot erfassen')),
           if (widget.api.hasPermission('quotes.write'))
             const SizedBox(height: 8),
-          FilledButton.icon(onPressed: _downloadQuotePdf, icon: const Icon(Icons.request_quote_rounded), label: const Text('Angebot PDF')),
+          FilledButton.icon(
+              onPressed: _downloadQuotePdf,
+              icon: const Icon(Icons.request_quote_rounded),
+              label: const Text('Angebot PDF')),
           const SizedBox(height: 24),
-          const Text('Weitere Links', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Weitere Links',
+              style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: () {/* TODO */}, icon: const Icon(Icons.picture_as_pdf_rounded), label: const Text('Dokumente')),
+          OutlinedButton.icon(
+              onPressed: () {/* TODO */},
+              icon: const Icon(Icons.picture_as_pdf_rounded),
+              label: const Text('Dokumente')),
           const SizedBox(height: 8),
-          OutlinedButton.icon(onPressed: () {/* TODO */}, icon: const Icon(Icons.settings_rounded), label: const Text('Einstellungen')),
+          OutlinedButton.icon(
+              onPressed: () {/* TODO */},
+              icon: const Icon(Icons.settings_rounded),
+              label: const Text('Einstellungen')),
         ]),
       ),
     );
@@ -343,11 +508,21 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _addPhase() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Los anlegen', fields: const ['nummer','name','beschreibung'], initial: const {'nummer':'1','name':''}),
+      builder: (ctx) => _EditDialog(
+          title: 'Los anlegen',
+          fields: const ['nummer', 'name', 'beschreibung'],
+          initial: const {'nummer': '1', 'name': ''}),
     );
     if (res == null) return;
-    try { await widget.api.createPhase(widget.project['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
+    try {
+      await widget.api.createPhase(widget.project['id'] as String, res);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen'))));
+    }
   }
 
   Future<void> _downloadQuotePdf() async {
@@ -364,7 +539,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Angebots-PDF konnte nicht erzeugt werden'))),
+        SnackBar(
+            content: Text(_projectErrorMessage(e,
+                fallback: 'Angebots-PDF konnte nicht erzeugt werden'))),
       );
     }
   }
@@ -380,10 +557,102 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
       ),
     );
   }
+
+  Future<void> _openProjectQuotes() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => QuotesPage(
+          api: widget.api,
+          initialProjectId: widget.project['id']?.toString(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openProjectSalesOrders() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SalesOrdersPage(
+          api: widget.api,
+          initialProjectId: widget.project['id']?.toString(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProjectCommercialCard extends StatelessWidget {
+  const _ProjectCommercialCard({
+    required this.snapshot,
+    required this.canOpenQuotes,
+    required this.canOpenSalesOrders,
+    required this.onOpenQuotes,
+    required this.onOpenSalesOrders,
+  });
+
+  final ProjectCommercialStats? snapshot;
+  final bool canOpenQuotes;
+  final bool canOpenSalesOrders;
+  final VoidCallback onOpenQuotes;
+  final VoidCallback onOpenSalesOrders;
+
+  @override
+  Widget build(BuildContext context) {
+    final data = snapshot;
+    if (data == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(12),
+          child: CommercialSummaryText(
+            lines: ['Kaufmännische Kennzahlen werden geladen.'],
+            textAlign: TextAlign.left,
+          ),
+        ),
+      );
+    }
+
+    return CommercialSummaryCard(
+      headline:
+          '${data.quoteCount} Angebote  •  ${data.salesOrderCount} Aufträge',
+      lines: [
+        '${data.quotesWithFollowUp} Angebote mit Folgebeleg',
+        '${data.partialSalesOrderCount} Aufträge in Teilfaktura',
+        'Offener Restbetrag: ${data.remainingGrossAmount.toStringAsFixed(2)} EUR',
+      ],
+      footer: canOpenQuotes || canOpenSalesOrders
+          ? Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (canOpenQuotes)
+                    OutlinedButton.icon(
+                      onPressed: onOpenQuotes,
+                      icon: const Icon(Icons.request_quote_rounded),
+                      label: const Text('Projekt-Angebote öffnen'),
+                    ),
+                  if (canOpenSalesOrders)
+                    OutlinedButton.icon(
+                      onPressed: onOpenSalesOrders,
+                      icon: const Icon(Icons.assignment_turned_in_rounded),
+                      label: const Text('Projekt-Aufträge öffnen'),
+                    ),
+                ],
+              ),
+            )
+          : null,
+    );
+  }
 }
 
 class _PhaseTile extends StatefulWidget {
-  const _PhaseTile({required this.api, required this.projectId, required this.phase, required this.onChanged, required this.canWrite});
+  const _PhaseTile(
+      {required this.api,
+      required this.projectId,
+      required this.phase,
+      required this.onChanged,
+      required this.canWrite});
   final ApiClient api;
   final String projectId;
   final Map<String, dynamic> phase;
@@ -399,11 +668,16 @@ class _PhaseTileState extends State<_PhaseTile> {
 
   Future<void> _load() async {
     try {
-      final list = await widget.api.listPhaseElevations(widget.projectId, widget.phase['id'] as String);
-      setState(() { _elevations = list; _error = null; });
+      final list = await widget.api
+          .listPhaseElevations(widget.projectId, widget.phase['id'] as String);
+      setState(() {
+        _elevations = list;
+        _error = null;
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Positionen konnten nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Positionen konnten nicht geladen werden');
       });
     }
   }
@@ -412,23 +686,51 @@ class _PhaseTileState extends State<_PhaseTile> {
   Widget build(BuildContext context) {
     final phName = (widget.phase['name']?.toString() ?? '').trim();
     final phNum = (widget.phase['nummer']?.toString() ?? '').trim();
-    final title = phName.isNotEmpty ? phName : (phNum.isNotEmpty ? 'Los $phNum' : 'Los');
+    final title =
+        phName.isNotEmpty ? phName : (phNum.isNotEmpty ? 'Los $phNum' : 'Los');
     return ExpansionTile(
       title: Row(children: [
         Expanded(child: Text(title, overflow: TextOverflow.ellipsis)),
         if (widget.canWrite) ...[
-          IconButton(onPressed: _editPhase, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-          IconButton(onPressed: _deletePhase, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
-          IconButton(onPressed: _addElevation, icon: const Icon(Icons.add_box_rounded), tooltip: 'Position hinzufügen'),
+          IconButton(
+              onPressed: _editPhase,
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Bearbeiten'),
+          IconButton(
+              onPressed: _deletePhase,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Löschen'),
+          IconButton(
+              onPressed: _addElevation,
+              icon: const Icon(Icons.add_box_rounded),
+              tooltip: 'Position hinzufügen'),
         ],
       ]),
-      subtitle: phName.isNotEmpty && phNum.isNotEmpty ? Text('Los: $phNum') : null,
+      subtitle:
+          phName.isNotEmpty && phNum.isNotEmpty ? Text('Los: $phNum') : null,
       initiallyExpanded: false,
-      onExpansionChanged: (open) { if (open && _elevations == null) { _load(); } },
+      onExpansionChanged: (open) {
+        if (open && _elevations == null) {
+          _load();
+        }
+      },
       children: [
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
-        if (_elevations == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_elevations != null) for (final e in _elevations!) _ElevationTile(api: widget.api, projectId: widget.projectId, phaseId: widget.phase['id'] as String, elevation: e as Map<String, dynamic>, onChanged: _load, canWrite: widget.canWrite),
+        if (_error != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Fehler: $_error')),
+        if (_elevations == null)
+          const Padding(
+              padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+        if (_elevations != null)
+          for (final e in _elevations!)
+            _ElevationTile(
+                api: widget.api,
+                projectId: widget.projectId,
+                phaseId: widget.phase['id'] as String,
+                elevation: e as Map<String, dynamic>,
+                onChanged: _load,
+                canWrite: widget.canWrite),
       ],
     );
   }
@@ -436,31 +738,79 @@ class _PhaseTileState extends State<_PhaseTile> {
   Future<void> _editPhase() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Los bearbeiten', fields: const ['nummer','name','beschreibung','sort_order'], initial: widget.phase),
+      builder: (ctx) => _EditDialog(
+          title: 'Los bearbeiten',
+          fields: const ['nummer', 'name', 'beschreibung', 'sort_order'],
+          initial: widget.phase),
     );
     if (res == null) return;
-    try { await widget.api.updatePhase(widget.projectId, widget.phase['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
+    try {
+      await widget.api
+          .updatePhase(widget.projectId, widget.phase['id'] as String, res);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen'))));
+    }
   }
+
   Future<void> _deletePhase() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Los wirklich löschen?'));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ConfirmDialog(text: 'Los wirklich löschen?'));
     if (ok != true) return;
-    try { await widget.api.deletePhase(widget.projectId, widget.phase['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
+    try {
+      await widget.api
+          .deletePhase(widget.projectId, widget.phase['id'] as String);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen'))));
+    }
   }
+
   Future<void> _addElevation() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Position anlegen', fields: const ['nummer','name','beschreibung','menge','width_mm','height_mm'], initial: const {'nummer':'1','name':'', 'menge':'1'}),
+      builder: (ctx) => _EditDialog(title: 'Position anlegen', fields: const [
+        'nummer',
+        'name',
+        'beschreibung',
+        'menge',
+        'width_mm',
+        'height_mm'
+      ], initial: const {
+        'nummer': '1',
+        'name': '',
+        'menge': '1'
+      }),
     );
     if (res == null) return;
-    try { await widget.api.createElevation(widget.projectId, widget.phase['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
+    try {
+      await widget.api
+          .createElevation(widget.projectId, widget.phase['id'] as String, res);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen'))));
+    }
   }
 }
 
 class _ElevationTile extends StatefulWidget {
-  const _ElevationTile({required this.api, required this.projectId, required this.phaseId, required this.elevation, required this.onChanged, required this.canWrite});
+  const _ElevationTile(
+      {required this.api,
+      required this.projectId,
+      required this.phaseId,
+      required this.elevation,
+      required this.onChanged,
+      required this.canWrite});
   final ApiClient api;
   final String projectId;
   final String phaseId;
@@ -474,60 +824,97 @@ class _ElevationTile extends StatefulWidget {
 class _ElevationTileState extends State<_ElevationTile> {
   List<dynamic>? _variants;
   String? _error;
-  String _normKey(String k) => k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  String _normKey(String k) =>
+      k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
   dynamic _looseGet(Map<String, dynamic> m, List<String> desired) {
     // direct
     for (final entry in m.entries) {
       final nk = _normKey(entry.key);
-      for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+      for (final d in desired) {
+        if (nk == _normKey(d)) return entry.value;
+      }
     }
     // common nested containers
-    for (final c in ['properties','props','attributes','meta']) {
+    for (final c in ['properties', 'props', 'attributes', 'meta']) {
       final v = m[c];
       if (v is Map<String, dynamic>) {
         for (final entry in v.entries) {
           final nk = _normKey(entry.key);
-          for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+          for (final d in desired) {
+            if (nk == _normKey(d)) return entry.value;
+          }
         }
       }
     }
     return null;
   }
+
   String _fmt4Local(dynamic v) {
     if (v == null) return '-';
     num? n;
-    if (v is num) n = v; else n = num.tryParse(v.toString());
+    if (v is num)
+      n = v;
+    else
+      n = num.tryParse(v.toString());
     if (n == null) return '-';
     var s = n.toDouble().toStringAsFixed(4);
-    while (s.contains('.') && s.endsWith('0')) { s = s.substring(0, s.length - 1); }
+    while (s.contains('.') && s.endsWith('0')) {
+      s = s.substring(0, s.length - 1);
+    }
     if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     return s;
   }
+
   Future<void> _load() async {
     try {
-      final list = await widget.api.listElevationVariants(widget.projectId, widget.elevation['id'] as String);
-      setState(() { _variants = list; _error = null; });
+      final list = await widget.api.listElevationVariants(
+          widget.projectId, widget.elevation['id'] as String);
+      setState(() {
+        _variants = list;
+        _error = null;
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Varianten konnten nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Varianten konnten nicht geladen werden');
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
-    final title = '${widget.elevation['nummer']}: ${widget.elevation['name']} (Menge ${widget.elevation['menge']})';
+    final title =
+        '${widget.elevation['nummer']}: ${widget.elevation['name']} (Menge ${widget.elevation['menge']})';
     final serie = (widget.elevation['serie'] as String?)?.trim() ?? '';
     final surf = (widget.elevation['oberflaeche'] as String?)?.trim() ?? '';
     // Kurzbeschreibung oberhalb von Serie/Oberfläche
-    final autoDesc = (_looseGet(widget.elevation, ['AutoDescription']) ?? '').toString().trim();
-    final wOut = _looseGet(widget.elevation, ['Width_Output','Width Output','width_output','Width']);
-    final wUnit = (_looseGet(widget.elevation, ['Width_unit','Width_Unit','width_unit']) ?? 'mm').toString();
-    final lOut = _looseGet(widget.elevation, ['Lenght_Output','Length_Output','length_output','Lenght','Length','height_mm','length_mm']);
-    final lUnit = (_looseGet(widget.elevation, ['Lenght_Unit','Length_Unit','length_unit']) ?? 'mm').toString();
+    final autoDesc = (_looseGet(widget.elevation, ['AutoDescription']) ?? '')
+        .toString()
+        .trim();
+    final wOut = _looseGet(widget.elevation,
+        ['Width_Output', 'Width Output', 'width_output', 'Width']);
+    final wUnit = (_looseGet(
+                widget.elevation, ['Width_unit', 'Width_Unit', 'width_unit']) ??
+            'mm')
+        .toString();
+    final lOut = _looseGet(widget.elevation, [
+      'Lenght_Output',
+      'Length_Output',
+      'length_output',
+      'Lenght',
+      'Length',
+      'height_mm',
+      'length_mm'
+    ]);
+    final lUnit = (_looseGet(widget.elevation,
+                ['Lenght_Unit', 'Length_Unit', 'length_unit']) ??
+            'mm')
+        .toString();
     final shortDescParts = <String>[];
     if (autoDesc.isNotEmpty) shortDescParts.add(autoDesc);
     if (wOut != null && lOut != null) {
-      shortDescParts.add('${_fmt4Local(wOut)} $wUnit x ${_fmt4Local(lOut)} $lUnit');
+      shortDescParts
+          .add('${_fmt4Local(wOut)} $wUnit x ${_fmt4Local(lOut)} $lUnit');
     }
     final shortDesc = shortDescParts.join(' ');
     final subs = <String>[];
@@ -536,7 +923,8 @@ class _ElevationTileState extends State<_ElevationTile> {
     // GUID absichtlich nicht anzeigen
     return ExpansionTile(
       title: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-        if ((widget.elevation['picture1_relpath'] as String?)?.isNotEmpty == true) ...[
+        if ((widget.elevation['picture1_relpath'] as String?)?.isNotEmpty ==
+            true) ...[
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: _ElevationImage(
@@ -547,31 +935,68 @@ class _ElevationTileState extends State<_ElevationTile> {
           ),
         ],
         Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(title, overflow: TextOverflow.ellipsis),
             if (shortDesc.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Text(shortDesc, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black87)),
+              Text(shortDesc,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: Colors.black87)),
             ],
             if (serie.isNotEmpty || surf.isNotEmpty) ...[
               const SizedBox(height: 4),
-              if (serie.isNotEmpty) Text('Serie: $serie', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-              if (surf.isNotEmpty) Text('Oberfläche: $surf', overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.black54)),
+              if (serie.isNotEmpty)
+                Text('Serie: $serie',
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.black54)),
+              if (surf.isNotEmpty)
+                Text('Oberfläche: $surf',
+                    overflow: TextOverflow.ellipsis,
+                    style:
+                        const TextStyle(fontSize: 12, color: Colors.black54)),
             ],
           ]),
         ),
         if (widget.canWrite) ...[
-          IconButton(onPressed: _editElevation, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-          IconButton(onPressed: _deleteElevation, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
-          IconButton(onPressed: _addVariant, icon: const Icon(Icons.add_circle_outline_rounded), tooltip: 'Variante hinzufügen'),
+          IconButton(
+              onPressed: _editElevation,
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Bearbeiten'),
+          IconButton(
+              onPressed: _deleteElevation,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Löschen'),
+          IconButton(
+              onPressed: _addVariant,
+              icon: const Icon(Icons.add_circle_outline_rounded),
+              tooltip: 'Variante hinzufügen'),
         ],
       ]),
       subtitle: null,
-      onExpansionChanged: (open) { if (open && _variants == null) { _load(); } },
+      onExpansionChanged: (open) {
+        if (open && _variants == null) {
+          _load();
+        }
+      },
       children: [
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
-        if (_variants == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_variants != null) for (final v in _variants!) _VariantTile(api: widget.api, projectId: widget.projectId, elevationId: widget.elevation['id'] as String, variant: v as Map<String, dynamic>, onChanged: _load, canWrite: widget.canWrite),
+        if (_error != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Fehler: $_error')),
+        if (_variants == null)
+          const Padding(
+              padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+        if (_variants != null)
+          for (final v in _variants!)
+            _VariantTile(
+                api: widget.api,
+                projectId: widget.projectId,
+                elevationId: widget.elevation['id'] as String,
+                variant: v as Map<String, dynamic>,
+                onChanged: _load,
+                canWrite: widget.canWrite),
       ],
     );
   }
@@ -579,31 +1004,74 @@ class _ElevationTileState extends State<_ElevationTile> {
   Future<void> _editElevation() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Position bearbeiten', fields: const ['nummer','name','beschreibung','menge','width_mm','height_mm','external_guid'], initial: widget.elevation),
+      builder: (ctx) => _EditDialog(
+          title: 'Position bearbeiten',
+          fields: const [
+            'nummer',
+            'name',
+            'beschreibung',
+            'menge',
+            'width_mm',
+            'height_mm',
+            'external_guid'
+          ],
+          initial: widget.elevation),
     );
     if (res == null) return;
-    try { await widget.api.updateElevation(widget.projectId, widget.phaseId, widget.elevation['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
+    try {
+      await widget.api.updateElevation(widget.projectId, widget.phaseId,
+          widget.elevation['id'] as String, res);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen'))));
+    }
   }
+
   Future<void> _deleteElevation() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Position wirklich löschen?'));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ConfirmDialog(text: 'Position wirklich löschen?'));
     if (ok != true) return;
-    try { await widget.api.deleteElevation(widget.projectId, widget.phaseId, widget.elevation['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
+    try {
+      await widget.api.deleteElevation(
+          widget.projectId, widget.phaseId, widget.elevation['id'] as String);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen'))));
+    }
   }
+
   Future<void> _addVariant() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Variante anlegen', fields: const ['name','beschreibung','menge','external_guid'], initial: const {'name':'','menge':'1'}),
+      builder: (ctx) => _EditDialog(
+          title: 'Variante anlegen',
+          fields: const ['name', 'beschreibung', 'menge', 'external_guid'],
+          initial: const {'name': '', 'menge': '1'}),
     );
     if (res == null) return;
-    try { await widget.api.createVariant(widget.projectId, widget.elevation['id'] as String, res); await _load(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen')))); }
+    try {
+      await widget.api.createVariant(
+          widget.projectId, widget.elevation['id'] as String, res);
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Anlegen fehlgeschlagen'))));
+    }
   }
 }
 
 class _ElevationImage extends StatelessWidget {
-  const _ElevationImage({required this.projectId, required this.api, required this.relPath});
+  const _ElevationImage(
+      {required this.projectId, required this.api, required this.relPath});
   final String projectId;
   final ApiClient api;
   final String relPath;
@@ -619,7 +1087,9 @@ class _ElevationImage extends StatelessWidget {
         height: 200,
         fit: BoxFit.contain,
         errorBuilder: (c, e, s) => _NoImagePlaceholder(
-          text: isEmf ? 'EMF vorhanden, PNG-Konvertierung fehlgeschlagen' : 'Bild nicht verfügbar',
+          text: isEmf
+              ? 'EMF vorhanden, PNG-Konvertierung fehlgeschlagen'
+              : 'Bild nicht verfügbar',
         ),
       ),
     );
@@ -636,7 +1106,8 @@ class _NoImagePlaceholder extends StatelessWidget {
     return Container(
       width: 200,
       height: 200,
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
       alignment: Alignment.center,
       child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(Icons.image_not_supported_outlined, color: fg),
@@ -664,7 +1135,13 @@ class _ProgressDialog extends StatelessWidget {
 }
 
 class _VariantTile extends StatefulWidget {
-  const _VariantTile({required this.api, required this.projectId, required this.elevationId, required this.variant, required this.onChanged, required this.canWrite});
+  const _VariantTile(
+      {required this.api,
+      required this.projectId,
+      required this.elevationId,
+      required this.variant,
+      required this.onChanged,
+      required this.canWrite});
   final ApiClient api;
   final String projectId;
   final String elevationId;
@@ -680,44 +1157,59 @@ class _VariantTileState extends State<_VariantTile> {
   String? _error;
   bool _saving = false;
   // Helpers to robustly read imported keys with varying spelling/case/spacing
-  String _normKey(String k) => k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+  String _normKey(String k) =>
+      k.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
   dynamic _looseGet(Map<String, dynamic> m, List<String> desired) {
     for (final entry in m.entries) {
       final nk = _normKey(entry.key);
-      for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+      for (final d in desired) {
+        if (nk == _normKey(d)) return entry.value;
+      }
     }
-    for (final c in ['properties','props','attributes','meta']) {
+    for (final c in ['properties', 'props', 'attributes', 'meta']) {
       final v = m[c];
       if (v is Map<String, dynamic>) {
         for (final entry in v.entries) {
           final nk = _normKey(entry.key);
-          for (final d in desired) { if (nk == _normKey(d)) return entry.value; }
+          for (final d in desired) {
+            if (nk == _normKey(d)) return entry.value;
+          }
         }
       }
     }
     return null;
   }
+
   dynamic _firstNonNull(Map<String, dynamic> m, List<String> keys) {
     for (final k in keys) {
-      if (m.containsKey(k) && m[k] != null && m[k].toString().isNotEmpty) return m[k];
+      if (m.containsKey(k) && m[k] != null && m[k].toString().isNotEmpty)
+        return m[k];
     }
     return null;
   }
+
   num? _numVal(dynamic v) {
     if (v == null) return null;
     if (v is num) return v;
     return num.tryParse(v.toString().trim());
   }
+
   Future<void> _load() async {
     try {
-      final m = await widget.api.getVariantMaterials(widget.projectId, widget.variant['id'] as String);
-      setState(() { _materials = m; _error = null; });
+      final m = await widget.api.getVariantMaterials(
+          widget.projectId, widget.variant['id'] as String);
+      setState(() {
+        _materials = m;
+        _error = null;
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Materialdaten konnten nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Materialdaten konnten nicht geladen werden');
       });
     }
   }
+
   @override
   Widget build(BuildContext context) {
     final name = widget.variant['name']?.toString() ?? 'Variante';
@@ -727,58 +1219,107 @@ class _VariantTileState extends State<_VariantTile> {
       title: Row(children: [
         Expanded(child: Text(name, overflow: TextOverflow.ellipsis)),
         if (widget.canWrite) ...[
-          IconButton(onPressed: _editVariant, icon: const Icon(Icons.edit_rounded), tooltip: 'Bearbeiten'),
-          IconButton(onPressed: _deleteVariant, icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Löschen'),
+          IconButton(
+              onPressed: _editVariant,
+              icon: const Icon(Icons.edit_rounded),
+              tooltip: 'Bearbeiten'),
+          IconButton(
+              onPressed: _deleteVariant,
+              icon: const Icon(Icons.delete_outline_rounded),
+              tooltip: 'Löschen'),
         ],
       ]),
       subtitle: Text('Menge $menge'),
-      onExpansionChanged: (open) { if (open && _materials == null) { _load(); } },
+      onExpansionChanged: (open) {
+        if (open && _materials == null) {
+          _load();
+        }
+      },
       children: [
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
-        if (_materials == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_materials != null) Padding(
-          padding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['profiles'] ?? []) as List).map((p0) {
-              final p = (p0 as Map<String, dynamic>);
-              _ensureComputedQtyForProfile(p);
-              final lenVal = _looseGet(p, ['Lenght_Output','Length_Output','length_output','Lenght','Length','length_mm']);
-              final lenUnit = (_looseGet(p, ['Lenght_Unit','Length_Unit','length_unit']) ?? 'mm').toString();
-              final lenStr = _fmt4(lenVal);
-              final qtyStr = _qtyDisplayForProfile(p);
-              final linkedStr = ((p)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(p)['material_nummer'] : '';
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.straighten_rounded),
-                title: Text(((p)['article_code'] ?? (p)['description'] ?? '').toString()),
-                subtitle: Text('Länge $lenStr $lenUnit, Menge $qtyStr$linkedStr'),
-                trailing: _buildMaterialActions(p, 'profiles'),
-              );
-            })),
-            const SizedBox(height: 12),
-            const Text('Artikel', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['articles'] ?? []) as List).map((a) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.extension_rounded),
-              title: Text(((a as Map<String, dynamic>)['article_code'] ?? (a)['description'] ?? '').toString()),
-              subtitle: Text('Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(a)['material_nummer'] : ''}'),
-              trailing: _buildMaterialActions(a as Map<String, dynamic>, 'articles'),
-            ))),
-            const SizedBox(height: 12),
-            const Text('Glas', style: TextStyle(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 6),
-            ...List<Widget>.from(((_materials!['glass'] ?? []) as List).map((g) => ListTile(
-              dense: true,
-              leading: const Icon(Icons.window_rounded),
-              title: Text(((g as Map<String, dynamic>)['configuration'] ?? (g)['description'] ?? '').toString()),
-              subtitle: Text('Menge ${(g)['qty'] ?? 1}${((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: '+(g)['material_nummer'] : ''}'),
-              trailing: _buildMaterialActions(g as Map<String, dynamic>, 'glass'),
-            ))),
-          ]),
-        ),
+        if (_error != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Fehler: $_error')),
+        if (_materials == null)
+          const Padding(
+              padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+        if (_materials != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Profile',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              ...List<Widget>.from(
+                  ((_materials!['profiles'] ?? []) as List).map((p0) {
+                final p = (p0 as Map<String, dynamic>);
+                _ensureComputedQtyForProfile(p);
+                final lenVal = _looseGet(p, [
+                  'Lenght_Output',
+                  'Length_Output',
+                  'length_output',
+                  'Lenght',
+                  'Length',
+                  'length_mm'
+                ]);
+                final lenUnit = (_looseGet(
+                            p, ['Lenght_Unit', 'Length_Unit', 'length_unit']) ??
+                        'mm')
+                    .toString();
+                final lenStr = _fmt4(lenVal);
+                final qtyStr = _qtyDisplayForProfile(p);
+                final linkedStr =
+                    ((p)['material_nummer'] ?? '').toString().isNotEmpty
+                        ? '  •  verknüpft: ' + (p)['material_nummer']
+                        : '';
+                return ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.straighten_rounded),
+                  title: Text(((p)['article_code'] ?? (p)['description'] ?? '')
+                      .toString()),
+                  subtitle:
+                      Text('Länge $lenStr $lenUnit, Menge $qtyStr$linkedStr'),
+                  trailing: _buildMaterialActions(p, 'profiles'),
+                );
+              })),
+              const SizedBox(height: 12),
+              const Text('Artikel',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              ...List<Widget>.from(
+                  ((_materials!['articles'] ?? []) as List).map((a) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.extension_rounded),
+                        title: Text(
+                            ((a as Map<String, dynamic>)['article_code'] ??
+                                    (a)['description'] ??
+                                    '')
+                                .toString()),
+                        subtitle: Text(
+                            'Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (a)['material_nummer'] : ''}'),
+                        trailing: _buildMaterialActions(
+                            a as Map<String, dynamic>, 'articles'),
+                      ))),
+              const SizedBox(height: 12),
+              const Text('Glas', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 6),
+              ...List<Widget>.from(
+                  ((_materials!['glass'] ?? []) as List).map((g) => ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.window_rounded),
+                        title: Text(
+                            ((g as Map<String, dynamic>)['configuration'] ??
+                                    (g)['description'] ??
+                                    '')
+                                .toString()),
+                        subtitle: Text(
+                            'Menge ${(g)['qty'] ?? 1}${((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (g)['material_nummer'] : ''}'),
+                        trailing: _buildMaterialActions(
+                            g as Map<String, dynamic>, 'glass'),
+                      ))),
+            ]),
+          ),
       ],
     );
   }
@@ -786,29 +1327,56 @@ class _VariantTileState extends State<_VariantTile> {
   Future<void> _editVariant() async {
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EditDialog(title: 'Variante bearbeiten', fields: const ['name','beschreibung','menge','external_guid'], initial: widget.variant),
+      builder: (ctx) => _EditDialog(
+          title: 'Variante bearbeiten',
+          fields: const ['name', 'beschreibung', 'menge', 'external_guid'],
+          initial: widget.variant),
     );
     if (res == null) return;
-    try { await widget.api.updateVariant(widget.projectId, widget.elevationId, widget.variant['id'] as String, res); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen')))); }
+    try {
+      await widget.api.updateVariant(widget.projectId, widget.elevationId,
+          widget.variant['id'] as String, res);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Speichern fehlgeschlagen'))));
+    }
   }
+
   Future<void> _deleteVariant() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => _ConfirmDialog(text: 'Variante wirklich löschen?'));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ConfirmDialog(text: 'Variante wirklich löschen?'));
     if (ok != true) return;
-    try { await widget.api.deleteVariant(widget.projectId, widget.elevationId, widget.variant['id'] as String); await widget.onChanged(); }
-    catch (e) { if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen')))); }
+    try {
+      await widget.api.deleteVariant(
+          widget.projectId, widget.elevationId, widget.variant['id'] as String);
+      await widget.onChanged();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Löschen fehlgeschlagen'))));
+    }
   }
 
   String _fmt4(dynamic v) {
     if (v == null) return '-';
     num? n;
-    if (v is num) n = v;
-    else { n = num.tryParse(v.toString()); }
+    if (v is num)
+      n = v;
+    else {
+      n = num.tryParse(v.toString());
+    }
     if (n == null) return '-';
     final d = n.toDouble();
     String s = d.toStringAsFixed(4);
     // remove trailing zeros and dot
-    while (s.contains('.') && s.endsWith('0')) { s = s.substring(0, s.length - 1); }
+    while (s.contains('.') && s.endsWith('0')) {
+      s = s.substring(0, s.length - 1);
+    }
     if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     return s;
   }
@@ -823,7 +1391,14 @@ class _VariantTileState extends State<_VariantTile> {
       final mat = await widget.api.getMaterial(mid);
       num? baseLen = _numVal(mat['length_mm']);
       baseLen ??= 6000; // Default 6000 mm
-      final dynLen = _looseGet(it, ['Lenght_Output','Length_Output','length_output','Lenght','Length','length_mm']);
+      final dynLen = _looseGet(it, [
+        'Lenght_Output',
+        'Length_Output',
+        'length_output',
+        'Lenght',
+        'Length',
+        'length_mm'
+      ]);
       final len = (_numVal(dynLen) ?? 0).toDouble();
       final qty = baseLen > 0 ? (len / baseLen) : 0.0;
       it['__computed_qty'] = qty;
@@ -856,54 +1431,92 @@ class _VariantTileState extends State<_VariantTile> {
     }
     final linked = (it['material_id'] as String?)?.isNotEmpty == true;
     if (!linked) {
-      return OutlinedButton.icon(onPressed: _saving ? null : () => _adoptMaterial(it, kind), icon: const Icon(Icons.download_done_rounded), label: const Text('Übernehmen'));
+      return OutlinedButton.icon(
+          onPressed: _saving ? null : () => _adoptMaterial(it, kind),
+          icon: const Icon(Icons.download_done_rounded),
+          label: const Text('Übernehmen'));
     }
     return Wrap(spacing: 6, children: [
-      OutlinedButton(onPressed: _saving ? null : () => _changeLink(it, kind), child: const Text('Ändern')),
-      OutlinedButton(onPressed: _saving ? null : () => _unlink(it, kind), child: const Text('Lösen')),
+      OutlinedButton(
+          onPressed: _saving ? null : () => _changeLink(it, kind),
+          child: const Text('Ändern')),
+      OutlinedButton(
+          onPressed: _saving ? null : () => _unlink(it, kind),
+          child: const Text('Lösen')),
     ]);
   }
 
   Future<void> _unlink(Map<String, dynamic> it, String kind) async {
-    setState(() { _saving = true; });
+    setState(() {
+      _saving = true;
+    });
     try {
-      await widget.api.linkVariantMaterial(widget.projectId, widget.variant['id'] as String, kind, it['id'] as String, '');
-      if (!mounted) return; await _load();
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verknüpfung gelöst')));
+      await widget.api.linkVariantMaterial(widget.projectId,
+          widget.variant['id'] as String, kind, it['id'] as String, '');
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Verknüpfung gelöst')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Lösen fehlgeschlagen'))));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content:
+              Text(_projectErrorMessage(e, fallback: 'Lösen fehlgeschlagen'))));
     } finally {
-      if (mounted) setState(() { _saving = false; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+        });
     }
   }
 
   Future<void> _changeLink(Map<String, dynamic> it, String kind) async {
     // Suche nach Kandidaten anhand aktueller Nummer/Bezeichnung
     final prop = _defaultsForMaterial(it, kind);
-    final existing = await widget.api.listMaterials(q: prop['nummer'] as String, limit: 50);
+    final existing =
+        await widget.api.listMaterials(q: prop['nummer'] as String, limit: 50);
     final choice = await showDialog<_MaterialChoice>(
       context: context,
-      builder: (ctx) => _MaterialSelectDialog(candidates: existing.cast<Map<String, dynamic>>(), proposed: prop),
+      builder: (ctx) => _MaterialSelectDialog(
+          candidates: existing.cast<Map<String, dynamic>>(), proposed: prop),
     );
     if (choice == null) return;
-    setState(() { _saving = true; });
+    setState(() {
+      _saving = true;
+    });
     try {
       if (choice.useExisting && choice.materialId != null) {
-        await widget.api.linkVariantMaterial(widget.projectId, widget.variant['id'] as String, kind, it['id'] as String, choice.materialId!);
+        await widget.api.linkVariantMaterial(
+            widget.projectId,
+            widget.variant['id'] as String,
+            kind,
+            it['id'] as String,
+            choice.materialId!);
       } else if (choice.proposed != null) {
-        final body = { ...prop, ...choice.proposed! };
+        final body = {...prop, ...choice.proposed!};
         final created = await widget.api.createMaterial(body);
         final mid = (created['id'] ?? '').toString();
         if (mid.isNotEmpty) {
-          await widget.api.linkVariantMaterial(widget.projectId, widget.variant['id'] as String, kind, it['id'] as String, mid);
+          await widget.api.linkVariantMaterial(widget.projectId,
+              widget.variant['id'] as String, kind, it['id'] as String, mid);
         }
       }
-      if (!mounted) return; await _load();
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Verknüpfung aktualisiert')));
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verknüpfung aktualisiert')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Aktualisierung fehlgeschlagen'))));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(_projectErrorMessage(e,
+              fallback: 'Aktualisierung fehlgeschlagen'))));
     } finally {
-      if (mounted) setState(() { _saving = false; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+        });
     }
   }
 
@@ -913,7 +1526,16 @@ class _VariantTileState extends State<_VariantTile> {
       context: context,
       builder: (ctx) => _EditDialog(
         title: 'Material übernehmen',
-        fields: const ['nummer','bezeichnung','typ','einheit','kategorie','norm','werkstoffnummer','dichte'],
+        fields: const [
+          'nummer',
+          'bezeichnung',
+          'typ',
+          'einheit',
+          'kategorie',
+          'norm',
+          'werkstoffnummer',
+          'dichte'
+        ],
         initial: def,
       ),
     );
@@ -921,12 +1543,16 @@ class _VariantTileState extends State<_VariantTile> {
     // Sanitize types
     final body = <String, dynamic>{
       'nummer': (res['nummer'] ?? def['nummer']).toString().trim(),
-      'bezeichnung': (res['bezeichnung'] ?? def['bezeichnung']).toString().trim(),
+      'bezeichnung':
+          (res['bezeichnung'] ?? def['bezeichnung']).toString().trim(),
       'typ': (res['typ'] ?? def['typ']).toString().trim(),
       'einheit': (res['einheit'] ?? def['einheit']).toString().trim(),
-      if ((res['kategorie'] ?? '').toString().trim().isNotEmpty) 'kategorie': res['kategorie'].toString().trim(),
-      if ((res['norm'] ?? '').toString().trim().isNotEmpty) 'norm': res['norm'].toString().trim(),
-      if ((res['werkstoffnummer'] ?? '').toString().trim().isNotEmpty) 'werkstoffnummer': res['werkstoffnummer'].toString().trim(),
+      if ((res['kategorie'] ?? '').toString().trim().isNotEmpty)
+        'kategorie': res['kategorie'].toString().trim(),
+      if ((res['norm'] ?? '').toString().trim().isNotEmpty)
+        'norm': res['norm'].toString().trim(),
+      if ((res['werkstoffnummer'] ?? '').toString().trim().isNotEmpty)
+        'werkstoffnummer': res['werkstoffnummer'].toString().trim(),
       'dichte': double.tryParse('${res['dichte'] ?? 0}') ?? 0,
       'attribute': <String, dynamic>{
         'source': 'logikal-import',
@@ -934,13 +1560,20 @@ class _VariantTileState extends State<_VariantTile> {
         'kind': kind,
       },
     };
-    if (body['nummer'].toString().isEmpty || body['bezeichnung'].toString().isEmpty) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Nummer und Bezeichnung sind erforderlich'))); return;
+    if (body['nummer'].toString().isEmpty ||
+        body['bezeichnung'].toString().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Nummer und Bezeichnung sind erforderlich')));
+      return;
     }
-    setState(() { _saving = true; });
+    setState(() {
+      _saving = true;
+    });
     try {
       // Duplikat-Check und Auswahl vorhandener Materialien
-      final existing = await widget.api.listMaterials(q: body['nummer'] as String, limit: 50);
+      final existing = await widget.api
+          .listMaterials(q: body['nummer'] as String, limit: 50);
       final matches = existing.where((e) {
         final m = (e as Map<String, dynamic>);
         final numA = (m['nummer']?.toString() ?? '').trim().toLowerCase();
@@ -952,42 +1585,68 @@ class _VariantTileState extends State<_VariantTile> {
         // Dialog: vorhandenes Material auswählen oder trotzdem neu anlegen
         final choice = await showDialog<_MaterialChoice>(
           context: context,
-          builder: (ctx) => _MaterialSelectDialog(candidates: matches.cast<Map<String, dynamic>>(), proposed: body),
+          builder: (ctx) => _MaterialSelectDialog(
+              candidates: matches.cast<Map<String, dynamic>>(), proposed: body),
         );
-        if (choice == null) { return; }
+        if (choice == null) {
+          return;
+        }
         if (choice.useExisting && choice.materialId != null) {
           // Link setzen
           try {
-            await widget.api.linkVariantMaterial(widget.projectId, widget.variant['id'] as String, kind, it['id'] as String, choice.materialId!);
-            if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhandenes Material verknüpft')));
+            await widget.api.linkVariantMaterial(
+                widget.projectId,
+                widget.variant['id'] as String,
+                kind,
+                it['id'] as String,
+                choice.materialId!);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('Vorhandenes Material verknüpft')));
             await _load();
             return;
           } catch (e) {
-            if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Verknüpfung fehlgeschlagen'))));
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(_projectErrorMessage(e,
+                    fallback: 'Verknüpfung fehlgeschlagen'))));
             return;
           }
         }
         // Ansonsten: Neu anlegen mit ggf. angepasster Nummer
         if (choice.proposed != null) {
-          for (final k in choice.proposed!.keys) { body[k] = choice.proposed![k]; }
+          for (final k in choice.proposed!.keys) {
+            body[k] = choice.proposed![k];
+          }
         }
       }
 
       final created = await widget.api.createMaterial(body);
       final mid = (created['id'] ?? '').toString();
       if (mid.isNotEmpty) {
-        await widget.api.linkVariantMaterial(widget.projectId, widget.variant['id'] as String, kind, it['id'] as String, mid);
-        if (!mounted) return; await _load();
+        await widget.api.linkVariantMaterial(widget.projectId,
+            widget.variant['id'] as String, kind, it['id'] as String, mid);
+        if (!mounted) return;
+        await _load();
       }
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material übernommen und verknüpft')));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Material übernommen und verknüpft')));
     } catch (e) {
-      if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Übernahme fehlgeschlagen'))));
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Übernahme fehlgeschlagen'))));
     } finally {
-      if (mounted) setState(() { _saving = false; });
+      if (mounted)
+        setState(() {
+          _saving = false;
+        });
     }
   }
 
-  Map<String, dynamic> _defaultsForMaterial(Map<String, dynamic> it, String kind) {
+  Map<String, dynamic> _defaultsForMaterial(
+      Map<String, dynamic> it, String kind) {
     String nummer = '';
     String bezeichnung = '';
     String typ = 'artikel';
@@ -999,28 +1658,42 @@ class _VariantTileState extends State<_VariantTile> {
         final code = (it['article_code'] ?? '').toString().trim();
         final desc = (it['description'] ?? '').toString().trim();
         nummer = [supplier, code].where((s) => s.isNotEmpty).join('-');
-        if (nummer.isEmpty) nummer = code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'PROFIL');
-        bezeichnung = desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Profil');
+        if (nummer.isEmpty)
+          nummer = code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'PROFIL');
+        bezeichnung =
+            desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Profil');
         typ = 'profil';
-        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty ? it['unit'] : 'stk';
+        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
+            ? it['unit']
+            : 'stk';
         break;
       case 'articles':
         final supplier = (it['supplier_code'] ?? '').toString().trim();
         final code = (it['article_code'] ?? '').toString().trim();
         final desc = (it['description'] ?? '').toString().trim();
         nummer = [supplier, code].where((s) => s.isNotEmpty).join('-');
-        if (nummer.isEmpty) nummer = code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'ARTIKEL');
-        bezeichnung = desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Artikel');
+        if (nummer.isEmpty)
+          nummer =
+              code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'ARTIKEL');
+        bezeichnung =
+            desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Artikel');
         typ = 'artikel';
-        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty ? it['unit'] : 'stk';
+        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
+            ? it['unit']
+            : 'stk';
         break;
       case 'glass':
         final conf = (it['configuration'] ?? '').toString().trim();
         final desc = (it['description'] ?? '').toString().trim();
-        nummer = conf.isNotEmpty ? 'GLAS-$conf' : (desc.isNotEmpty ? 'GLAS-$desc' : 'GLAS');
-        bezeichnung = desc.isNotEmpty ? desc : (conf.isNotEmpty ? conf : 'Glas');
+        nummer = conf.isNotEmpty
+            ? 'GLAS-$conf'
+            : (desc.isNotEmpty ? 'GLAS-$desc' : 'GLAS');
+        bezeichnung =
+            desc.isNotEmpty ? desc : (conf.isNotEmpty ? conf : 'Glas');
         typ = 'glas';
-        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty ? it['unit'] : 'stk';
+        einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
+            ? it['unit']
+            : 'stk';
         break;
     }
     return {
@@ -1035,15 +1708,21 @@ class _VariantTileState extends State<_VariantTile> {
 
 // ----- Auswahl-Dialog für vorhandenes Material oder Neuanlage -----
 class _MaterialChoice {
-  _MaterialChoice.existing(this.materialId) : useExisting = true, proposed = null;
-  _MaterialChoice.create(this.proposed) : useExisting = false, materialId = null;
+  _MaterialChoice.existing(this.materialId)
+      : useExisting = true,
+        proposed = null;
+  _MaterialChoice.create(this.proposed)
+      : useExisting = false,
+        materialId = null;
   final bool useExisting;
   final String? materialId;
-  final Map<String, dynamic>? proposed; // optional geänderte Felder für Neuanlage
+  final Map<String, dynamic>?
+      proposed; // optional geänderte Felder für Neuanlage
 }
 
 class _MaterialSelectDialog extends StatefulWidget {
-  const _MaterialSelectDialog({required this.candidates, required this.proposed});
+  const _MaterialSelectDialog(
+      {required this.candidates, required this.proposed});
   final List<Map<String, dynamic>> candidates;
   final Map<String, dynamic> proposed;
   @override
@@ -1057,8 +1736,13 @@ class _MaterialSelectDialogState extends State<_MaterialSelectDialog> {
     super.initState();
     nummerCtrl.text = widget.proposed['nummer']?.toString() ?? '';
   }
+
   @override
-  void dispose() { nummerCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    nummerCtrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1081,28 +1765,44 @@ class _MaterialSelectDialogState extends State<_MaterialSelectDialog> {
                     dense: true,
                     leading: const Icon(Icons.inventory_2_outlined),
                     title: Text('${m['nummer']} — ${m['bezeichnung']}'),
-                    subtitle: Text([m['typ'], m['einheit'], m['kategorie']].whereType<String>().where((s)=>s.isNotEmpty).join(' • ')),
-                    onTap: () => Navigator.pop(context, _MaterialChoice.existing(m['id'] as String)),
+                    subtitle: Text([m['typ'], m['einheit'], m['kategorie']]
+                        .whereType<String>()
+                        .where((s) => s.isNotEmpty)
+                        .join(' • ')),
+                    onTap: () => Navigator.pop(
+                        context, _MaterialChoice.existing(m['id'] as String)),
                   );
                 },
               ),
             ),
             const SizedBox(height: 12),
             const Text('Oder neues Material anlegen mit Nummer:'),
-            TextField(controller: nummerCtrl, decoration: const InputDecoration(labelText: 'Nummer')),
+            TextField(
+                controller: nummerCtrl,
+                decoration: const InputDecoration(labelText: 'Nummer')),
           ],
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
-        FilledButton.icon(onPressed: () => Navigator.pop(context, _MaterialChoice.create({'nummer': nummerCtrl.text.trim()})), icon: const Icon(Icons.add), label: const Text('Neu anlegen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen')),
+        FilledButton.icon(
+            onPressed: () => Navigator.pop(context,
+                _MaterialChoice.create({'nummer': nummerCtrl.text.trim()})),
+            icon: const Icon(Icons.add),
+            label: const Text('Neu anlegen')),
       ],
     );
   }
 }
 
 class ImportLogTab extends StatefulWidget {
-  const ImportLogTab({super.key, required this.api, required this.projectId, required this.canWrite});
+  const ImportLogTab(
+      {super.key,
+      required this.api,
+      required this.projectId,
+      required this.canWrite});
   final ApiClient api;
   final String projectId;
   final bool canWrite;
@@ -1138,23 +1838,30 @@ class _ImportLogTabState extends State<ImportLogTab> {
   }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final list = await widget.api.listProjectImports(widget.projectId);
       // Standard: zurücksetzen
-      bool hasDel = false; int dP = 0, dE = 0, dV = 0;
+      bool hasDel = false;
+      int dP = 0, dE = 0, dV = 0;
       if (list.isNotEmpty) {
         // Änderungen des letzten Imports laden und nach "deleted" zählen
         final last = (list.first as Map<String, dynamic>);
         try {
-          final changes = await widget.api.listImportChanges(widget.projectId, last['id'] as String);
+          final changes = await widget.api
+              .listImportChanges(widget.projectId, last['id'] as String);
           for (final c in changes) {
             final m = (c as Map).cast<String, dynamic>();
             if ((m['action'] ?? '') == 'deleted') {
               hasDel = true;
               final k = (m['kind'] ?? '') as String;
-              if (k == 'phase') dP++;
-              else if (k == 'elevation') dE++;
+              if (k == 'phase')
+                dP++;
+              else if (k == 'elevation')
+                dE++;
               else if (k == 'variant') dV++;
             }
           }
@@ -1164,30 +1871,42 @@ class _ImportLogTabState extends State<ImportLogTab> {
       }
       setState(() {
         _imports = list;
-        _hasDeletions = hasDel; _delPhases = dP; _delElevs = dE; _delVars = dV;
+        _hasDeletions = hasDel;
+        _delPhases = dP;
+        _delElevs = dE;
+        _delVars = dV;
       });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Importprotokoll konnte nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Importprotokoll konnte nicht geladen werden');
       });
+    } finally {
+      if (mounted)
+        setState(() {
+          _loading = false;
+        });
     }
-    finally { if (mounted) setState(() { _loading = false; }); }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) return Center(child: Text('Fehler: $_error'));
-    if (_imports.isEmpty) return const Center(child: Text('Noch keine Importe.'));
+    if (_imports.isEmpty)
+      return const Center(child: Text('Noch keine Importe.'));
     return Column(children: [
       if (_hasDeletions)
         Padding(
           padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
           child: Material(
             color: Colors.amber.shade50,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8), side: BorderSide(color: Colors.amber.shade200)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: BorderSide(color: Colors.amber.shade200)),
             child: ListTile(
-              leading: Icon(Icons.info_outline_rounded, color: Colors.amber.shade800),
+              leading: Icon(Icons.info_outline_rounded,
+                  color: Colors.amber.shade800),
               title: const Text('Beim letzten Import wurden Einträge gelöscht'),
               subtitle: Text(_buildDeletionSummary()),
               dense: true,
@@ -1198,19 +1917,31 @@ class _ImportLogTabState extends State<ImportLogTab> {
         padding: const EdgeInsets.all(8.0),
         child: Row(children: [
           const Text('Filter:  '),
-          DropdownButton<String>(value: _filterKind.isEmpty ? null : _filterKind, hint: const Text('Kind'), items: const [
-            DropdownMenuItem(value: 'phase', child: Text('phase')),
-            DropdownMenuItem(value: 'elevation', child: Text('elevation')),
-            DropdownMenuItem(value: 'variant', child: Text('variant')),
-            DropdownMenuItem(value: 'materials', child: Text('materials')),
-          ], onChanged: (v) { setState(()=> _filterKind = v??''); }),
+          DropdownButton<String>(
+              value: _filterKind.isEmpty ? null : _filterKind,
+              hint: const Text('Kind'),
+              items: const [
+                DropdownMenuItem(value: 'phase', child: Text('phase')),
+                DropdownMenuItem(value: 'elevation', child: Text('elevation')),
+                DropdownMenuItem(value: 'variant', child: Text('variant')),
+                DropdownMenuItem(value: 'materials', child: Text('materials')),
+              ],
+              onChanged: (v) {
+                setState(() => _filterKind = v ?? '');
+              }),
           const SizedBox(width: 12),
-          DropdownButton<String>(value: _filterAction.isEmpty ? null : _filterAction, hint: const Text('Action'), items: const [
-            DropdownMenuItem(value: 'created', child: Text('created')),
-            DropdownMenuItem(value: 'updated', child: Text('updated')),
-            DropdownMenuItem(value: 'deleted', child: Text('deleted')),
-            DropdownMenuItem(value: 'replaced', child: Text('replaced')),
-          ], onChanged: (v) { setState(()=> _filterAction = v??''); }),
+          DropdownButton<String>(
+              value: _filterAction.isEmpty ? null : _filterAction,
+              hint: const Text('Action'),
+              items: const [
+                DropdownMenuItem(value: 'created', child: Text('created')),
+                DropdownMenuItem(value: 'updated', child: Text('updated')),
+                DropdownMenuItem(value: 'deleted', child: Text('deleted')),
+                DropdownMenuItem(value: 'replaced', child: Text('replaced')),
+              ],
+              onChanged: (v) {
+                setState(() => _filterAction = v ?? '');
+              }),
         ]),
       ),
       const Divider(height: 1),
@@ -1220,7 +1951,14 @@ class _ImportLogTabState extends State<ImportLogTab> {
           separatorBuilder: (_, __) => const Divider(height: 1),
           itemBuilder: (context, index) {
             final imp = _imports[index] as Map<String, dynamic>;
-            return _ImportTile(api: widget.api, projectId: widget.projectId, importRun: imp, filterKind: _filterKind, filterAction: _filterAction, onUndo: _load, canWrite: widget.canWrite);
+            return _ImportTile(
+                api: widget.api,
+                projectId: widget.projectId,
+                importRun: imp,
+                filterKind: _filterKind,
+                filterAction: _filterAction,
+                onUndo: _load,
+                canWrite: widget.canWrite);
           },
         ),
       ),
@@ -1229,7 +1967,14 @@ class _ImportLogTabState extends State<ImportLogTab> {
 }
 
 class _ImportTile extends StatefulWidget {
-  const _ImportTile({required this.api, required this.projectId, required this.importRun, this.filterKind = '', this.filterAction = '', this.onUndo, required this.canWrite});
+  const _ImportTile(
+      {required this.api,
+      required this.projectId,
+      required this.importRun,
+      this.filterKind = '',
+      this.filterAction = '',
+      this.onUndo,
+      required this.canWrite});
   final ApiClient api;
   final String projectId;
   final Map<String, dynamic> importRun;
@@ -1247,15 +1992,30 @@ class _ImportTileState extends State<_ImportTile> {
 
   Future<void> _load() async {
     try {
-      final changes = await widget.api.listImportChanges(widget.projectId, widget.importRun['id'] as String);
+      final changes = await widget.api.listImportChanges(
+          widget.projectId, widget.importRun['id'] as String);
       // client-side filter fallback (server filter also available via query params; for simplicity using client filter)
       List<dynamic> list = changes;
-      if (widget.filterKind.isNotEmpty) { list = list.where((e) => (e as Map<String, dynamic>)['kind'] == widget.filterKind).toList(); }
-      if (widget.filterAction.isNotEmpty) { list = list.where((e) => (e as Map<String, dynamic>)['action'] == widget.filterAction).toList(); }
-      setState(() { _changes = list; _error = null; });
+      if (widget.filterKind.isNotEmpty) {
+        list = list
+            .where(
+                (e) => (e as Map<String, dynamic>)['kind'] == widget.filterKind)
+            .toList();
+      }
+      if (widget.filterAction.isNotEmpty) {
+        list = list
+            .where((e) =>
+                (e as Map<String, dynamic>)['action'] == widget.filterAction)
+            .toList();
+      }
+      setState(() {
+        _changes = list;
+        _error = null;
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Importänderungen konnten nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Importänderungen konnten nicht geladen werden');
       });
     }
   }
@@ -1263,37 +2023,60 @@ class _ImportTileState extends State<_ImportTile> {
   @override
   Widget build(BuildContext context) {
     final r = widget.importRun;
-    final title = r['source']?.toString().isNotEmpty == true ? r['source'].toString() : 'Import';
-    final subtitle = 'am ${r['imported_at']} | Phases +${r['created_phases']}/${r['updated_phases']}, Elevations +${r['created_elevations']}/${r['updated_elevations']}, Variants +${r['created_variants']}/${r['updated_variants']}, -${r['deleted_variants']}, Mat ${r['materials_replaced_variants']}x';
+    final title = r['source']?.toString().isNotEmpty == true
+        ? r['source'].toString()
+        : 'Import';
+    final subtitle =
+        'am ${r['imported_at']} | Phases +${r['created_phases']}/${r['updated_phases']}, Elevations +${r['created_elevations']}/${r['updated_elevations']}, Variants +${r['created_variants']}/${r['updated_variants']}, -${r['deleted_variants']}, Mat ${r['materials_replaced_variants']}x';
     return ExpansionTile(
       title: Text(title),
       subtitle: Text(subtitle),
-      onExpansionChanged: (open) { if (open && _changes == null) _load(); },
+      onExpansionChanged: (open) {
+        if (open && _changes == null) _load();
+      },
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: Row(children: [
-            TextButton.icon(onPressed: _downloadCSV, icon: const Icon(Icons.download_rounded), label: const Text('CSV')),
+            TextButton.icon(
+                onPressed: _downloadCSV,
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('CSV')),
             const SizedBox(width: 8),
-            TextButton.icon(onPressed: _downloadJSON, icon: const Icon(Icons.code_rounded), label: const Text('JSON')),
+            TextButton.icon(
+                onPressed: _downloadJSON,
+                icon: const Icon(Icons.code_rounded),
+                label: const Text('JSON')),
             const Spacer(),
             if (widget.canWrite)
-              TextButton.icon(onPressed: _undo, icon: const Icon(Icons.undo_rounded), label: const Text('Rückgängig')),
+              TextButton.icon(
+                  onPressed: _undo,
+                  icon: const Icon(Icons.undo_rounded),
+                  label: const Text('Rückgängig')),
           ]),
         ),
-        if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
-        if (_changes == null) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-        if (_changes != null) ..._changes!.map((c) {
-          final m = c as Map<String, dynamic>;
-          final line = '[${m['kind']}/${m['action']}] ${m['message'] ?? ''}';
-          return ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-            childrenPadding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
-            title: Text(line),
-            subtitle: (m['external_ref'] as String?)?.isNotEmpty == true ? Text('ext: ${m['external_ref']}') : null,
-            children: [ _ChangeDiffView(change: m) ],
-          );
-        }),
+        if (_error != null)
+          Padding(
+              padding: const EdgeInsets.all(12),
+              child: Text('Fehler: $_error')),
+        if (_changes == null)
+          const Padding(
+              padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+        if (_changes != null)
+          ..._changes!.map((c) {
+            final m = c as Map<String, dynamic>;
+            final line = '[${m['kind']}/${m['action']}] ${m['message'] ?? ''}';
+            return ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+              childrenPadding:
+                  const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+              title: Text(line),
+              subtitle: (m['external_ref'] as String?)?.isNotEmpty == true
+                  ? Text('ext: ${m['external_ref']}')
+                  : null,
+              children: [_ChangeDiffView(change: m)],
+            );
+          }),
       ],
     );
   }
@@ -1305,6 +2088,7 @@ class _ImportTileState extends State<_ImportTile> {
       filename: 'import-${widget.importRun['id']}.csv',
     );
   }
+
   void _downloadJSON() {
     widget.api.downloadProjectImportChangesJson(
       widget.projectId,
@@ -1312,18 +2096,28 @@ class _ImportTileState extends State<_ImportTile> {
       filename: 'import-${widget.importRun['id']}.json',
     );
   }
+
   Future<void> _undo() async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => const _ConfirmDialog(text: 'Diesen Import wirklich rückgängig machen?'));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => const _ConfirmDialog(
+            text: 'Diesen Import wirklich rückgängig machen?'));
     if (ok != true) return;
     try {
-      await widget.api.undoProjectImport(widget.projectId, widget.importRun['id'] as String);
+      await widget.api.undoProjectImport(
+          widget.projectId, widget.importRun['id'] as String);
       if (widget.onUndo != null) await widget.onUndo!();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Import rückgängig gemacht.')));
-      setState(() { _changes = null; });
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Import rückgängig gemacht.')));
+      setState(() {
+        _changes = null;
+      });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_projectErrorMessage(e, fallback: 'Rückgängig fehlgeschlagen'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              _projectErrorMessage(e, fallback: 'Rückgängig fehlgeschlagen'))));
     }
   }
 }
@@ -1335,38 +2129,43 @@ class _ChangeDiffView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final kind = (change['kind'] ?? '').toString();
-    final before = (change['before_data'] as Map?)?.cast<String, dynamic>() ?? const {};
-    final after = (change['after_data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final before =
+        (change['before_data'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final after =
+        (change['after_data'] as Map?)?.cast<String, dynamic>() ?? const {};
     if (kind == 'materials') {
       return _buildMaterialsDiff(before, after);
     }
     return _buildMapDiff(before, after);
   }
 
-  Widget _buildMapDiff(Map<String, dynamic> before, Map<String, dynamic> after) {
+  Widget _buildMapDiff(
+      Map<String, dynamic> before, Map<String, dynamic> after) {
     final keys = <String>{...before.keys, ...after.keys}.toList()..sort();
     if (keys.isEmpty) return const Text('Keine Detaildaten.');
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      for (final k in keys)
-        _diffRow(k, before[k], after[k]),
+      for (final k in keys) _diffRow(k, before[k], after[k]),
     ]);
   }
 
   Widget _diffRow(String key, dynamic bv, dynamic av) {
     final changed = _toStr(bv) != _toStr(av);
-    final styleKey = TextStyle(fontWeight: changed ? FontWeight.bold : FontWeight.normal);
+    final styleKey =
+        TextStyle(fontWeight: changed ? FontWeight.bold : FontWeight.normal);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         SizedBox(width: 160, child: Text(key, style: styleKey)),
         Expanded(child: Text(_toStr(bv))),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 6), child: Text('→')),
+        const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6), child: Text('→')),
         Expanded(child: Text(_toStr(av))),
       ]),
     );
   }
 
-  Widget _buildMaterialsDiff(Map<String, dynamic> before, Map<String, dynamic> after) {
+  Widget _buildMaterialsDiff(
+      Map<String, dynamic> before, Map<String, dynamic> after) {
     final bProfs = ((before['profiles'] ?? const []) as List).cast<dynamic>();
     final bArts = ((before['articles'] ?? const []) as List).cast<dynamic>();
     final bGlass = ((before['glass'] ?? const []) as List).cast<dynamic>();
@@ -1374,7 +2173,8 @@ class _ChangeDiffView extends StatelessWidget {
     final aArts = ((after['articles'] ?? const []) as List).cast<dynamic>();
     final aGlass = ((after['glass'] ?? const []) as List).cast<dynamic>();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('Materialliste', style: const TextStyle(fontWeight: FontWeight.bold)),
+      Text('Materialliste',
+          style: const TextStyle(fontWeight: FontWeight.bold)),
       const SizedBox(height: 6),
       _diffRow('Profile (Anzahl)', bProfs.length, aProfs.length),
       _diffRow('Artikel (Anzahl)', bArts.length, aArts.length),
@@ -1386,7 +2186,11 @@ class _ChangeDiffView extends StatelessWidget {
     if (v == null) return '';
     if (v is String) return v;
     if (v is num || v is bool) return v.toString();
-    try { return const JsonEncoder().convert(v); } catch (_) { return v.toString(); }
+    try {
+      return const JsonEncoder().convert(v);
+    } catch (_) {
+      return v.toString();
+    }
   }
 }
 
@@ -1399,6 +2203,7 @@ class _EditDialog extends StatefulWidget {
   @override
   State<_EditDialog> createState() => _EditDialogState();
 }
+
 class _EditDialogState extends State<_EditDialog> {
   final Map<String, TextEditingController> ctrls = {};
   @override
@@ -1409,11 +2214,15 @@ class _EditDialogState extends State<_EditDialog> {
       ctrls[f] = TextEditingController(text: v);
     }
   }
+
   @override
   void dispose() {
-    for (final c in ctrls.values) { c.dispose(); }
+    for (final c in ctrls.values) {
+      c.dispose();
+    }
     super.dispose();
   }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -1423,20 +2232,26 @@ class _EditDialogState extends State<_EditDialog> {
           for (final f in widget.fields)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: TextField(controller: ctrls[f], decoration: InputDecoration(labelText: f)),
+              child: TextField(
+                  controller: ctrls[f],
+                  decoration: InputDecoration(labelText: f)),
             ),
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen')),
         FilledButton(onPressed: _save, child: const Text('Speichern')),
       ],
     );
   }
+
   void _save() {
     final map = <String, dynamic>{};
     for (final e in ctrls.entries) {
-      final k = e.key; final t = e.value.text.trim();
+      final k = e.key;
+      final t = e.value.text.trim();
       if (t.isEmpty) continue;
       // Zahlenfelder heuristisch konvertieren
       if (k == 'menge' || k.endsWith('_mm') || k == 'sort_order') {
@@ -1458,8 +2273,12 @@ class _ConfirmDialog extends StatelessWidget {
     return AlertDialog(
       content: Text(text),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
-        FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen')),
+        FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Löschen')),
       ],
     );
   }
@@ -1479,7 +2298,8 @@ class _ProjectCreateDialogState extends State<_ProjectCreateDialog> {
 
   @override
   void dispose() {
-    nameCtrl.dispose(); nummerCtrl.dispose();
+    nameCtrl.dispose();
+    nummerCtrl.dispose();
     super.dispose();
   }
 
@@ -1492,18 +2312,32 @@ class _ProjectCreateDialogState extends State<_ProjectCreateDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name*')),
+            TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Name*')),
             const SizedBox(height: 8),
-            TextField(controller: nummerCtrl, decoration: const InputDecoration(labelText: 'Nummer (optional)')),
+            TextField(
+                controller: nummerCtrl,
+                decoration:
+                    const InputDecoration(labelText: 'Nummer (optional)')),
             const SizedBox(height: 12),
             Row(children: [
               const Text('Kunde:'),
               const SizedBox(width: 8),
-              Expanded(child: Text(_customer != null ? (_customer!['name']?.toString() ?? '') : '— kein Kunde —', overflow: TextOverflow.ellipsis)),
+              Expanded(
+                  child: Text(
+                      _customer != null
+                          ? (_customer!['name']?.toString() ?? '')
+                          : '— kein Kunde —',
+                      overflow: TextOverflow.ellipsis)),
               const SizedBox(width: 8),
-              OutlinedButton.icon(onPressed: _pickCustomer, icon: const Icon(Icons.search_rounded), label: const Text('Auswählen')),
+              OutlinedButton.icon(
+                  onPressed: _pickCustomer,
+                  icon: const Icon(Icons.search_rounded),
+                  label: const Text('Auswählen')),
             ]),
-            if (_customer != null && _customerCommercialSummary(_customer!).isNotEmpty) ...[
+            if (_customer != null &&
+                _customerCommercialSummary(_customer!).isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 _customerCommercialSummary(_customer!),
@@ -1514,7 +2348,9 @@ class _ProjectCreateDialogState extends State<_ProjectCreateDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen')),
         FilledButton(onPressed: _save, child: const Text('Anlegen')),
       ],
     );
@@ -1525,13 +2361,20 @@ class _ProjectCreateDialogState extends State<_ProjectCreateDialog> {
       context: context,
       builder: (ctx) => _ContactPickerDialog(api: widget.api),
     );
-    if (picked != null) setState(() { _customer = picked; });
+    if (picked != null)
+      setState(() {
+        _customer = picked;
+      });
   }
 
   void _save() {
     final name = nameCtrl.text.trim();
     final nummer = nummerCtrl.text.trim();
-    if (name.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name ist erforderlich'))); return; }
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Name ist erforderlich')));
+      return;
+    }
     Navigator.pop(context, {
       'name': name,
       if (nummer.isNotEmpty) 'nummer': nummer,
@@ -1545,29 +2388,35 @@ class _AnalysisDialog extends StatelessWidget {
   final Map<String, dynamic> summary;
   @override
   Widget build(BuildContext context) {
-    final project = (summary['project'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final project =
+        (summary['project'] as Map?)?.cast<String, dynamic>() ?? const {};
     final phases = ((summary['phases'] ?? const []) as List).cast<dynamic>();
     return AlertDialog(
       title: const Text('Analyse Logikal'),
       content: SizedBox(
         width: 560,
         child: SingleChildScrollView(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('Datei: ${summary['source'] ?? ''}'),
             const SizedBox(height: 6),
-            Text('Projekt: ${project['name'] ?? ''}  |  OfferNo: ${project['offer_no'] ?? ''}  |  OrderNo: ${project['order_no'] ?? ''}'),
+            Text(
+                'Projekt: ${project['name'] ?? ''}  |  OfferNo: ${project['offer_no'] ?? ''}  |  OrderNo: ${project['order_no'] ?? ''}'),
             const SizedBox(height: 12),
             Text('Phasen (Lose): ${summary['phase_count'] ?? phases.length}'),
             const SizedBox(height: 8),
             for (final p in phases)
               _PhaseAnalysisTile(phase: (p as Map).cast<String, dynamic>()),
             const SizedBox(height: 12),
-            Text('${summary['notes'] ?? ''}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+            Text('${summary['notes'] ?? ''}',
+                style: const TextStyle(color: Colors.black54, fontSize: 12)),
           ]),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Schließen')),
       ],
     );
   }
@@ -1581,15 +2430,18 @@ class _PhaseAnalysisTile extends StatelessWidget {
     final pid = phase['phase_id'];
     final name = (phase['name'] ?? '').toString();
     final elevs = phase['elevations'] ?? 0;
-    final groups = ((phase['elevation_groups'] ?? const []) as List).cast<dynamic>();
+    final groups =
+        ((phase['elevation_groups'] ?? const []) as List).cast<dynamic>();
     return ExpansionTile(
-      title: Text('PhaseId $pid${name.isNotEmpty ? ' — '+name : ''}  –  Elevations: $elevs, Groups: ${groups.length}') ,
+      title: Text(
+          'PhaseId $pid${name.isNotEmpty ? ' — ' + name : ''}  –  Elevations: $elevs, Groups: ${groups.length}'),
       children: [
         for (final g in groups)
           ListTile(
             dense: true,
-            title: Text('Group ${ (g as Map)['group_id'] }'),
-            subtitle: Text('Elevations: ${g['elevations']}, SingleElevations: ${g['single_elevations'] ?? 0}'),
+            title: Text('Group ${(g as Map)['group_id']}'),
+            subtitle: Text(
+                'Elevations: ${g['elevations']}, SingleElevations: ${g['single_elevations'] ?? 0}'),
           )
       ],
     );
@@ -1605,24 +2457,44 @@ class _ContactPickerDialog extends StatefulWidget {
 
 class _ContactPickerDialogState extends State<_ContactPickerDialog> {
   final qCtrl = TextEditingController();
-  bool _loading = true; String? _error; List<dynamic> _items = const [];
+  bool _loading = true;
+  String? _error;
+  List<dynamic> _items = const [];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+  }
+
   @override
-  void dispose() { qCtrl.dispose(); super.dispose(); }
+  void dispose() {
+    qCtrl.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
-      final list = await widget.api.listContacts(q: qCtrl.text.trim(), rolle: 'customer', limit: 50);
-      setState(() { _items = list; });
+      final list = await widget.api
+          .listContacts(q: qCtrl.text.trim(), rolle: 'customer', limit: 50);
+      setState(() {
+        _items = list;
+      });
     } catch (e) {
       setState(() {
-        _error = _projectErrorMessage(e, fallback: 'Kunden konnten nicht geladen werden');
+        _error = _projectErrorMessage(e,
+            fallback: 'Kunden konnten nicht geladen werden');
       });
+    } finally {
+      if (mounted)
+        setState(() {
+          _loading = false;
+        });
     }
-    finally { if (mounted) setState(() { _loading = false; }); }
   }
 
   @override
@@ -1633,13 +2505,25 @@ class _ContactPickerDialogState extends State<_ContactPickerDialog> {
         width: 500,
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Row(children: [
-            Expanded(child: TextField(controller: qCtrl, decoration: const InputDecoration(hintText: 'Suchen...'))),
+            Expanded(
+                child: TextField(
+                    controller: qCtrl,
+                    decoration: const InputDecoration(hintText: 'Suchen...'))),
             const SizedBox(width: 8),
-            OutlinedButton.icon(onPressed: _load, icon: const Icon(Icons.search), label: const Text('Suchen')),
+            OutlinedButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.search),
+                label: const Text('Suchen')),
           ]),
           const SizedBox(height: 8),
-          if (_loading) const Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
-          if (_error != null) Padding(padding: const EdgeInsets.all(12), child: Text('Fehler: $_error')),
+          if (_loading)
+            const Padding(
+                padding: EdgeInsets.all(12),
+                child: CircularProgressIndicator()),
+          if (_error != null)
+            Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text('Fehler: $_error')),
           Flexible(
             child: ListView.builder(
               shrinkWrap: true,
@@ -1664,7 +2548,9 @@ class _ContactPickerDialogState extends State<_ContactPickerDialog> {
         ]),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Schließen')),
       ],
     );
   }

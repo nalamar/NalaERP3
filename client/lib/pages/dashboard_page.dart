@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_context.dart';
+import '../widgets/commercial_summary_widgets.dart';
 import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
@@ -78,10 +80,8 @@ class DashboardPage extends StatelessWidget {
           },
         ),
       if (_can('sales_orders.read'))
-        _DashCard(
-          title: 'Aufträge',
-          subtitle: 'Teilfaktura, Folgebelege, PDF',
-          icon: Icons.assignment_turned_in_rounded,
+        _SalesOrdersDashCard(
+          api: api,
           color: color,
           onTap: () {
             Navigator.of(context).push(
@@ -147,7 +147,8 @@ class DashboardPage extends StatelessWidget {
             padding: const EdgeInsets.all(24),
             child: cards.isEmpty
                 ? const Center(
-                    child: Text('Für diesen Benutzer sind aktuell keine Bereiche freigeschaltet.'),
+                    child: Text(
+                        'Für diesen Benutzer sind aktuell keine Bereiche freigeschaltet.'),
                   )
                 : Wrap(
                     alignment: WrapAlignment.center,
@@ -162,10 +163,92 @@ class DashboardPage extends StatelessWidget {
   }
 }
 
+class _SalesOrdersDashCard extends StatefulWidget {
+  const _SalesOrdersDashCard({
+    required this.api,
+    required this.color,
+    required this.onTap,
+  });
+
+  final ApiClient api;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  State<_SalesOrdersDashCard> createState() => _SalesOrdersDashCardState();
+}
+
+class _SalesOrdersDashCardState extends State<_SalesOrdersDashCard> {
+  late Future<SalesOrderCommercialStats> _statsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _statsFuture = _loadStats();
+  }
+
+  Future<SalesOrderCommercialStats> _loadStats() async {
+    final salesOrders = await widget.api.listSalesOrders(limit: 200);
+    return summarizeSalesOrders(salesOrders);
+  }
+
+  List<String> _buildSubtitleLines(SalesOrderCommercialStats stats) {
+    if (stats.partialCount > 0) {
+      return [
+        '${stats.partialCount} Teilfaktura offen',
+        'Rest ${stats.remainingGross.toStringAsFixed(2)} EUR',
+      ];
+    }
+    if (stats.followUpCount > 0) {
+      return [
+        '${stats.followUpCount} Aufträge mit Folgebelegen',
+        'Keine offene Teilfaktura',
+      ];
+    }
+    return ['Teilfaktura, Folgebelege, PDF'];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<SalesOrderCommercialStats>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        final subtitleLines = switch (snapshot.connectionState) {
+          ConnectionState.waiting => ['Teilfaktura wird geladen…'],
+          _ when snapshot.hasError => [
+              'Teilfaktura-Status aktuell nicht verfügbar'
+            ],
+          _ => _buildSubtitleLines(
+              snapshot.data ?? const SalesOrderCommercialStats(),
+            ),
+        };
+
+        return _DashCard(
+          title: 'Aufträge',
+          subtitleWidget: CommercialSummaryText(
+            lines: subtitleLines,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+          icon: Icons.assignment_turned_in_rounded,
+          color: widget.color,
+          onTap: widget.onTap,
+        );
+      },
+    );
+  }
+}
+
 class _DashCard extends StatelessWidget {
-  const _DashCard({required this.title, required this.icon, required this.color, required this.onTap, this.subtitle});
+  const _DashCard(
+      {required this.title,
+      required this.icon,
+      required this.color,
+      required this.onTap,
+      this.subtitle,
+      this.subtitleWidget});
   final String title;
   final String? subtitle;
+  final Widget? subtitleWidget;
   final IconData icon;
   final Color color;
   final VoidCallback onTap;
@@ -181,24 +264,36 @@ class _DashCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 12, offset: const Offset(0,6))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black12,
+                blurRadius: 12,
+                offset: const Offset(0, 6))
+          ],
           border: Border.all(color: color.withOpacity(0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(backgroundColor: color.withOpacity(0.12), radius: 28, child: Icon(icon, color: color, size: 30)),
+            CircleAvatar(
+                backgroundColor: color.withOpacity(0.12),
+                radius: 28,
+                child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 12),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            if (subtitle != null) ...[
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            if (subtitle != null || subtitleWidget != null) ...[
               const SizedBox(height: 6),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: Text(
-                  subtitle!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                ),
+                child: subtitleWidget ??
+                    Text(
+                      subtitle!,
+                      textAlign: TextAlign.center,
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
+                    ),
               ),
             ],
           ],

@@ -228,27 +228,40 @@ Task Breakdown
 
 // State
 
-Die Auftragsliste hat jetzt einen echten Teilfaktura-Fokus. In sales_orders_page.dart gibt es einen Schnellfilter Teilfaktura, der die Liste auf Aufträge mit Restbetrag eingrenzt. Außerdem zeigen die Listeneinträge jetzt nicht nur Status und Brutto, sondern auch den Faktura-Fortschritt sowie Rechnungen / Restbetrag, statt den Nutzer dafür erst in die Detailansicht zu zwingen.
+Ich habe die Deep-Links im Projektdetail vereinheitlicht: projects_page.dart bietet im kaufmännischen Statusblock jetzt sowohl Projekt-Angebote öffnen als auch Projekt-Aufträge öffnen. Damit führen beide Buttons konsistent in bereits projektgefilterte Listen. Der bestehende Projekttest in sales_order_context_pages_test.dart prüft jetzt beide Navigationspfade.
 
-Die Regression dafür steckt in sales_order_context_pages_test.dart: Der neue Test prüft, dass nach Aktivieren des Chips nur noch teilfakturierte Aufträge sichtbar bleiben. Verifikation bleibt weiter durch das lokale Tooling begrenzt: dart format client/lib/pages/sales_orders_page.dart client/test/sales_order_context_pages_test.dart lief erneut nach 20s in einen Timeout, und flutter test test/sales_order_context_pages_test.dart lief nach 120s in einen Timeout.
+Verifikation: pwsh -File .\scripts\client_tooling.ps1 -Action test -TestTarget test/sales_order_context_pages_test.dart lief erfolgreich mit All tests passed!.
 
 === CODEX STATE [START] ===
-Aktueller Hierarchy-Pfad: Epic 2 / Feature 2.2 / Task 2.2.1 / Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 8
+Aktueller Hierarchy-Pfad: Epic 2 / Feature 2.2 / Task 2.2.1 / Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 20
 
 Erledigt:
 
 Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 8: Teilfaktura-/Mehrfachbeleg-UX in der Auftragsliste verdichten, inklusive Schnellfilter und Restbetragsanzeige
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 9: Flutter-Tooling/Teststabilisierung für Folgebeleg-/Teilfaktura-Kontexttests und zugehörige UI-Regressionen beheben
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 10: Responsive-Härtung der Quote-/Auftrags-/Rechnungsdetailseiten an den zuvor aufgefallenen Overflow-Stellen
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 11: Kleine-Viewport-Regressionstests ergänzen und verbleibende Responsive-Lücken in den Kontextseiten schließen
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 12: Entwickler-Tooling für Flutter/Dart lokal vereinheitlichen, inklusive Repo-Skript und Doku für direkte Verifikation
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 13: Folgebeleg-/Teilfaktura-Kontext auf Dashboard-Kennzahlen ausweiten und testbar absichern
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 14: Folgebeleg-Kontext in die Rechnungsübersicht übernehmen, inklusive Quick-Filter und Quellenhinweis in der Liste
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 15: Angebotsübersicht um Folgebeleg-Signale und Quick-Filter für bereits überführte Angebote erweitern
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 16: Projektdetail um kaufmännische Folgebeleg-/Teilfaktura-Kennzahlen aus Angeboten und Aufträgen ergänzen
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 17: Gemeinsame Berechnungsbasis für kaufmännische Folgebeleg-/Teilfaktura-Kennzahlen in Dashboard und Projektdetail extrahieren
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 18: Wiederverwendbare UI-Bausteine für kaufmännische Kennzahlblöcke in Dashboard und Projektdetail einführen
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 19: Projektnahe kaufmännische Summary-Card um direkte Navigation in die projektbezogene Auftragsübersicht erweitern
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 20: Deep-Link-Semantik im Projektdetail zwischen projektbezogenen Angebots- und Auftragslisten vereinheitlichen
+
 Nächste zu bearbeitende Subtask:
 
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 9: Flutter-Tooling/Teststabilisierung oder weitere Feinschliffe für Folgebeleg-Filter und Statusdarstellung in angrenzenden Listen
+Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 21: Analoge Deep-Links oder Initialfilter zwischen Rechnung und Auftrag weiter harmonisieren, damit Folgebeleg-Navigation entlang des gesamten Belegflusses konsistent ist
+
 Aktueller Git-Stand:
 
-sales_orders_page.dart hat jetzt Teilfaktura-Schnellfilter, Fortschrittslabel und Restbetrags-Hinweis in der Liste
-sales_order_context_pages_test.dart prüft den neuen Listenfilter
-Frühere Backend-Felder related_invoice_count und remaining_gross_amount werden jetzt auch in der Listen-UX genutzt
-codex.md wurde nicht geändert
-Zusammenfassung für Fortsetzung:
+client/lib/pages/projects_page.dart bietet im kaufmännischen Statusblock jetzt direkte projektbezogene Einstiege in Angebots- und Auftragslisten
+client/test/sales_order_context_pages_test.dart prüft jetzt beide Navigationspfade aus dem Projektdetail
+Die projektbezogene Initialfilterung in QuotesPage und SalesOrdersPage wird damit konsistent genutzt
+Gezielter Flutter-Testlauf über scripts/client_tooling.ps1 bleibt vollständig erfolgreich
 
-Teilfaktura ist jetzt auch in der Auftragsliste operativ nutzbar. Die größte offene Lücke bleibt weiterhin nicht fachlich, sondern technisch: lokale Flutter-/Dart-Kommandos hängen weiterhin bei Formatierung und Widget-Testlauf.
-=== CODEX STATE [ENDE] ===
-
+Zusammenfassung für Fortsetzung (max 1200 Tokens):
+Die Deep-Link-Semantik wurde im Projektdetail jetzt konsistent auf zwei projektbezogene Arbeitslisten ausgedehnt. Bereits vorhanden waren die projektbezogenen Initialfilter auf QuotesPage (initialProjectId) und SalesOrdersPage (initialProjectId). Diese Fähigkeiten werden jetzt im Projektdetail explizit nutzbar gemacht: Die kaufmännische Summary-Card zeigt, abhängig von Berechtigungen, sowohl Projekt-Angebote öffnen als auch Projekt-Aufträge öffnen. Beide Buttons öffnen die jeweilige Zielseite bereits mit gesetztem Projektfilter, sodass Nutzer nicht mehr manuell nach Projekt-ID filtern müssen. Der bestehende Projekttest in sales_order_context_pages_test.dart prüft jetzt die Sichtbarkeit der beiden Buttons und den tatsächlichen Navigationssprung erst in die Angebotsliste und dann zurück in die projektbezogene Auftragsliste. Die gesamte Kontextsuite bleibt grün. Die logisch nächste Fortsetzung ist nicht mehr projektzentriert, sondern entlang des Belegflusses: Rechnung, Auftrag und ggf. Angebot sollten Initialfilter und Deep-Links ähnlich konsistent unterstützen, z. B. ein einheitlicher Einstieg von auftragsbezogenen Rechnungen in Auftragssichten oder umgekehrt, damit Folgebeleg-Navigation über alle kaufmännischen Oberflächen gleich funktioniert.
+=== CODEX STATE [ENDE]

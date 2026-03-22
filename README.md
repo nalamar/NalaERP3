@@ -71,6 +71,26 @@ Eine erste GitHub-Actions-Pipeline liegt unter `.github/workflows/ci.yml`.
 Die Compose-basierten API-Integrationstests laufen damit bewusst getrennt vom schnellen Basis-Serverjob, damit Unit- und Integrationsfeedback unabhängig bleiben.
 Zusätzlich erkennt die Pipeline geänderte Pfade vorab und startet Server-, Client-, Integrations- und Docker-Jobs nur dann, wenn die jeweils relevanten Dateien betroffen sind.
 
+## Client-Verifikation lokal
+
+Falls `dart.bat` oder `flutter.bat` lokal hängen, gibt es im Repo einen direkten Wrapper über `dart.exe` und `flutter_tools.snapshot`:
+
+```powershell
+pwsh -File .\scripts\client_tooling.ps1 -Action format -Paths client/lib/pages/sales_orders_page.dart,client/test/sales_order_context_pages_test.dart
+pwsh -File .\scripts\client_tooling.ps1 -Action test -TestTarget test/sales_order_context_pages_test.dart
+```
+
+Weitere unterstützte Aktionen:
+
+- `pwsh -File .\scripts\client_tooling.ps1 -Action analyze`
+- `pwsh -File .\scripts\client_tooling.ps1 -Action build-web`
+
+Hinweise:
+
+- Das Skript sucht das Flutter-SDK zuerst über `FLUTTER_ROOT`, danach unter `C:\Projekte\flutter`, dann über `flutter` im `PATH`.
+- `format` läuft vom Repo-Root, `test`/`analyze`/`build-web` automatisch aus `client/`.
+- Standard-Testziel für `-Action test` ist `test/sales_order_context_pages_test.dart`.
+
 ## Dokumente (Upload/Download)
 
 Dokumente werden in MongoDB GridFS (Bucket `fs`) gespeichert und in Postgres über die Tabelle `material_documents` mit Materialien verknüpft.

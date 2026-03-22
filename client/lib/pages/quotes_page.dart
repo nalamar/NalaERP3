@@ -4,7 +4,8 @@ import '../api.dart';
 import 'invoices_page.dart';
 import 'sales_orders_page.dart';
 
-String _quoteErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+String _quoteErrorMessage(Object error,
+    {String fallback = 'Vorgang fehlgeschlagen'}) {
   if (error is ApiException) {
     return error.message;
   }
@@ -38,11 +39,13 @@ class _QuotesPageState extends State<QuotesPage> {
   final _searchCtrl = TextEditingController();
   final _projectCtrl = TextEditingController();
   String? _statusFilter;
+  bool _followUpOnlyFilter = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.initialProjectId != null && widget.initialProjectId!.trim().isNotEmpty) {
+    if (widget.initialProjectId != null &&
+        widget.initialProjectId!.trim().isNotEmpty) {
       _projectCtrl.text = widget.initialProjectId!.trim();
     }
     final initialQuoteId = widget.initialQuoteId?.trim();
@@ -69,10 +72,24 @@ class _QuotesPageState extends State<QuotesPage> {
     try {
       final list = await widget.api.listQuotes(
         q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        projectId: _projectCtrl.text.trim().isEmpty ? null : _projectCtrl.text.trim(),
+        projectId:
+            _projectCtrl.text.trim().isEmpty ? null : _projectCtrl.text.trim(),
         status: _statusFilter,
       );
-      setState(() => _items = list);
+      final filteredList = _followUpOnlyFilter
+          ? list.where((entry) {
+              final item = (entry as Map).cast<String, dynamic>();
+              return (item['linked_sales_order_id'] ?? '')
+                      .toString()
+                      .trim()
+                      .isNotEmpty ||
+                  (item['linked_invoice_out_id'] ?? '')
+                      .toString()
+                      .trim()
+                      .isNotEmpty;
+            }).toList()
+          : list;
+      setState(() => _items = filteredList);
       final selectedId = _selected?['id']?.toString();
       if (selectedId != null && selectedId.isNotEmpty) {
         await _loadDetail(selectedId);
@@ -85,7 +102,9 @@ class _QuotesPageState extends State<QuotesPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Angebote konnten nicht geladen werden'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'Angebote konnten nicht geladen werden'))),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -97,7 +116,8 @@ class _QuotesPageState extends State<QuotesPage> {
       final detail = await widget.api.getQuote(id);
       if (mounted) setState(() => _selected = detail);
       await _loadLinkedSalesOrder(detail['linked_sales_order_id']?.toString());
-      await _loadSalesOrderInvoices(detail['linked_sales_order_id']?.toString());
+      await _loadSalesOrderInvoices(
+          detail['linked_sales_order_id']?.toString());
     } catch (_) {}
   }
 
@@ -142,10 +162,26 @@ class _QuotesPageState extends State<QuotesPage> {
     return '${(value ?? 0).toDouble().toStringAsFixed(2)} $normalizedCurrency';
   }
 
+  String _quoteFollowUpSummary(Map<String, dynamic> item) {
+    final linkedSalesOrderId = (item['linked_sales_order_id'] ?? '').toString();
+    final linkedInvoiceId = (item['linked_invoice_out_id'] ?? '').toString();
+    if (linkedSalesOrderId.isNotEmpty && linkedInvoiceId.isNotEmpty) {
+      return 'Auftrag $linkedSalesOrderId  •  Rechnung $linkedInvoiceId';
+    }
+    if (linkedSalesOrderId.isNotEmpty) {
+      return 'In Auftrag $linkedSalesOrderId überführt';
+    }
+    if (linkedInvoiceId.isNotEmpty) {
+      return 'Direkt in Rechnung $linkedInvoiceId überführt';
+    }
+    return 'Noch kein Folgebeleg';
+  }
+
   Future<void> _openCreateDialog({String? projectId}) async {
     final created = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _QuoteEditorDialog(api: widget.api, initialProjectId: projectId),
+      builder: (_) =>
+          _QuoteEditorDialog(api: widget.api, initialProjectId: projectId),
     );
     if (created == null || !mounted) return;
     setState(() => _selected = created);
@@ -174,7 +210,9 @@ class _QuotesPageState extends State<QuotesPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Statuswechsel fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'Statuswechsel fehlgeschlagen'))),
       );
     }
   }
@@ -185,7 +223,8 @@ class _QuotesPageState extends State<QuotesPage> {
     if (id == null) return;
     try {
       final number = (selected?['number'] ?? '').toString().trim();
-      await widget.api.downloadQuotePdf(id, filename: number.isEmpty ? null : 'Angebot_$number.pdf');
+      await widget.api.downloadQuotePdf(id,
+          filename: number.isEmpty ? null : 'Angebot_$number.pdf');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Angebots-PDF wird heruntergeladen')),
@@ -193,7 +232,9 @@ class _QuotesPageState extends State<QuotesPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'PDF-Download fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'PDF-Download fehlgeschlagen'))),
       );
     }
   }
@@ -233,7 +274,8 @@ class _QuotesPageState extends State<QuotesPage> {
     final request = await showDialog<_QuoteAcceptRequest>(
       context: context,
       builder: (_) => _QuoteAcceptDialog(
-        allowProjectUpdate: projectId.isNotEmpty && widget.api.hasPermission('projects.write'),
+        allowProjectUpdate:
+            projectId.isNotEmpty && widget.api.hasPermission('projects.write'),
       ),
     );
     if (request == null) return;
@@ -242,8 +284,10 @@ class _QuotesPageState extends State<QuotesPage> {
         id,
         projectStatus: request.projectStatus,
       );
-      final updatedQuote = ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
-      final project = ((result['project'] as Map?) ?? const {}).cast<String, dynamic>();
+      final updatedQuote =
+          ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
+      final project =
+          ((result['project'] as Map?) ?? const {}).cast<String, dynamic>();
       if (!mounted) return;
       setState(() => _selected = updatedQuote);
       await _load();
@@ -261,7 +305,9 @@ class _QuotesPageState extends State<QuotesPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Annahme fehlgeschlagen'))),
+        SnackBar(
+            content: Text(
+                _quoteErrorMessage(e, fallback: 'Annahme fehlgeschlagen'))),
       );
     }
   }
@@ -282,8 +328,10 @@ class _QuotesPageState extends State<QuotesPage> {
         invoiceDate: DateTime.now(),
         dueDate: request.dueDate,
       );
-      final updatedQuote = ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
-      final invoice = ((result['invoice'] as Map?) ?? const {}).cast<String, dynamic>();
+      final updatedQuote =
+          ((result['quote'] as Map?) ?? const {}).cast<String, dynamic>();
+      final invoice =
+          ((result['invoice'] as Map?) ?? const {}).cast<String, dynamic>();
       final invoiceId = (invoice['id'] ?? '').toString();
       if (!mounted) return;
       setState(() => _selected = updatedQuote);
@@ -298,13 +346,16 @@ class _QuotesPageState extends State<QuotesPage> {
           ),
         ),
       );
-      if (invoiceId.isNotEmpty && widget.api.hasPermission('invoices_out.read')) {
+      if (invoiceId.isNotEmpty &&
+          widget.api.hasPermission('invoices_out.read')) {
         await _openInvoice(invoiceId);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Rechnungserzeugung fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'Rechnungserzeugung fehlgeschlagen'))),
       );
     }
   }
@@ -330,13 +381,16 @@ class _QuotesPageState extends State<QuotesPage> {
           ),
         ),
       );
-      if (salesOrderId.isNotEmpty && widget.api.hasPermission('sales_orders.read')) {
+      if (salesOrderId.isNotEmpty &&
+          widget.api.hasPermission('sales_orders.read')) {
         await _openSalesOrder(salesOrderId);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Auftragserzeugung fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'Auftragserzeugung fehlgeschlagen'))),
       );
     }
   }
@@ -346,8 +400,10 @@ class _QuotesPageState extends State<QuotesPage> {
     final selected = _selected;
     final linkedSalesOrder = _linkedSalesOrder;
     final selectedStatus = (selected?['status'] ?? '').toString();
-    final linkedInvoiceId = (selected?['linked_invoice_out_id'] ?? '').toString();
-    final linkedSalesOrderId = (selected?['linked_sales_order_id'] ?? '').toString();
+    final linkedInvoiceId =
+        (selected?['linked_invoice_out_id'] ?? '').toString();
+    final linkedSalesOrderId =
+        (selected?['linked_sales_order_id'] ?? '').toString();
     final salesOrderInvoices = _salesOrderInvoices
         .cast<Map>()
         .map((item) => item.cast<String, dynamic>())
@@ -359,7 +415,8 @@ class _QuotesPageState extends State<QuotesPage> {
     final canWrite = widget.api.hasPermission('quotes.write');
     final canConvertInvoices = widget.api.hasPermission('invoices_out.write');
     final canOpenInvoices = widget.api.hasPermission('invoices_out.read');
-    final canConvertSalesOrders = widget.api.hasPermission('sales_orders.write');
+    final canConvertSalesOrders =
+        widget.api.hasPermission('sales_orders.write');
     final canOpenSalesOrders = widget.api.hasPermission('sales_orders.read');
     return Scaffold(
       appBar: AppBar(
@@ -386,41 +443,64 @@ class _QuotesPageState extends State<QuotesPage> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Row(
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Expanded(
+                          SizedBox(
+                            width: 280,
                             child: TextField(
                               controller: _searchCtrl,
-                              decoration: const InputDecoration(labelText: 'Suche (Nummer/Kunde)'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Suche (Nummer/Kunde)'),
                               onSubmitted: (_) => _load(),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
+                          SizedBox(
+                            width: 220,
                             child: TextField(
                               controller: _projectCtrl,
-                              decoration: const InputDecoration(labelText: 'Projekt-ID'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Projekt-ID'),
                               onSubmitted: (_) => _load(),
                             ),
                           ),
-                          const SizedBox(width: 12),
                           SizedBox(
                             width: 180,
                             child: DropdownButtonFormField<String?>(
+                              isExpanded: true,
                               initialValue: _statusFilter,
-                              decoration: const InputDecoration(labelText: 'Status'),
+                              decoration:
+                                  const InputDecoration(labelText: 'Status'),
                               items: const [
-                                DropdownMenuItem(value: null, child: Text('Alle')),
-                                DropdownMenuItem(value: 'draft', child: Text('Entwurf')),
-                                DropdownMenuItem(value: 'sent', child: Text('Versendet')),
-                                DropdownMenuItem(value: 'accepted', child: Text('Angenommen')),
-                                DropdownMenuItem(value: 'rejected', child: Text('Abgelehnt')),
+                                DropdownMenuItem(
+                                    value: null, child: Text('Alle')),
+                                DropdownMenuItem(
+                                    value: 'draft', child: Text('Entwurf')),
+                                DropdownMenuItem(
+                                    value: 'sent', child: Text('Versendet')),
+                                DropdownMenuItem(
+                                    value: 'accepted',
+                                    child: Text('Angenommen')),
+                                DropdownMenuItem(
+                                    value: 'rejected',
+                                    child: Text('Abgelehnt')),
                               ],
-                              onChanged: (value) => setState(() => _statusFilter = value),
+                              onChanged: (value) =>
+                                  setState(() => _statusFilter = value),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          FilledButton(onPressed: _load, child: const Text('Filtern')),
+                          FilterChip(
+                            label: const Text('Mit Folgebeleg'),
+                            selected: _followUpOnlyFilter,
+                            onSelected: (value) {
+                              setState(() => _followUpOnlyFilter = value);
+                              _load();
+                            },
+                          ),
+                          FilledButton(
+                              onPressed: _load, child: const Text('Filtern')),
                         ],
                       ),
                     ),
@@ -429,21 +509,29 @@ class _QuotesPageState extends State<QuotesPage> {
                       child: _loading
                           ? const Center(child: CircularProgressIndicator())
                           : _items.isEmpty
-                              ? const Center(child: Text('Noch keine Angebote gefunden.'))
+                              ? const Center(
+                                  child: Text('Noch keine Angebote gefunden.'))
                               : ListView.separated(
                                   itemCount: _items.length,
-                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  separatorBuilder: (_, __) =>
+                                      const Divider(height: 1),
                                   itemBuilder: (context, index) {
-                                    final item = _items[index] as Map<String, dynamic>;
+                                    final item =
+                                        _items[index] as Map<String, dynamic>;
                                     final id = item['id']?.toString();
-                                    final selectedId = _selected?['id']?.toString();
+                                    final selectedId =
+                                        _selected?['id']?.toString();
                                     return ListTile(
                                       selected: id != null && id == selectedId,
-                                      title: Text((item['number'] ?? 'Angebot').toString()),
+                                      title: Text((item['number'] ?? 'Angebot')
+                                          .toString()),
                                       subtitle: Text(
-                                        '${item['contact_name'] ?? '-'}  •  ${(item['status'] ?? '').toString()}  •  ${_formatMoney(item['gross_amount'] as num?, (item['currency'] ?? 'EUR').toString())}',
+                                        '${item['contact_name'] ?? '-'}  •  ${(item['status'] ?? '').toString()}  •  ${_formatMoney(item['gross_amount'] as num?, (item['currency'] ?? 'EUR').toString())}\n${_quoteFollowUpSummary(item)}',
                                       ),
-                                      onTap: id == null ? null : () => _loadDetail(id),
+                                      isThreeLine: true,
+                                      onTap: id == null
+                                          ? null
+                                          : () => _loadDetail(id),
                                     );
                                   },
                                 ),
@@ -460,221 +548,319 @@ class _QuotesPageState extends State<QuotesPage> {
                     ? const Center(child: Text('Angebot auswählen'))
                     : Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    (selected['number'] ?? 'Angebot').toString(),
-                                    style: Theme.of(context).textTheme.headlineSmall,
-                                  ),
-                                ),
-                                if (canWrite && selectedStatus == 'draft')
-                                  OutlinedButton.icon(
-                                    onPressed: _openEditDialog,
-                                    icon: const Icon(Icons.edit_rounded),
-                                    label: const Text('Bearbeiten'),
-                                  ),
-                                const SizedBox(width: 8),
-                                OutlinedButton.icon(
-                                  onPressed: _downloadPdf,
-                                  icon: const Icon(Icons.picture_as_pdf_rounded),
-                                  label: const Text('PDF'),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                Chip(label: Text('Status: $selectedStatus')),
-                                Chip(label: Text('Kunde: ${(selected['contact_name'] ?? '-').toString()}')),
-                                Chip(label: Text('Projekt: ${(selected['project_name'] ?? '-').toString()}')),
-                                if (hasLinkedInvoice) Chip(label: Text('Rechnung: $linkedInvoiceId')),
-                                if (hasLinkedSalesOrder)
-                                  Chip(
-                                    label: Text(
-                                      linkedSalesOrder == null
-                                          ? 'Auftrag: $linkedSalesOrderId'
-                                          : 'Auftrag: ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
-                                    ),
-                                  ),
-                                if (salesOrderInvoiceCount > 0)
-                                  Chip(label: Text('Folgebelege: $salesOrderInvoiceCount')),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Text('Hinweis: ${(selected['note'] ?? '').toString()}'),
-                            const SizedBox(height: 4),
-                            Text('Quote-Date: ${(selected['quote_date'] ?? '').toString()}'),
-                            Text('Gueltig bis: ${(selected['valid_until'] ?? '-').toString()}'),
-                            if ((selected['accepted_at'] ?? '').toString().isNotEmpty)
-                              Text('Angenommen am: ${(selected['accepted_at'] ?? '').toString()}'),
-                            if (hasLinkedSalesOrder) ...[
-                              const SizedBox(height: 16),
-                              Card(
-                                margin: EdgeInsets.zero,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        linkedSalesOrder == null
-                                            ? 'Verknüpfter Auftrag wird geladen'
-                                            : 'Verknüpfter Auftrag ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
-                                        style: const TextStyle(fontWeight: FontWeight.bold),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      if (linkedSalesOrder != null) ...[
-                                        Text('Status: ${(linkedSalesOrder['status'] ?? '-').toString()}'),
-                                        Text('Auftragswert: ${_formatMoney(linkedSalesOrder['gross_amount'] as num?, (linkedSalesOrder['currency'] ?? 'EUR').toString())}'),
-                                        Text('Positionen: ${((linkedSalesOrder['items'] as List?) ?? const []).length}'),
-                                        if (salesOrderInvoiceCount > 0) ...[
-                                          const SizedBox(height: 8),
-                                          Text(
-                                            'Rechnungen aus Auftrag ($salesOrderInvoiceCount)',
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          ...salesOrderInvoices.map((invoice) {
-                                            final invoiceId = (invoice['id'] ?? '').toString();
-                                            final invoiceNumber = (invoice['number'] ?? invoice['nummer'] ?? invoiceId).toString();
-                                            final isLatest = invoiceId.isNotEmpty && invoiceId == linkedInvoiceId;
-                                            final invoiceCurrency = (invoice['currency'] ?? linkedSalesOrder['currency'] ?? 'EUR').toString();
-                                            final invoiceGross = _toDouble(invoice['gross_amount']);
-                                            final invoiceOpen = invoiceGross - _toDouble(invoice['paid_amount']);
-                                            return ListTile(
-                                              dense: true,
-                                              contentPadding: EdgeInsets.zero,
-                                              title: Text(invoiceNumber),
-                                              subtitle: Text(
-                                                '${isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'}  •  ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
-                                              ),
-                                              trailing: canOpenInvoices
-                                                  ? TextButton(
-                                                      onPressed: () => _openInvoice(invoiceId),
-                                                      child: const Text('Öffnen'),
-                                                    )
-                                                  : null,
-                                            );
-                                          }),
-                                        ],
-                                      ] else
-                                        const Text('Status und Wert werden nachgeladen.'),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            const Text('Positionen', style: TextStyle(fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            Expanded(
-                              child: ListView.separated(
-                                itemCount: ((selected['items'] as List?) ?? const []).length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
-                                itemBuilder: (context, index) {
-                                  final item = (selected['items'] as List)[index] as Map<String, dynamic>;
-                                  final currency = (selected['currency'] ?? 'EUR').toString();
-                                  final qty = _toDouble(item['qty']);
-                                  final unitPrice = _toDouble(item['unit_price']);
-                                  final lineNet = qty * unitPrice;
-                                  return ListTile(
-                                    title: Text((item['description'] ?? 'Position').toString()),
-                                    subtitle: Text(
-                                      'Menge ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 2)} ${(item['unit'] ?? '')}  •  Einzelpreis ${_formatMoney(unitPrice, currency)}  •  Steuer ${(item['tax_code'] ?? '').toString()}',
-                                    ),
-                                    trailing: Text(_formatMoney(lineNet, currency)),
-                                  );
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
                                 children: [
-                                  Text('Netto: ${_formatMoney(_toDouble(selected['net_amount']), (selected['currency'] ?? 'EUR').toString())}'),
-                                  Text('Steuer: ${_formatMoney(_toDouble(selected['tax_amount']), (selected['currency'] ?? 'EUR').toString())}'),
-                                  Text(
-                                    'Brutto: ${_formatMoney(_toDouble(selected['gross_amount']), (selected['currency'] ?? 'EUR').toString())}',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  SizedBox(
+                                    width: 260,
+                                    child: Text(
+                                      (selected['number'] ?? 'Angebot')
+                                          .toString(),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall,
+                                    ),
+                                  ),
+                                  if (canWrite && selectedStatus == 'draft')
+                                    OutlinedButton.icon(
+                                      onPressed: _openEditDialog,
+                                      icon: const Icon(Icons.edit_rounded),
+                                      label: const Text('Bearbeiten'),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton.icon(
+                                    onPressed: _downloadPdf,
+                                    icon: const Icon(
+                                        Icons.picture_as_pdf_rounded),
+                                    label: const Text('PDF'),
                                   ),
                                 ],
                               ),
-                            ),
-                            if (canWrite) ...[
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 12),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  if (!hasFollowUp && selectedStatus != 'draft')
-                                    OutlinedButton(onPressed: () => _updateStatus('draft'), child: const Text('Auf Entwurf')),
-                                  if (!hasFollowUp && selectedStatus != 'sent')
-                                    FilledButton(onPressed: () => _updateStatus('sent'), child: const Text('Versendet')),
-                                  if (!hasFollowUp && selectedStatus != 'accepted')
-                                    FilledButton.tonalIcon(
-                                      onPressed: _acceptQuoteFlow,
-                                      icon: const Icon(Icons.task_alt_rounded),
-                                      label: const Text('Annahme'),
+                                  Chip(label: Text('Status: $selectedStatus')),
+                                  Chip(
+                                      label: Text(
+                                          'Kunde: ${(selected['contact_name'] ?? '-').toString()}')),
+                                  Chip(
+                                      label: Text(
+                                          'Projekt: ${(selected['project_name'] ?? '-').toString()}')),
+                                  if (hasLinkedInvoice)
+                                    Chip(
+                                        label:
+                                            Text('Rechnung: $linkedInvoiceId')),
+                                  if (hasLinkedSalesOrder)
+                                    Chip(
+                                      label: Text(
+                                        linkedSalesOrder == null
+                                            ? 'Auftrag: $linkedSalesOrderId'
+                                            : 'Auftrag: ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
+                                      ),
                                     ),
-                                  if (!hasFollowUp && selectedStatus != 'rejected')
-                                    FilledButton.tonal(onPressed: () => _updateStatus('rejected'), child: const Text('Abgelehnt')),
-                                  if (!hasFollowUp &&
-                                      canConvertInvoices &&
-                                      (selectedStatus == 'sent' || selectedStatus == 'accepted'))
-                                    FilledButton.icon(
-                                      onPressed: _convertToInvoice,
-                                      icon: const Icon(Icons.receipt_long_rounded),
-                                      label: const Text('In Rechnung'),
-                                    ),
-                                  if (!hasFollowUp &&
-                                      canConvertSalesOrders &&
-                                      selectedStatus == 'accepted')
-                                    FilledButton.icon(
-                                      onPressed: _convertToSalesOrder,
-                                      icon: const Icon(Icons.assignment_turned_in_rounded),
-                                      label: const Text('In Auftrag'),
-                                    ),
-                                  if (hasLinkedInvoice && canOpenInvoices)
-                                    FilledButton.icon(
-                                      onPressed: () => _openInvoice(linkedInvoiceId),
-                                      icon: const Icon(Icons.open_in_new_rounded),
-                                      label: const Text('Rechnung öffnen'),
-                                    ),
-                                  if (hasLinkedSalesOrder && canOpenSalesOrders)
-                                    FilledButton.icon(
-                                      onPressed: () => _openSalesOrder(linkedSalesOrderId),
-                                      icon: const Icon(Icons.open_in_new_rounded),
-                                      label: const Text('Auftrag öffnen'),
-                                    ),
+                                  if (salesOrderInvoiceCount > 0)
+                                    Chip(
+                                        label: Text(
+                                            'Folgebelege: $salesOrderInvoiceCount')),
                                 ],
                               ),
-                              if (hasFollowUp) ...[
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Dieses Angebot hat bereits einen Folgebeleg. Weitere manuelle Statuswechsel sind gesperrt.',
-                                ),
-                              ] else if ((selectedStatus == 'sent' || selectedStatus == 'accepted') &&
-                                  !canConvertInvoices) ...[
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Für die Rechnungsumwandlung ist zusätzlich die Berechtigung invoices_out.write erforderlich.',
-                                ),
-                              ] else if (selectedStatus == 'accepted' && !canConvertSalesOrders) ...[
-                                const SizedBox(height: 8),
-                                const Text(
-                                  'Für die Auftragsumwandlung ist zusätzlich die Berechtigung sales_orders.write erforderlich.',
+                              const SizedBox(height: 12),
+                              Text(
+                                  'Hinweis: ${(selected['note'] ?? '').toString()}'),
+                              const SizedBox(height: 4),
+                              Text(
+                                  'Quote-Date: ${(selected['quote_date'] ?? '').toString()}'),
+                              Text(
+                                  'Gueltig bis: ${(selected['valid_until'] ?? '-').toString()}'),
+                              if ((selected['accepted_at'] ?? '')
+                                  .toString()
+                                  .isNotEmpty)
+                                Text(
+                                    'Angenommen am: ${(selected['accepted_at'] ?? '').toString()}'),
+                              if (hasLinkedSalesOrder) ...[
+                                const SizedBox(height: 16),
+                                Card(
+                                  margin: EdgeInsets.zero,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          linkedSalesOrder == null
+                                              ? 'Verknüpfter Auftrag wird geladen'
+                                              : 'Verknüpfter Auftrag ${(linkedSalesOrder['number'] ?? linkedSalesOrderId).toString()}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        if (linkedSalesOrder != null) ...[
+                                          Text(
+                                              'Status: ${(linkedSalesOrder['status'] ?? '-').toString()}'),
+                                          Text(
+                                              'Auftragswert: ${_formatMoney(linkedSalesOrder['gross_amount'] as num?, (linkedSalesOrder['currency'] ?? 'EUR').toString())}'),
+                                          Text(
+                                              'Positionen: ${((linkedSalesOrder['items'] as List?) ?? const []).length}'),
+                                          if (salesOrderInvoiceCount > 0) ...[
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Rechnungen aus Auftrag ($salesOrderInvoiceCount)',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.w600),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            ...salesOrderInvoices
+                                                .asMap()
+                                                .entries
+                                                .map((entry) {
+                                              final invoice = entry.value;
+                                              final invoiceId =
+                                                  (invoice['id'] ?? '')
+                                                      .toString();
+                                              final invoiceNumber =
+                                                  (invoice['number'] ??
+                                                          invoice['nummer'] ??
+                                                          invoiceId)
+                                                      .toString();
+                                              final isLatest =
+                                                  invoiceId.isNotEmpty &&
+                                                      (invoiceId ==
+                                                              linkedInvoiceId ||
+                                                          (linkedInvoiceId
+                                                                  .isEmpty &&
+                                                              entry.key == 0));
+                                              final invoiceCurrency =
+                                                  (invoice['currency'] ??
+                                                          linkedSalesOrder[
+                                                              'currency'] ??
+                                                          'EUR')
+                                                      .toString();
+                                              final invoiceGross = _toDouble(
+                                                  invoice['gross_amount']);
+                                              final invoiceOpen = invoiceGross -
+                                                  _toDouble(
+                                                      invoice['paid_amount']);
+                                              return ListTile(
+                                                dense: true,
+                                                contentPadding: EdgeInsets.zero,
+                                                title: Text(invoiceNumber),
+                                                subtitle: Text(
+                                                  '${isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'}  •  ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
+                                                ),
+                                                trailing: canOpenInvoices
+                                                    ? TextButton(
+                                                        onPressed: () =>
+                                                            _openInvoice(
+                                                                invoiceId),
+                                                        child: const Text(
+                                                            'Öffnen'),
+                                                      )
+                                                    : null,
+                                              );
+                                            }),
+                                          ],
+                                        ] else
+                                          const Text(
+                                              'Status und Wert werden nachgeladen.'),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               ],
+                              const SizedBox(height: 16),
+                              const Text('Positionen',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
+                              const SizedBox(height: 8),
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount:
+                                    ((selected['items'] as List?) ?? const [])
+                                        .length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
+                                itemBuilder: (context, index) {
+                                  final item = (selected['items']
+                                      as List)[index] as Map<String, dynamic>;
+                                  final currency =
+                                      (selected['currency'] ?? 'EUR')
+                                          .toString();
+                                  final qty = _toDouble(item['qty']);
+                                  final unitPrice =
+                                      _toDouble(item['unit_price']);
+                                  final lineNet = qty * unitPrice;
+                                  return ListTile(
+                                    title: Text(
+                                        (item['description'] ?? 'Position')
+                                            .toString()),
+                                    subtitle: Text(
+                                      'Menge ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 2)} ${(item['unit'] ?? '')}  •  Einzelpreis ${_formatMoney(unitPrice, currency)}  •  Steuer ${(item['tax_code'] ?? '').toString()}',
+                                    ),
+                                    trailing:
+                                        Text(_formatMoney(lineNet, currency)),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                        'Netto: ${_formatMoney(_toDouble(selected['net_amount']), (selected['currency'] ?? 'EUR').toString())}'),
+                                    Text(
+                                        'Steuer: ${_formatMoney(_toDouble(selected['tax_amount']), (selected['currency'] ?? 'EUR').toString())}'),
+                                    Text(
+                                      'Brutto: ${_formatMoney(_toDouble(selected['gross_amount']), (selected['currency'] ?? 'EUR').toString())}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (canWrite) ...[
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (!hasFollowUp &&
+                                        selectedStatus != 'draft')
+                                      OutlinedButton(
+                                          onPressed: () =>
+                                              _updateStatus('draft'),
+                                          child: const Text('Auf Entwurf')),
+                                    if (!hasFollowUp &&
+                                        selectedStatus != 'sent')
+                                      FilledButton(
+                                          onPressed: () =>
+                                              _updateStatus('sent'),
+                                          child: const Text('Versendet')),
+                                    if (!hasFollowUp &&
+                                        selectedStatus != 'accepted')
+                                      FilledButton.tonalIcon(
+                                        onPressed: _acceptQuoteFlow,
+                                        icon:
+                                            const Icon(Icons.task_alt_rounded),
+                                        label: const Text('Annahme'),
+                                      ),
+                                    if (!hasFollowUp &&
+                                        selectedStatus != 'rejected')
+                                      FilledButton.tonal(
+                                          onPressed: () =>
+                                              _updateStatus('rejected'),
+                                          child: const Text('Abgelehnt')),
+                                    if (!hasFollowUp &&
+                                        canConvertInvoices &&
+                                        (selectedStatus == 'sent' ||
+                                            selectedStatus == 'accepted'))
+                                      FilledButton.icon(
+                                        onPressed: _convertToInvoice,
+                                        icon: const Icon(
+                                            Icons.receipt_long_rounded),
+                                        label: const Text('In Rechnung'),
+                                      ),
+                                    if (!hasFollowUp &&
+                                        canConvertSalesOrders &&
+                                        selectedStatus == 'accepted')
+                                      FilledButton.icon(
+                                        onPressed: _convertToSalesOrder,
+                                        icon: const Icon(
+                                            Icons.assignment_turned_in_rounded),
+                                        label: const Text('In Auftrag'),
+                                      ),
+                                    if (hasLinkedInvoice && canOpenInvoices)
+                                      FilledButton.icon(
+                                        onPressed: () =>
+                                            _openInvoice(linkedInvoiceId),
+                                        icon: const Icon(
+                                            Icons.open_in_new_rounded),
+                                        label: const Text('Rechnung öffnen'),
+                                      ),
+                                    if (hasLinkedSalesOrder &&
+                                        canOpenSalesOrders)
+                                      FilledButton.icon(
+                                        onPressed: () =>
+                                            _openSalesOrder(linkedSalesOrderId),
+                                        icon: const Icon(
+                                            Icons.open_in_new_rounded),
+                                        label: const Text('Auftrag öffnen'),
+                                      ),
+                                  ],
+                                ),
+                                if (hasFollowUp) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Dieses Angebot hat bereits einen Folgebeleg. Weitere manuelle Statuswechsel sind gesperrt.',
+                                  ),
+                                ] else if ((selectedStatus == 'sent' ||
+                                        selectedStatus == 'accepted') &&
+                                    !canConvertInvoices) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Für die Rechnungsumwandlung ist zusätzlich die Berechtigung invoices_out.write erforderlich.',
+                                  ),
+                                ] else if (selectedStatus == 'accepted' &&
+                                    !canConvertSalesOrders) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Für die Auftragsumwandlung ist zusätzlich die Berechtigung sales_orders.write erforderlich.',
+                                  ),
+                                ],
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
               ),
@@ -757,7 +943,8 @@ class _QuoteAcceptDialogState extends State<_QuoteAcceptDialog> {
               if (_updateProject)
                 TextField(
                   controller: _projectStatusCtrl,
-                  decoration: const InputDecoration(labelText: 'Neuer Projektstatus'),
+                  decoration:
+                      const InputDecoration(labelText: 'Neuer Projektstatus'),
                 ),
             ],
           ],
@@ -875,7 +1062,9 @@ class _QuoteConvertDialogState extends State<_QuoteConvertDialog> {
           onPressed: () {
             Navigator.of(context).pop(
               _QuoteConvertRequest(
-                revenueAccount: _revenueAccountCtrl.text.trim().isEmpty ? '8000' : _revenueAccountCtrl.text.trim(),
+                revenueAccount: _revenueAccountCtrl.text.trim().isEmpty
+                    ? '8000'
+                    : _revenueAccountCtrl.text.trim(),
                 dueDate: _dueDate,
               ),
             );
@@ -888,7 +1077,8 @@ class _QuoteConvertDialogState extends State<_QuoteConvertDialog> {
 }
 
 class _QuoteEditorDialog extends StatefulWidget {
-  const _QuoteEditorDialog({required this.api, this.initial, this.initialProjectId});
+  const _QuoteEditorDialog(
+      {required this.api, this.initial, this.initialProjectId});
 
   final ApiClient api;
   final Map<String, dynamic>? initial;
@@ -913,15 +1103,22 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
     super.initState();
     final initial = widget.initial;
     _projectCtrl = TextEditingController(
-      text: widget.initialProjectId ?? (initial?['project_id'] ?? '').toString(),
+      text:
+          widget.initialProjectId ?? (initial?['project_id'] ?? '').toString(),
     );
-    _contactCtrl = TextEditingController(text: (initial?['contact_id'] ?? '').toString());
-    _currencyCtrl = TextEditingController(text: (initial?['currency'] ?? 'EUR').toString());
-    _noteCtrl = TextEditingController(text: (initial?['note'] ?? '').toString());
+    _contactCtrl =
+        TextEditingController(text: (initial?['contact_id'] ?? '').toString());
+    _currencyCtrl =
+        TextEditingController(text: (initial?['currency'] ?? 'EUR').toString());
+    _noteCtrl =
+        TextEditingController(text: (initial?['note'] ?? '').toString());
     final rawItems = (initial?['items'] as List?) ?? const [];
     _items = rawItems.isEmpty
         ? [_QuoteItemDraft()]
-        : rawItems.map((e) => _QuoteItemDraft.fromJson((e as Map).cast<String, dynamic>())).toList();
+        : rawItems
+            .map((e) =>
+                _QuoteItemDraft.fromJson((e as Map).cast<String, dynamic>()))
+            .toList();
   }
 
   @override
@@ -942,7 +1139,9 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
       final body = {
         'project_id': _projectCtrl.text.trim(),
         'contact_id': _contactCtrl.text.trim(),
-        'currency': _currencyCtrl.text.trim().isEmpty ? 'EUR' : _currencyCtrl.text.trim().toUpperCase(),
+        'currency': _currencyCtrl.text.trim().isEmpty
+            ? 'EUR'
+            : _currencyCtrl.text.trim().toUpperCase(),
         'note': _noteCtrl.text.trim(),
         'items': _items.map((item) => item.toJson()).toList(),
       };
@@ -954,7 +1153,9 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_quoteErrorMessage(e, fallback: 'Angebot konnte nicht gespeichert werden'))),
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'Angebot konnte nicht gespeichert werden'))),
       );
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -973,11 +1174,24 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
             children: [
               Row(
                 children: [
-                  Expanded(child: TextField(controller: _projectCtrl, decoration: const InputDecoration(labelText: 'Projekt-ID'))),
+                  Expanded(
+                      child: TextField(
+                          controller: _projectCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Projekt-ID'))),
                   const SizedBox(width: 12),
-                  Expanded(child: TextField(controller: _contactCtrl, decoration: const InputDecoration(labelText: 'Kontakt-ID'))),
+                  Expanded(
+                      child: TextField(
+                          controller: _contactCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Kontakt-ID'))),
                   const SizedBox(width: 12),
-                  SizedBox(width: 120, child: TextField(controller: _currencyCtrl, decoration: const InputDecoration(labelText: 'Währung'))),
+                  SizedBox(
+                      width: 120,
+                      child: TextField(
+                          controller: _currencyCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Währung'))),
                 ],
               ),
               const SizedBox(height: 12),
@@ -989,9 +1203,12 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Expanded(child: Text('Positionen', style: TextStyle(fontWeight: FontWeight.bold))),
+                  const Expanded(
+                      child: Text('Positionen',
+                          style: TextStyle(fontWeight: FontWeight.bold))),
                   TextButton.icon(
-                    onPressed: () => setState(() => _items.add(_QuoteItemDraft())),
+                    onPressed: () =>
+                        setState(() => _items.add(_QuoteItemDraft())),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Position'),
                   ),
@@ -1018,11 +1235,16 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('Abbrechen')),
+        TextButton(
+            onPressed: _saving ? null : () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen')),
         FilledButton(
           onPressed: _saving ? null : _submit,
           child: _saving
-              ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2))
+              ? const SizedBox(
+                  height: 18,
+                  width: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
               : Text(_isEdit ? 'Speichern' : 'Anlegen'),
         ),
       ],
@@ -1064,7 +1286,8 @@ class _QuoteItemDraft {
         'qty': double.tryParse(qtyCtrl.text.trim()) ?? 0,
         'unit': unitCtrl.text.trim().isEmpty ? 'Stk' : unitCtrl.text.trim(),
         'unit_price': double.tryParse(unitPriceCtrl.text.trim()) ?? 0,
-        'tax_code': taxCodeCtrl.text.trim().isEmpty ? 'DE19' : taxCodeCtrl.text.trim(),
+        'tax_code':
+            taxCodeCtrl.text.trim().isEmpty ? 'DE19' : taxCodeCtrl.text.trim(),
       };
 
   void dispose() {
@@ -1077,7 +1300,8 @@ class _QuoteItemDraft {
 }
 
 class _QuoteItemRow extends StatelessWidget {
-  const _QuoteItemRow({super.key, required this.item, required this.index, this.onRemove});
+  const _QuoteItemRow(
+      {super.key, required this.item, required this.index, this.onRemove});
 
   final _QuoteItemDraft item;
   final int index;
@@ -1094,23 +1318,43 @@ class _QuoteItemRow extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text('Position ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text('Position ${index + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 if (onRemove != null)
-                  IconButton(onPressed: onRemove, icon: const Icon(Icons.delete_outline_rounded)),
+                  IconButton(
+                      onPressed: onRemove,
+                      icon: const Icon(Icons.delete_outline_rounded)),
               ],
             ),
-            TextField(controller: item.descriptionCtrl, decoration: const InputDecoration(labelText: 'Beschreibung')),
+            TextField(
+                controller: item.descriptionCtrl,
+                decoration: const InputDecoration(labelText: 'Beschreibung')),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(child: TextField(controller: item.qtyCtrl, decoration: const InputDecoration(labelText: 'Menge'))),
+                Expanded(
+                    child: TextField(
+                        controller: item.qtyCtrl,
+                        decoration: const InputDecoration(labelText: 'Menge'))),
                 const SizedBox(width: 8),
-                Expanded(child: TextField(controller: item.unitCtrl, decoration: const InputDecoration(labelText: 'Einheit'))),
+                Expanded(
+                    child: TextField(
+                        controller: item.unitCtrl,
+                        decoration:
+                            const InputDecoration(labelText: 'Einheit'))),
                 const SizedBox(width: 8),
-                Expanded(child: TextField(controller: item.unitPriceCtrl, decoration: const InputDecoration(labelText: 'Einzelpreis'))),
+                Expanded(
+                    child: TextField(
+                        controller: item.unitPriceCtrl,
+                        decoration:
+                            const InputDecoration(labelText: 'Einzelpreis'))),
                 const SizedBox(width: 8),
-                Expanded(child: TextField(controller: item.taxCodeCtrl, decoration: const InputDecoration(labelText: 'Steuercode'))),
+                Expanded(
+                    child: TextField(
+                        controller: item.taxCodeCtrl,
+                        decoration:
+                            const InputDecoration(labelText: 'Steuercode'))),
               ],
             ),
           ],

@@ -28,6 +28,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
   int limit = 50;
   int offset = 0;
   String? statusFilter;
+  bool _salesOrderOnlyFilter = false;
   final searchCtrl = TextEditingController();
   final contactCtrl = TextEditingController();
   bool _initialSelectionHandled = false;
@@ -66,7 +67,16 @@ class _InvoicesPageState extends State<InvoicesPage> {
             contactCtrl.text.trim().isEmpty ? null : contactCtrl.text.trim(),
         q: searchCtrl.text.trim().isEmpty ? null : searchCtrl.text.trim(),
       );
-      setState(() => items = list);
+      final filteredList = _salesOrderOnlyFilter
+          ? list.where((entry) {
+              final item = (entry as Map).cast<String, dynamic>();
+              return (item['source_sales_order_id'] ?? '')
+                  .toString()
+                  .trim()
+                  .isNotEmpty;
+            }).toList()
+          : list;
+      setState(() => items = filteredList);
       if (selected != null) {
         _loadDetail(selected!['id'] as String);
       } else if (!_initialSelectionHandled) {
@@ -336,6 +346,18 @@ class _InvoicesPageState extends State<InvoicesPage> {
     return 'Rechnung';
   }
 
+  String _invoiceSourceSummary(Map<String, dynamic> invoice) {
+    final salesOrderId = (invoice['source_sales_order_id'] ?? '').toString();
+    if (salesOrderId.isNotEmpty) {
+      return 'Folgebeleg aus Auftrag $salesOrderId';
+    }
+    final quoteId = (invoice['source_quote_id'] ?? '').toString();
+    if (quoteId.isNotEmpty) {
+      return 'Folgebeleg aus Angebot $quoteId';
+    }
+    return 'Keine direkte Belegquelle';
+  }
+
   double _toDouble(dynamic value) {
     if (value is num) return value.toDouble();
     return double.tryParse(value?.toString() ?? '') ?? 0;
@@ -392,8 +414,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
         .map((item) => item.cast<String, dynamic>())
         .toList();
     final salesOrderInvoiceCount = salesOrderInvoices.length;
-    final showWorkflowHint =
-        widget.showWorkflowHint &&
+    final showWorkflowHint = widget.showWorkflowHint &&
         !_workflowHintDismissed &&
         sel != null &&
         (((sel['source_quote_id'] ?? '').toString().isNotEmpty) ||
@@ -417,21 +438,27 @@ class _InvoicesPageState extends State<InvoicesPage> {
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             const Text('Rechnungen',
                                 style: TextStyle(
                                     fontSize: 18, fontWeight: FontWeight.bold)),
-                            const Spacer(),
                             IconButton(
                                 onPressed: _resetAndLoad,
                                 icon: const Icon(Icons.refresh)),
                           ],
                         ),
                       ),
-                      Row(
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Expanded(
+                          SizedBox(
+                            width: 260,
                             child: TextField(
                               controller: searchCtrl,
                               decoration: const InputDecoration(
@@ -440,9 +467,8 @@ class _InvoicesPageState extends State<InvoicesPage> {
                               onSubmitted: (_) => _resetAndLoad(),
                             ),
                           ),
-                          const SizedBox(width: 10),
                           SizedBox(
-                            width: 150,
+                            width: 170,
                             child: TextField(
                               controller: contactCtrl,
                               decoration:
@@ -450,7 +476,6 @@ class _InvoicesPageState extends State<InvoicesPage> {
                               onSubmitted: (_) => _resetAndLoad(),
                             ),
                           ),
-                          const SizedBox(width: 10),
                           DropdownButton<String?>(
                             value: statusFilter,
                             hint: const Text('Status'),
@@ -471,15 +496,25 @@ class _InvoicesPageState extends State<InvoicesPage> {
                               _resetAndLoad();
                             },
                           ),
+                          FilterChip(
+                            label: const Text('Auftragsbezug'),
+                            selected: _salesOrderOnlyFilter,
+                            onSelected: (value) {
+                              setState(() => _salesOrderOnlyFilter = value);
+                              _resetAndLoad();
+                            },
+                          ),
                         ],
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
+                        child: Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
                           children: [
                             Text(
                                 'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
-                            const Spacer(),
                             IconButton(
                                 tooltip: 'Zurück',
                                 onPressed:
@@ -503,7 +538,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
                           itemBuilder: (ctx, i) {
                             final it = items[i] as Map<String, dynamic>;
                             final id = it['id']?.toString() ?? '';
-                            final num = it['nummer']?.toString() ??
+                            final invoiceNumber = it['nummer']?.toString() ??
                                 it['number']?.toString() ??
                                 '';
                             final gross = it['gross_amount'] ?? 0;
@@ -514,9 +549,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                     .toString();
                             return ListTile(
                               selected: sel != null && sel['id'] == id,
-                              title: Text(num.isEmpty ? id : num),
+                              title: Text(
+                                  invoiceNumber.isEmpty ? id : invoiceNumber),
                               subtitle: Text(
-                                  '$cname  ·  Status: ${it['status']}  ·  Brutto: ${_formatMoney(gross as num?, (it['currency'] ?? 'EUR').toString())}  ·  Offen: ${_formatMoney(open, (it['currency'] ?? 'EUR').toString())}'),
+                                  '$cname  ·  Status: ${it['status']}  ·  Brutto: ${_formatMoney(gross as num?, (it['currency'] ?? 'EUR').toString())}  ·  Offen: ${_formatMoney(open, (it['currency'] ?? 'EUR').toString())}\n${_invoiceSourceSummary(it)}'),
+                              isThreeLine: true,
                               trailing:
                                   _statusChip((it['status'] ?? '').toString()),
                               onTap: () {
@@ -548,14 +585,24 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                   _WorkflowHintCard(
                                     title: _invoiceSourceHeadline(sel),
                                     isDraft: (sel['status'] ?? '') == 'draft',
-                                    canWriteInvoices: widget.api.hasPermission('invoices_out.write'),
-                                    onBook: (sel['status'] ?? '') == 'draft' ? _bookSelected : null,
-                                    onDismiss: () => setState(() => _workflowHintDismissed = true),
-                                    onAddPayment: widget.api.hasPermission('invoices_out.write') ? _addPayment : null,
+                                    canWriteInvoices: widget.api
+                                        .hasPermission('invoices_out.write'),
+                                    onBook: (sel['status'] ?? '') == 'draft'
+                                        ? _bookSelected
+                                        : null,
+                                    onDismiss: () => setState(
+                                        () => _workflowHintDismissed = true),
+                                    onAddPayment: widget.api
+                                            .hasPermission('invoices_out.write')
+                                        ? _addPayment
+                                        : null,
                                   ),
                                   const SizedBox(height: 12),
                                 ],
-                                Row(
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
                                     Text(
                                         sel['nummer']?.toString() ??
@@ -564,16 +611,13 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                         style: const TextStyle(
                                             fontSize: 20,
                                             fontWeight: FontWeight.bold)),
-                                    const SizedBox(width: 12),
                                     _statusChip(
                                         (sel['status'] ?? '').toString()),
-                                    const Spacer(),
                                     if ((sel['status'] ?? '') == 'draft')
                                       FilledButton.icon(
                                           onPressed: _bookSelected,
                                           icon: const Icon(Icons.check),
                                           label: const Text('Buchen')),
-                                    const SizedBox(width: 8),
                                     IconButton(
                                         onPressed: () => widget.api
                                             .downloadInvoiceOutPdf(
@@ -593,29 +637,45 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                   spacing: 8,
                                   runSpacing: 8,
                                   children: [
-                                    if ((sel['source_quote_id'] ?? '').toString().isNotEmpty)
+                                    if ((sel['source_quote_id'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
                                       ActionChip(
-                                        avatar: const Icon(Icons.request_quote_rounded, size: 18),
-                                        label: Text('Angebot ${(sel['source_quote_id'] ?? '').toString()}'),
-                                        onPressed: () => _openQuote((sel['source_quote_id'] ?? '').toString()),
+                                        avatar: const Icon(
+                                            Icons.request_quote_rounded,
+                                            size: 18),
+                                        label: Text(
+                                            'Angebot ${(sel['source_quote_id'] ?? '').toString()}'),
+                                        onPressed: () => _openQuote(
+                                            (sel['source_quote_id'] ?? '')
+                                                .toString()),
                                       ),
-                                    if ((sel['source_sales_order_id'] ?? '').toString().isNotEmpty)
+                                    if ((sel['source_sales_order_id'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
                                       ActionChip(
-                                        avatar: const Icon(Icons.assignment_turned_in_rounded, size: 18),
+                                        avatar: const Icon(
+                                            Icons.assignment_turned_in_rounded,
+                                            size: 18),
                                         label: Text(
                                           sourceSalesOrder == null
                                               ? 'Auftrag ${(sel['source_sales_order_id'] ?? '').toString()}'
                                               : 'Auftrag ${(sourceSalesOrder['number'] ?? sel['source_sales_order_id']).toString()}',
                                         ),
-                                        onPressed: () => _openSalesOrder((sel['source_sales_order_id'] ?? '').toString()),
+                                        onPressed: () => _openSalesOrder(
+                                            (sel['source_sales_order_id'] ?? '')
+                                                .toString()),
                                       ),
                                   ],
                                 ),
-                                if ((sel['source_sales_order_id'] ?? '').toString().isNotEmpty)
+                                if ((sel['source_sales_order_id'] ?? '')
+                                    .toString()
+                                    .isNotEmpty)
                                   Padding(
                                     padding: const EdgeInsets.only(top: 8),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           sourceSalesOrder == null
@@ -626,16 +686,34 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                           const SizedBox(height: 8),
                                           Text(
                                             'Weitere Folgebelege aus Auftrag ($salesOrderInvoiceCount)',
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600),
                                           ),
                                           const SizedBox(height: 6),
                                           ...salesOrderInvoices.map((invoice) {
-                                            final invoiceId = (invoice['id'] ?? '').toString();
-                                            final invoiceNumber = (invoice['number'] ?? invoice['nummer'] ?? invoiceId).toString();
-                                            final isCurrent = invoiceId.isNotEmpty && invoiceId == (sel['id'] ?? '').toString();
-                                            final invoiceCurrency = (invoice['currency'] ?? sel['currency'] ?? 'EUR').toString();
-                                            final invoiceGross = _toDouble(invoice['gross_amount']);
-                                            final invoiceOpen = invoiceGross - _toDouble(invoice['paid_amount']);
+                                            final invoiceId =
+                                                (invoice['id'] ?? '')
+                                                    .toString();
+                                            final invoiceNumber =
+                                                (invoice['number'] ??
+                                                        invoice['nummer'] ??
+                                                        invoiceId)
+                                                    .toString();
+                                            final isCurrent =
+                                                invoiceId.isNotEmpty &&
+                                                    invoiceId ==
+                                                        (sel['id'] ?? '')
+                                                            .toString();
+                                            final invoiceCurrency =
+                                                (invoice['currency'] ??
+                                                        sel['currency'] ??
+                                                        'EUR')
+                                                    .toString();
+                                            final invoiceGross = _toDouble(
+                                                invoice['gross_amount']);
+                                            final invoiceOpen = invoiceGross -
+                                                _toDouble(
+                                                    invoice['paid_amount']);
                                             return ListTile(
                                               dense: true,
                                               contentPadding: EdgeInsets.zero,
@@ -644,10 +722,16 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                                 '${isCurrent ? 'Aktuelle Rechnung' : 'Weitere Rechnung'}  •  ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
                                               ),
                                               trailing: isCurrent
-                                                  ? const Icon(Icons.check_circle_outline_rounded, size: 18)
+                                                  ? const Icon(
+                                                      Icons
+                                                          .check_circle_outline_rounded,
+                                                      size: 18)
                                                   : TextButton(
-                                                      onPressed: () => _loadDetail(invoiceId),
-                                                      child: const Text('Öffnen'),
+                                                      onPressed: () =>
+                                                          _loadDetail(
+                                                              invoiceId),
+                                                      child:
+                                                          const Text('Öffnen'),
                                                     ),
                                             );
                                           }),
@@ -671,7 +755,8 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                   final qty = _toDouble(m['qty']);
                                   final unitPrice = _toDouble(m['unit_price']);
                                   final net = qty * unitPrice;
-                                  final currency = (sel['currency'] ?? 'EUR').toString();
+                                  final currency =
+                                      (sel['currency'] ?? 'EUR').toString();
                                   return ListTile(
                                     dense: true,
                                     title: Text(
@@ -710,7 +795,8 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                     return Column(children: [
                                       ...pays.map((p) {
                                         final m = p as Map<String, dynamic>;
-                                        final currency = (m['currency'] ?? 'EUR').toString();
+                                        final currency =
+                                            (m['currency'] ?? 'EUR').toString();
                                         return ListTile(
                                           dense: true,
                                           title: Text(
@@ -763,15 +849,15 @@ class _WorkflowHintCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            Wrap(
+              spacing: 10,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 Icon(Icons.alt_route_rounded, color: scheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
                 IconButton(
                   onPressed: onDismiss,

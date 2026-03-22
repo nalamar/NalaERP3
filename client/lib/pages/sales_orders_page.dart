@@ -4,7 +4,8 @@ import '../api.dart';
 import 'invoices_page.dart';
 import 'quotes_page.dart';
 
-String _salesOrderErrorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+String _salesOrderErrorMessage(Object error,
+    {String fallback = 'Vorgang fehlgeschlagen'}) {
   if (error is ApiException) {
     return error.message;
   }
@@ -16,10 +17,12 @@ class SalesOrdersPage extends StatefulWidget {
     super.key,
     required this.api,
     this.initialSalesOrderId,
+    this.initialProjectId,
   });
 
   final ApiClient api;
   final String? initialSalesOrderId;
+  final String? initialProjectId;
 
   @override
   State<SalesOrdersPage> createState() => _SalesOrdersPageState();
@@ -29,7 +32,13 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   bool _loading = true;
   bool _actionInProgress = false;
   List<dynamic> _items = const [];
-  List<String> _availableStatuses = const ['open', 'released', 'invoiced', 'completed', 'canceled'];
+  List<String> _availableStatuses = const [
+    'open',
+    'released',
+    'invoiced',
+    'completed',
+    'canceled'
+  ];
   Map<String, dynamic>? _selected;
   Map<String, dynamic>? _sourceQuote;
   Map<String, dynamic>? _linkedInvoice;
@@ -44,6 +53,10 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   @override
   void initState() {
     super.initState();
+    final initialProjectId = widget.initialProjectId?.trim();
+    if (initialProjectId != null && initialProjectId.isNotEmpty) {
+      _projectCtrl.text = initialProjectId;
+    }
     final initialId = widget.initialSalesOrderId?.trim();
     if (initialId != null && initialId.isNotEmpty) {
       _searchCtrl.text = initialId;
@@ -64,7 +77,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     try {
       final list = await widget.api.listSalesOrders(
         q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        projectId: _projectCtrl.text.trim().isEmpty ? null : _projectCtrl.text.trim(),
+        projectId:
+            _projectCtrl.text.trim().isEmpty ? null : _projectCtrl.text.trim(),
         status: _statusFilter,
       );
       final filteredList = _partialOnlyFilter
@@ -88,7 +102,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Aufträge konnten nicht geladen werden'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Aufträge konnten nicht geladen werden'))),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -220,7 +236,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'PDF-Download fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'PDF-Download fehlgeschlagen'))),
       );
     }
   }
@@ -236,7 +254,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     if (openItems.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Keine offenen Restmengen mehr zur Faktura vorhanden')),
+        const SnackBar(
+            content:
+                Text('Keine offenen Restmengen mehr zur Faktura vorhanden')),
       );
       return;
     }
@@ -268,8 +288,10 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
         dueDate: request.dueDate,
         items: request.items.map((item) => item.toJson()).toList(),
       );
-      final salesOrder = ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
-      final invoice = ((result['invoice'] as Map?) ?? const {}).cast<String, dynamic>();
+      final salesOrder =
+          ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
+      final invoice =
+          ((result['invoice'] as Map?) ?? const {}).cast<String, dynamic>();
       final invoiceId = (invoice['id'] ?? '').toString();
       if (!mounted) return;
       setState(() {
@@ -283,17 +305,22 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            invoiceId.isEmpty ? 'Rechnung wurde aus dem Auftrag erzeugt' : 'Rechnung $invoiceId wurde aus dem Auftrag erzeugt',
+            invoiceId.isEmpty
+                ? 'Rechnung wurde aus dem Auftrag erzeugt'
+                : 'Rechnung $invoiceId wurde aus dem Auftrag erzeugt',
           ),
         ),
       );
-      if (invoiceId.isNotEmpty && widget.api.hasPermission('invoices_out.read')) {
+      if (invoiceId.isNotEmpty &&
+          widget.api.hasPermission('invoices_out.read')) {
         await _openInvoice(invoiceId);
       }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Rechnungserzeugung fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Rechnungserzeugung fehlgeschlagen'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -305,7 +332,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     if (salesOrderId.isEmpty) return;
     setState(() => _actionInProgress = true);
     try {
-      final updated = await widget.api.updateSalesOrderStatus(salesOrderId, status);
+      final updated =
+          await widget.api.updateSalesOrderStatus(salesOrderId, status);
       if (!mounted) return;
       setState(() => _selected = updated);
       await _loadSourceQuote(updated['source_quote_id']?.toString());
@@ -314,12 +342,15 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Auftrag wurde auf ${_statusLabel(status)} gesetzt')),
+        SnackBar(
+            content: Text('Auftrag wurde auf ${_statusLabel(status)} gesetzt')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Statuswechsel fehlgeschlagen'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Statuswechsel fehlgeschlagen'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -336,7 +367,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
         initialNumber: (selected['number'] ?? '').toString(),
         initialCurrency: (selected['currency'] ?? 'EUR').toString(),
         initialNote: (selected['note'] ?? '').toString(),
-        initialOrderDate: DateTime.tryParse((selected['order_date'] ?? '').toString()),
+        initialOrderDate:
+            DateTime.tryParse((selected['order_date'] ?? '').toString()),
       ),
     );
     if (request == null) return;
@@ -361,7 +393,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Auftrag konnte nicht gespeichert werden'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Auftrag konnte nicht gespeichert werden'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -378,8 +412,10 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     if (request == null) return;
     setState(() => _actionInProgress = true);
     try {
-      final result = await widget.api.createSalesOrderItem(salesOrderId, request.toJson());
-      final order = ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
+      final result =
+          await widget.api.createSalesOrderItem(salesOrderId, request.toJson());
+      final order =
+          ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
       if (!mounted) return;
       setState(() => _selected = order);
       await _loadLinkedInvoice(order['linked_invoice_out_id']?.toString());
@@ -392,7 +428,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Position konnte nicht angelegt werden'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Position konnte nicht angelegt werden'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -416,8 +454,10 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     if (request == null) return;
     setState(() => _actionInProgress = true);
     try {
-      final result = await widget.api.updateSalesOrderItem(salesOrderId, itemId, request.toJson());
-      final order = ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
+      final result = await widget.api
+          .updateSalesOrderItem(salesOrderId, itemId, request.toJson());
+      final order =
+          ((result['sales_order'] as Map?) ?? const {}).cast<String, dynamic>();
       if (!mounted) return;
       setState(() => _selected = order);
       await _loadLinkedInvoice(order['linked_invoice_out_id']?.toString());
@@ -430,7 +470,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Position konnte nicht gespeichert werden'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Position konnte nicht gespeichert werden'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -445,10 +487,15 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('Position löschen'),
-        content: Text('Position "${(item['description'] ?? 'Position').toString()}" wirklich löschen?'),
+        content: Text(
+            'Position "${(item['description'] ?? 'Position').toString()}" wirklich löschen?'),
         actions: [
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('Löschen')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Abbrechen')),
+          FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Löschen')),
         ],
       ),
     );
@@ -468,7 +515,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_salesOrderErrorMessage(e, fallback: 'Position konnte nicht gelöscht werden'))),
+        SnackBar(
+            content: Text(_salesOrderErrorMessage(e,
+                fallback: 'Position konnte nicht gelöscht werden'))),
       );
     } finally {
       if (mounted) setState(() => _actionInProgress = false);
@@ -624,12 +673,14 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
         : active
             ? scheme.primary
             : scheme.outline;
-    return Expanded(
+    return SizedBox(
+      width: 240,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withValues(alpha: active || done ? 0.45 : 0.2)),
+          border: Border.all(
+              color: color.withValues(alpha: active || done ? 0.45 : 0.2)),
           color: color.withValues(alpha: active || done ? 0.08 : 0.03),
         ),
         child: Column(
@@ -652,19 +703,27 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     required String value,
     String? hint,
   }) {
-    return Expanded(
+    return SizedBox(
+      width: 220,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          color: Theme.of(context)
+              .colorScheme
+              .surfaceContainerHighest
+              .withValues(alpha: 0.45),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: Theme.of(context).textTheme.labelMedium),
             const SizedBox(height: 6),
-            Text(value, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+            Text(value,
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w700)),
             if (hint != null && hint.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(hint, style: Theme.of(context).textTheme.bodySmall),
@@ -682,7 +741,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     final linkedInvoice = _linkedInvoice;
     final status = (selected?['status'] ?? '').toString();
     final sourceQuoteId = (selected?['source_quote_id'] ?? '').toString();
-    final linkedInvoiceId = (selected?['linked_invoice_out_id'] ?? '').toString();
+    final linkedInvoiceId =
+        (selected?['linked_invoice_out_id'] ?? '').toString();
     final quoteStatus = (sourceQuote?['status'] ?? '').toString();
     final currency = (selected?['currency'] ?? 'EUR').toString();
     final netAmount = _toDouble(selected?['net_amount']);
@@ -692,7 +752,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
     final sourceQuoteNet = _toDouble(sourceQuote?['net_amount']);
     final linkedInvoiceGross = _toDouble(linkedInvoice?['gross_amount']);
     final linkedInvoicePaid = _toDouble(linkedInvoice?['paid_amount']);
-    final linkedInvoiceOpen = linkedInvoice == null ? 0 : (linkedInvoiceGross - linkedInvoicePaid);
+    final linkedInvoiceOpen =
+        linkedInvoice == null ? 0 : (linkedInvoiceGross - linkedInvoicePaid);
     final linkedInvoiceStatus = (linkedInvoice?['status'] ?? '').toString();
     final relatedInvoices = _relatedInvoices
         .cast<Map>()
@@ -709,21 +770,26 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       0,
       (sum, item) => sum + _remainingGross(item),
     );
-    final hasPartialInvoicing = relatedInvoiceCount > 0 && remainingGrossAmount > 0.0001;
+    final hasPartialInvoicing =
+        relatedInvoiceCount > 0 && remainingGrossAmount > 0.0001;
     final isFullyInvoiced = relatedInvoiceCount > 0 && !hasPartialInvoicing;
     final invoiceProgressLabel = hasPartialInvoicing
         ? 'Teilfakturiert'
         : isFullyInvoiced
             ? 'Vollständig fakturiert'
             : 'Noch nicht fakturiert';
-    final marginToQuote = sourceQuote == null ? null : grossAmount - sourceQuoteGross;
+    final marginToQuote =
+        sourceQuote == null ? null : grossAmount - sourceQuoteGross;
     final canWriteOrders = widget.api.hasPermission('sales_orders.write');
-    final canCreateInvoice = canWriteOrders && widget.api.hasPermission('invoices_out.write');
+    final canCreateInvoice =
+        canWriteOrders && widget.api.hasPermission('invoices_out.write');
     final canOpenInvoices = widget.api.hasPermission('invoices_out.read');
     final canStartInvoiceFlow = canCreateInvoice &&
         openInvoiceableItems.isNotEmpty &&
         (status == 'open' || status == 'released' || status == 'invoiced');
-    final canEditHeader = canWriteOrders && linkedInvoiceId.isEmpty && (status == 'open' || status == 'released');
+    final canEditHeader = canWriteOrders &&
+        linkedInvoiceId.isEmpty &&
+        (status == 'open' || status == 'released');
     final canEditItems = canEditHeader;
     final editLockReason = linkedInvoiceId.isNotEmpty
         ? 'Positionen und Kopfdaten sind nach der Faktura gesperrt.'
@@ -749,39 +815,49 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                   children: [
                     Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Row(
+                      child: Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          Expanded(
+                          SizedBox(
+                            width: 280,
                             child: TextField(
                               controller: _searchCtrl,
-                              decoration: const InputDecoration(labelText: 'Suche (Nummer/Kunde)'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Suche (Nummer/Kunde)'),
                               onSubmitted: (_) => _load(),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
+                          SizedBox(
+                            width: 220,
                             child: TextField(
                               controller: _projectCtrl,
-                              decoration: const InputDecoration(labelText: 'Projekt-ID'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Projekt-ID'),
                               onSubmitted: (_) => _load(),
                             ),
                           ),
-                          const SizedBox(width: 12),
                           SizedBox(
-                            width: 160,
+                            width: 180,
                             child: DropdownButtonFormField<String?>(
+                              isExpanded: true,
                               initialValue: _statusFilter,
-                              decoration: const InputDecoration(labelText: 'Status'),
+                              decoration:
+                                  const InputDecoration(labelText: 'Status'),
                               items: [
-                                const DropdownMenuItem(value: null, child: Text('Alle')),
+                                const DropdownMenuItem(
+                                    value: null, child: Text('Alle')),
                                 ..._availableStatuses.map(
-                                  (value) => DropdownMenuItem(value: value, child: Text(_statusLabel(value))),
+                                  (value) => DropdownMenuItem(
+                                      value: value,
+                                      child: Text(_statusLabel(value))),
                                 ),
                               ],
-                              onChanged: (value) => setState(() => _statusFilter = value),
+                              onChanged: (value) =>
+                                  setState(() => _statusFilter = value),
                             ),
                           ),
-                          const SizedBox(width: 12),
                           FilterChip(
                             label: const Text('Teilfaktura'),
                             selected: _partialOnlyFilter,
@@ -790,8 +866,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                               _load();
                             },
                           ),
-                          const SizedBox(width: 12),
-                          FilledButton(onPressed: _load, child: const Text('Filtern')),
+                          FilledButton(
+                              onPressed: _load, child: const Text('Filtern')),
                         ],
                       ),
                     ),
@@ -800,22 +876,29 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                       child: _loading
                           ? const Center(child: CircularProgressIndicator())
                           : _items.isEmpty
-                              ? const Center(child: Text('Noch keine Aufträge gefunden.'))
+                              ? const Center(
+                                  child: Text('Noch keine Aufträge gefunden.'))
                               : ListView.separated(
                                   itemCount: _items.length,
-                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  separatorBuilder: (_, __) =>
+                                      const Divider(height: 1),
                                   itemBuilder: (context, index) {
-                                    final item = _items[index] as Map<String, dynamic>;
+                                    final item =
+                                        _items[index] as Map<String, dynamic>;
                                     final id = item['id']?.toString();
-                                    final selectedId = _selected?['id']?.toString();
+                                    final selectedId =
+                                        _selected?['id']?.toString();
                                     return ListTile(
                                       selected: id != null && id == selectedId,
-                                      title: Text((item['number'] ?? 'Auftrag').toString()),
+                                      title: Text((item['number'] ?? 'Auftrag')
+                                          .toString()),
                                       subtitle: Text(
                                         '${item['contact_name'] ?? '-'}  •  ${_statusLabel((item['status'] ?? '').toString())}  •  ${_listInvoiceProgress(item)}  •  ${_formatMoney(item['gross_amount'] as num?, (item['currency'] ?? 'EUR').toString())}\n${_listInvoiceHint(item)}',
                                       ),
                                       isThreeLine: true,
-                                      onTap: id == null ? null : () => _loadDetail(id),
+                                      onTap: id == null
+                                          ? null
+                                          : () => _loadDetail(id),
                                     );
                                   },
                                 ),
@@ -832,365 +915,473 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                     ? const Center(child: Text('Auftrag auswählen'))
                     : Padding(
                         padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    (selected['number'] ?? 'Auftrag').toString(),
-                                    style: Theme.of(context).textTheme.headlineSmall,
-                                  ),
-                                ),
-                                if (linkedInvoiceId.isNotEmpty && canOpenInvoices)
-                                  FilledButton.icon(
-                                    onPressed: () => _openInvoice(linkedInvoiceId),
-                                    icon: const Icon(Icons.receipt_long_rounded),
-                                    label: const Text('Rechnung öffnen'),
-                                  ),
-                                if (canEditHeader)
-                                  OutlinedButton.icon(
-                                    onPressed: _actionInProgress ? null : _editSalesOrderHeader,
-                                    icon: const Icon(Icons.edit_outlined),
-                                    label: const Text('Bearbeiten'),
-                                  ),
-                                OutlinedButton.icon(
-                                  onPressed: _downloadPdf,
-                                  icon: const Icon(Icons.picture_as_pdf_rounded),
-                                  label: const Text('PDF'),
-                                ),
-                                if (sourceQuoteId.isNotEmpty)
-                                  OutlinedButton.icon(
-                                    onPressed: () => _openQuote(sourceQuoteId),
-                                    icon: const Icon(Icons.request_quote_rounded),
-                                    label: const Text('Angebot öffnen'),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Card(
-                              margin: EdgeInsets.zero,
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('Auftragskopf', style: TextStyle(fontWeight: FontWeight.bold)),
-                                    const SizedBox(height: 8),
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 8,
-                                      children: [
-                                        Text('Auftrags-ID: ${(selected['id'] ?? '-').toString()}'),
-                                        Text('Kontakt-ID: ${(selected['contact_id'] ?? '-').toString()}'),
-                                        Text('Projekt-ID: ${(selected['project_id'] ?? '-').toString().isEmpty ? '-' : (selected['project_id'] ?? '-').toString()}'),
-                                        Text('Währung: $currency'),
-                                      ],
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  SizedBox(
+                                    width: 260,
+                                    child: Text(
+                                      (selected['number'] ?? 'Auftrag')
+                                          .toString(),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineSmall,
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                _statusChip(context, status),
-                                Chip(label: Text('Kunde: ${(selected['contact_name'] ?? '-').toString()}')),
-                                Chip(label: Text('Projekt: ${(selected['project_name'] ?? '-').toString()}')),
-                                if (sourceQuoteId.isNotEmpty) Chip(label: Text('Quelle Angebot: $sourceQuoteId')),
-                                if (linkedInvoiceId.isNotEmpty) Chip(label: Text('Folgerechnung: $linkedInvoiceId')),
-                                if (relatedInvoiceCount > 0) Chip(label: Text(invoiceProgressLabel)),
-                              ],
-                            ),
-                            if (showWorkflowHint) ...[
-                              const SizedBox(height: 16),
-                              _SalesOrderWorkflowCard(
-                                statusLabel: _statusLabel(status),
-                                quoteStatusLabel: _statusLabel(quoteStatus),
-                                hasInvoice: linkedInvoiceId.isNotEmpty,
-                                invoiceCount: relatedInvoiceCount,
-                                hasRemainingToInvoice: openInvoiceableItems.isNotEmpty,
-                                canCreateInvoice: canStartInvoiceFlow,
-                                actionInProgress: _actionInProgress,
-                                onDismiss: () => setState(() => _workflowHintDismissed = true),
-                                onCreateInvoice: sourceQuoteId.isNotEmpty && canStartInvoiceFlow
-                                    ? _convertToInvoiceFromSalesOrder
-                                    : null,
-                                onOpenInvoice: linkedInvoiceId.isNotEmpty && canOpenInvoices
-                                    ? () => _openInvoice(linkedInvoiceId)
-                                    : null,
-                              ),
-                              const SizedBox(height: 16),
-                            ],
-                            Row(
-                              children: [
-                                _buildFlowStep(
-                                  context,
-                                  icon: Icons.request_quote_rounded,
-                                  title: 'Angebot',
-                                  subtitle: sourceQuoteId.isEmpty
-                                      ? 'Kein Quellangebot verknüpft'
-                                      : '${_statusLabel(quoteStatus)}${(sourceQuote?['accepted_at'] ?? '').toString().isNotEmpty ? ' seit ${_formatDate(context, (sourceQuote?['accepted_at'] ?? '').toString())}' : ''}',
-                                  active: sourceQuoteId.isNotEmpty && linkedInvoiceId.isEmpty,
-                                  done: sourceQuoteId.isNotEmpty,
-                                ),
-                                const SizedBox(width: 12),
-                                _buildFlowStep(
-                                  context,
-                                  icon: Icons.assignment_turned_in_rounded,
-                                  title: 'Auftrag',
-                                  subtitle: 'Status ${_statusLabel(status)} seit ${_formatDate(context, (selected['order_date'] ?? '').toString())}',
-                                  active: status == 'open' && linkedInvoiceId.isEmpty,
-                                  done: linkedInvoiceId.isNotEmpty,
-                                ),
-                                const SizedBox(width: 12),
-                                _buildFlowStep(
-                                  context,
-                                  icon: Icons.receipt_long_rounded,
-                                  title: 'Faktura',
-                                  subtitle: linkedInvoiceId.isEmpty
-                                      ? 'Noch keine Rechnung erzeugt'
-                                      : linkedInvoice == null
-                                          ? 'Folgebeleg $linkedInvoiceId ist vorhanden'
-                                          : '$invoiceProgressLabel · $relatedInvoiceCount ${relatedInvoiceCount == 1 ? 'Rechnung' : 'Rechnungen'}',
-                                  active: linkedInvoiceId.isEmpty,
-                                  done: linkedInvoiceId.isNotEmpty,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Text('Hinweis: ${(selected['note'] ?? '').toString()}'),
-                            const SizedBox(height: 4),
-                            Text('Auftragsdatum: ${_formatDate(context, (selected['order_date'] ?? '').toString())}'),
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                _buildMetricCard(
-                                  context,
-                                  label: 'Auftragswert',
-                                  value: _formatMoney(grossAmount, currency),
-                                  hint: '${itemsCount.toString()} Positionen',
-                                ),
-                                const SizedBox(width: 12),
-                                _buildMetricCard(
-                                  context,
-                                  label: 'Netto / Steuer',
-                                  value: '${_formatMoney(netAmount, currency)} / ${_formatMoney(taxAmount, currency)}',
-                                  hint: 'Summen aus aktueller Positionierung',
-                                ),
-                                const SizedBox(width: 12),
-                                _buildMetricCard(
-                                  context,
-                                  label: 'Abgleich Angebot',
-                                  value: sourceQuote == null ? 'Kein Vergleich' : _formatMoney(marginToQuote, currency),
-                                  hint: sourceQuote == null
-                                      ? ''
-                                      : 'Angebot ${_formatMoney(sourceQuoteGross, currency)} brutto, netto ${_formatMoney(sourceQuoteNet, currency)}',
-                                ),
-                                const SizedBox(width: 12),
-                                _buildMetricCard(
-                                  context,
-                                  label: 'Faktura / Offen',
-                                  value: linkedInvoiceId.isEmpty
-                                      ? 'Noch offen'
-                                      : linkedInvoice == null
-                                          ? 'Rechnung wird geladen'
-                                          : '${_formatMoney(linkedInvoiceGross, (linkedInvoice['currency'] ?? currency).toString())} / ${_formatMoney(linkedInvoiceOpen, (linkedInvoice['currency'] ?? currency).toString())}',
-                                  hint: linkedInvoiceId.isEmpty
-                                      ? 'Noch kein Folgebeleg erzeugt'
-                                      : linkedInvoice == null
-                                          ? 'Status und Restbetrag werden nachgeladen'
-                                          : 'Rechnungsstatus ${_statusLabel(linkedInvoiceStatus)}, bezahlt ${_formatMoney(linkedInvoicePaid, (linkedInvoice['currency'] ?? currency).toString())}',
-                                ),
-                                const SizedBox(width: 12),
-                                _buildMetricCard(
-                                  context,
-                                  label: 'Rest zur Faktura',
-                                  value: _formatMoney(remainingGrossAmount, currency),
-                                  hint: hasPartialInvoicing
-                                      ? 'Teilfaktura aktiv: ${openInvoiceableItems.length} Positionen noch fakturierbar'
-                                      : isFullyInvoiced
-                                          ? 'Vollständig fakturiert über $relatedInvoiceCount ${relatedInvoiceCount == 1 ? 'Rechnung' : 'Rechnungen'}'
-                                          : 'Keine Rechnung erzeugt',
-                                ),
-                              ],
-                            ),
-                            if (sourceQuoteId.isNotEmpty) ...[
-                              const SizedBox(height: 16),
-                              const Text('Kontext', style: TextStyle(fontWeight: FontWeight.bold)),
-                              const SizedBox(height: 8),
-                              Card(
-                                margin: EdgeInsets.zero,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text('Quellangebot: $sourceQuoteId', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                      const SizedBox(height: 6),
-                                      Text('Status: ${sourceQuote == null ? 'wird geladen' : _statusLabel(quoteStatus)}'),
-                                      if (sourceQuote != null) ...[
-                                        Text('Projekt: ${(sourceQuote['project_name'] ?? selected['project_name'] ?? '-').toString()}'),
-                                        Text('Gültig bis: ${_formatDate(context, (sourceQuote['valid_until'] ?? '').toString())}'),
-                                      ],
-                                      if (canStartInvoiceFlow)
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 8),
-                                          child: Wrap(
-                                            spacing: 8,
-                                            runSpacing: 8,
-                                            children: [
-                                              FilledButton.icon(
-                                                onPressed: _actionInProgress ? null : _convertToInvoiceFromSalesOrder,
-                                                icon: const Icon(Icons.receipt_long_rounded),
-                                                label: Text(linkedInvoiceId.isNotEmpty ? 'Weitere Rechnung erzeugen' : 'In Rechnung weiterführen'),
-                                              ),
-                                            ],
-                                          ),
-                                        )
-                                      else if (linkedInvoiceId.isNotEmpty)
-                                        const Padding(
-                                          padding: EdgeInsets.only(top: 8),
-                                          child: Text('Die Faktura wurde bereits aus dem zugrunde liegenden Angebot erzeugt und es sind keine offenen Restmengen mehr vorhanden.'),
-                                        )
-                                      else
-                                        Padding(
-                                          padding: EdgeInsets.only(top: 8),
-                                          child: Text(
-                                            canCreateInvoice
-                                                ? 'Direkte Faktura ist nur aus offenen, freigegebenen oder bereits teilweise fakturierten Aufträgen mit Restmengen erlaubt.'
-                                                : 'Für die direkte Faktura aus dem Auftrag sind sales_orders.write und invoices_out.write erforderlich.',
-                                          ),
-                                        ),
-                                    ],
                                   ),
-                                ),
-                              ),
-                            ],
-                            if (linkedInvoiceId.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              Card(
-                                margin: EdgeInsets.zero,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        linkedInvoice == null
-                                            ? 'Verknüpfte Rechnung wird geladen'
-                                            : 'Verknüpfte Rechnung ${(linkedInvoice['nummer'] ?? linkedInvoice['number'] ?? linkedInvoiceId).toString()}',
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      if (linkedInvoice == null)
-                                        const Text('Status, Zahlungen und Restbetrag werden nachgeladen.')
-                                      else ...[
-                                        Text('Status: ${_statusLabel(linkedInvoiceStatus)}'),
-                                        Text('Brutto: ${_formatMoney(linkedInvoiceGross, (linkedInvoice['currency'] ?? currency).toString())}'),
-                                        Text('Bezahlt: ${_formatMoney(linkedInvoicePaid, (linkedInvoice['currency'] ?? currency).toString())}'),
-                                        Text('Offen: ${_formatMoney(linkedInvoiceOpen, (linkedInvoice['currency'] ?? currency).toString())}'),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                            if (relatedInvoiceCount > 0) ...[
-                              const SizedBox(height: 12),
-                              Card(
-                                margin: EdgeInsets.zero,
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Folgerechnungen ($relatedInvoiceCount)',
-                                        style: const TextStyle(fontWeight: FontWeight.w600),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(invoiceProgressLabel),
-                                      const SizedBox(height: 8),
-                                      ...relatedInvoices.map((invoice) {
-                                        final invoiceId = (invoice['id'] ?? '').toString();
-                                        final invoiceNumber = (invoice['number'] ?? invoice['nummer'] ?? invoiceId).toString();
-                                        final invoiceCurrency = (invoice['currency'] ?? currency).toString();
-                                        final invoiceGross = _toDouble(invoice['gross_amount']);
-                                        final invoicePaid = _toDouble(invoice['paid_amount']);
-                                        final invoiceOpen = invoiceGross - invoicePaid;
-                                        final isLatest = invoiceId.isNotEmpty && invoiceId == linkedInvoiceId;
-                                        return Card(
-                                          margin: const EdgeInsets.only(bottom: 8),
-                                          child: ListTile(
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                            title: Text(invoiceNumber),
-                                            subtitle: Text(
-                                              '${isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'}  •  ${_statusLabel((invoice['status'] ?? '').toString())}  •  Brutto ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
-                                            ),
-                                            trailing: canOpenInvoices
-                                                ? TextButton(
-                                                    onPressed: () => _openInvoice(invoiceId),
-                                                    child: const Text('Öffnen'),
-                                                  )
-                                                : Text(isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'),
-                                          ),
-                                        );
-                                      }),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ],
-                            const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                const Expanded(
-                                  child: Text('Positionen', style: TextStyle(fontWeight: FontWeight.bold)),
-                                ),
-                                if (canEditItems)
+                                  if (linkedInvoiceId.isNotEmpty &&
+                                      canOpenInvoices)
+                                    FilledButton.icon(
+                                      onPressed: () =>
+                                          _openInvoice(linkedInvoiceId),
+                                      icon: const Icon(
+                                          Icons.receipt_long_rounded),
+                                      label: const Text('Rechnung öffnen'),
+                                    ),
+                                  if (canEditHeader)
+                                    OutlinedButton.icon(
+                                      onPressed: _actionInProgress
+                                          ? null
+                                          : _editSalesOrderHeader,
+                                      icon: const Icon(Icons.edit_outlined),
+                                      label: const Text('Bearbeiten'),
+                                    ),
                                   OutlinedButton.icon(
-                                    onPressed: _actionInProgress ? null : _createSalesOrderItem,
-                                    icon: const Icon(Icons.add_rounded),
-                                    label: const Text('Position'),
+                                    onPressed: _downloadPdf,
+                                    icon: const Icon(
+                                        Icons.picture_as_pdf_rounded),
+                                    label: const Text('PDF'),
                                   ),
+                                  if (sourceQuoteId.isNotEmpty)
+                                    OutlinedButton.icon(
+                                      onPressed: () =>
+                                          _openQuote(sourceQuoteId),
+                                      icon: const Icon(
+                                          Icons.request_quote_rounded),
+                                      label: const Text('Angebot öffnen'),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Card(
+                                margin: EdgeInsets.zero,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      const Text('Auftragskopf',
+                                          style: TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 12,
+                                        runSpacing: 8,
+                                        children: [
+                                          Text(
+                                              'Auftrags-ID: ${(selected['id'] ?? '-').toString()}'),
+                                          Text(
+                                              'Kontakt-ID: ${(selected['contact_id'] ?? '-').toString()}'),
+                                          Text(
+                                              'Projekt-ID: ${(selected['project_id'] ?? '-').toString().isEmpty ? '-' : (selected['project_id'] ?? '-').toString()}'),
+                                          Text('Währung: $currency'),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  _statusChip(context, status),
+                                  Chip(
+                                      label: Text(
+                                          'Kunde: ${(selected['contact_name'] ?? '-').toString()}')),
+                                  Chip(
+                                      label: Text(
+                                          'Projekt: ${(selected['project_name'] ?? '-').toString()}')),
+                                  if (sourceQuoteId.isNotEmpty)
+                                    Chip(
+                                        label: Text(
+                                            'Quelle Angebot: $sourceQuoteId')),
+                                  if (linkedInvoiceId.isNotEmpty)
+                                    Chip(
+                                        label: Text(
+                                            'Folgerechnung: $linkedInvoiceId')),
+                                  if (relatedInvoiceCount > 0)
+                                    Chip(label: Text(invoiceProgressLabel)),
+                                ],
+                              ),
+                              if (showWorkflowHint) ...[
+                                const SizedBox(height: 16),
+                                _SalesOrderWorkflowCard(
+                                  statusLabel: _statusLabel(status),
+                                  quoteStatusLabel: _statusLabel(quoteStatus),
+                                  hasInvoice: linkedInvoiceId.isNotEmpty,
+                                  invoiceCount: relatedInvoiceCount,
+                                  hasRemainingToInvoice:
+                                      openInvoiceableItems.isNotEmpty,
+                                  canCreateInvoice: canStartInvoiceFlow,
+                                  actionInProgress: _actionInProgress,
+                                  onDismiss: () => setState(
+                                      () => _workflowHintDismissed = true),
+                                  onCreateInvoice: sourceQuoteId.isNotEmpty &&
+                                          canStartInvoiceFlow
+                                      ? _convertToInvoiceFromSalesOrder
+                                      : null,
+                                  onOpenInvoice: linkedInvoiceId.isNotEmpty &&
+                                          canOpenInvoices
+                                      ? () => _openInvoice(linkedInvoiceId)
+                                      : null,
+                                ),
+                                const SizedBox(height: 16),
                               ],
-                            ),
-                            const SizedBox(height: 8),
-                            if (!canEditItems && editLockReason.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: Material(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                                  borderRadius: BorderRadius.circular(12),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _buildFlowStep(
+                                    context,
+                                    icon: Icons.request_quote_rounded,
+                                    title: 'Angebot',
+                                    subtitle: sourceQuoteId.isEmpty
+                                        ? 'Kein Quellangebot verknüpft'
+                                        : '${_statusLabel(quoteStatus)}${(sourceQuote?['accepted_at'] ?? '').toString().isNotEmpty ? ' seit ${_formatDate(context, (sourceQuote?['accepted_at'] ?? '').toString())}' : ''}',
+                                    active: sourceQuoteId.isNotEmpty &&
+                                        linkedInvoiceId.isEmpty,
+                                    done: sourceQuoteId.isNotEmpty,
+                                  ),
+                                  _buildFlowStep(
+                                    context,
+                                    icon: Icons.assignment_turned_in_rounded,
+                                    title: 'Auftrag',
+                                    subtitle:
+                                        'Status ${_statusLabel(status)} seit ${_formatDate(context, (selected['order_date'] ?? '').toString())}',
+                                    active: status == 'open' &&
+                                        linkedInvoiceId.isEmpty,
+                                    done: linkedInvoiceId.isNotEmpty,
+                                  ),
+                                  _buildFlowStep(
+                                    context,
+                                    icon: Icons.receipt_long_rounded,
+                                    title: 'Faktura',
+                                    subtitle: linkedInvoiceId.isEmpty
+                                        ? 'Noch keine Rechnung erzeugt'
+                                        : linkedInvoice == null
+                                            ? 'Folgebeleg $linkedInvoiceId ist vorhanden'
+                                            : '$invoiceProgressLabel · $relatedInvoiceCount ${relatedInvoiceCount == 1 ? 'Rechnung' : 'Rechnungen'}',
+                                    active: linkedInvoiceId.isEmpty,
+                                    done: linkedInvoiceId.isNotEmpty,
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                  'Hinweis: ${(selected['note'] ?? '').toString()}'),
+                              const SizedBox(height: 4),
+                              Text(
+                                  'Auftragsdatum: ${_formatDate(context, (selected['order_date'] ?? '').toString())}'),
+                              const SizedBox(height: 16),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                children: [
+                                  _buildMetricCard(
+                                    context,
+                                    label: 'Auftragswert',
+                                    value: _formatMoney(grossAmount, currency),
+                                    hint: '${itemsCount.toString()} Positionen',
+                                  ),
+                                  _buildMetricCard(
+                                    context,
+                                    label: 'Netto / Steuer',
+                                    value:
+                                        '${_formatMoney(netAmount, currency)} / ${_formatMoney(taxAmount, currency)}',
+                                    hint: 'Summen aus aktueller Positionierung',
+                                  ),
+                                  _buildMetricCard(
+                                    context,
+                                    label: 'Abgleich Angebot',
+                                    value: sourceQuote == null
+                                        ? 'Kein Vergleich'
+                                        : _formatMoney(marginToQuote, currency),
+                                    hint: sourceQuote == null
+                                        ? ''
+                                        : 'Angebot ${_formatMoney(sourceQuoteGross, currency)} brutto, netto ${_formatMoney(sourceQuoteNet, currency)}',
+                                  ),
+                                  _buildMetricCard(
+                                    context,
+                                    label: 'Faktura / Offen',
+                                    value: linkedInvoiceId.isEmpty
+                                        ? 'Noch offen'
+                                        : linkedInvoice == null
+                                            ? 'Rechnung wird geladen'
+                                            : '${_formatMoney(linkedInvoiceGross, (linkedInvoice['currency'] ?? currency).toString())} / ${_formatMoney(linkedInvoiceOpen, (linkedInvoice['currency'] ?? currency).toString())}',
+                                    hint: linkedInvoiceId.isEmpty
+                                        ? 'Noch kein Folgebeleg erzeugt'
+                                        : linkedInvoice == null
+                                            ? 'Status und Restbetrag werden nachgeladen'
+                                            : 'Rechnungsstatus ${_statusLabel(linkedInvoiceStatus)}, bezahlt ${_formatMoney(linkedInvoicePaid, (linkedInvoice['currency'] ?? currency).toString())}',
+                                  ),
+                                  _buildMetricCard(
+                                    context,
+                                    label: 'Rest zur Faktura',
+                                    value: _formatMoney(
+                                        remainingGrossAmount, currency),
+                                    hint: hasPartialInvoicing
+                                        ? 'Teilfaktura aktiv: ${openInvoiceableItems.length} Positionen noch fakturierbar'
+                                        : isFullyInvoiced
+                                            ? 'Vollständig fakturiert über $relatedInvoiceCount ${relatedInvoiceCount == 1 ? 'Rechnung' : 'Rechnungen'}'
+                                            : 'Keine Rechnung erzeugt',
+                                  ),
+                                ],
+                              ),
+                              if (sourceQuoteId.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                const Text('Kontext',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                const SizedBox(height: 8),
+                                Card(
+                                  margin: EdgeInsets.zero,
                                   child: Padding(
                                     padding: const EdgeInsets.all(12),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        const Icon(Icons.lock_outline_rounded),
-                                        const SizedBox(width: 8),
-                                        Expanded(child: Text(editLockReason)),
+                                        Text('Quellangebot: $sourceQuoteId',
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.w600)),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                            'Status: ${sourceQuote == null ? 'wird geladen' : _statusLabel(quoteStatus)}'),
+                                        if (sourceQuote != null) ...[
+                                          Text(
+                                              'Projekt: ${(sourceQuote['project_name'] ?? selected['project_name'] ?? '-').toString()}'),
+                                          Text(
+                                              'Gültig bis: ${_formatDate(context, (sourceQuote['valid_until'] ?? '').toString())}'),
+                                        ],
+                                        if (canStartInvoiceFlow)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(top: 8),
+                                            child: Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                FilledButton.icon(
+                                                  onPressed: _actionInProgress
+                                                      ? null
+                                                      : _convertToInvoiceFromSalesOrder,
+                                                  icon: const Icon(Icons
+                                                      .receipt_long_rounded),
+                                                  label: Text(linkedInvoiceId
+                                                          .isNotEmpty
+                                                      ? 'Weitere Rechnung erzeugen'
+                                                      : 'In Rechnung weiterführen'),
+                                                ),
+                                              ],
+                                            ),
+                                          )
+                                        else if (linkedInvoiceId.isNotEmpty)
+                                          const Padding(
+                                            padding: EdgeInsets.only(top: 8),
+                                            child: Text(
+                                                'Die Faktura wurde bereits aus dem zugrunde liegenden Angebot erzeugt und es sind keine offenen Restmengen mehr vorhanden.'),
+                                          )
+                                        else
+                                          Padding(
+                                            padding: EdgeInsets.only(top: 8),
+                                            child: Text(
+                                              canCreateInvoice
+                                                  ? 'Direkte Faktura ist nur aus offenen, freigegebenen oder bereits teilweise fakturierten Aufträgen mit Restmengen erlaubt.'
+                                                  : 'Für die direkte Faktura aus dem Auftrag sind sales_orders.write und invoices_out.write erforderlich.',
+                                            ),
+                                          ),
                                       ],
                                     ),
                                   ),
                                 ),
+                              ],
+                              if (linkedInvoiceId.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                Card(
+                                  margin: EdgeInsets.zero,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          linkedInvoice == null
+                                              ? 'Verknüpfte Rechnung wird geladen'
+                                              : 'Verknüpfte Rechnung ${(linkedInvoice['nummer'] ?? linkedInvoice['number'] ?? linkedInvoiceId).toString()}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        if (linkedInvoice == null)
+                                          const Text(
+                                              'Status, Zahlungen und Restbetrag werden nachgeladen.')
+                                        else ...[
+                                          Text(
+                                              'Status: ${_statusLabel(linkedInvoiceStatus)}'),
+                                          Text(
+                                              'Brutto: ${_formatMoney(linkedInvoiceGross, (linkedInvoice['currency'] ?? currency).toString())}'),
+                                          Text(
+                                              'Bezahlt: ${_formatMoney(linkedInvoicePaid, (linkedInvoice['currency'] ?? currency).toString())}'),
+                                          Text(
+                                              'Offen: ${_formatMoney(linkedInvoiceOpen, (linkedInvoice['currency'] ?? currency).toString())}'),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              if (relatedInvoiceCount > 0) ...[
+                                const SizedBox(height: 12),
+                                Card(
+                                  margin: EdgeInsets.zero,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Folgerechnungen ($relatedInvoiceCount)',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(invoiceProgressLabel),
+                                        const SizedBox(height: 8),
+                                        ...relatedInvoices.map((invoice) {
+                                          final invoiceId =
+                                              (invoice['id'] ?? '').toString();
+                                          final invoiceNumber =
+                                              (invoice['number'] ??
+                                                      invoice['nummer'] ??
+                                                      invoiceId)
+                                                  .toString();
+                                          final invoiceCurrency =
+                                              (invoice['currency'] ?? currency)
+                                                  .toString();
+                                          final invoiceGross = _toDouble(
+                                              invoice['gross_amount']);
+                                          final invoicePaid =
+                                              _toDouble(invoice['paid_amount']);
+                                          final invoiceOpen =
+                                              invoiceGross - invoicePaid;
+                                          final isLatest =
+                                              invoiceId.isNotEmpty &&
+                                                  invoiceId == linkedInvoiceId;
+                                          return Card(
+                                            margin: const EdgeInsets.only(
+                                                bottom: 8),
+                                            child: ListTile(
+                                              contentPadding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 12,
+                                                      vertical: 4),
+                                              title: Text(invoiceNumber),
+                                              subtitle: Text(
+                                                '${isLatest ? 'Letzte Rechnung' : 'Weitere Rechnung'}  •  ${_statusLabel((invoice['status'] ?? '').toString())}  •  Brutto ${_formatMoney(invoiceGross, invoiceCurrency)}  •  Offen ${_formatMoney(invoiceOpen, invoiceCurrency)}',
+                                              ),
+                                              trailing: canOpenInvoices
+                                                  ? TextButton(
+                                                      onPressed: () =>
+                                                          _openInvoice(
+                                                              invoiceId),
+                                                      child:
+                                                          const Text('Öffnen'),
+                                                    )
+                                                  : Text(isLatest
+                                                      ? 'Letzte Rechnung'
+                                                      : 'Weitere Rechnung'),
+                                            ),
+                                          );
+                                        }),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 16),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  const Text('Positionen',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.bold)),
+                                  if (canEditItems)
+                                    OutlinedButton.icon(
+                                      onPressed: _actionInProgress
+                                          ? null
+                                          : _createSalesOrderItem,
+                                      icon: const Icon(Icons.add_rounded),
+                                      label: const Text('Position'),
+                                    ),
+                                ],
                               ),
-                            Expanded(
-                              child: ListView.separated(
-                                itemCount: ((selected['items'] as List?) ?? const []).length,
-                                separatorBuilder: (_, __) => const Divider(height: 1),
+                              const SizedBox(height: 8),
+                              if (!canEditItems && editLockReason.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: Material(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12),
+                                      child: Row(
+                                        children: [
+                                          const Icon(
+                                              Icons.lock_outline_rounded),
+                                          const SizedBox(width: 8),
+                                          Expanded(child: Text(editLockReason)),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ListView.separated(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount:
+                                    ((selected['items'] as List?) ?? const [])
+                                        .length,
+                                separatorBuilder: (_, __) =>
+                                    const Divider(height: 1),
                                 itemBuilder: (context, index) {
-                                  final item = (selected['items'] as List)[index] as Map<String, dynamic>;
-                                  final currency = (selected['currency'] ?? 'EUR').toString();
+                                  final item = (selected['items']
+                                      as List)[index] as Map<String, dynamic>;
+                                  final currency =
+                                      (selected['currency'] ?? 'EUR')
+                                          .toString();
                                   final lineNet = _lineNet(item);
                                   final lineGross = _lineGross(item);
-                                  final invoicedQty = _toDouble(item['invoiced_qty']);
-                                  final remainingQty = _toDouble(item['remaining_qty']);
+                                  final invoicedQty =
+                                      _toDouble(item['invoiced_qty']);
+                                  final remainingQty =
+                                      _toDouble(item['remaining_qty']);
                                   return ListTile(
-                                    title: Text('${(item['position'] ?? index + 1).toString()}. ${(item['description'] ?? 'Position').toString()}'),
+                                    title: Text(
+                                        '${(item['position'] ?? index + 1).toString()}. ${(item['description'] ?? 'Position').toString()}'),
                                     subtitle: Text(
                                       'Menge ${(item['qty'] ?? 0)} ${(item['unit'] ?? '')}  •  Fakturiert ${invoicedQty.toStringAsFixed(invoicedQty.truncateToDouble() == invoicedQty ? 0 : 2)}  •  Offen ${remainingQty.toStringAsFixed(remainingQty.truncateToDouble() == remainingQty ? 0 : 2)}  •  Einzelpreis ${_formatMoney((item['unit_price'] ?? 0) as num?, currency)}  •  Steuer ${(item['tax_code'] ?? '').toString().isEmpty ? 'ohne' : (item['tax_code'] ?? '').toString()}  •  Netto ${_formatMoney(lineNet, currency)}',
                                     ),
@@ -1199,71 +1390,102 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                                             spacing: 4,
                                             children: [
                                               IconButton(
-                                                onPressed: _actionInProgress ? null : () => _editSalesOrderItem(item),
-                                                icon: const Icon(Icons.edit_outlined),
+                                                onPressed: _actionInProgress
+                                                    ? null
+                                                    : () => _editSalesOrderItem(
+                                                        item),
+                                                icon: const Icon(
+                                                    Icons.edit_outlined),
                                               ),
                                               IconButton(
-                                                onPressed: _actionInProgress ? null : () => _deleteSalesOrderItem(item),
-                                                icon: const Icon(Icons.delete_outline),
+                                                onPressed: _actionInProgress
+                                                    ? null
+                                                    : () =>
+                                                        _deleteSalesOrderItem(
+                                                            item),
+                                                icon: const Icon(
+                                                    Icons.delete_outline),
                                               ),
                                               Padding(
-                                                padding: const EdgeInsets.only(top: 12),
-                                                child: Text(_formatMoney(lineGross, currency)),
+                                                padding: const EdgeInsets.only(
+                                                    top: 12),
+                                                child: Text(_formatMoney(
+                                                    lineGross, currency)),
                                               ),
                                             ],
                                           )
-                                        : Text(_formatMoney(lineGross, currency)),
+                                        : Text(
+                                            _formatMoney(lineGross, currency)),
                                   );
                                 },
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text('Netto: ${_formatMoney((selected['net_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}'),
-                                  Text('Steuer: ${_formatMoney((selected['tax_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}'),
-                                  Text(
-                                    'Brutto: ${_formatMoney((selected['gross_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}',
-                                    style: const TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                ],
+                              const SizedBox(height: 12),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                        'Netto: ${_formatMoney((selected['net_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}'),
+                                    Text(
+                                        'Steuer: ${_formatMoney((selected['tax_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}'),
+                                    Text(
+                                      'Brutto: ${_formatMoney((selected['gross_amount'] ?? 0) as num?, (selected['currency'] ?? 'EUR').toString())}',
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                            if (canWriteOrders) ...[
-                              const SizedBox(height: 16),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  if (linkedInvoiceId.isEmpty && status != 'open')
-                                    OutlinedButton(
-                                      onPressed: _actionInProgress ? null : () => _updateStatus('open'),
-                                      child: const Text('Auf Offen'),
-                                    ),
-                                  if (linkedInvoiceId.isEmpty && status != 'released' && status != 'canceled' && status != 'completed')
-                                    FilledButton.tonalIcon(
-                                      onPressed: _actionInProgress ? null : () => _updateStatus('released'),
-                                      icon: const Icon(Icons.publish_rounded),
-                                      label: const Text('Freigeben'),
-                                    ),
-                                  if (linkedInvoiceId.isEmpty && status != 'canceled' && status != 'completed')
-                                    FilledButton.tonal(
-                                      onPressed: _actionInProgress ? null : () => _updateStatus('canceled'),
-                                      child: const Text('Stornieren'),
-                                    ),
-                                  if (linkedInvoiceId.isNotEmpty && status != 'completed')
-                                    FilledButton.icon(
-                                      onPressed: _actionInProgress ? null : () => _updateStatus('completed'),
-                                      icon: const Icon(Icons.task_alt_rounded),
-                                      label: const Text('Abschließen'),
-                                    ),
-                                ],
-                              ),
+                              if (canWriteOrders) ...[
+                                const SizedBox(height: 16),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    if (linkedInvoiceId.isEmpty &&
+                                        status != 'open')
+                                      OutlinedButton(
+                                        onPressed: _actionInProgress
+                                            ? null
+                                            : () => _updateStatus('open'),
+                                        child: const Text('Auf Offen'),
+                                      ),
+                                    if (linkedInvoiceId.isEmpty &&
+                                        status != 'released' &&
+                                        status != 'canceled' &&
+                                        status != 'completed')
+                                      FilledButton.tonalIcon(
+                                        onPressed: _actionInProgress
+                                            ? null
+                                            : () => _updateStatus('released'),
+                                        icon: const Icon(Icons.publish_rounded),
+                                        label: const Text('Freigeben'),
+                                      ),
+                                    if (linkedInvoiceId.isEmpty &&
+                                        status != 'canceled' &&
+                                        status != 'completed')
+                                      FilledButton.tonal(
+                                        onPressed: _actionInProgress
+                                            ? null
+                                            : () => _updateStatus('canceled'),
+                                        child: const Text('Stornieren'),
+                                      ),
+                                    if (linkedInvoiceId.isNotEmpty &&
+                                        status != 'completed')
+                                      FilledButton.icon(
+                                        onPressed: _actionInProgress
+                                            ? null
+                                            : () => _updateStatus('completed'),
+                                        icon:
+                                            const Icon(Icons.task_alt_rounded),
+                                        label: const Text('Abschließen'),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
                       ),
               ),
@@ -1350,7 +1572,8 @@ class _SalesOrderHeaderDialog extends StatefulWidget {
   final DateTime? initialOrderDate;
 
   @override
-  State<_SalesOrderHeaderDialog> createState() => _SalesOrderHeaderDialogState();
+  State<_SalesOrderHeaderDialog> createState() =>
+      _SalesOrderHeaderDialogState();
 }
 
 class _SalesOrderHeaderDialogState extends State<_SalesOrderHeaderDialog> {
@@ -1389,7 +1612,8 @@ class _SalesOrderHeaderDialogState extends State<_SalesOrderHeaderDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final orderDateLabel = MaterialLocalizations.of(context).formatMediumDate(_orderDate);
+    final orderDateLabel =
+        MaterialLocalizations.of(context).formatMediumDate(_orderDate);
     return AlertDialog(
       title: const Text('Auftragskopf bearbeiten'),
       content: SizedBox(
@@ -1539,7 +1763,8 @@ class _SalesOrderItemDialogState extends State<_SalesOrderItemDialog> {
                 Expanded(
                   child: TextField(
                     controller: _qtyCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(labelText: 'Menge'),
                   ),
                 ),
@@ -1558,7 +1783,8 @@ class _SalesOrderItemDialogState extends State<_SalesOrderItemDialog> {
                 Expanded(
                   child: TextField(
                     controller: _unitPriceCtrl,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(labelText: 'Einzelpreis'),
                   ),
                 ),
@@ -1581,14 +1807,17 @@ class _SalesOrderItemDialogState extends State<_SalesOrderItemDialog> {
         ),
         FilledButton(
           onPressed: () {
-            final qty = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
-            final unitPrice = double.tryParse(_unitPriceCtrl.text.trim().replaceAll(',', '.'));
+            final qty =
+                double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
+            final unitPrice = double.tryParse(
+                _unitPriceCtrl.text.trim().replaceAll(',', '.'));
             final description = _descriptionCtrl.text.trim();
             final unit = _unitCtrl.text.trim();
             final taxCode = _taxCodeCtrl.text.trim().toUpperCase();
             if (qty == null || unitPrice == null) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Menge und Preis müssen Zahlen sein')),
+                const SnackBar(
+                    content: Text('Menge und Preis müssen Zahlen sein')),
               );
               return;
             }
@@ -1612,13 +1841,15 @@ class _SalesOrderItemDialogState extends State<_SalesOrderItemDialog> {
             }
             if (unitPrice < 0) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Einzelpreis darf nicht negativ sein')),
+                const SnackBar(
+                    content: Text('Einzelpreis darf nicht negativ sein')),
               );
               return;
             }
             if (taxCode.isNotEmpty && taxCode != 'DE19' && taxCode != 'DE7') {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Steuercode muss leer, DE19 oder DE7 sein')),
+                const SnackBar(
+                    content: Text('Steuercode muss leer, DE19 oder DE7 sein')),
               );
               return;
             }
@@ -1645,7 +1876,8 @@ class _SalesOrderConvertDialog extends StatefulWidget {
   final List<_SalesOrderConvertLine> items;
 
   @override
-  State<_SalesOrderConvertDialog> createState() => _SalesOrderConvertDialogState();
+  State<_SalesOrderConvertDialog> createState() =>
+      _SalesOrderConvertDialogState();
 }
 
 class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
@@ -1726,7 +1958,8 @@ class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
                   ),
                 ),
               const SizedBox(height: 12),
-              const Text('Offene Auftragspositionen', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text('Offene Auftragspositionen',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               for (final line in _lines) ...[
                 Card(
@@ -1739,7 +1972,8 @@ class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
                         CheckboxListTile(
                           contentPadding: EdgeInsets.zero,
                           value: line.selected,
-                          onChanged: (value) => setState(() => line.selected = value ?? false),
+                          onChanged: (value) =>
+                              setState(() => line.selected = value ?? false),
                           title: Text(line.description),
                           subtitle: Text(
                             'Bereits fakturiert ${line.invoicedQty.toStringAsFixed(line.invoicedQty.truncateToDouble() == line.invoicedQty ? 0 : 2)} ${line.unit}  •  Offen ${line.remainingQty.toStringAsFixed(line.remainingQty.truncateToDouble() == line.remainingQty ? 0 : 2)} ${line.unit}  •  Einzelpreis ${line.unitPrice.toStringAsFixed(2)}  •  Steuer ${line.taxCode.isEmpty ? 'ohne' : line.taxCode}',
@@ -1748,10 +1982,12 @@ class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
                         if (line.selected)
                           TextField(
                             controller: line.qtyCtrl,
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
                             decoration: InputDecoration(
                               labelText: 'Jetzt fakturieren',
-                              helperText: 'Maximal ${line.remainingQty.toStringAsFixed(line.remainingQty.truncateToDouble() == line.remainingQty ? 0 : 2)} ${line.unit}',
+                              helperText:
+                                  'Maximal ${line.remainingQty.toStringAsFixed(line.remainingQty.truncateToDouble() == line.remainingQty ? 0 : 2)} ${line.unit}',
                             ),
                           ),
                       ],
@@ -1773,22 +2009,29 @@ class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
             final selectedItems = <_SalesOrderConvertItemRequest>[];
             for (final line in _lines) {
               if (!line.selected) continue;
-              final qty = double.tryParse(line.qtyCtrl.text.trim().replaceAll(',', '.'));
+              final qty = double.tryParse(
+                  line.qtyCtrl.text.trim().replaceAll(',', '.'));
               if (qty == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Menge für "${line.description}" ist ungültig')),
+                  SnackBar(
+                      content:
+                          Text('Menge für "${line.description}" ist ungültig')),
                 );
                 return;
               }
               if (qty <= 0) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Menge für "${line.description}" muss größer als 0 sein')),
+                  SnackBar(
+                      content: Text(
+                          'Menge für "${line.description}" muss größer als 0 sein')),
                 );
                 return;
               }
               if (qty > line.remainingQty) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Menge für "${line.description}" überschreitet die offene Restmenge')),
+                  SnackBar(
+                      content: Text(
+                          'Menge für "${line.description}" überschreitet die offene Restmenge')),
                 );
                 return;
               }
@@ -1801,13 +2044,17 @@ class _SalesOrderConvertDialogState extends State<_SalesOrderConvertDialog> {
             }
             if (selectedItems.isEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Mindestens eine offene Position muss ausgewählt werden')),
+                const SnackBar(
+                    content: Text(
+                        'Mindestens eine offene Position muss ausgewählt werden')),
               );
               return;
             }
             Navigator.of(context).pop(
               _SalesOrderConvertRequest(
-                revenueAccount: _revenueAccountCtrl.text.trim().isEmpty ? '8000' : _revenueAccountCtrl.text.trim(),
+                revenueAccount: _revenueAccountCtrl.text.trim().isEmpty
+                    ? '8000'
+                    : _revenueAccountCtrl.text.trim(),
                 items: selectedItems,
                 dueDate: _dueDate,
               ),
