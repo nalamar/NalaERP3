@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_navigation.dart';
 
 class WarehousesPage extends StatefulWidget {
-  const WarehousesPage({super.key, required this.api});
+  const WarehousesPage({
+    super.key,
+    required this.api,
+    this.initialSelection,
+    this.openCreateOnStart = false,
+  });
   final ApiClient api;
+  final WarehouseSelectionContext? initialSelection;
+  final bool openCreateOnStart;
 
   @override
   State<WarehousesPage> createState() => _WarehousesPageState();
@@ -19,6 +27,7 @@ class _WarehousesPageState extends State<WarehousesPage> {
   final locNameCtrl = TextEditingController();
   final _whFormKey = GlobalKey<FormState>();
   final _locFormKey = GlobalKey<FormState>();
+  bool _initialCreateHandled = false;
 
   @override
   void initState() {
@@ -30,6 +39,21 @@ class _WarehousesPageState extends State<WarehousesPage> {
     try {
       warehouses = await widget.api.listWarehouses();
       setState(() {});
+      final initialWarehouseId = widget.initialSelection?.normalizedWarehouseId;
+      if (initialWarehouseId != null &&
+          warehouses.any(
+              (entry) => (entry as Map<String, dynamic>)['id'] == initialWarehouseId)) {
+        await _selectWarehouse(initialWarehouseId);
+      }
+      if (widget.openCreateOnStart &&
+          !_initialCreateHandled &&
+          widget.api.hasPermission('warehouses.write')) {
+        _initialCreateHandled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _openCreateDialog();
+        });
+      }
     } catch (e) {
       if (mounted) {
         debugPrint('Fehler beim Laden Lager: $e');

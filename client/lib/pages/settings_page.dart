@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_destinations.dart';
 import 'dart:typed_data';
 import '../web/browser.dart' as browser;
-import 'sales_orders_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.api});
@@ -117,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _load() async {
-    setState(()=> loading = true);
+    setState(() => loading = true);
     try {
       await _loadCompanyProfile();
       await _loadBranches();
@@ -134,8 +134,8 @@ class _SettingsPageState extends State<SettingsPage> {
       await _loadPdfTemplate('quote');
       await _loadPdfTemplate('sales_order');
       await _loadUnits();
-    } catch (e) { /* ignore */ }
-    setState(()=> loading = false);
+    } catch (e) {/* ignore */}
+    setState(() => loading = false);
   }
 
   Future<void> _loadCompanyProfile() async {
@@ -185,11 +185,13 @@ class _SettingsPageState extends State<SettingsPage> {
         'bic': companyBicCtrl.text,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Firmenprofil gespeichert')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Firmenprofil gespeichert')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -197,13 +199,18 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadLocalizationSettings() async {
     try {
       final p = await widget.api.getLocalizationSettings();
-      localizationCurrencyCtrl.text = (p['default_currency'] ?? 'EUR').toString();
+      localizationCurrencyCtrl.text =
+          (p['default_currency'] ?? 'EUR').toString();
       localizationTaxCountryCtrl.text = (p['tax_country'] ?? 'DE').toString();
-      localizationVatRateCtrl.text = (p['standard_vat_rate'] ?? '19.00').toString();
+      localizationVatRateCtrl.text =
+          (p['standard_vat_rate'] ?? '19.00').toString();
       localizationLocaleCtrl.text = (p['locale'] ?? 'de-DE').toString();
-      localizationTimezoneCtrl.text = (p['timezone'] ?? 'Europe/Berlin').toString();
-      localizationDateFormatCtrl.text = (p['date_format'] ?? 'dd.MM.yyyy').toString();
-      localizationNumberFormatCtrl.text = (p['number_format'] ?? 'de-DE').toString();
+      localizationTimezoneCtrl.text =
+          (p['timezone'] ?? 'Europe/Berlin').toString();
+      localizationDateFormatCtrl.text =
+          (p['date_format'] ?? 'dd.MM.yyyy').toString();
+      localizationNumberFormatCtrl.text =
+          (p['number_format'] ?? 'de-DE').toString();
     } catch (_) {
       // ignore for now
     }
@@ -211,7 +218,9 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _saveLocalizationSettings() async {
     try {
-      final vatRate = double.tryParse(localizationVatRateCtrl.text.trim().replaceAll(',', '.')) ?? 19.0;
+      final vatRate = double.tryParse(
+              localizationVatRateCtrl.text.trim().replaceAll(',', '.')) ??
+          19.0;
       await widget.api.updateLocalizationSettings({
         'default_currency': localizationCurrencyCtrl.text,
         'tax_country': localizationTaxCountryCtrl.text,
@@ -222,11 +231,13 @@ class _SettingsPageState extends State<SettingsPage> {
         'number_format': localizationNumberFormatCtrl.text,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lokalisierung gespeichert')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lokalisierung gespeichert')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -236,8 +247,10 @@ class _SettingsPageState extends State<SettingsPage> {
       final p = await widget.api.getBrandingSettings();
       brandingDisplayNameCtrl.text = (p['display_name'] ?? '').toString();
       brandingClaimCtrl.text = (p['claim'] ?? '').toString();
-      brandingPrimaryColorCtrl.text = (p['primary_color'] ?? '#1F4B99').toString();
-      brandingAccentColorCtrl.text = (p['accent_color'] ?? '#6B7280').toString();
+      brandingPrimaryColorCtrl.text =
+          (p['primary_color'] ?? '#1F4B99').toString();
+      brandingAccentColorCtrl.text =
+          (p['accent_color'] ?? '#6B7280').toString();
       brandingHeaderCtrl.text = (p['document_header_text'] ?? '').toString();
       brandingFooterCtrl.text = (p['document_footer_text'] ?? '').toString();
     } catch (_) {
@@ -256,11 +269,13 @@ class _SettingsPageState extends State<SettingsPage> {
         'document_footer_text': brandingFooterCtrl.text,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Branding gespeichert')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Branding gespeichert')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -269,7 +284,8 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       setState(() => _branchesLoading = true);
       final items = await widget.api.listCompanyBranches();
-      setState(() => _branches = items.map((e) => (e as Map).cast<String, dynamic>()).toList());
+      setState(() => _branches =
+          items.map((e) => (e as Map).cast<String, dynamic>()).toList());
     } catch (_) {
       // ignore for now
     } finally {
@@ -278,21 +294,31 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _editBranch([Map<String, dynamic>? existing]) async {
-    final codeCtrl = TextEditingController(text: (existing?['code'] ?? '').toString());
-    final nameCtrl = TextEditingController(text: (existing?['name'] ?? '').toString());
-    final streetCtrl = TextEditingController(text: (existing?['street'] ?? '').toString());
-    final postalCtrl = TextEditingController(text: (existing?['postal_code'] ?? '').toString());
-    final cityCtrl = TextEditingController(text: (existing?['city'] ?? '').toString());
-    final countryCtrl = TextEditingController(text: (existing?['country'] ?? 'DE').toString());
-    final emailCtrl = TextEditingController(text: (existing?['email'] ?? '').toString());
-    final phoneCtrl = TextEditingController(text: (existing?['phone'] ?? '').toString());
+    final codeCtrl =
+        TextEditingController(text: (existing?['code'] ?? '').toString());
+    final nameCtrl =
+        TextEditingController(text: (existing?['name'] ?? '').toString());
+    final streetCtrl =
+        TextEditingController(text: (existing?['street'] ?? '').toString());
+    final postalCtrl = TextEditingController(
+        text: (existing?['postal_code'] ?? '').toString());
+    final cityCtrl =
+        TextEditingController(text: (existing?['city'] ?? '').toString());
+    final countryCtrl =
+        TextEditingController(text: (existing?['country'] ?? 'DE').toString());
+    final emailCtrl =
+        TextEditingController(text: (existing?['email'] ?? '').toString());
+    final phoneCtrl =
+        TextEditingController(text: (existing?['phone'] ?? '').toString());
     bool isDefault = existing?['is_default'] == true;
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => StatefulBuilder(
         builder: (context, setLocalState) => AlertDialog(
-          title: Text(existing == null ? 'Niederlassung anlegen' : 'Niederlassung bearbeiten'),
+          title: Text(existing == null
+              ? 'Niederlassung anlegen'
+              : 'Niederlassung bearbeiten'),
           content: SizedBox(
             width: 760,
             child: SingleChildScrollView(
@@ -300,25 +326,59 @@ class _SettingsPageState extends State<SettingsPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(children: [
-                    Expanded(child: TextField(controller: codeCtrl, decoration: const InputDecoration(labelText: 'Code'))),
+                    Expanded(
+                        child: TextField(
+                            controller: codeCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Code'))),
                     const SizedBox(width: 12),
-                    Expanded(child: TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name'))),
+                    Expanded(
+                        child: TextField(
+                            controller: nameCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Name'))),
                   ]),
                   const SizedBox(height: 12),
                   Row(children: [
-                    Expanded(child: TextField(controller: streetCtrl, decoration: const InputDecoration(labelText: 'Straße'))),
+                    Expanded(
+                        child: TextField(
+                            controller: streetCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Straße'))),
                     const SizedBox(width: 12),
-                    SizedBox(width: 120, child: TextField(controller: postalCtrl, decoration: const InputDecoration(labelText: 'PLZ'))),
+                    SizedBox(
+                        width: 120,
+                        child: TextField(
+                            controller: postalCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'PLZ'))),
                     const SizedBox(width: 12),
-                    Expanded(child: TextField(controller: cityCtrl, decoration: const InputDecoration(labelText: 'Ort'))),
+                    Expanded(
+                        child: TextField(
+                            controller: cityCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Ort'))),
                     const SizedBox(width: 12),
-                    SizedBox(width: 90, child: TextField(controller: countryCtrl, decoration: const InputDecoration(labelText: 'Land'))),
+                    SizedBox(
+                        width: 90,
+                        child: TextField(
+                            controller: countryCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Land'))),
                   ]),
                   const SizedBox(height: 12),
                   Row(children: [
-                    Expanded(child: TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'E-Mail'))),
+                    Expanded(
+                        child: TextField(
+                            controller: emailCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'E-Mail'))),
                     const SizedBox(width: 12),
-                    Expanded(child: TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon'))),
+                    Expanded(
+                        child: TextField(
+                            controller: phoneCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Telefon'))),
                   ]),
                   const SizedBox(height: 8),
                   SwitchListTile(
@@ -332,8 +392,12 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Speichern')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Abbrechen')),
+            FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Speichern')),
           ],
         ),
       ),
@@ -354,17 +418,22 @@ class _SettingsPageState extends State<SettingsPage> {
       if (existing == null) {
         await widget.api.createCompanyBranch(body);
       } else {
-        await widget.api.updateCompanyBranch((existing['id'] ?? '').toString(), body);
+        await widget.api
+            .updateCompanyBranch((existing['id'] ?? '').toString(), body);
       }
       await _loadBranches();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(existing == null ? 'Niederlassung gespeichert' : 'Niederlassung aktualisiert')),
+          SnackBar(
+              content: Text(existing == null
+                  ? 'Niederlassung gespeichert'
+                  : 'Niederlassung aktualisiert')),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -378,8 +447,12 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('Niederlassung löschen'),
         content: Text('Niederlassung "$name" wirklich löschen?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Löschen')),
         ],
       ),
     );
@@ -388,80 +461,127 @@ class _SettingsPageState extends State<SettingsPage> {
       await widget.api.deleteCompanyBranch(id);
       await _loadBranches();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Niederlassung gelöscht')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Niederlassung gelöscht')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
 
   Future<void> _loadUnits() async {
     try {
-      setState(()=> _unitsLoading = true);
+      setState(() => _unitsLoading = true);
       final list = await widget.api.listUnits();
-      setState(()=> _units = list);
-    } catch (e) { /* ignore */ }
-    finally { setState(()=> _unitsLoading = false); }
+      setState(() => _units = list);
+    } catch (e) {/* ignore */} finally {
+      setState(() => _unitsLoading = false);
+    }
   }
 
   Future<void> _saveUnit() async {
     final code = _unitCodeCtrl.text.trim();
     final name = _unitNameCtrl.text.trim();
-    if (code.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Code erforderlich'))); return; }
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Code erforderlich')));
+      return;
+    }
     try {
       await widget.api.upsertUnit(code, name);
       _unitCodeCtrl.clear();
       _unitNameCtrl.clear();
       await _loadUnits();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Einheit gespeichert')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Einheit gespeichert')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
   }
 
   Future<void> _deleteUnit(String code) async {
-    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Einheit löschen'), content: Text('Code "$code" wirklich löschen?'), actions: [TextButton(onPressed: ()=> Navigator.pop(context, false), child: const Text('Abbrechen')), FilledButton(onPressed: ()=> Navigator.pop(context, true), child: const Text('Löschen'))]));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+                title: const Text('Einheit löschen'),
+                content: Text('Code "$code" wirklich löschen?'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Abbrechen')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Löschen'))
+                ]));
     if (ok != true) return;
     try {
       await widget.api.deleteUnit(code);
       await _loadUnits();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Einheit gelöscht')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Einheit gelöscht')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
   }
 
   Future<void> _updatePreviewPO() async {
     try {
       final p = await widget.api.previewNumbering('purchase_order');
-      setState(()=> previewPO = p);
-    } catch (e) { setState(()=> previewPO = ''); }
+      setState(() => previewPO = p);
+    } catch (e) {
+      setState(() => previewPO = '');
+    }
   }
+
   Future<void> _updatePreviewPRJ() async {
     try {
       final p = await widget.api.previewNumbering('project');
-      setState(()=> previewPRJ = p);
-    } catch (e) { setState(()=> previewPRJ = ''); }
+      setState(() => previewPRJ = p);
+    } catch (e) {
+      setState(() => previewPRJ = '');
+    }
   }
 
   Future<void> _savePO() async {
     try {
-      await widget.api.updateNumberingPattern('purchase_order', poPatternCtrl.text.trim());
+      await widget.api
+          .updateNumberingPattern('purchase_order', poPatternCtrl.text.trim());
       await _updatePreviewPO();
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Gespeichert')));
+      }
     } catch (e) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      }
     }
   }
+
   Future<void> _savePRJ() async {
     try {
-      await widget.api.updateNumberingPattern('project', prjPatternCtrl.text.trim());
+      await widget.api
+          .updateNumberingPattern('project', prjPatternCtrl.text.trim());
       await _updatePreviewPRJ();
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Gespeichert'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Gespeichert')));
+      }
     } catch (e) {
-      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e'))); }
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      }
     }
   }
 
@@ -511,9 +631,12 @@ class _SettingsPageState extends State<SettingsPage> {
         quoteFooterCtrl.text = footerText;
         quoteTopFirstCtrl.text = tf.toStringAsFixed(0);
         quoteTopOtherCtrl.text = to.toStringAsFixed(0);
-        quoteEffectiveHeaderText = (t['effective_header_text'] ?? '').toString();
-        quoteEffectiveFooterText = (t['effective_footer_text'] ?? '').toString();
-        quoteEffectiveDisplayName = (t['effective_display_name'] ?? '').toString();
+        quoteEffectiveHeaderText =
+            (t['effective_header_text'] ?? '').toString();
+        quoteEffectiveFooterText =
+            (t['effective_footer_text'] ?? '').toString();
+        quoteEffectiveDisplayName =
+            (t['effective_display_name'] ?? '').toString();
         quoteEffectiveClaim = (t['effective_claim'] ?? '').toString();
         quoteEffectivePrimaryColor =
             (t['effective_primary_color'] ?? '').toString();
@@ -542,7 +665,7 @@ class _SettingsPageState extends State<SettingsPage> {
         salesOrderBgFirstDocId = t['bg_first_doc_id'] as String?;
         salesOrderBgOtherDocId = t['bg_other_doc_id'] as String?;
       }
-      if (mounted) setState((){});
+      if (mounted) setState(() {});
     } catch (_) {
       // ignore
     }
@@ -594,11 +717,13 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       await _loadPdfTemplate(entity);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('PDF-Template gespeichert')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PDF-Template gespeichert')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
       }
     }
   }
@@ -607,9 +732,11 @@ class _SettingsPageState extends State<SettingsPage> {
     final picked = await browser.pickFile(accept: 'image/*,application/pdf');
     if (picked == null) return;
     try {
-      final res = await widget.api.uploadPdfImage(entity, kind, picked.filename, picked.bytes, contentType: picked.contentType);
+      final res = await widget.api.uploadPdfImage(
+          entity, kind, picked.filename, picked.bytes,
+          contentType: picked.contentType);
       final id = (res['document_id'] ?? '').toString();
-      setState((){
+      setState(() {
         if (entity == 'purchase_order') {
           if (kind == 'logo') poLogoDocId = id;
           if (kind == 'bg-first') poBgFirstDocId = id;
@@ -628,16 +755,18 @@ class _SettingsPageState extends State<SettingsPage> {
           if (kind == 'bg-other') salesOrderBgOtherDocId = id;
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
   }
 
   Future<void> _deleteImage(String entity, String kind) async {
     try {
       await widget.api.deletePdfImage(entity, kind);
-      setState((){
+      setState(() {
         if (entity == 'purchase_order') {
           if (kind == 'logo') poLogoDocId = null;
           if (kind == 'bg-first') poBgFirstDocId = null;
@@ -656,15 +785,17 @@ class _SettingsPageState extends State<SettingsPage> {
           if (kind == 'bg-other') salesOrderBgOtherDocId = null;
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bild entfernt')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Bild entfernt')));
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
   }
 
   Future<void> _openSalesOrders() async {
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => SalesOrdersPage(api: widget.api)),
+      MaterialPageRoute(builder: (_) => buildSalesOrdersPage(api: widget.api)),
     );
   }
 
@@ -684,7 +815,9 @@ class _SettingsPageState extends State<SettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ExpansionTile(
-                title: const Text('Firmenprofil', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: const Text('Firmenprofil',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 initiallyExpanded: true,
                 children: [
                   Card(
@@ -694,92 +827,202 @@ class _SettingsPageState extends State<SettingsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(children: [
-                            Expanded(child: TextField(controller: companyNameCtrl, decoration: const InputDecoration(labelText: 'Firmenname'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyNameCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Firmenname'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyLegalFormCtrl, decoration: const InputDecoration(labelText: 'Rechtsform'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyLegalFormCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Rechtsform'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyBranchCtrl, decoration: const InputDecoration(labelText: 'Niederlassung / Standort'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyBranchCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText:
+                                            'Niederlassung / Standort'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyInvoiceEmailCtrl, decoration: const InputDecoration(labelText: 'Rechnungs-E-Mail'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyInvoiceEmailCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Rechnungs-E-Mail'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyStreetCtrl, decoration: const InputDecoration(labelText: 'Straße'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyStreetCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Straße'))),
                             const SizedBox(width: 12),
-                            SizedBox(width: 140, child: TextField(controller: companyPostalCodeCtrl, decoration: const InputDecoration(labelText: 'PLZ'))),
+                            SizedBox(
+                                width: 140,
+                                child: TextField(
+                                    controller: companyPostalCodeCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'PLZ'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyCityCtrl, decoration: const InputDecoration(labelText: 'Ort'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyCityCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Ort'))),
                             const SizedBox(width: 12),
-                            SizedBox(width: 100, child: TextField(controller: companyCountryCtrl, decoration: const InputDecoration(labelText: 'Land'))),
+                            SizedBox(
+                                width: 100,
+                                child: TextField(
+                                    controller: companyCountryCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Land'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyEmailCtrl, decoration: const InputDecoration(labelText: 'E-Mail'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyEmailCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'E-Mail'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyPhoneCtrl, decoration: const InputDecoration(labelText: 'Telefon'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyPhoneCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Telefon'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyWebsiteCtrl, decoration: const InputDecoration(labelText: 'Website'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyWebsiteCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Website'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyTaxNoCtrl, decoration: const InputDecoration(labelText: 'Steuernummer'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyTaxNoCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Steuernummer'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyVatIdCtrl, decoration: const InputDecoration(labelText: 'USt-IdNr.'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyVatIdCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'USt-IdNr.'))),
                           ]),
                           const SizedBox(height: 12),
-                          const Text('Bankdaten', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('Bankdaten',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyBankNameCtrl, decoration: const InputDecoration(labelText: 'Bank'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyBankNameCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Bank'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyAccountHolderCtrl, decoration: const InputDecoration(labelText: 'Kontoinhaber'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyAccountHolderCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Kontoinhaber'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: companyIbanCtrl, decoration: const InputDecoration(labelText: 'IBAN'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyIbanCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'IBAN'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: companyBicCtrl, decoration: const InputDecoration(labelText: 'BIC'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: companyBicCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'BIC'))),
                           ]),
                           const SizedBox(height: 12),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: FilledButton.icon(onPressed: _saveCompanyProfile, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                            child: FilledButton.icon(
+                                onPressed: _saveCompanyProfile,
+                                icon: const Icon(Icons.save),
+                                label: const Text('Speichern')),
                           ),
                           const SizedBox(height: 16),
                           const Divider(),
                           const SizedBox(height: 8),
-                          const Text('Steuer, Währung und Lokalisierung', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const Text('Steuer, Währung und Lokalisierung',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
                           Row(children: [
-                            Expanded(child: TextField(controller: localizationCurrencyCtrl, decoration: const InputDecoration(labelText: 'Standardwährung'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationCurrencyCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Standardwährung'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: localizationTaxCountryCtrl, decoration: const InputDecoration(labelText: 'Steuerland'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationTaxCountryCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Steuerland'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: localizationVatRateCtrl, decoration: const InputDecoration(labelText: 'Standard-USt. %'), keyboardType: TextInputType.number)),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationVatRateCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Standard-USt. %'),
+                                    keyboardType: TextInputType.number)),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: localizationLocaleCtrl, decoration: const InputDecoration(labelText: 'Locale'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationLocaleCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Locale'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: localizationTimezoneCtrl, decoration: const InputDecoration(labelText: 'Zeitzone'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationTimezoneCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Zeitzone'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: localizationDateFormatCtrl, decoration: const InputDecoration(labelText: 'Datumsformat'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationDateFormatCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Datumsformat'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: localizationNumberFormatCtrl, decoration: const InputDecoration(labelText: 'Zahlenformat'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: localizationNumberFormatCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Zahlenformat'))),
                           ]),
                           const SizedBox(height: 12),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: FilledButton.icon(onPressed: _saveLocalizationSettings, icon: const Icon(Icons.language), label: const Text('Lokalisierung speichern')),
+                            child: FilledButton.icon(
+                                onPressed: _saveLocalizationSettings,
+                                icon: const Icon(Icons.language),
+                                label: const Text('Lokalisierung speichern')),
                           ),
                           const SizedBox(height: 16),
                           Row(
                             children: [
-                              const Text('Niederlassungen', style: TextStyle(fontWeight: FontWeight.bold)),
+                              const Text('Niederlassungen',
+                                  style:
+                                      TextStyle(fontWeight: FontWeight.bold)),
                               const Spacer(),
                               OutlinedButton.icon(
                                 onPressed: () => _editBranch(),
@@ -789,11 +1032,13 @@ class _SettingsPageState extends State<SettingsPage> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          if (_branchesLoading) const LinearProgressIndicator(minHeight: 2),
+                          if (_branchesLoading)
+                            const LinearProgressIndicator(minHeight: 2),
                           if (!_branchesLoading && _branches.isEmpty)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Text('Noch keine Niederlassungen angelegt.'),
+                              child:
+                                  Text('Noch keine Niederlassungen angelegt.'),
                             ),
                           ..._branches.map((b) {
                             final title = (b['name'] ?? '').toString();
@@ -803,19 +1048,32 @@ class _SettingsPageState extends State<SettingsPage> {
                             final isDefault = b['is_default'] == true;
                             final subtitleParts = <String>[
                               if (code.isNotEmpty) 'Code: $code',
-                              if (city.isNotEmpty || country.isNotEmpty) [city, country].where((e) => e.isNotEmpty).join(', '),
-                              if ((b['email'] ?? '').toString().isNotEmpty) (b['email'] ?? '').toString(),
+                              if (city.isNotEmpty || country.isNotEmpty)
+                                [city, country]
+                                    .where((e) => e.isNotEmpty)
+                                    .join(', '),
+                              if ((b['email'] ?? '').toString().isNotEmpty)
+                                (b['email'] ?? '').toString(),
                             ];
                             return ListTile(
                               contentPadding: EdgeInsets.zero,
-                              leading: Icon(isDefault ? Icons.apartment_rounded : Icons.business_outlined),
-                              title: Text(isDefault ? '$title (Standard)' : title),
-                              subtitle: subtitleParts.isNotEmpty ? Text(subtitleParts.join(' • ')) : null,
+                              leading: Icon(isDefault
+                                  ? Icons.apartment_rounded
+                                  : Icons.business_outlined),
+                              title:
+                                  Text(isDefault ? '$title (Standard)' : title),
+                              subtitle: subtitleParts.isNotEmpty
+                                  ? Text(subtitleParts.join(' • '))
+                                  : null,
                               trailing: Wrap(
                                 spacing: 4,
                                 children: [
-                                  IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _editBranch(b)),
-                                  IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => _deleteBranch(b)),
+                                  IconButton(
+                                      icon: const Icon(Icons.edit_outlined),
+                                      onPressed: () => _editBranch(b)),
+                                  IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () => _deleteBranch(b)),
                                 ],
                               ),
                             );
@@ -828,7 +1086,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Branding & Dokumentlayout', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: const Text('Branding & Dokumentlayout',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 initiallyExpanded: false,
                 children: [
                   Card(
@@ -838,27 +1098,45 @@ class _SettingsPageState extends State<SettingsPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(children: [
-                            Expanded(child: TextField(controller: brandingDisplayNameCtrl, decoration: const InputDecoration(labelText: 'Brand-Name'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: brandingDisplayNameCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Brand-Name'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: brandingClaimCtrl, decoration: const InputDecoration(labelText: 'Claim / Zusatzzeile'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: brandingClaimCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Claim / Zusatzzeile'))),
                           ]),
                           const SizedBox(height: 12),
                           Row(children: [
-                            Expanded(child: TextField(controller: brandingPrimaryColorCtrl, decoration: const InputDecoration(labelText: 'Primärfarbe (Hex)'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: brandingPrimaryColorCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Primärfarbe (Hex)'))),
                             const SizedBox(width: 12),
-                            Expanded(child: TextField(controller: brandingAccentColorCtrl, decoration: const InputDecoration(labelText: 'Akzentfarbe (Hex)'))),
+                            Expanded(
+                                child: TextField(
+                                    controller: brandingAccentColorCtrl,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Akzentfarbe (Hex)'))),
                           ]),
                           const SizedBox(height: 12),
                           TextField(
                             controller: brandingHeaderCtrl,
                             maxLines: 3,
-                            decoration: const InputDecoration(labelText: 'Standard-Kopftext für Dokumente'),
+                            decoration: const InputDecoration(
+                                labelText: 'Standard-Kopftext für Dokumente'),
                           ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: brandingFooterCtrl,
                             maxLines: 3,
-                            decoration: const InputDecoration(labelText: 'Standard-Fußtext für Dokumente'),
+                            decoration: const InputDecoration(
+                                labelText: 'Standard-Fußtext für Dokumente'),
                           ),
                           const SizedBox(height: 12),
                           Align(
@@ -877,7 +1155,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Nummernkreise', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: const Text('Nummernkreise',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 initiallyExpanded: false,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
                 children: [
@@ -891,17 +1171,25 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 8),
                           TextField(
                             controller: poPatternCtrl,
-                            decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PO-{YYYY}-{NNNN}'),
-                            onChanged: (_) { _updatePreviewPO(); },
+                            decoration: const InputDecoration(
+                                labelText: 'Pattern',
+                                hintText: 'z. B. PO-{YYYY}-{NNNN}'),
+                            onChanged: (_) {
+                              _updatePreviewPO();
+                            },
                           ),
                           const SizedBox(height: 8),
                           Text('Vorschau: $previewPO'),
                           const SizedBox(height: 8),
-                          const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
+                          const Text(
+                              'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
                           const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: FilledButton.icon(onPressed: _savePO, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                            child: FilledButton.icon(
+                                onPressed: _savePO,
+                                icon: const Icon(Icons.save),
+                                label: const Text('Speichern')),
                           ),
                         ],
                       ),
@@ -918,17 +1206,25 @@ class _SettingsPageState extends State<SettingsPage> {
                           const SizedBox(height: 8),
                           TextField(
                             controller: prjPatternCtrl,
-                            decoration: const InputDecoration(labelText: 'Pattern', hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
-                            onChanged: (_) { _updatePreviewPRJ(); },
+                            decoration: const InputDecoration(
+                                labelText: 'Pattern',
+                                hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
+                            onChanged: (_) {
+                              _updatePreviewPRJ();
+                            },
                           ),
                           const SizedBox(height: 8),
                           Text('Vorschau: $previewPRJ'),
                           const SizedBox(height: 8),
-                          const Text('Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
+                          const Text(
+                              'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
                           const SizedBox(height: 8),
                           Align(
                             alignment: Alignment.centerRight,
-                            child: FilledButton.icon(onPressed: _savePRJ, icon: const Icon(Icons.save), label: const Text('Speichern')),
+                            child: FilledButton.icon(
+                                onPressed: _savePRJ,
+                                icon: const Icon(Icons.save),
+                                label: const Text('Speichern')),
                           ),
                         ],
                       ),
@@ -938,128 +1234,158 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Maßeinheiten', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: const Text('Maßeinheiten',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 initiallyExpanded: false,
                 children: [
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Row(children: [
-                          Expanded(child: TextField(controller: _unitCodeCtrl, decoration: const InputDecoration(labelText: 'Code (z. B. kg, mm)'))),
-                          const SizedBox(width: 8),
-                          Expanded(child: TextField(controller: _unitNameCtrl, decoration: const InputDecoration(labelText: 'Name (optional, z. B. Kilogramm)'))),
-                          const SizedBox(width: 8),
-                          FilledButton.icon(onPressed: _saveUnit, icon: const Icon(Icons.save), label: const Text('Speichern')),
-                        ]),
-                        const SizedBox(height: 12),
-                        if (_unitsLoading) const LinearProgressIndicator(minHeight: 2),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _units.length,
-                          itemBuilder: (ctx, i){
-                            final u = _units[i];
-                            final code = (u['code'] ?? '').toString();
-                            final name = (u['name'] ?? '').toString();
-                            return ListTile(
-                              dense: true,
-                              leading: const Icon(Icons.straighten_rounded),
-                              title: Text(code),
-                              subtitle: name.isNotEmpty ? Text(name) : null,
-                              trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: ()=> _deleteUnit(code)),
-                              onTap: (){ _unitCodeCtrl.text = code; _unitNameCtrl.text = name; },
-                            );
-                          },
-                        ),
-                      ]),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              Expanded(
+                                  child: TextField(
+                                      controller: _unitCodeCtrl,
+                                      decoration: const InputDecoration(
+                                          labelText: 'Code (z. B. kg, mm)'))),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                  child: TextField(
+                                      controller: _unitNameCtrl,
+                                      decoration: const InputDecoration(
+                                          labelText:
+                                              'Name (optional, z. B. Kilogramm)'))),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                  onPressed: _saveUnit,
+                                  icon: const Icon(Icons.save),
+                                  label: const Text('Speichern')),
+                            ]),
+                            const SizedBox(height: 12),
+                            if (_unitsLoading)
+                              const LinearProgressIndicator(minHeight: 2),
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              itemCount: _units.length,
+                              itemBuilder: (ctx, i) {
+                                final u = _units[i];
+                                final code = (u['code'] ?? '').toString();
+                                final name = (u['name'] ?? '').toString();
+                                return ListTile(
+                                  dense: true,
+                                  leading: const Icon(Icons.straighten_rounded),
+                                  title: Text(code),
+                                  subtitle: name.isNotEmpty ? Text(name) : null,
+                                  trailing: IconButton(
+                                      icon: const Icon(Icons.delete_outline),
+                                      onPressed: () => _deleteUnit(code)),
+                                  onTap: () {
+                                    _unitCodeCtrl.text = code;
+                                    _unitNameCtrl.text = name;
+                                  },
+                                );
+                              },
+                            ),
+                          ]),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('PDF-Templates', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: const Text('PDF-Templates',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 initiallyExpanded: false,
                 children: [
                   Card(
                     child: Padding(
                       padding: const EdgeInsets.all(12),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        _buildPdfTemplateCard(
-                          title: 'Bestellungen (purchase_order)',
-                          entity: 'purchase_order',
-                          headerCtrl: poHeaderCtrl,
-                          footerCtrl: poFooterCtrl,
-                          topFirstCtrl: poTopFirstCtrl,
-                          topOtherCtrl: poTopOtherCtrl,
-                          effectiveHeaderText: poEffectiveHeaderText,
-                          effectiveFooterText: poEffectiveFooterText,
-                          effectiveDisplayName: poEffectiveDisplayName,
-                          effectiveClaim: poEffectiveClaim,
-                          effectivePrimaryColor: poEffectivePrimaryColor,
-                          effectiveAccentColor: poEffectiveAccentColor,
-                          logoDocId: poLogoDocId,
-                          bgFirstDocId: poBgFirstDocId,
-                          bgOtherDocId: poBgOtherDocId,
-                        ),
-                        const Divider(height: 32),
-                        _buildPdfTemplateCard(
-                          title: 'Ausgangsrechnungen (invoice_out)',
-                          entity: 'invoice_out',
-                          headerCtrl: invoiceHeaderCtrl,
-                          footerCtrl: invoiceFooterCtrl,
-                          topFirstCtrl: invoiceTopFirstCtrl,
-                          topOtherCtrl: invoiceTopOtherCtrl,
-                          effectiveHeaderText: invoiceEffectiveHeaderText,
-                          effectiveFooterText: invoiceEffectiveFooterText,
-                          effectiveDisplayName: invoiceEffectiveDisplayName,
-                          effectiveClaim: invoiceEffectiveClaim,
-                          effectivePrimaryColor: invoiceEffectivePrimaryColor,
-                          effectiveAccentColor: invoiceEffectiveAccentColor,
-                          logoDocId: invoiceLogoDocId,
-                          bgFirstDocId: invoiceBgFirstDocId,
-                          bgOtherDocId: invoiceBgOtherDocId,
-                        ),
-                        const Divider(height: 32),
-                        _buildPdfTemplateCard(
-                          title: 'Angebote (quote)',
-                          entity: 'quote',
-                          headerCtrl: quoteHeaderCtrl,
-                          footerCtrl: quoteFooterCtrl,
-                          topFirstCtrl: quoteTopFirstCtrl,
-                          topOtherCtrl: quoteTopOtherCtrl,
-                          effectiveHeaderText: quoteEffectiveHeaderText,
-                          effectiveFooterText: quoteEffectiveFooterText,
-                          effectiveDisplayName: quoteEffectiveDisplayName,
-                          effectiveClaim: quoteEffectiveClaim,
-                          effectivePrimaryColor: quoteEffectivePrimaryColor,
-                          effectiveAccentColor: quoteEffectiveAccentColor,
-                          logoDocId: quoteLogoDocId,
-                          bgFirstDocId: quoteBgFirstDocId,
-                          bgOtherDocId: quoteBgOtherDocId,
-                        ),
-                        const Divider(height: 32),
-                        _buildPdfTemplateCard(
-                          title: 'Aufträge (sales_order)',
-                          entity: 'sales_order',
-                          headerCtrl: salesOrderHeaderCtrl,
-                          footerCtrl: salesOrderFooterCtrl,
-                          topFirstCtrl: salesOrderTopFirstCtrl,
-                          topOtherCtrl: salesOrderTopOtherCtrl,
-                          effectiveHeaderText: salesOrderEffectiveHeaderText,
-                          effectiveFooterText: salesOrderEffectiveFooterText,
-                          effectiveDisplayName: salesOrderEffectiveDisplayName,
-                          effectiveClaim: salesOrderEffectiveClaim,
-                          effectivePrimaryColor:
-                              salesOrderEffectivePrimaryColor,
-                          effectiveAccentColor:
-                              salesOrderEffectiveAccentColor,
-                          logoDocId: salesOrderLogoDocId,
-                          bgFirstDocId: salesOrderBgFirstDocId,
-                          bgOtherDocId: salesOrderBgOtherDocId,
-                        ),
-                      ]),
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _buildPdfTemplateCard(
+                              title: 'Bestellungen (purchase_order)',
+                              entity: 'purchase_order',
+                              headerCtrl: poHeaderCtrl,
+                              footerCtrl: poFooterCtrl,
+                              topFirstCtrl: poTopFirstCtrl,
+                              topOtherCtrl: poTopOtherCtrl,
+                              effectiveHeaderText: poEffectiveHeaderText,
+                              effectiveFooterText: poEffectiveFooterText,
+                              effectiveDisplayName: poEffectiveDisplayName,
+                              effectiveClaim: poEffectiveClaim,
+                              effectivePrimaryColor: poEffectivePrimaryColor,
+                              effectiveAccentColor: poEffectiveAccentColor,
+                              logoDocId: poLogoDocId,
+                              bgFirstDocId: poBgFirstDocId,
+                              bgOtherDocId: poBgOtherDocId,
+                            ),
+                            const Divider(height: 32),
+                            _buildPdfTemplateCard(
+                              title: 'Ausgangsrechnungen (invoice_out)',
+                              entity: 'invoice_out',
+                              headerCtrl: invoiceHeaderCtrl,
+                              footerCtrl: invoiceFooterCtrl,
+                              topFirstCtrl: invoiceTopFirstCtrl,
+                              topOtherCtrl: invoiceTopOtherCtrl,
+                              effectiveHeaderText: invoiceEffectiveHeaderText,
+                              effectiveFooterText: invoiceEffectiveFooterText,
+                              effectiveDisplayName: invoiceEffectiveDisplayName,
+                              effectiveClaim: invoiceEffectiveClaim,
+                              effectivePrimaryColor:
+                                  invoiceEffectivePrimaryColor,
+                              effectiveAccentColor: invoiceEffectiveAccentColor,
+                              logoDocId: invoiceLogoDocId,
+                              bgFirstDocId: invoiceBgFirstDocId,
+                              bgOtherDocId: invoiceBgOtherDocId,
+                            ),
+                            const Divider(height: 32),
+                            _buildPdfTemplateCard(
+                              title: 'Angebote (quote)',
+                              entity: 'quote',
+                              headerCtrl: quoteHeaderCtrl,
+                              footerCtrl: quoteFooterCtrl,
+                              topFirstCtrl: quoteTopFirstCtrl,
+                              topOtherCtrl: quoteTopOtherCtrl,
+                              effectiveHeaderText: quoteEffectiveHeaderText,
+                              effectiveFooterText: quoteEffectiveFooterText,
+                              effectiveDisplayName: quoteEffectiveDisplayName,
+                              effectiveClaim: quoteEffectiveClaim,
+                              effectivePrimaryColor: quoteEffectivePrimaryColor,
+                              effectiveAccentColor: quoteEffectiveAccentColor,
+                              logoDocId: quoteLogoDocId,
+                              bgFirstDocId: quoteBgFirstDocId,
+                              bgOtherDocId: quoteBgOtherDocId,
+                            ),
+                            const Divider(height: 32),
+                            _buildPdfTemplateCard(
+                              title: 'Aufträge (sales_order)',
+                              entity: 'sales_order',
+                              headerCtrl: salesOrderHeaderCtrl,
+                              footerCtrl: salesOrderFooterCtrl,
+                              topFirstCtrl: salesOrderTopFirstCtrl,
+                              topOtherCtrl: salesOrderTopOtherCtrl,
+                              effectiveHeaderText:
+                                  salesOrderEffectiveHeaderText,
+                              effectiveFooterText:
+                                  salesOrderEffectiveFooterText,
+                              effectiveDisplayName:
+                                  salesOrderEffectiveDisplayName,
+                              effectiveClaim: salesOrderEffectiveClaim,
+                              effectivePrimaryColor:
+                                  salesOrderEffectivePrimaryColor,
+                              effectiveAccentColor:
+                                  salesOrderEffectiveAccentColor,
+                              logoDocId: salesOrderLogoDocId,
+                              bgFirstDocId: salesOrderBgFirstDocId,
+                              bgOtherDocId: salesOrderBgOtherDocId,
+                            ),
+                          ]),
                     ),
                   ),
                 ],
@@ -1226,7 +1552,8 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  Widget _imageRow(String label, String? docId, {required VoidCallback onUpload, required VoidCallback onDelete}) {
+  Widget _imageRow(String label, String? docId,
+      {required VoidCallback onUpload, required VoidCallback onDelete}) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1237,14 +1564,25 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(width: 4),
           Text(docId.substring(0, docId.length >= 8 ? 8 : docId.length)),
           const SizedBox(width: 8),
-          TextButton.icon(onPressed: (){ widget.api.downloadDocument(docId, filename: 'preview'); }, icon: const Icon(Icons.visibility), label: const Text('Anzeigen')),
+          TextButton.icon(
+              onPressed: () {
+                widget.api.downloadDocument(docId, filename: 'preview');
+              },
+              icon: const Icon(Icons.visibility),
+              label: const Text('Anzeigen')),
           const SizedBox(width: 8),
-          TextButton.icon(onPressed: onDelete, icon: const Icon(Icons.delete), label: const Text('Entfernen')),
+          TextButton.icon(
+              onPressed: onDelete,
+              icon: const Icon(Icons.delete),
+              label: const Text('Entfernen')),
         ] else ...[
           const Text('— nicht gesetzt —'),
         ],
         const SizedBox(width: 8),
-        OutlinedButton.icon(onPressed: onUpload, icon: const Icon(Icons.upload), label: const Text('Hochladen')),
+        OutlinedButton.icon(
+            onPressed: onUpload,
+            icon: const Icon(Icons.upload),
+            label: const Text('Hochladen')),
       ],
     );
   }

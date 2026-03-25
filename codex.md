@@ -228,40 +228,19 @@ Task Breakdown
 
 // State
 
-Ich habe die Deep-Links im Projektdetail vereinheitlicht: projects_page.dart bietet im kaufmännischen Statusblock jetzt sowohl Projekt-Angebote öffnen als auch Projekt-Aufträge öffnen. Damit führen beide Buttons konsistent in bereits projektgefilterte Listen. Der bestehende Projekttest in sales_order_context_pages_test.dart prüft jetzt beide Navigationspfade.
+Die Folgeaktions-Semantik ist jetzt ebenfalls zentralisiert. material_follow_up_actions.dart kapselt Sichtbarkeit, Labels und Rechte für Übernehmen, Material, Bewegung, Bestellen, Ändern und Lösen, und projects_page.dart delegiert nur noch die Callbacks.
 
-Verifikation: pwsh -File .\scripts\client_tooling.ps1 -Action test -TestTarget test/sales_order_context_pages_test.dart lief erfolgreich mit All tests passed!.
+Verifikation: pwsh -File ..\scripts\client_tooling.ps1 -Action test -TestTarget test/sales_order_context_pages_test.dart in client/ lief erneut mit All tests passed!.
 
 === CODEX STATE [START] ===
-Aktueller Hierarchy-Pfad: Epic 2 / Feature 2.2 / Task 2.2.1 / Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 20
+Aktueller Hierarchy-Pfad: Epic 2 / Feature 2.2 / Task 2.2.1 / Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 54
 
-Erledigt:
+Erledigt: [2.2.1.3/7/8, 2.2.1.3/7/9, 2.2.1.3/7/10, 2.2.1.3/7/11, 2.2.1.3/7/12, 2.2.1.3/7/13, 2.2.1.3/7/14, 2.2.1.3/7/15, 2.2.1.3/7/16, 2.2.1.3/7/17, 2.2.1.3/7/18, 2.2.1.3/7/19, 2.2.1.3/7/20, 2.2.1.3/7/21, 2.2.1.3/7/22, 2.2.1.3/7/23, 2.2.1.3/7/24, 2.2.1.3/7/25, 2.2.1.3/7/26, 2.2.1.3/7/27, 2.2.1.3/7/28, 2.2.1.3/7/29, 2.2.1.3/7/30, 2.2.1.3/7/31, 2.2.1.3/7/32, 2.2.1.3/7/33, 2.2.1.3/7/34, 2.2.1.3/7/35, 2.2.1.3/7/36, 2.2.1.3/7/37, 2.2.1.3/7/38, 2.2.1.3/7/39, 2.2.1.3/7/40, 2.2.1.3/7/41, 2.2.1.3/7/42, 2.2.1.3/7/43, 2.2.1.3/7/44, 2.2.1.3/7/45, 2.2.1.3/7/46, 2.2.1.3/7/47, 2.2.1.3/7/48, 2.2.1.3/7/49, 2.2.1.3/7/50, 2.2.1.3/7/51, 2.2.1.3/7/52, 2.2.1.3/7/53, 2.2.1.3/7/54]
 
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 8: Teilfaktura-/Mehrfachbeleg-UX in der Auftragsliste verdichten, inklusive Schnellfilter und Restbetragsanzeige
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 9: Flutter-Tooling/Teststabilisierung für Folgebeleg-/Teilfaktura-Kontexttests und zugehörige UI-Regressionen beheben
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 10: Responsive-Härtung der Quote-/Auftrags-/Rechnungsdetailseiten an den zuvor aufgefallenen Overflow-Stellen
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 11: Kleine-Viewport-Regressionstests ergänzen und verbleibende Responsive-Lücken in den Kontextseiten schließen
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 12: Entwickler-Tooling für Flutter/Dart lokal vereinheitlichen, inklusive Repo-Skript und Doku für direkte Verifikation
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 13: Folgebeleg-/Teilfaktura-Kontext auf Dashboard-Kennzahlen ausweiten und testbar absichern
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 14: Folgebeleg-Kontext in die Rechnungsübersicht übernehmen, inklusive Quick-Filter und Quellenhinweis in der Liste
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 15: Angebotsübersicht um Folgebeleg-Signale und Quick-Filter für bereits überführte Angebote erweitern
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 16: Projektdetail um kaufmännische Folgebeleg-/Teilfaktura-Kennzahlen aus Angeboten und Aufträgen ergänzen
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 17: Gemeinsame Berechnungsbasis für kaufmännische Folgebeleg-/Teilfaktura-Kennzahlen in Dashboard und Projektdetail extrahieren
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 18: Wiederverwendbare UI-Bausteine für kaufmännische Kennzahlblöcke in Dashboard und Projektdetail einführen
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 19: Projektnahe kaufmännische Summary-Card um direkte Navigation in die projektbezogene Auftragsübersicht erweitern
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 20: Deep-Link-Semantik im Projektdetail zwischen projektbezogenen Angebots- und Auftragslisten vereinheitlichen
+Nächste zu bearbeitende Subtask: Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 55: Zentrale Folgeaktions-Helper auf weitere materialnahe Oberflächen ausdehnen, damit Materialdetail- und Projektpfade dieselbe Action-Konfiguration inklusive Rechteprüfung und Zielwahl wiederverwenden
 
-Nächste zu bearbeitende Subtask:
-
-Subtask 2.2.1.3 / Micro-Subtask 7 / Micro-Subtask 21: Analoge Deep-Links oder Initialfilter zwischen Rechnung und Auftrag weiter harmonisieren, damit Folgebeleg-Navigation entlang des gesamten Belegflusses konsistent ist
-
-Aktueller Git-Stand:
-
-client/lib/pages/projects_page.dart bietet im kaufmännischen Statusblock jetzt direkte projektbezogene Einstiege in Angebots- und Auftragslisten
-client/test/sales_order_context_pages_test.dart prüft jetzt beide Navigationspfade aus dem Projektdetail
-Die projektbezogene Initialfilterung in QuotesPage und SalesOrdersPage wird damit konsistent genutzt
-Gezielter Flutter-Testlauf über scripts/client_tooling.ps1 bleibt vollständig erfolgreich
+Aktueller Git-Stand: Neuer Helper client/lib/material_follow_up_actions.dart bündelt die UI-Semantik für materialbezogene Folgeaktionen. client/lib/pages/projects_page.dart verwendet diesen Helper jetzt für verknüpfte und nicht verknüpfte Projektmaterialien sowie für die Row-Tap-Freigabe auf Materialdetails. Die bestehende Kontextsuite bleibt vollständig grün.
 
 Zusammenfassung für Fortsetzung (max 1200 Tokens):
-Die Deep-Link-Semantik wurde im Projektdetail jetzt konsistent auf zwei projektbezogene Arbeitslisten ausgedehnt. Bereits vorhanden waren die projektbezogenen Initialfilter auf QuotesPage (initialProjectId) und SalesOrdersPage (initialProjectId). Diese Fähigkeiten werden jetzt im Projektdetail explizit nutzbar gemacht: Die kaufmännische Summary-Card zeigt, abhängig von Berechtigungen, sowohl Projekt-Angebote öffnen als auch Projekt-Aufträge öffnen. Beide Buttons öffnen die jeweilige Zielseite bereits mit gesetztem Projektfilter, sodass Nutzer nicht mehr manuell nach Projekt-ID filtern müssen. Der bestehende Projekttest in sales_order_context_pages_test.dart prüft jetzt die Sichtbarkeit der beiden Buttons und den tatsächlichen Navigationssprung erst in die Angebotsliste und dann zurück in die projektbezogene Auftragsliste. Die gesamte Kontextsuite bleibt grün. Die logisch nächste Fortsetzung ist nicht mehr projektzentriert, sondern entlang des Belegflusses: Rechnung, Auftrag und ggf. Angebot sollten Initialfilter und Deep-Links ähnlich konsistent unterstützen, z. B. ein einheitlicher Einstieg von auftragsbezogenen Rechnungen in Auftragssichten oder umgekehrt, damit Folgebeleg-Navigation über alle kaufmännischen Oberflächen gleich funktioniert.
-=== CODEX STATE [ENDE]
+Micro-Subtask 54 hat die Zentralisierung von reinen Destinationen auf die eigentliche Folgeaktionslogik erweitert. Bisher war die Sichtbarkeits- und Label-Semantik für projektnahe Materialaktionen direkt in _buildMaterialActions(...) in projects_page.dart eingebettet. Das ist jetzt in den neuen Helper client/lib/material_follow_up_actions.dart ausgelagert. Dort kapseln buildMaterialFollowUpActionButtons(...) und canOpenLinkedMaterialDetail(...) die Regeln dafür, welche Aktionen in welchem Zustand sichtbar sind: bei nicht verknüpften Materialien nur Übernehmen und nur mit Link-/Schreibrecht; bei verknüpften Materialien fachlich getrennt Material über materials.read, Bewegung über stock_movements.write, Bestellen über purchase_orders.write, sowie Ändern/Lösen nur mit Verwaltungsrecht. projects_page.dart delegiert nun nur noch die konkreten Callbacks und rendert die vom Helper gelieferten Widgets. Zusätzlich verwendet _openLinkedMaterialFromRow(...) jetzt denselben zentralen Rechtecheck wie die Buttons, damit Row-Tap und sichtbare Aktionsfläche dieselbe Semantik haben. Die vorhandenen Widget-Tests in sales_order_context_pages_test.dart decken diese Semantik bereits indirekt ab, insbesondere die Fälle für sichtbare Folgeaktionen ohne projects.write; ein erneuter Lauf der gesamten Kontextsuite war vollständig erfolgreich. Sinnvolle Fortsetzung: dieselbe zentrale Action-Semantik auf weitere materialnahe Oberflächen ausdehnen, vor allem dort, wo heute noch einzelne Buttons lokal an buildStockMovementsPage, Materialdetail oder Beschaffung gebunden sind.
+=== CODEX STATE [ENDE] ===

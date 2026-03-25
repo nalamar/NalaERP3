@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_context.dart';
+import '../commercial_destinations.dart';
+import '../material_follow_up_actions.dart';
+import '../project_navigation.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import '../web/browser.dart' as browser;
 import 'dart:convert';
-import 'quotes_page.dart';
-import 'sales_orders_page.dart';
 
 String _projectErrorMessage(Object error,
     {String fallback = 'Vorgang fehlgeschlagen'}) {
@@ -350,6 +351,9 @@ class ProjectDetailPage extends StatefulWidget {
 }
 
 class _ProjectDetailPageState extends State<ProjectDetailPage> {
+  late final ProjectCommercialNavigationContext _navigation =
+      ProjectCommercialNavigationContext.fromProject(widget.project);
+
   bool _loading = true;
   String? _error;
   List<dynamic> _phases = const [];
@@ -467,10 +471,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           const SizedBox(height: 12),
           if (widget.canWrite)
             FilledButton.icon(
-                onPressed: () {/* TODO: Bestellung */},
+                onPressed: _openPurchaseOrderFlow,
                 icon: const Icon(Icons.shopping_cart_checkout_rounded),
                 label: const Text('Bestellung')),
           const SizedBox(height: 8),
+          if (widget.api.hasPermission('stock_movements.write'))
+            FilledButton.icon(
+                onPressed: _openStockMovementFlow,
+                icon: const Icon(Icons.swap_horiz_rounded),
+                label: const Text('Materialbewegung')),
+          if (widget.api.hasPermission('stock_movements.write'))
+            const SizedBox(height: 8),
           if (widget.api.hasPermission('quotes.write'))
             FilledButton.icon(
                 onPressed: _openQuoteCreateFlow,
@@ -549,10 +560,33 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _openQuoteCreateFlow() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuotesPage(
+        builder: (_) => buildQuotesPage(
           api: widget.api,
-          initialProjectId: widget.project['id']?.toString(),
+          initialFilters: _navigation.projectFilters,
           openCreateOnStart: true,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPurchaseOrderFlow() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildPurchaseOrderCreateDestination(
+          api: widget.api,
+          initialContext: _navigation.purchaseOrdersContext,
+          initialCreatePrefill: _navigation.purchaseOrderPrefill,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openStockMovementFlow() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildMaterialwirtschaftScreenDestination(
+          api: widget.api,
+          initialStockMovementPrefill: _navigation.stockMovementPrefill,
         ),
       ),
     );
@@ -561,9 +595,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _openProjectQuotes() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuotesPage(
+        builder: (_) => buildQuotesPage(
           api: widget.api,
-          initialProjectId: widget.project['id']?.toString(),
+          initialFilters: _navigation.projectFilters,
         ),
       ),
     );
@@ -572,9 +606,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _openProjectSalesOrders() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SalesOrdersPage(
+        builder: (_) => buildSalesOrdersPage(
           api: widget.api,
-          initialProjectId: widget.project['id']?.toString(),
+          initialFilters: _navigation.projectFilters,
         ),
       ),
     );
@@ -1280,6 +1314,9 @@ class _VariantTileState extends State<_VariantTile> {
                       .toString()),
                   subtitle:
                       Text('Länge $lenStr $lenUnit, Menge $qtyStr$linkedStr'),
+                  onTap: (p['material_id'] as String?)?.isNotEmpty == true
+                      ? () => _openLinkedMaterialFromRow(p)
+                      : null,
                   trailing: _buildMaterialActions(p, 'profiles'),
                 );
               })),
@@ -1298,6 +1335,10 @@ class _VariantTileState extends State<_VariantTile> {
                                 .toString()),
                         subtitle: Text(
                             'Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (a)['material_nummer'] : ''}'),
+                        onTap: (a['material_id'] as String?)?.isNotEmpty == true
+                            ? () => _openLinkedMaterialFromRow(
+                                a as Map<String, dynamic>)
+                            : null,
                         trailing: _buildMaterialActions(
                             a as Map<String, dynamic>, 'articles'),
                       ))),
@@ -1315,6 +1356,10 @@ class _VariantTileState extends State<_VariantTile> {
                                 .toString()),
                         subtitle: Text(
                             'Menge ${(g)['qty'] ?? 1}${((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (g)['material_nummer'] : ''}'),
+                        onTap: (g['material_id'] as String?)?.isNotEmpty == true
+                            ? () => _openLinkedMaterialFromRow(
+                                g as Map<String, dynamic>)
+                            : null,
                         trailing: _buildMaterialActions(
                             g as Map<String, dynamic>, 'glass'),
                       ))),
@@ -1426,24 +1471,77 @@ class _VariantTileState extends State<_VariantTile> {
   }
 
   Widget _buildMaterialActions(Map<String, dynamic> it, String kind) {
-    if (!widget.canWrite) {
+    final linked = (it['material_id'] as String?)?.isNotEmpty == true;
+    final actions = buildMaterialFollowUpActionButtons(
+      api: widget.api,
+      linked: linked,
+      canManageLink: widget.canWrite,
+      isBusy: _saving,
+      onAdopt: () => _adoptMaterial(it, kind),
+      onOpenMaterial: () => _openMaterialDetailForMaterial(it),
+      onOpenStockMovement: () => _openStockMovementForMaterial(it),
+      onOpenPurchaseOrder: () => _openPurchaseOrderForMaterial(it),
+      onChangeLink: () => _changeLink(it, kind),
+      onUnlink: () => _unlink(it, kind),
+    );
+    if (actions.isEmpty) {
       return const SizedBox.shrink();
     }
-    final linked = (it['material_id'] as String?)?.isNotEmpty == true;
-    if (!linked) {
-      return OutlinedButton.icon(
-          onPressed: _saving ? null : () => _adoptMaterial(it, kind),
-          icon: const Icon(Icons.download_done_rounded),
-          label: const Text('Übernehmen'));
-    }
-    return Wrap(spacing: 6, children: [
-      OutlinedButton(
-          onPressed: _saving ? null : () => _changeLink(it, kind),
-          child: const Text('Ändern')),
-      OutlinedButton(
-          onPressed: _saving ? null : () => _unlink(it, kind),
-          child: const Text('Lösen')),
-    ]);
+    return Wrap(spacing: 6, children: actions);
+  }
+
+  void _openLinkedMaterialFromRow(Map<String, dynamic> it) {
+    if (!canOpenLinkedMaterialDetail(widget.api)) return;
+    _openMaterialDetailForMaterial(it);
+  }
+
+  LinkedProjectMaterialNavigationContext? _linkedMaterialContext(
+          Map<String, dynamic> it) =>
+      LinkedProjectMaterialNavigationContext.fromVariantMaterial(
+        variant: widget.variant,
+        item: it,
+        parseNum: _numVal,
+      );
+
+  Future<void> _openMaterialDetailForMaterial(Map<String, dynamic> it) async {
+    final materialContext = _linkedMaterialContext(it);
+    if (materialContext == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildMaterialDetailDestination(
+          api: widget.api,
+          materialId: materialContext.materialId,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openStockMovementForMaterial(Map<String, dynamic> it) async {
+    final materialContext = _linkedMaterialContext(it);
+    if (materialContext == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildMaterialStockMovementDestination(
+          api: widget.api,
+          materialId: materialContext.materialId,
+          reference: materialContext.movementReference,
+          reason: 'Projektbedarf',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPurchaseOrderForMaterial(Map<String, dynamic> it) async {
+    final materialContext = _linkedMaterialContext(it);
+    if (materialContext == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildPurchaseOrderCreateDestination(
+          api: widget.api,
+          initialCreatePrefill: materialContext.purchaseOrderPrefill,
+        ),
+      ),
+    );
   }
 
   Future<void> _unlink(Map<String, dynamic> it, String kind) async {

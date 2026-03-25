@@ -2,11 +2,20 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_destinations.dart';
+import '../commercial_navigation.dart';
 import '../web/browser.dart' as browser;
 
 class MaterialsPage extends StatefulWidget {
-  const MaterialsPage({super.key, required this.api});
+  const MaterialsPage({
+    super.key,
+    required this.api,
+    this.initialContext,
+    this.openCreateOnStart = false,
+  });
   final ApiClient api;
+  final MaterialListContext? initialContext;
+  final bool openCreateOnStart;
 
   @override
   State<MaterialsPage> createState() => _MaterialsPageState();
@@ -29,6 +38,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
   List<String> types = [];
   List<String> categories = [];
   List<Map<String, dynamic>> units = [];
+  bool _initialSelectionHandled = false;
+  bool _initialCreateHandled = false;
 
   final formKey = GlobalKey<FormState>();
   final nummerCtrl = TextEditingController();
@@ -43,7 +54,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
   final hoeheCtrl = TextEditingController();
   final katCtrl = TextEditingController(text: '');
 
-  String _errorMessage(Object error, {String fallback = 'Vorgang fehlgeschlagen'}) {
+  String _errorMessage(Object error,
+      {String fallback = 'Vorgang fehlgeschlagen'}) {
     if (error is ApiException) {
       switch (error.code) {
         case 'validation_error':
@@ -61,6 +73,12 @@ class _MaterialsPageState extends State<MaterialsPage> {
   @override
   void initState() {
     super.initState();
+    final initialSearch = widget.initialContext?.effectiveSearchQuery;
+    if (initialSearch != null) {
+      searchCtrl.text = initialSearch;
+    }
+    filterTyp = widget.initialContext?.normalizedType;
+    filterKat = widget.initialContext?.normalizedCategory;
     _reload();
     _loadFacets();
   }
@@ -70,8 +88,23 @@ class _MaterialsPageState extends State<MaterialsPage> {
       final t = await widget.api.listMaterialTypes();
       final c = await widget.api.listMaterialCategories();
       final u = await widget.api.listUnits();
-      setState(() { types = t; categories = c; units = u; });
-    } catch (e) { debugPrint('Facets error: $e'); }
+      setState(() {
+        types = t;
+        categories = c;
+        units = u;
+      });
+    } catch (e) {
+      debugPrint('Facets error: $e');
+    }
+    if (widget.openCreateOnStart &&
+        !_initialCreateHandled &&
+        widget.api.hasPermission('materials.write')) {
+      _initialCreateHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openCreateDialog();
+      });
+    }
   }
 
   Future<void> _reload() async {
@@ -82,13 +115,27 @@ class _MaterialsPageState extends State<MaterialsPage> {
         q: searchCtrl.text.trim(),
         typ: filterTyp == null || filterTyp!.isEmpty ? null : filterTyp,
         kategorie: filterKat == null || filterKat!.isEmpty ? null : filterKat,
-        limit: limit, offset: offset,
+        limit: limit,
+        offset: offset,
       );
+      final initialDetailId = widget.initialContext?.normalizedDetailId;
+      if (!_initialSelectionHandled &&
+          initialDetailId != null &&
+          items.any((entry) =>
+              (entry as Map<String, dynamic>)['id'] == initialDetailId)) {
+        _initialSelectionHandled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _select(initialDetailId);
+        });
+      }
     } catch (e) {
       if (mounted) {
         debugPrint('Fehler beim Laden Materialien: $e');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_errorMessage(e, fallback: 'Materialien konnten nicht geladen werden'))),
+          SnackBar(
+              content: Text(_errorMessage(e,
+                  fallback: 'Materialien konnten nicht geladen werden'))),
         );
       }
     } finally {
@@ -102,11 +149,14 @@ class _MaterialsPageState extends State<MaterialsPage> {
       q: q.isNotEmpty ? q : null,
       typ: filterTyp == null || filterTyp!.isEmpty ? null : filterTyp,
       kategorie: filterKat == null || filterKat!.isEmpty ? null : filterKat,
-      limit: limit, offset: offset + limit,
+      limit: limit,
+      offset: offset + limit,
     );
     if (next.isNotEmpty) {
       offset += limit;
-      setState(() { items.addAll(next); });
+      setState(() {
+        items.addAll(next);
+      });
     }
   }
 
@@ -115,7 +165,9 @@ class _MaterialsPageState extends State<MaterialsPage> {
     selected = await widget.api.getMaterial(id);
     stock = await widget.api.stockByMaterial(id);
     // Lade Lagerliste, um Namen/Codes statt IDs anzeigen zu können
-    try { warehouses = await widget.api.listWarehouses(); } catch (_) {}
+    try {
+      warehouses = await widget.api.listWarehouses();
+    } catch (_) {}
     docs = await widget.api.listMaterialDocuments(id);
     setState(() {});
   }
@@ -125,41 +177,63 @@ class _MaterialsPageState extends State<MaterialsPage> {
     final m = selected ?? await widget.api.getMaterial(selectedId!);
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) => _EditMaterialDialog(initial: m, api: widget.api, units: units),
+      builder: (_) =>
+          _EditMaterialDialog(initial: m, api: widget.api, units: units),
     );
     if (res == null) return;
     try {
       await widget.api.updateMaterial(selectedId!, res);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material aktualisiert')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Material aktualisiert')));
       await _select(selectedId!);
       await _reload();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorMessage(e, fallback: 'Aktualisieren fehlgeschlagen'))),
+        SnackBar(
+            content: Text(
+                _errorMessage(e, fallback: 'Aktualisieren fehlgeschlagen'))),
       );
     }
   }
 
   Future<void> _deleteSelected() async {
     if (selectedId == null) return;
-    final ok = await showDialog<bool>(context: context, builder: (_) => AlertDialog(title: const Text('Material löschen'), content: const Text('Wirklich löschen? (wird deaktiviert)'), actions: [TextButton(onPressed: ()=> Navigator.pop(context, false), child: const Text('Abbrechen')), FilledButton(onPressed: ()=> Navigator.pop(context, true), child: const Text('Löschen'))]));
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+                title: const Text('Material löschen'),
+                content: const Text('Wirklich löschen? (wird deaktiviert)'),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: const Text('Abbrechen')),
+                  FilledButton(
+                      onPressed: () => Navigator.pop(context, true),
+                      child: const Text('Löschen'))
+                ]));
     if (ok != true) return;
     try {
       await widget.api.deleteMaterial(selectedId!);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material gelöscht')));
-      selectedId = null; selected = null; stock = []; docs = [];
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Material gelöscht')));
+      selectedId = null;
+      selected = null;
+      stock = [];
+      docs = [];
       await _reload();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_errorMessage(e, fallback: 'Löschen fehlgeschlagen'))),
+        SnackBar(
+            content:
+                Text(_errorMessage(e, fallback: 'Löschen fehlgeschlagen'))),
       );
     }
   }
 
-  String _warehouseLabel(String id){
-    for (final w in warehouses){
+  String _warehouseLabel(String id) {
+    for (final w in warehouses) {
       final m = w as Map<String, dynamic>;
-      if (m['id'] == id){
+      if (m['id'] == id) {
         final code = (m['code'] ?? '').toString();
         final name = (m['name'] ?? '').toString();
         if (name.isNotEmpty && code.isNotEmpty) return '$code – $name';
@@ -181,16 +255,20 @@ class _MaterialsPageState extends State<MaterialsPage> {
       'werkstoffnummer': wnrCtrl.text.trim(),
       'einheit': (_unitSel ?? '').trim(),
       'dichte': double.tryParse(dichteCtrl.text.trim()) ?? 0,
-      if (laengeCtrl.text.trim().isNotEmpty) 'length_mm': double.tryParse(laengeCtrl.text.trim()),
-      if (breiteCtrl.text.trim().isNotEmpty) 'width_mm': double.tryParse(breiteCtrl.text.trim()),
-      if (hoeheCtrl.text.trim().isNotEmpty) 'height_mm': double.tryParse(hoeheCtrl.text.trim()),
+      if (laengeCtrl.text.trim().isNotEmpty)
+        'length_mm': double.tryParse(laengeCtrl.text.trim()),
+      if (breiteCtrl.text.trim().isNotEmpty)
+        'width_mm': double.tryParse(breiteCtrl.text.trim()),
+      if (hoeheCtrl.text.trim().isNotEmpty)
+        'height_mm': double.tryParse(hoeheCtrl.text.trim()),
       'kategorie': katCtrl.text.trim(),
       'attribute': {},
     };
     try {
       await widget.api.createMaterial(body);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Material angelegt')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Material angelegt')));
       }
       nummerCtrl.clear();
       bezCtrl.clear();
@@ -203,29 +281,44 @@ class _MaterialsPageState extends State<MaterialsPage> {
       }
     }
   }
+
   Future<void> _uploadFile() async {
     if (selectedId == null) return;
     final picked = await browser.pickFile(accept: '*/*');
     if (picked == null) return;
     try {
       await widget.api.uploadMaterialDocument(
-        selectedId!, picked.filename, picked.bytes,
+        selectedId!,
+        picked.filename,
+        picked.bytes,
         contentType: picked.contentType,
       );
       docs = await widget.api.listMaterialDocuments(selectedId!);
       if (mounted) setState(() {});
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(_errorMessage(e, fallback: 'Upload fehlgeschlagen'))),
+          SnackBar(
+              content:
+                  Text(_errorMessage(e, fallback: 'Upload fehlgeschlagen'))),
         );
       }
     }
   }
+
   Future<void> _openCreateDialog() async {
+    final prefilledType = filterTyp?.trim().isNotEmpty == true
+        ? filterTyp!.trim()
+        : widget.initialContext?.normalizedType;
+    typCtrl.text = prefilledType ??
+        (typCtrl.text.trim().isEmpty ? 'rohstoff' : typCtrl.text.trim());
+    katCtrl.text = filterKat?.trim().isNotEmpty == true
+        ? filterKat!.trim()
+        : (widget.initialContext?.normalizedCategory ?? katCtrl.text.trim());
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -241,44 +334,118 @@ class _MaterialsPageState extends State<MaterialsPage> {
                 children: [
                   SizedBox(
                     width: 160,
-                    child: TextFormField(controller: nummerCtrl, decoration: const InputDecoration(labelText: 'Nummer'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null),
+                    child: TextFormField(
+                        controller: nummerCtrl,
+                        decoration: const InputDecoration(labelText: 'Nummer'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Pflichtfeld'
+                            : null),
                   ),
                   SizedBox(
                     width: 220,
-                    child: TextFormField(controller: bezCtrl, decoration: const InputDecoration(labelText: 'Bezeichnung'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null),
+                    child: TextFormField(
+                        controller: bezCtrl,
+                        decoration:
+                            const InputDecoration(labelText: 'Bezeichnung'),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Pflichtfeld'
+                            : null),
                   ),
-                  SizedBox(width: 140, child: TextFormField(controller: typCtrl, decoration: const InputDecoration(labelText: 'Typ'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
-                  SizedBox(width: 160, child: DropdownButtonFormField<String>(
-                    isDense: true,
-                    decoration: const InputDecoration(labelText: 'Einheit'),
-                    value: _unitSel,
-                    items: [for (final u in units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
-                    onChanged: (v){ _unitSel = v; },
-                    validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,
-                  )),
-                  SizedBox(width: 120, child: TextFormField(controller: dichteCtrl, decoration: const InputDecoration(labelText: 'Dichte'),
-                    validator: (v){
-                      if (v==null||v.trim().isEmpty) return null;
-                      final d = double.tryParse(v.trim());
-                      if (d==null) return 'Zahl erforderlich';
-                      if (d<0) return '≥ 0 erwartet';
-                      return null;
-                    },
-                  )),
-                  SizedBox(width: 140, child: TextFormField(controller: normCtrl, decoration: const InputDecoration(labelText: 'Norm'))),
-                  SizedBox(width: 180, child: TextFormField(controller: wnrCtrl, decoration: const InputDecoration(labelText: 'Werkstoffnummer'))),
-                  SizedBox(width: 160, child: TextFormField(controller: katCtrl, decoration: const InputDecoration(labelText: 'Kategorie'))),
-                  SizedBox(width: 120, child: TextFormField(controller: laengeCtrl, decoration: const InputDecoration(labelText: 'Länge (mm)'), keyboardType: TextInputType.number)),
-                  SizedBox(width: 120, child: TextFormField(controller: breiteCtrl, decoration: const InputDecoration(labelText: 'Breite (mm)'), keyboardType: TextInputType.number)),
-                  SizedBox(width: 120, child: TextFormField(controller: hoeheCtrl, decoration: const InputDecoration(labelText: 'Höhe (mm)'), keyboardType: TextInputType.number)),
+                  SizedBox(
+                      width: 140,
+                      child: TextFormField(
+                          controller: typCtrl,
+                          decoration: const InputDecoration(labelText: 'Typ'),
+                          validator: (v) => (v == null || v.trim().isEmpty)
+                              ? 'Pflichtfeld'
+                              : null)),
+                  SizedBox(
+                      width: 160,
+                      child: DropdownButtonFormField<String>(
+                        isDense: true,
+                        decoration: const InputDecoration(labelText: 'Einheit'),
+                        value: _unitSel,
+                        items: [
+                          for (final u in units)
+                            DropdownMenuItem<String>(
+                                value: (u['code'] ?? '').toString(),
+                                child: Text((u['code'] ?? '').toString()))
+                        ],
+                        onChanged: (v) {
+                          _unitSel = v;
+                        },
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Pflichtfeld'
+                            : null,
+                      )),
+                  SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                        controller: dichteCtrl,
+                        decoration: const InputDecoration(labelText: 'Dichte'),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return null;
+                          final d = double.tryParse(v.trim());
+                          if (d == null) return 'Zahl erforderlich';
+                          if (d < 0) return '≥ 0 erwartet';
+                          return null;
+                        },
+                      )),
+                  SizedBox(
+                      width: 140,
+                      child: TextFormField(
+                          controller: normCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Norm'))),
+                  SizedBox(
+                      width: 180,
+                      child: TextFormField(
+                          controller: wnrCtrl,
+                          decoration: const InputDecoration(
+                              labelText: 'Werkstoffnummer'))),
+                  SizedBox(
+                      width: 160,
+                      child: TextFormField(
+                          controller: katCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Kategorie'))),
+                  SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                          controller: laengeCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Länge (mm)'),
+                          keyboardType: TextInputType.number)),
+                  SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                          controller: breiteCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Breite (mm)'),
+                          keyboardType: TextInputType.number)),
+                  SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                          controller: hoeheCtrl,
+                          decoration:
+                              const InputDecoration(labelText: 'Höhe (mm)'),
+                          keyboardType: TextInputType.number)),
                 ],
               ),
             ),
           ),
         ),
         actions: [
-          TextButton(onPressed: ()=> Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
-          FilledButton.icon(onPressed: () async { await _create(); if (mounted) Navigator.of(ctx).pop(); }, icon: const Icon(Icons.check), label: const Text('Anlegen')),
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Abbrechen')),
+          FilledButton.icon(
+              onPressed: () async {
+                await _create();
+                if (mounted) Navigator.of(ctx).pop();
+              },
+              icon: const Icon(Icons.check),
+              label: const Text('Anlegen')),
         ],
       ),
     );
@@ -301,98 +468,173 @@ class _MaterialsPageState extends State<MaterialsPage> {
             flex: 2,
             child: Column(
               children: [
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    const Text('Materialien', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                    const Spacer(),
-                    SizedBox(width: 260, height: 40, child: TextField(
-                      controller: searchCtrl,
-                      textAlignVertical: TextAlignVertical.center,
-                      decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), prefixIcon: const Icon(Icons.search), hintText: 'Suchen (Nummer/Bezeichnung)',
-                        suffixIcon: IconButton(icon: const Icon(Icons.clear), onPressed: () { searchCtrl.clear(); _reload(); })),
-                      onSubmitted: (_) => _reload(),
-                    )),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
-                      isDense: true,
-                      decoration: const InputDecoration(isDense: true, labelText: 'Typ', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-                      value: filterTyp,
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final t in types) DropdownMenuItem<String?>(value: t, child: Text(t)),
-                      ],
-                      onChanged: (v){ setState((){ filterTyp = v; }); _reload(); },
-                    )),
-                    const SizedBox(width: 8),
-                    SizedBox(width: 180, height: 40, child: DropdownButtonFormField<String?>(
-                      isDense: true,
-                      decoration: const InputDecoration(isDense: true, labelText: 'Kategorie', contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-                      value: filterKat,
-                      items: [
-                        const DropdownMenuItem<String?>(value: null, child: Text('Alle')),
-                        for (final k in categories) DropdownMenuItem<String?>(value: k, child: Text(k)),
-                      ],
-                      onChanged: (v){ setState((){ filterKat = v; }); _reload(); },
-                    )),
-                    const SizedBox(width: 8),
-                    SizedBox(height: 40, child: FilledButton.tonal(onPressed: _reload, style: FilledButton.styleFrom(minimumSize: const Size(100, 40)), child: const Text('Suchen'))),
-                    const SizedBox(width: 4),
-                    SizedBox(height: 40, width: 40, child: IconButton(onPressed: _reload, padding: EdgeInsets.zero, constraints: const BoxConstraints.tightFor(width: 40, height: 40), icon: const Icon(Icons.refresh))),
-                  ],
-                ),
-              ),
-              if (loading) const LinearProgressIndicator(minHeight: 2),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: items.length + 1,
-                  itemBuilder: (ctx, i) {
-                    if (i < items.length) {
-                      final m = items[i] as Map<String, dynamic>;
-                      final sel = m['id'] == selectedId;
-                      String dims(){
-                        String fmt(num? v){
-                          if (v == null) return '';
-                          final d = v.toDouble();
-                          if ((d - d.round()).abs() < 0.001) return d.round().toString();
-                          return d.toStringAsFixed(2).replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
-                        }
-                        final l = m['length_mm'] as num?;
-                        final w = m['width_mm'] as num?;
-                        final h = m['height_mm'] as num?;
-                        final parts = <String>[];
-                        if (l != null) parts.add(fmt(l));
-                        if (w != null) parts.add(fmt(w));
-                        if (h != null) parts.add(fmt(h));
-                        if (parts.isEmpty) return '';
-                        return parts.join('×') + ' mm';
-                      }
-                      final dim = dims();
-                      return ListTile(
-                        selected: sel,
-                        title: Text('${m['bezeichnung']}'),
-                        subtitle: Text([
-                          '${m['nummer']}',
-                          '${m['typ']}',
-                          if (dim.isNotEmpty) dim else '${m['einheit']}',
-                        ].where((e)=> (e!=null && e.toString().trim().isNotEmpty)).join('  •  ')),
-                        onTap: () => _select(m['id'] as String),
-                      );
-                    }
-                    final canLoadMore = items.isNotEmpty && items.length % limit == 0;
-                    if (!canLoadMore) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Center(
-                        child: FilledButton.icon(onPressed: _loadMore, icon: const Icon(Icons.expand_more), label: const Text('Mehr laden')),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(right: 12),
+                        child: Text('Materialien',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
-                    );
-                  },
+                      SizedBox(
+                          width: 260,
+                          height: 40,
+                          child: TextField(
+                            controller: searchCtrl,
+                            textAlignVertical: TextAlignVertical.center,
+                            decoration: InputDecoration(
+                                isDense: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10),
+                                prefixIcon: const Icon(Icons.search),
+                                hintText: 'Suchen (Nummer/Bezeichnung)',
+                                suffixIcon: IconButton(
+                                    icon: const Icon(Icons.clear),
+                                    onPressed: () {
+                                      searchCtrl.clear();
+                                      _reload();
+                                    })),
+                            onSubmitted: (_) => _reload(),
+                          )),
+                      SizedBox(
+                          width: 180,
+                          height: 40,
+                          child: DropdownButtonFormField<String?>(
+                            isDense: true,
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'Typ',
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10)),
+                            value: types.contains(filterTyp) ? filterTyp : null,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                  value: null, child: Text('Alle')),
+                              for (final t in types)
+                                DropdownMenuItem<String?>(
+                                    value: t, child: Text(t)),
+                            ],
+                            onChanged: (v) {
+                              setState(() {
+                                filterTyp = v;
+                              });
+                              _reload();
+                            },
+                          )),
+                      SizedBox(
+                          width: 180,
+                          height: 40,
+                          child: DropdownButtonFormField<String?>(
+                            isDense: true,
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'Kategorie',
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 10)),
+                            value: categories.contains(filterKat)
+                                ? filterKat
+                                : null,
+                            items: [
+                              const DropdownMenuItem<String?>(
+                                  value: null, child: Text('Alle')),
+                              for (final k in categories)
+                                DropdownMenuItem<String?>(
+                                    value: k, child: Text(k)),
+                            ],
+                            onChanged: (v) {
+                              setState(() {
+                                filterKat = v;
+                              });
+                              _reload();
+                            },
+                          )),
+                      SizedBox(
+                          height: 40,
+                          child: FilledButton.tonal(
+                              onPressed: _reload,
+                              style: FilledButton.styleFrom(
+                                  minimumSize: const Size(100, 40)),
+                              child: const Text('Suchen'))),
+                      SizedBox(
+                          height: 40,
+                          width: 40,
+                          child: IconButton(
+                              onPressed: _reload,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints.tightFor(
+                                  width: 40, height: 40),
+                              icon: const Icon(Icons.refresh))),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+                if (loading) const LinearProgressIndicator(minHeight: 2),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: items.length + 1,
+                    itemBuilder: (ctx, i) {
+                      if (i < items.length) {
+                        final m = items[i] as Map<String, dynamic>;
+                        final sel = m['id'] == selectedId;
+                        String dims() {
+                          String fmt(num? v) {
+                            if (v == null) return '';
+                            final d = v.toDouble();
+                            if ((d - d.round()).abs() < 0.001)
+                              return d.round().toString();
+                            return d
+                                .toStringAsFixed(2)
+                                .replaceAll(RegExp(r'0+$'), '')
+                                .replaceAll(RegExp(r'\.$'), '');
+                          }
+
+                          final l = m['length_mm'] as num?;
+                          final w = m['width_mm'] as num?;
+                          final h = m['height_mm'] as num?;
+                          final parts = <String>[];
+                          if (l != null) parts.add(fmt(l));
+                          if (w != null) parts.add(fmt(w));
+                          if (h != null) parts.add(fmt(h));
+                          if (parts.isEmpty) return '';
+                          return parts.join('×') + ' mm';
+                        }
+
+                        final dim = dims();
+                        return ListTile(
+                          selected: sel,
+                          title: Text('${m['bezeichnung']}'),
+                          subtitle: Text([
+                            '${m['nummer']}',
+                            '${m['typ']}',
+                            if (dim.isNotEmpty) dim else '${m['einheit']}',
+                          ]
+                              .where((e) =>
+                                  (e != null && e.toString().trim().isNotEmpty))
+                              .join('  •  ')),
+                          onTap: () => _select(m['id'] as String),
+                        );
+                      }
+                      final canLoadMore =
+                          items.isNotEmpty && items.length % limit == 0;
+                      if (!canLoadMore) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Center(
+                          child: FilledButton.icon(
+                              onPressed: _loadMore,
+                              icon: const Icon(Icons.expand_more),
+                              label: const Text('Mehr laden')),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
           ),
           const VerticalDivider(width: 1),
           Expanded(
@@ -400,83 +642,142 @@ class _MaterialsPageState extends State<MaterialsPage> {
             child: selectedId == null
                 ? const Center(child: Text('Bitte ein Material auswählen'))
                 : Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Abstand nach unten, damit die Kopfzeile nicht mit der linken Suchzeile kollidiert
-                      const SizedBox(height: 56),
-                      if (selected != null) ...[
+                    padding: const EdgeInsets.all(12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Abstand nach unten, damit die Kopfzeile nicht mit der linken Suchzeile kollidiert
+                        const SizedBox(height: 56),
+                        if (selected != null) ...[
+                          Row(children: [
+                            Expanded(
+                                child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                  Text('${selected!['bezeichnung']}',
+                                      style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                      'Nr.: ${selected!['nummer']}  •  Typ: ${selected!['typ']}  •  Einheit: ${selected!['einheit']}'),
+                                  if ((selected!['kategorie'] ?? '')
+                                      .toString()
+                                      .isNotEmpty)
+                                    Text(
+                                        'Kategorie: ${selected!['kategorie']}'),
+                                ])),
+                            if (selectedId != null &&
+                                widget.api
+                                    .hasPermission('stock_movements.write'))
+                              FilledButton.tonal(
+                                onPressed: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          buildMaterialStockMovementDestination(
+                                        api: widget.api,
+                                        materialId: selectedId!,
+                                        reference:
+                                            selected!['nummer']?.toString(),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: const Text('Bestandsbewegung'),
+                              ),
+                            if (canWrite) ...[
+                              IconButton(
+                                  onPressed: _editSelected,
+                                  icon: const Icon(Icons.edit)),
+                              IconButton(
+                                  onPressed: _deleteSelected,
+                                  icon: const Icon(Icons.delete_outline)),
+                            ],
+                          ]),
+                          const SizedBox(height: 12),
+                        ],
                         Row(children: [
-                          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            Text('${selected!['bezeichnung']}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 4),
-                            Text('Nr.: ${selected!['nummer']}  •  Typ: ${selected!['typ']}  •  Einheit: ${selected!['einheit']}'),
-                            if ((selected!['kategorie']??'').toString().isNotEmpty) Text('Kategorie: ${selected!['kategorie']}'),
-                          ])),
-                          if (canWrite) ...[
-                            IconButton(onPressed: _editSelected, icon: const Icon(Icons.edit)),
-                            IconButton(onPressed: _deleteSelected, icon: const Icon(Icons.delete_outline)),
-                          ],
+                          const Text('Bestand',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          IconButton(
+                              onPressed: () async {
+                                if (selectedId != null) {
+                                  stock = await widget.api
+                                      .stockByMaterial(selectedId!);
+                                  setState(() {});
+                                }
+                              },
+                              icon: const Icon(Icons.refresh)),
                         ]),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.black12)),
+                            child: ListView.builder(
+                              itemCount: stock.length,
+                              itemBuilder: (ctx, i) {
+                                final r = stock[i] as Map<String, dynamic>;
+                                final loc = r['location_id'] ?? '-';
+                                final batch = r['batch_code'] ?? '';
+                                return ListTile(
+                                  dense: true,
+                                  title: Text(
+                                      'Lager ${_warehouseLabel((r['warehouse_id'] ?? '').toString())}  •  Platz ${loc ?? '-'}'),
+                                  subtitle: Text(
+                                      'Menge: ${r['menge']} ${r['einheit']}  ${batch.isNotEmpty ? '• Batch: $batch' : ''}'),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 12),
+                        Row(children: [
+                          const Text('Dokumente',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          if (canWrite)
+                            FilledButton.icon(
+                                onPressed: _uploadFile,
+                                icon: const Icon(Icons.upload_file),
+                                label: const Text('Upload')),
+                        ]),
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                                border: Border.all(color: Colors.black12)),
+                            child: ListView.builder(
+                              itemCount: docs.length,
+                              itemBuilder: (ctx, i) {
+                                final d = docs[i] as Map<String, dynamic>;
+                                return ListTile(
+                                  dense: true,
+                                  leading:
+                                      const Icon(Icons.description_outlined),
+                                  title:
+                                      Text(d['filename'] ?? d['document_id']),
+                                  subtitle: Text(
+                                      '${d['content_type'] ?? ''}  •  ${d['length'] ?? 0} B'),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.download),
+                                    onPressed: () => widget.api
+                                        .downloadDocument(d['document_id'],
+                                            filename: d['filename']),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                       ],
-                      Row(children: [
-                        const Text('Bestand', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        IconButton(onPressed: () async { if (selectedId!=null){ stock = await widget.api.stockByMaterial(selectedId!); setState((){});} }, icon: const Icon(Icons.refresh)),
-                      ]),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(border: Border.all(color: Colors.black12)),
-                          child: ListView.builder(
-                            itemCount: stock.length,
-                            itemBuilder: (ctx, i){
-                              final r = stock[i] as Map<String, dynamic>;
-                              final loc = r['location_id'] ?? '-';
-                              final batch = r['batch_code'] ?? '';
-                              return ListTile(
-                                dense: true,
-                                title: Text('Lager ${_warehouseLabel((r['warehouse_id']??'').toString())}  •  Platz ${loc ?? '-'}'),
-                                subtitle: Text('Menge: ${r['menge']} ${r['einheit']}  ${batch.isNotEmpty ? '• Batch: $batch' : ''}'),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(children: [
-                        const Text('Dokumente', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        if (canWrite)
-                          FilledButton.icon(onPressed: _uploadFile, icon: const Icon(Icons.upload_file), label: const Text('Upload')),
-                      ]),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: Container(
-                          decoration: BoxDecoration(border: Border.all(color: Colors.black12)),
-                          child: ListView.builder(
-                            itemCount: docs.length,
-                            itemBuilder: (ctx, i){
-                              final d = docs[i] as Map<String, dynamic>;
-                              return ListTile(
-                                dense: true,
-                                leading: const Icon(Icons.description_outlined),
-                                title: Text(d['filename'] ?? d['document_id']),
-                                subtitle: Text('${d['content_type'] ?? ''}  •  ${d['length'] ?? 0} B'),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.download),
-                                  onPressed: () => widget.api.downloadDocument(d['document_id'], filename: d['filename']),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                ),
           ),
         ],
       ),
@@ -485,7 +786,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
 }
 
 class _EditMaterialDialog extends StatefulWidget {
-  const _EditMaterialDialog({required this.initial, required this.api, required this.units});
+  const _EditMaterialDialog(
+      {required this.initial, required this.api, required this.units});
   final Map<String, dynamic> initial;
   final ApiClient api;
   final List<Map<String, dynamic>> units;
@@ -495,26 +797,38 @@ class _EditMaterialDialog extends StatefulWidget {
 
 class _EditMaterialDialogState extends State<_EditMaterialDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final nummer = TextEditingController(text: widget.initial['nummer']?.toString() ?? '');
-  late final bez = TextEditingController(text: widget.initial['bezeichnung']?.toString() ?? '');
-  late final typ = TextEditingController(text: widget.initial['typ']?.toString() ?? '');
-  late final norm = TextEditingController(text: widget.initial['norm']?.toString() ?? '');
-  late final wnr = TextEditingController(text: widget.initial['werkstoffnummer']?.toString() ?? '');
+  late final nummer =
+      TextEditingController(text: widget.initial['nummer']?.toString() ?? '');
+  late final bez = TextEditingController(
+      text: widget.initial['bezeichnung']?.toString() ?? '');
+  late final typ =
+      TextEditingController(text: widget.initial['typ']?.toString() ?? '');
+  late final norm =
+      TextEditingController(text: widget.initial['norm']?.toString() ?? '');
+  late final wnr = TextEditingController(
+      text: widget.initial['werkstoffnummer']?.toString() ?? '');
   String? einheit;
   List<Map<String, dynamic>> _units = const [];
   bool _unitsLoading = false;
-  late final dichte = TextEditingController(text: (widget.initial['dichte'] ?? 0).toString());
-  late final laenge = TextEditingController(text: (widget.initial['length_mm'] ?? '').toString());
-  late final breite = TextEditingController(text: (widget.initial['width_mm'] ?? '').toString());
-  late final hoehe  = TextEditingController(text: (widget.initial['height_mm'] ?? '').toString());
-  late final kat = TextEditingController(text: widget.initial['kategorie']?.toString() ?? '');
+  late final dichte =
+      TextEditingController(text: (widget.initial['dichte'] ?? 0).toString());
+  late final laenge = TextEditingController(
+      text: (widget.initial['length_mm'] ?? '').toString());
+  late final breite = TextEditingController(
+      text: (widget.initial['width_mm'] ?? '').toString());
+  late final hoehe = TextEditingController(
+      text: (widget.initial['height_mm'] ?? '').toString());
+  late final kat = TextEditingController(
+      text: widget.initial['kategorie']?.toString() ?? '');
 
   @override
   void initState() {
     super.initState();
     // Übernehme Einheiten aus Parametern, lade ansonsten nach
     _units = widget.units;
-    if (_units.isEmpty) { _loadUnitsFallback(); }
+    if (_units.isEmpty) {
+      _loadUnitsFallback();
+    }
   }
 
   Future<void> _loadUnitsFallback() async {
@@ -528,6 +842,7 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
       if (mounted) setState(() => _unitsLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
@@ -538,68 +853,123 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
           key: _formKey,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
-              Expanded(child: TextFormField(controller: nummer, decoration: const InputDecoration(labelText: 'Nummer'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
+              Expanded(
+                  child: TextFormField(
+                      controller: nummer,
+                      decoration: const InputDecoration(labelText: 'Nummer'),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Pflichtfeld'
+                          : null)),
               const SizedBox(width: 8),
-              Expanded(child: TextFormField(controller: bez, decoration: const InputDecoration(labelText: 'Bezeichnung'), validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null)),
+              Expanded(
+                  child: TextFormField(
+                      controller: bez,
+                      decoration:
+                          const InputDecoration(labelText: 'Bezeichnung'),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Pflichtfeld'
+                          : null)),
             ]),
             Row(children: [
-              Expanded(child: TextFormField(controller: typ, decoration: const InputDecoration(labelText: 'Typ'))),
+              Expanded(
+                  child: TextFormField(
+                      controller: typ,
+                      decoration: const InputDecoration(labelText: 'Typ'))),
               const SizedBox(width: 8),
-              Expanded(child: TextFormField(controller: norm, decoration: const InputDecoration(labelText: 'Norm'))),
+              Expanded(
+                  child: TextFormField(
+                      controller: norm,
+                      decoration: const InputDecoration(labelText: 'Norm'))),
             ]),
             Row(children: [
-              Expanded(child: TextFormField(controller: wnr, decoration: const InputDecoration(labelText: 'Werkstoffnummer'))),
+              Expanded(
+                  child: TextFormField(
+                      controller: wnr,
+                      decoration:
+                          const InputDecoration(labelText: 'Werkstoffnummer'))),
               const SizedBox(width: 8),
-              SizedBox(width: 160, child: DropdownButtonFormField<String>(
-                isDense: true,
-                decoration: const InputDecoration(labelText: 'Einheit'),
-                value: einheit ?? widget.initial['einheit']?.toString(),
-                items: [for (final u in _units) DropdownMenuItem<String>(value: (u['code']??'').toString(), child: Text((u['code']??'').toString()))],
-                onChanged: (v){ einheit = v; },
-                validator: (v)=> (v==null||v.trim().isEmpty)?'Pflichtfeld':null,
-              )),
+              SizedBox(
+                  width: 160,
+                  child: DropdownButtonFormField<String>(
+                    isDense: true,
+                    decoration: const InputDecoration(labelText: 'Einheit'),
+                    value: einheit ?? widget.initial['einheit']?.toString(),
+                    items: [
+                      for (final u in _units)
+                        DropdownMenuItem<String>(
+                            value: (u['code'] ?? '').toString(),
+                            child: Text((u['code'] ?? '').toString()))
+                    ],
+                    onChanged: (v) {
+                      einheit = v;
+                    },
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Pflichtfeld' : null,
+                  )),
               const SizedBox(width: 8),
-              SizedBox(width: 120, child: TextFormField(controller: dichte, decoration: const InputDecoration(labelText: 'Dichte'), keyboardType: TextInputType.number))
+              SizedBox(
+                  width: 120,
+                  child: TextFormField(
+                      controller: dichte,
+                      decoration: const InputDecoration(labelText: 'Dichte'),
+                      keyboardType: TextInputType.number))
             ]),
             Row(children: [
-              Expanded(child: TextFormField(controller: kat, decoration: const InputDecoration(labelText: 'Kategorie'))),
+              Expanded(
+                  child: TextFormField(
+                      controller: kat,
+                      decoration:
+                          const InputDecoration(labelText: 'Kategorie'))),
             ]),
             Row(children: [
-              Expanded(child: TextFormField(controller: laenge, decoration: const InputDecoration(labelText: 'Länge (mm)'), keyboardType: TextInputType.number)),
+              Expanded(
+                  child: TextFormField(
+                      controller: laenge,
+                      decoration:
+                          const InputDecoration(labelText: 'Länge (mm)'),
+                      keyboardType: TextInputType.number)),
               const SizedBox(width: 8),
-              Expanded(child: TextFormField(controller: breite, decoration: const InputDecoration(labelText: 'Breite (mm)'), keyboardType: TextInputType.number)),
+              Expanded(
+                  child: TextFormField(
+                      controller: breite,
+                      decoration:
+                          const InputDecoration(labelText: 'Breite (mm)'),
+                      keyboardType: TextInputType.number)),
               const SizedBox(width: 8),
-              Expanded(child: TextFormField(controller: hoehe, decoration: const InputDecoration(labelText: 'Höhe (mm)'), keyboardType: TextInputType.number)),
+              Expanded(
+                  child: TextFormField(
+                      controller: hoehe,
+                      decoration: const InputDecoration(labelText: 'Höhe (mm)'),
+                      keyboardType: TextInputType.number)),
             ]),
           ]),
         ),
       ),
       actions: [
-        TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Abbrechen')),
-        FilledButton(onPressed: (){
-          if (!_formKey.currentState!.validate()) return;
-          Navigator.pop(context, {
-            'nummer': nummer.text.trim(),
-            'bezeichnung': bez.text.trim(),
-            'typ': typ.text.trim(),
-            'norm': norm.text.trim(),
-            'werkstoffnummer': wnr.text.trim(),
-            'einheit': (einheit ?? widget.initial['einheit']?.toString() ?? '').trim(),
-            'dichte': double.tryParse(dichte.text.trim()),
-            'kategorie': kat.text.trim(),
-            'length_mm': double.tryParse(laenge.text.trim()),
-            'width_mm': double.tryParse(breite.text.trim()),
-            'height_mm': double.tryParse(hoehe.text.trim()),
-          });
-        }, child: const Text('Speichern')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen')),
+        FilledButton(
+            onPressed: () {
+              if (!_formKey.currentState!.validate()) return;
+              Navigator.pop(context, {
+                'nummer': nummer.text.trim(),
+                'bezeichnung': bez.text.trim(),
+                'typ': typ.text.trim(),
+                'norm': norm.text.trim(),
+                'werkstoffnummer': wnr.text.trim(),
+                'einheit':
+                    (einheit ?? widget.initial['einheit']?.toString() ?? '')
+                        .trim(),
+                'dichte': double.tryParse(dichte.text.trim()),
+                'kategorie': kat.text.trim(),
+                'length_mm': double.tryParse(laenge.text.trim()),
+                'width_mm': double.tryParse(breite.text.trim()),
+                'height_mm': double.tryParse(hoehe.text.trim()),
+              });
+            },
+            child: const Text('Speichern')),
       ],
     );
   }
 }
-
-
-
-
-
-
-

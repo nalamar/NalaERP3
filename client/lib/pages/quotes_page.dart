@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import 'invoices_page.dart';
-import 'sales_orders_page.dart';
+import '../commercial_destinations.dart';
+import '../commercial_navigation.dart';
 
 String _quoteErrorMessage(Object error,
     {String fallback = 'Vorgang fehlgeschlagen'}) {
@@ -17,13 +17,22 @@ class QuotesPage extends StatefulWidget {
     super.key,
     required this.api,
     this.initialProjectId,
+    this.initialFilters,
     this.initialQuoteId,
+    this.initialSearchQuery,
+    this.initialContext,
     this.openCreateOnStart = false,
   });
 
   final ApiClient api;
+  @Deprecated('Use initialFilters instead.')
   final String? initialProjectId;
+  final CommercialFilterContext? initialFilters;
+  @Deprecated('Use initialContext instead.')
   final String? initialQuoteId;
+  @Deprecated('Use initialContext instead.')
+  final String? initialSearchQuery;
+  final CommercialListContext? initialContext;
   final bool openCreateOnStart;
 
   @override
@@ -44,20 +53,39 @@ class _QuotesPageState extends State<QuotesPage> {
   @override
   void initState() {
     super.initState();
-    if (widget.initialProjectId != null &&
-        widget.initialProjectId!.trim().isNotEmpty) {
-      _projectCtrl.text = widget.initialProjectId!.trim();
+    final initialFilters = _resolvedInitialFilters();
+    if (initialFilters.normalizedProjectId != null) {
+      _projectCtrl.text = initialFilters.normalizedProjectId!;
     }
-    final initialQuoteId = widget.initialQuoteId?.trim();
-    if (initialQuoteId != null && initialQuoteId.isNotEmpty) {
-      _searchCtrl.text = initialQuoteId;
+    final initialContext = _resolvedInitialContext();
+    final initialSearch = initialContext.effectiveSearchQuery;
+    if (initialSearch != null) {
+      _searchCtrl.text = initialSearch;
     }
     _load();
     if (widget.openCreateOnStart) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _openCreateDialog(projectId: widget.initialProjectId);
+        if (mounted) {
+          _openCreateDialog(initialFilters: initialFilters);
+        }
       });
     }
+  }
+
+  CommercialListContext _resolvedInitialContext() {
+    return widget.initialContext ??
+        (widget.initialQuoteId?.trim().isNotEmpty ?? false
+            ? CommercialListContext.detail(widget.initialQuoteId!.trim())
+            : CommercialListContext(searchQuery: widget.initialSearchQuery));
+  }
+
+  CommercialFilterContext _resolvedInitialFilters() {
+    return widget.initialFilters ??
+        CommercialFilterContext(projectId: widget.initialProjectId);
+  }
+
+  CommercialFilterContext _currentFilterContext() {
+    return CommercialFilterContext(projectId: _projectCtrl.text.trim());
   }
 
   @override
@@ -94,9 +122,9 @@ class _QuotesPageState extends State<QuotesPage> {
       if (selectedId != null && selectedId.isNotEmpty) {
         await _loadDetail(selectedId);
       } else {
-        final initialQuoteId = widget.initialQuoteId?.trim();
-        if (initialQuoteId != null && initialQuoteId.isNotEmpty) {
-          await _loadDetail(initialQuoteId);
+        final initialDetailId = _resolvedInitialContext().normalizedDetailId;
+        if (initialDetailId != null) {
+          await _loadDetail(initialDetailId);
         }
       }
     } catch (e) {
@@ -177,11 +205,14 @@ class _QuotesPageState extends State<QuotesPage> {
     return 'Noch kein Folgebeleg';
   }
 
-  Future<void> _openCreateDialog({String? projectId}) async {
+  Future<void> _openCreateDialog(
+      {CommercialFilterContext? initialFilters}) async {
     final created = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) =>
-          _QuoteEditorDialog(api: widget.api, initialProjectId: projectId),
+      builder: (_) => _QuoteEditorDialog(
+        api: widget.api,
+        initialFilters: initialFilters ?? _currentFilterContext(),
+      ),
     );
     if (created == null || !mounted) return;
     setState(() => _selected = created);
@@ -242,9 +273,9 @@ class _QuotesPageState extends State<QuotesPage> {
   Future<void> _openInvoice(String invoiceId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => InvoicesPage(
+        builder: (_) => buildInvoicesPage(
           api: widget.api,
-          initialInvoiceId: invoiceId,
+          initialContext: CommercialListContext.detail(invoiceId),
           showWorkflowHint: true,
         ),
       ),
@@ -256,9 +287,10 @@ class _QuotesPageState extends State<QuotesPage> {
   Future<void> _openSalesOrder(String salesOrderId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SalesOrdersPage(
+        builder: (_) => buildSalesOrdersPage(
           api: widget.api,
-          initialSalesOrderId: salesOrderId,
+          initialFilters: _currentFilterContext(),
+          initialContext: CommercialListContext.detail(salesOrderId),
         ),
       ),
     );
@@ -427,7 +459,7 @@ class _QuotesPageState extends State<QuotesPage> {
       ),
       floatingActionButton: canWrite
           ? FloatingActionButton.extended(
-              onPressed: _openCreateDialog,
+              onPressed: () => _openCreateDialog(),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Angebot'),
             )
@@ -1077,11 +1109,17 @@ class _QuoteConvertDialogState extends State<_QuoteConvertDialog> {
 }
 
 class _QuoteEditorDialog extends StatefulWidget {
-  const _QuoteEditorDialog(
-      {required this.api, this.initial, this.initialProjectId});
+  const _QuoteEditorDialog({
+    required this.api,
+    this.initial,
+    this.initialFilters,
+    this.initialProjectId,
+  });
 
   final ApiClient api;
   final Map<String, dynamic>? initial;
+  final CommercialFilterContext? initialFilters;
+  @Deprecated('Use initialFilters instead.')
   final String? initialProjectId;
 
   @override
@@ -1102,9 +1140,11 @@ class _QuoteEditorDialogState extends State<_QuoteEditorDialog> {
   void initState() {
     super.initState();
     final initial = widget.initial;
+    final initialFilters = widget.initialFilters ??
+        CommercialFilterContext(projectId: widget.initialProjectId);
     _projectCtrl = TextEditingController(
-      text:
-          widget.initialProjectId ?? (initial?['project_id'] ?? '').toString(),
+      text: initialFilters.normalizedProjectId ??
+          (initial?['project_id'] ?? '').toString(),
     );
     _contactCtrl =
         TextEditingController(text: (initial?['contact_id'] ?? '').toString());

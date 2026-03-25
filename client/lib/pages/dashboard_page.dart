@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_destinations.dart';
 import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
-import 'materialwirtschaft_screen.dart';
 import 'contacts_screen.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
-import 'invoices_page.dart';
-import 'quotes_page.dart';
-import 'sales_orders_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -35,7 +32,8 @@ class DashboardPage extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => MaterialwirtschaftScreen(api: api),
+                builder: (_) =>
+                    buildMaterialwirtschaftScreenDestination(api: api),
               ),
             );
           },
@@ -61,7 +59,7 @@ class DashboardPage extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => QuotesPage(api: api),
+                builder: (_) => buildQuotesPage(api: api),
               ),
             );
           },
@@ -74,7 +72,7 @@ class DashboardPage extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => InvoicesPage(api: api),
+                builder: (_) => buildInvoicesPage(api: api),
               ),
             );
           },
@@ -86,7 +84,7 @@ class DashboardPage extends StatelessWidget {
           onTap: () {
             Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (_) => SalesOrdersPage(api: api),
+                builder: (_) => buildSalesOrdersPage(api: api),
               ),
             );
           },

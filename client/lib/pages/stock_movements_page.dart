@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../commercial_navigation.dart';
 
 class StockMovementsPage extends StatefulWidget {
-  const StockMovementsPage({super.key, required this.api});
+  const StockMovementsPage({
+    super.key,
+    required this.api,
+    this.initialPrefill,
+    this.openCreateOnStart = false,
+  });
   final ApiClient api;
+  final StockMovementPrefillContext? initialPrefill;
+  final bool openCreateOnStart;
 
   @override
   State<StockMovementsPage> createState() => _StockMovementsPageState();
@@ -26,10 +34,27 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
   final currCtrl = TextEditingController(text: 'EUR');
   final _formKey = GlobalKey<FormState>();
   final List<String> _types = const ['purchase', 'in', 'out', 'transfer', 'adjust'];
+  bool _initialDialogHandled = false;
 
   @override
   void initState() {
     super.initState();
+    final prefill = widget.initialPrefill;
+    materialId = prefill?.normalizedMaterialId;
+    warehouseId = prefill?.normalizedWarehouseId;
+    locationId = prefill?.normalizedLocationId;
+    final initialType = prefill?.normalizedType;
+    if (initialType != null) {
+      typeCtrl.text = initialType;
+    }
+    final initialReason = prefill?.normalizedReason;
+    if (initialReason != null) {
+      reasonCtrl.text = initialReason;
+    }
+    final initialReference = prefill?.normalizedReference;
+    if (initialReference != null) {
+      refCtrl.text = initialReference;
+    }
     _loadData();
   }
 
@@ -37,7 +62,20 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
     try {
       materials = await widget.api.listMaterials();
       warehouses = await widget.api.listWarehouses();
+      final initialWarehouseId = widget.initialPrefill?.normalizedWarehouseId;
+      if (initialWarehouseId != null) {
+        locations = await widget.api.listLocations(initialWarehouseId);
+      }
       setState(() {});
+      if (widget.openCreateOnStart &&
+          !_initialDialogHandled &&
+          widget.api.hasPermission('stock_movements.write')) {
+        _initialDialogHandled = true;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _openDialog();
+        });
+      }
     } catch (e) {
       if (mounted) {
         debugPrint('Fehler beim Initial-Laden: $e');
@@ -96,6 +134,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                   width: 280,
                   child: DropdownButtonFormField<String>(
                     initialValue: materialId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Material'),
                     items: [for (final m in materials) DropdownMenuItem(value: m['id'] as String, child: Text('${m['nummer']} – ${m['bezeichnung']}'))],
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Material wählen':null,
@@ -106,6 +145,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                   width: 240,
                   child: DropdownButtonFormField<String>(
                     initialValue: warehouseId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Lager'),
                     items: [for (final w in warehouses) DropdownMenuItem(value: w['id'] as String, child: Text('${w['code']} – ${w['name']}'))],
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Lager wählen':null,
@@ -116,6 +156,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                   width: 220,
                   child: DropdownButtonFormField<String>(
                     initialValue: locationId,
+                    isExpanded: true,
                     decoration: const InputDecoration(labelText: 'Lagerplatz'),
                     hint: const Text('Optional'),
                     items: [for (final l in locations) DropdownMenuItem(value: l['id'] as String, child: Text('${l['code']} – ${l['name']}'))],
@@ -134,6 +175,7 @@ class _StockMovementsPageState extends State<StockMovementsPage> {
                   width: 200,
                   child: DropdownButtonFormField<String>(
                     initialValue: _types.contains(typeCtrl.text.trim()) ? typeCtrl.text.trim() : null,
+                    isExpanded: true,
                     items: [for (final t in _types) DropdownMenuItem(value: t, child: Text(t))],
                     decoration: const InputDecoration(labelText: 'Typ'),
                     validator: (v)=> (v==null||v.isEmpty)?'Bitte Typ wählen':null,

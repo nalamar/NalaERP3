@@ -1,20 +1,75 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
-import 'materials_page.dart';
-import 'warehouses_page.dart';
-import 'stock_movements_page.dart';
-import 'purchase_orders_page.dart';
+import '../commercial_destinations.dart';
+import '../commercial_navigation.dart';
+
+MaterialwirtschaftScreen buildMaterialwirtschaftScreen({
+  required ApiClient api,
+  int? initialSection,
+  CommercialListContext? initialPurchaseOrdersContext,
+  PurchaseOrderFilterContext? initialPurchaseOrderFilters,
+  PurchaseOrderCreatePrefillContext? initialPurchaseOrderCreatePrefill,
+  WarehouseSelectionContext? initialWarehouseSelection,
+  StockMovementPrefillContext? initialStockMovementPrefill,
+  MaterialListContext? initialMaterialsContext,
+}) {
+  return MaterialwirtschaftScreen(
+    api: api,
+    initialSection: initialSection,
+    initialPurchaseOrdersContext: initialPurchaseOrdersContext,
+    initialPurchaseOrderFilters: initialPurchaseOrderFilters,
+    initialPurchaseOrderCreatePrefill: initialPurchaseOrderCreatePrefill,
+    initialWarehouseSelection: initialWarehouseSelection,
+    initialStockMovementPrefill: initialStockMovementPrefill,
+    initialMaterialsContext: initialMaterialsContext,
+  );
+}
 
 class MaterialwirtschaftScreen extends StatefulWidget {
-  const MaterialwirtschaftScreen({super.key, required this.api});
+  const MaterialwirtschaftScreen({
+    super.key,
+    required this.api,
+    this.initialSection,
+    this.initialPurchaseOrdersContext,
+    this.initialPurchaseOrderFilters,
+    this.initialPurchaseOrderCreatePrefill,
+    this.initialWarehouseSelection,
+    this.initialStockMovementPrefill,
+    this.initialMaterialsContext,
+  });
   final ApiClient api;
+  final int? initialSection;
+  final CommercialListContext? initialPurchaseOrdersContext;
+  final PurchaseOrderFilterContext? initialPurchaseOrderFilters;
+  final PurchaseOrderCreatePrefillContext? initialPurchaseOrderCreatePrefill;
+  final WarehouseSelectionContext? initialWarehouseSelection;
+  final StockMovementPrefillContext? initialStockMovementPrefill;
+  final MaterialListContext? initialMaterialsContext;
 
   @override
-  State<MaterialwirtschaftScreen> createState() => _MaterialwirtschaftScreenState();
+  State<MaterialwirtschaftScreen> createState() =>
+      _MaterialwirtschaftScreenState();
 }
 
 class _MaterialwirtschaftScreenState extends State<MaterialwirtschaftScreen> {
   int _section = 0; // 0: Materialien (default)
+
+  @override
+  void initState() {
+    super.initState();
+    _section = widget.initialSection ??
+        ((widget.initialPurchaseOrdersContext != null ||
+                widget.initialPurchaseOrderFilters != null ||
+                widget.initialPurchaseOrderCreatePrefill != null)
+            ? 3
+            : widget.initialWarehouseSelection != null
+                ? 1
+                : widget.initialStockMovementPrefill != null
+                    ? 2
+                    : widget.initialMaterialsContext != null
+                        ? 0
+                        : 0);
+  }
 
   Widget _bereichsLeiste(BuildContext context) {
     final theme = Theme.of(context);
@@ -23,23 +78,32 @@ class _MaterialwirtschaftScreenState extends State<MaterialwirtschaftScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       child: Row(
         children: [
-          Text('Bereich:', style: TextStyle(color: theme.colorScheme.onSurface)),
+          Text('Bereich:',
+              style: TextStyle(color: theme.colorScheme.onSurface)),
           const SizedBox(width: 10),
           Wrap(spacing: 8, children: [
             FilledButton.tonal(
-              onPressed: () => setState(() { _section = 0; }),
+              onPressed: () => setState(() {
+                _section = 0;
+              }),
               child: const Text('Materialien'),
             ),
             FilledButton.tonal(
-              onPressed: () => setState(() { _section = 1; }),
+              onPressed: () => setState(() {
+                _section = 1;
+              }),
               child: const Text('Lager'),
             ),
             FilledButton.tonal(
-              onPressed: () => setState(() { _section = 2; }),
+              onPressed: () => setState(() {
+                _section = 2;
+              }),
               child: const Text('Bestand'),
             ),
             FilledButton.tonal(
-              onPressed: () => setState(() { _section = 3; }),
+              onPressed: () => setState(() {
+                _section = 3;
+              }),
               child: const Text('Bestellungen'),
             ),
           ])
@@ -63,13 +127,32 @@ class _MaterialwirtschaftScreenState extends State<MaterialwirtschaftScreen> {
       ),
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
-        child: _section==0
-          ? MaterialsPage(api: widget.api)
-          : _section==1
-            ? WarehousesPage(api: widget.api)
-            : _section==2
-              ? StockMovementsPage(api: widget.api)
-              : PurchaseOrdersPage(api: widget.api),
+        child: _section == 0
+            ? buildMaterialsPage(
+                api: widget.api,
+                initialContext: widget.initialMaterialsContext,
+              )
+            : _section == 1
+                ? buildWarehousesPage(
+                    api: widget.api,
+                    initialSelection: widget.initialWarehouseSelection,
+                  )
+                : _section == 2
+                    ? buildStockMovementsPage(
+                        api: widget.api,
+                        initialPrefill: widget.initialStockMovementPrefill,
+                        openCreateOnStart:
+                            widget.initialStockMovementPrefill != null,
+                      )
+                    : buildPurchaseOrdersPage(
+                        api: widget.api,
+                        initialContext: widget.initialPurchaseOrdersContext,
+                        initialFilters: widget.initialPurchaseOrderFilters,
+                        initialCreatePrefill:
+                            widget.initialPurchaseOrderCreatePrefill,
+                        openCreateOnStart:
+                            widget.initialPurchaseOrderCreatePrefill != null,
+                      ),
       ),
     );
   }

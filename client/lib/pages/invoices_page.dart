@@ -1,18 +1,29 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
-import 'quotes_page.dart';
-import 'sales_orders_page.dart';
+import '../commercial_destinations.dart';
+import '../commercial_navigation.dart';
 
 class InvoicesPage extends StatefulWidget {
   const InvoicesPage({
     super.key,
     required this.api,
     this.initialInvoiceId,
+    this.initialSearchQuery,
+    this.initialContext,
+    this.initialSourceSalesOrderId,
+    this.initialFilters,
     this.showWorkflowHint = false,
   });
   final ApiClient api;
+  @Deprecated('Use initialContext instead.')
   final String? initialInvoiceId;
+  @Deprecated('Use initialContext instead.')
+  final String? initialSearchQuery;
+  final CommercialListContext? initialContext;
+  @Deprecated('Use initialFilters instead.')
+  final String? initialSourceSalesOrderId;
+  final CommercialFilterContext? initialFilters;
   final bool showWorkflowHint;
 
   @override
@@ -31,17 +42,46 @@ class _InvoicesPageState extends State<InvoicesPage> {
   bool _salesOrderOnlyFilter = false;
   final searchCtrl = TextEditingController();
   final contactCtrl = TextEditingController();
+  final sourceSalesOrderCtrl = TextEditingController();
   bool _initialSelectionHandled = false;
   bool _workflowHintDismissed = false;
 
   @override
   void initState() {
     super.initState();
-    final initialInvoiceId = widget.initialInvoiceId?.trim();
-    if (initialInvoiceId != null && initialInvoiceId.isNotEmpty) {
-      searchCtrl.text = initialInvoiceId;
+    final initialContext = _resolvedInitialContext();
+    final initialSearch = initialContext.effectiveSearchQuery;
+    if (initialSearch != null) {
+      searchCtrl.text = initialSearch;
+    }
+    final initialFilters = _resolvedInitialFilters();
+    if (initialFilters.normalizedSourceSalesOrderId != null) {
+      sourceSalesOrderCtrl.text = initialFilters.normalizedSourceSalesOrderId!;
+      _salesOrderOnlyFilter = true;
     }
     _loadList();
+  }
+
+  CommercialListContext _resolvedInitialContext() {
+    return widget.initialContext ??
+        (widget.initialInvoiceId?.trim().isNotEmpty ?? false
+            ? CommercialListContext.detail(widget.initialInvoiceId!.trim())
+            : CommercialListContext(searchQuery: widget.initialSearchQuery));
+  }
+
+  CommercialFilterContext _resolvedInitialFilters() {
+    return widget.initialFilters ??
+        CommercialFilterContext(
+          sourceSalesOrderId: widget.initialSourceSalesOrderId,
+        );
+  }
+
+  @override
+  void dispose() {
+    searchCtrl.dispose();
+    contactCtrl.dispose();
+    sourceSalesOrderCtrl.dispose();
+    super.dispose();
   }
 
   void _resetAndLoad() {
@@ -65,6 +105,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
         status: statusFilter,
         contactId:
             contactCtrl.text.trim().isEmpty ? null : contactCtrl.text.trim(),
+        sourceSalesOrderId: sourceSalesOrderCtrl.text.trim().isEmpty
+            ? null
+            : sourceSalesOrderCtrl.text.trim(),
         q: searchCtrl.text.trim().isEmpty ? null : searchCtrl.text.trim(),
       );
       final filteredList = _salesOrderOnlyFilter
@@ -80,8 +123,8 @@ class _InvoicesPageState extends State<InvoicesPage> {
       if (selected != null) {
         _loadDetail(selected!['id'] as String);
       } else if (!_initialSelectionHandled) {
-        final initialInvoiceId = widget.initialInvoiceId?.trim();
-        if (initialInvoiceId != null && initialInvoiceId.isNotEmpty) {
+        final initialInvoiceId = _resolvedInitialContext().normalizedDetailId;
+        if (initialInvoiceId != null) {
           _initialSelectionHandled = true;
           _loadDetail(initialInvoiceId);
         }
@@ -134,9 +177,22 @@ class _InvoicesPageState extends State<InvoicesPage> {
   Future<void> _openQuote(String quoteId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuotesPage(
+        builder: (_) => buildQuotesPage(
           api: widget.api,
-          initialQuoteId: quoteId,
+          initialContext: CommercialListContext.detail(quoteId),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadList();
+  }
+
+  Future<void> _openQuoteList(String quoteId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildQuotesPage(
+          api: widget.api,
+          initialContext: CommercialListContext.search(quoteId),
         ),
       ),
     );
@@ -147,9 +203,22 @@ class _InvoicesPageState extends State<InvoicesPage> {
   Future<void> _openSalesOrder(String salesOrderId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SalesOrdersPage(
+        builder: (_) => buildSalesOrdersPage(
           api: widget.api,
-          initialSalesOrderId: salesOrderId,
+          initialContext: CommercialListContext.detail(salesOrderId),
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadList();
+  }
+
+  Future<void> _openSalesOrderList(String salesOrderId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildSalesOrdersPage(
+          api: widget.api,
+          initialContext: CommercialListContext.search(salesOrderId),
         ),
       ),
     );
@@ -476,6 +545,15 @@ class _InvoicesPageState extends State<InvoicesPage> {
                               onSubmitted: (_) => _resetAndLoad(),
                             ),
                           ),
+                          SizedBox(
+                            width: 180,
+                            child: TextField(
+                              controller: sourceSalesOrderCtrl,
+                              decoration:
+                                  const InputDecoration(hintText: 'Auftrag-ID'),
+                              onSubmitted: (_) => _resetAndLoad(),
+                            ),
+                          ),
                           DropdownButton<String?>(
                             value: statusFilter,
                             hint: const Text('Status'),
@@ -663,6 +741,32 @@ class _InvoicesPageState extends State<InvoicesPage> {
                                               : 'Auftrag ${(sourceSalesOrder['number'] ?? sel['source_sales_order_id']).toString()}',
                                         ),
                                         onPressed: () => _openSalesOrder(
+                                            (sel['source_sales_order_id'] ?? '')
+                                                .toString()),
+                                      ),
+                                    if ((sel['source_quote_id'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
+                                      ActionChip(
+                                        avatar: const Icon(
+                                            Icons.format_list_bulleted_rounded,
+                                            size: 18),
+                                        label:
+                                            const Text('Angebotsliste öffnen'),
+                                        onPressed: () => _openQuoteList(
+                                            (sel['source_quote_id'] ?? '')
+                                                .toString()),
+                                      ),
+                                    if ((sel['source_sales_order_id'] ?? '')
+                                        .toString()
+                                        .isNotEmpty)
+                                      ActionChip(
+                                        avatar: const Icon(
+                                            Icons.view_list_rounded,
+                                            size: 18),
+                                        label:
+                                            const Text('Auftragsliste öffnen'),
+                                        onPressed: () => _openSalesOrderList(
                                             (sel['source_sales_order_id'] ?? '')
                                                 .toString()),
                                       ),

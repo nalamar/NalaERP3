@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../api.dart';
-import 'invoices_page.dart';
-import 'quotes_page.dart';
+import '../commercial_destinations.dart';
+import '../commercial_navigation.dart';
 
 String _salesOrderErrorMessage(Object error,
     {String fallback = 'Vorgang fehlgeschlagen'}) {
@@ -17,12 +17,21 @@ class SalesOrdersPage extends StatefulWidget {
     super.key,
     required this.api,
     this.initialSalesOrderId,
+    this.initialSearchQuery,
+    this.initialContext,
     this.initialProjectId,
+    this.initialFilters,
   });
 
   final ApiClient api;
+  @Deprecated('Use initialContext instead.')
   final String? initialSalesOrderId;
+  @Deprecated('Use initialContext instead.')
+  final String? initialSearchQuery;
+  final CommercialListContext? initialContext;
+  @Deprecated('Use initialFilters instead.')
   final String? initialProjectId;
+  final CommercialFilterContext? initialFilters;
 
   @override
   State<SalesOrdersPage> createState() => _SalesOrdersPageState();
@@ -53,16 +62,36 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   @override
   void initState() {
     super.initState();
-    final initialProjectId = widget.initialProjectId?.trim();
-    if (initialProjectId != null && initialProjectId.isNotEmpty) {
-      _projectCtrl.text = initialProjectId;
+    final initialFilters = _resolvedInitialFilters();
+    if (initialFilters.normalizedProjectId != null) {
+      _projectCtrl.text = initialFilters.normalizedProjectId!;
     }
-    final initialId = widget.initialSalesOrderId?.trim();
-    if (initialId != null && initialId.isNotEmpty) {
-      _searchCtrl.text = initialId;
+    final initialContext = _resolvedInitialContext();
+    final initialSearch = initialContext.effectiveSearchQuery;
+    if (initialSearch != null) {
+      _searchCtrl.text = initialSearch;
     }
     _loadStatuses();
     _load();
+  }
+
+  CommercialListContext _resolvedInitialContext() {
+    return widget.initialContext ??
+        (widget.initialSalesOrderId?.trim().isNotEmpty ?? false
+            ? CommercialListContext.detail(widget.initialSalesOrderId!.trim())
+            : CommercialListContext(searchQuery: widget.initialSearchQuery));
+  }
+
+  CommercialFilterContext _resolvedInitialFilters() {
+    return widget.initialFilters ??
+        CommercialFilterContext(projectId: widget.initialProjectId);
+  }
+
+  CommercialFilterContext _currentFilterContext({String? salesOrderId}) {
+    return CommercialFilterContext(
+      projectId: _projectCtrl.text.trim(),
+      sourceSalesOrderId: salesOrderId,
+    );
   }
 
   @override
@@ -93,8 +122,8 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       if (selectedId != null && selectedId.isNotEmpty) {
         await _loadDetail(selectedId);
       } else if (!_initialSelectionHandled) {
-        final initialId = widget.initialSalesOrderId?.trim();
-        if (initialId != null && initialId.isNotEmpty) {
+        final initialId = _resolvedInitialContext().normalizedDetailId;
+        if (initialId != null) {
           _initialSelectionHandled = true;
           await _loadDetail(initialId);
         }
@@ -185,11 +214,36 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   }
 
   Future<void> _openInvoice(String invoiceId) async {
+    final selectedSalesOrderId = (_selected?['id'] ?? '').toString().trim();
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => InvoicesPage(
+        builder: (_) => buildInvoicesPage(
           api: widget.api,
-          initialInvoiceId: invoiceId,
+          initialFilters: _currentFilterContext(
+            salesOrderId:
+                selectedSalesOrderId.isEmpty ? null : selectedSalesOrderId,
+          ),
+          initialContext: CommercialListContext.detail(invoiceId),
+          showWorkflowHint: true,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    final selectedId = _selected?['id']?.toString();
+    if (selectedId != null && selectedId.isNotEmpty) {
+      await _loadDetail(selectedId);
+      await _load();
+    }
+  }
+
+  Future<void> _openSalesOrderInvoices(String salesOrderId) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildInvoicesPage(
+          api: widget.api,
+          initialFilters:
+              CommercialFilterContext(sourceSalesOrderId: salesOrderId),
+          initialContext: const CommercialListContext.search(''),
           showWorkflowHint: true,
         ),
       ),
@@ -205,9 +259,9 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   Future<void> _openQuote(String quoteId) async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => QuotesPage(
+        builder: (_) => buildQuotesPage(
           api: widget.api,
-          initialQuoteId: quoteId,
+          initialContext: CommercialListContext.detail(quoteId),
         ),
       ),
     );
@@ -797,6 +851,7 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
             ? 'Bearbeitung ist im aktuellen Status nicht mehr erlaubt.'
             : '';
     final showWorkflowHint = !_workflowHintDismissed && selected != null;
+    final selectedSalesOrderId = (selected?['id'] ?? '').toString();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Aufträge'),
@@ -942,6 +997,17 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                                       icon: const Icon(
                                           Icons.receipt_long_rounded),
                                       label: const Text('Rechnung öffnen'),
+                                    ),
+                                  if (selectedSalesOrderId.isNotEmpty &&
+                                      relatedInvoiceCount > 0 &&
+                                      canOpenInvoices)
+                                    OutlinedButton.icon(
+                                      onPressed: () => _openSalesOrderInvoices(
+                                          selectedSalesOrderId),
+                                      icon: const Icon(
+                                          Icons.receipt_long_rounded),
+                                      label: const Text(
+                                          'Auftragsrechnungen öffnen'),
                                     ),
                                   if (canEditHeader)
                                     OutlinedButton.icon(
