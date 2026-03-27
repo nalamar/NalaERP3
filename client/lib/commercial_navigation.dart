@@ -1,3 +1,5 @@
+import 'material_selection.dart';
+
 class CommercialListContext {
   const CommercialListContext({
     this.detailId,
@@ -76,6 +78,17 @@ class PurchaseOrderCreatePrefillContext {
     this.itemUnit,
   });
 
+  const PurchaseOrderCreatePrefillContext.material({
+    required String materialLabel,
+    required String materialId,
+    String? unit,
+    num itemQuantity = 1,
+  })  : note = 'Materialbezug: $materialLabel',
+        itemDescription = materialLabel,
+        itemMaterialId = materialId,
+        itemQuantity = itemQuantity,
+        itemUnit = unit;
+
   final String? note;
   final String? itemDescription;
   final String? itemMaterialId;
@@ -113,10 +126,30 @@ class PurchaseOrderCreatePrefillContext {
   }
 }
 
+abstract class PurchaseOrderDestinationContext {
+  CommercialListContext? get purchaseOrdersContext;
+  PurchaseOrderCreatePrefillContext? get purchaseOrderPrefill;
+}
+
+abstract class StockMovementDestinationContext {
+  StockMovementPrefillContext get stockMovementPrefill;
+}
+
+abstract class MaterialDetailDestinationContext {
+  const MaterialDetailDestinationContext();
+
+  String get materialId;
+
+  MaterialListContext get materialListContext =>
+      MaterialListContext.detail(materialId);
+}
+
 class WarehouseSelectionContext {
   const WarehouseSelectionContext({
     this.warehouseId,
   });
+
+  const WarehouseSelectionContext.detail(String id) : warehouseId = id;
 
   final String? warehouseId;
 
@@ -136,6 +169,24 @@ class StockMovementPrefillContext {
     this.reason,
     this.reference,
   });
+
+  const StockMovementPrefillContext.material(
+    String materialId, {
+    this.warehouseId,
+    this.locationId,
+    this.type,
+    this.reason,
+    this.reference,
+  }) : materialId = materialId;
+
+  const StockMovementPrefillContext.reference({
+    String? materialId,
+    this.warehouseId,
+    this.locationId,
+    this.type,
+    this.reason,
+    this.reference,
+  }) : materialId = materialId;
 
   final String? materialId;
   final String? warehouseId;
@@ -195,4 +246,56 @@ class MaterialListContext {
   String? get normalizedCategory => _normalize(category);
   String? get effectiveSearchQuery =>
       normalizedDetailId ?? normalizedSearchQuery;
+}
+
+class MaterialNavigationContext extends MaterialDetailDestinationContext
+    implements
+        PurchaseOrderDestinationContext,
+        StockMovementDestinationContext {
+  const MaterialNavigationContext._({
+    required this.materialId,
+    required this.materialLabel,
+    required this.unit,
+  });
+
+  factory MaterialNavigationContext.fromMaterial(
+      Map<String, dynamic> material) {
+    final materialId = _normalizeValue(material['id']?.toString());
+    if (materialId == null) {
+      throw ArgumentError('material.id is required');
+    }
+    return MaterialNavigationContext._(
+      materialId: materialId,
+      materialLabel: materialReferenceLabel(material),
+      unit: _normalizeValue(material['einheit']?.toString()),
+    );
+  }
+
+  final String materialId;
+  final String materialLabel;
+  final String? unit;
+
+  @override
+  CommercialListContext? get purchaseOrdersContext => null;
+
+  @override
+  StockMovementPrefillContext get stockMovementPrefill =>
+      StockMovementPrefillContext(
+        materialId: materialId,
+        reference: materialLabel,
+      );
+
+  @override
+  PurchaseOrderCreatePrefillContext get purchaseOrderPrefill =>
+      PurchaseOrderCreatePrefillContext.material(
+        materialLabel: materialLabel,
+        materialId: materialId,
+        unit: unit,
+      );
+
+  static String? _normalizeValue(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) return null;
+    return normalized;
+  }
 }

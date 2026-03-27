@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_navigation.dart';
+import '../material_selection.dart';
+import '../purchase_order_item_payloads.dart';
+import '../purchase_order_material_selection.dart';
 import 'purchase_order_detail_page.dart';
 
 class PurchaseOrdersPage extends StatefulWidget {
@@ -206,6 +209,16 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     if (prefilledItemUnit != null) {
       itemUomCtrl.text = prefilledItemUnit;
     }
+    if (itemMaterialId != null &&
+        itemDescCtrl.text.trim().isEmpty &&
+        itemUomCtrl.text.trim().isEmpty) {
+      applyPurchaseOrderMaterialSelection(
+        materials: materials,
+        materialId: itemMaterialId,
+        descriptionController: itemDescCtrl,
+        unitController: itemUomCtrl,
+      );
+    }
     await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -318,11 +331,18 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                                 for (final m in materials)
                                   DropdownMenuItem(
                                       value: m['id'] as String,
-                                      child: Text(
-                                          '${m['nummer']} – ${m['bezeichnung']}'))
+                                      child: Text(materialSelectionLabel(
+                                          m as Map<String, dynamic>)))
                               ],
-                              onChanged: (v) =>
-                                  setState(() => itemMaterialId = v),
+                              onChanged: (v) => setState(() {
+                                itemMaterialId = v;
+                                applyPurchaseOrderMaterialSelection(
+                                  materials: materials,
+                                  materialId: itemMaterialId,
+                                  descriptionController: itemDescCtrl,
+                                  unitController: itemUomCtrl,
+                                );
+                              }),
                             ),
                           ),
                           SizedBox(
@@ -360,32 +380,23 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                 FilledButton.icon(
                     onPressed: () async {
                       try {
-                        final body = {
-                          'lieferant_id': supplierId,
-                          'nummer': numberCtrl.text.trim(),
-                          'waehrung': currencyCtrl.text.trim().isEmpty
-                              ? 'EUR'
-                              : currencyCtrl.text.trim().toUpperCase(),
-                          'status': status,
-                          'notiz': noteCtrl.text.trim(),
-                          'positionen': [
-                            if (itemMaterialId != null)
-                              {
-                                'material_id': itemMaterialId,
-                                'bezeichnung': itemDescCtrl.text.trim(),
-                                'menge':
-                                    double.tryParse(itemQtyCtrl.text.trim()) ??
-                                        0,
-                                'einheit': itemUomCtrl.text.trim(),
-                                'preis': double.tryParse(
-                                        itemPriceCtrl.text.trim()) ??
-                                    0,
-                                'waehrung': currencyCtrl.text.trim().isEmpty
-                                    ? 'EUR'
-                                    : currencyCtrl.text.trim().toUpperCase(),
-                              }
-                          ]
-                        };
+                        final body = buildPurchaseOrderCreatePayload(
+                          supplierId: supplierId,
+                          number: numberCtrl.text,
+                          currencyText: currencyCtrl.text,
+                          status: status,
+                          note: noteCtrl.text,
+                          itemPayload: itemMaterialId == null
+                              ? null
+                              : buildPurchaseOrderItemPayload(
+                                  materialId: itemMaterialId,
+                                  description: itemDescCtrl.text,
+                                  quantityText: itemQtyCtrl.text,
+                                  unitText: itemUomCtrl.text,
+                                  priceText: itemPriceCtrl.text,
+                                  currencyText: currencyCtrl.text,
+                                ),
+                        );
                         await widget.api.createPurchaseOrder(body);
                         if (mounted) Navigator.of(ctx).pop();
                         await _reload();

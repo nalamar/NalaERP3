@@ -1,6 +1,47 @@
 import 'commercial_navigation.dart';
 
-class ProjectCommercialNavigationContext {
+const String projectFlowReasonLabel = 'Projektbedarf';
+
+String resolveProjectMaterialDisplayTitle(Map<String, dynamic> item) {
+  for (final value in [
+    _normalize(item['article_code']?.toString()),
+    _normalize(item['description']?.toString()),
+    _normalize(item['configuration']?.toString()),
+    _normalize(item['material_nummer']?.toString()),
+  ]) {
+    if (value != null) {
+      return value;
+    }
+  }
+  return '';
+}
+
+String? resolveProjectLinkedMaterialLabel(Map<String, dynamic> item) =>
+    _normalize(item['material_nummer']?.toString());
+
+String buildProjectLinkedMaterialSuffix(Map<String, dynamic> item) {
+  final linkedLabel = resolveProjectLinkedMaterialLabel(item);
+  if (linkedLabel == null) {
+    return '';
+  }
+  return '  •  verknüpft: $linkedLabel';
+}
+
+String buildProjectPurchaseOrderNote(String projectLabel) =>
+    'Projektbezug: $projectLabel';
+
+String buildProjectPurchaseOrderDescription(String projectLabel) =>
+    '$projectFlowReasonLabel: $projectLabel';
+
+String buildLinkedProjectMaterialNote(String? variantLabel) =>
+    variantLabel == null
+        ? 'Projektmaterial'
+        : 'Projektmaterial aus Variante $variantLabel';
+
+class ProjectCommercialNavigationContext
+    implements
+        PurchaseOrderDestinationContext,
+        StockMovementDestinationContext {
   const ProjectCommercialNavigationContext._({
     required this.projectId,
     required this.projectSearchQuery,
@@ -25,32 +66,41 @@ class ProjectCommercialNavigationContext {
   final String? projectSearchQuery;
   final String projectLabel;
 
+  @override
   CommercialFilterContext? get projectFilters => projectId == null
       ? null
       : CommercialFilterContext(
           projectId: projectId,
         );
 
+  @override
   CommercialListContext? get purchaseOrdersContext => projectSearchQuery == null
       ? null
       : CommercialListContext.search(projectSearchQuery!);
 
+  @override
   PurchaseOrderCreatePrefillContext? get purchaseOrderPrefill =>
       projectLabel.isEmpty
           ? null
           : PurchaseOrderCreatePrefillContext(
-              note: 'Projektbezug: $projectLabel',
-              itemDescription: 'Projektbedarf: $projectLabel',
+              note: buildProjectPurchaseOrderNote(projectLabel),
+              itemDescription:
+                  buildProjectPurchaseOrderDescription(projectLabel),
             );
 
+  @override
   StockMovementPrefillContext get stockMovementPrefill =>
-      StockMovementPrefillContext(
+      StockMovementPrefillContext.reference(
         reference: projectSearchQuery,
-        reason: 'Projektbedarf',
+        reason: projectFlowReasonLabel,
       );
 }
 
-class LinkedProjectMaterialNavigationContext {
+class LinkedProjectMaterialNavigationContext
+    extends MaterialDetailDestinationContext
+    implements
+        PurchaseOrderDestinationContext,
+        StockMovementDestinationContext {
   const LinkedProjectMaterialNavigationContext._({
     required this.materialId,
     required this.note,
@@ -67,6 +117,9 @@ class LinkedProjectMaterialNavigationContext {
   final String unit;
   final String movementReference;
 
+  @override
+  CommercialListContext? get purchaseOrdersContext => null;
+
   static LinkedProjectMaterialNavigationContext? fromVariantMaterial({
     required Map<String, dynamic> variant,
     required Map<String, dynamic> item,
@@ -75,15 +128,12 @@ class LinkedProjectMaterialNavigationContext {
     final materialId = _normalize(item['material_id']?.toString());
     if (materialId == null) return null;
     final variantLabel = _normalize(variant['name']?.toString());
-    final note = variantLabel == null
-        ? 'Projektmaterial'
-        : 'Projektmaterial aus Variante $variantLabel';
+    final note = buildLinkedProjectMaterialNote(variantLabel);
+    final primaryLabel = resolveProjectMaterialDisplayTitle(item);
+    final linkedMaterialLabel = resolveProjectLinkedMaterialLabel(item);
     final description = [
-      _normalize(
-        (item['article_code'] ?? item['description'] ?? item['configuration'])
-            ?.toString(),
-      ),
-      _normalize(item['material_nummer']?.toString()),
+      _normalize(primaryLabel),
+      linkedMaterialLabel,
     ].whereType<String>().join(' • ');
     final quantity =
         (parseNum(item['__computed_qty']) ?? parseNum(item['qty']) ?? 1)
@@ -99,16 +149,15 @@ class LinkedProjectMaterialNavigationContext {
     );
   }
 
-  MaterialListContext get materialListContext =>
-      MaterialListContext.detail(materialId);
-
+  @override
   StockMovementPrefillContext get stockMovementPrefill =>
-      StockMovementPrefillContext(
+      StockMovementPrefillContext.reference(
         materialId: materialId,
-        reason: 'Projektbedarf',
+        reason: projectFlowReasonLabel,
         reference: movementReference,
       );
 
+  @override
   PurchaseOrderCreatePrefillContext get purchaseOrderPrefill =>
       PurchaseOrderCreatePrefillContext(
         note: note,

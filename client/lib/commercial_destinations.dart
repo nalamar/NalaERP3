@@ -8,6 +8,7 @@ import 'pages/quotes_page.dart';
 import 'pages/sales_orders_page.dart';
 import 'pages/stock_movements_page.dart';
 import 'pages/warehouses_page.dart';
+import 'project_navigation.dart';
 
 QuotesPage buildQuotesPage({
   required ApiClient api,
@@ -123,29 +124,77 @@ MaterialwirtschaftScreen buildMaterialwirtschaftScreenDestination({
   );
 }
 
+MaterialwirtschaftScreen buildMaterialListDestination({
+  required ApiClient api,
+  MaterialListContext? initialContext,
+}) {
+  return buildMaterialwirtschaftScreenDestination(
+    api: api,
+    initialMaterialsContext: initialContext,
+  );
+}
+
+MaterialwirtschaftScreen buildMaterialDetailFlowDestination({
+  required ApiClient api,
+  required MaterialDetailDestinationContext destinationContext,
+}) {
+  return buildMaterialListDestination(
+    api: api,
+    initialContext: destinationContext.materialListContext,
+  );
+}
+
+// Compatibility wrapper for raw material ids; prefer buildMaterialListDestination.
+@Deprecated(
+    'Use buildMaterialListDestination with MaterialListContext instead.')
 MaterialwirtschaftScreen buildMaterialDetailDestination({
   required ApiClient api,
   required String materialId,
 }) {
-  return buildMaterialwirtschaftScreenDestination(
+  return buildMaterialDetailFlowDestination(
     api: api,
-    initialMaterialsContext: MaterialListContext.detail(materialId),
+    destinationContext: _RawMaterialDetailDestinationContext(materialId),
   );
 }
 
+// Compatibility wrapper for raw material ids; prefer
+// buildMaterialStockMovementCreateDestination.
+@Deprecated(
+  'Use buildMaterialStockMovementCreateDestination with MaterialNavigationContext instead.',
+)
 MaterialwirtschaftScreen buildMaterialStockMovementDestination({
   required ApiClient api,
   required String materialId,
   String? reference,
   String? reason,
 }) {
-  return buildMaterialwirtschaftScreenDestination(
+  return buildStockMovementCreateDestination(
     api: api,
-    initialStockMovementPrefill: StockMovementPrefillContext(
-      materialId: materialId,
+    initialPrefill: StockMovementPrefillContext.material(
+      materialId,
       reference: reference,
       reason: reason,
     ),
+  );
+}
+
+MaterialwirtschaftScreen buildMaterialStockMovementCreateDestination({
+  required ApiClient api,
+  required MaterialNavigationContext materialContext,
+}) {
+  return buildStockMovementCreateDestination(
+    api: api,
+    initialPrefill: materialContext.stockMovementPrefill,
+  );
+}
+
+MaterialwirtschaftScreen buildStockMovementCreateDestination({
+  required ApiClient api,
+  StockMovementPrefillContext? initialPrefill,
+}) {
+  return buildMaterialwirtschaftScreenDestination(
+    api: api,
+    initialStockMovementPrefill: initialPrefill,
   );
 }
 
@@ -175,15 +224,108 @@ MaterialwirtschaftScreen buildPurchaseOrderCreateDestination({
   );
 }
 
+MaterialwirtschaftScreen buildPurchaseOrderFlowDestination({
+  required ApiClient api,
+  required PurchaseOrderDestinationContext destinationContext,
+}) {
+  return buildPurchaseOrderCreateDestination(
+    api: api,
+    initialContext: destinationContext.purchaseOrdersContext,
+    initialCreatePrefill: destinationContext.purchaseOrderPrefill,
+  );
+}
+
+MaterialwirtschaftScreen buildMaterialPurchaseOrderCreateDestination({
+  required ApiClient api,
+  required MaterialNavigationContext materialContext,
+}) {
+  return buildPurchaseOrderFlowDestination(
+    api: api,
+    destinationContext: materialContext,
+  );
+}
+
+MaterialwirtschaftScreen buildProjectPurchaseOrderCreateDestination({
+  required ApiClient api,
+  required ProjectCommercialNavigationContext projectContext,
+}) {
+  return buildPurchaseOrderFlowDestination(
+    api: api,
+    destinationContext: projectContext,
+  );
+}
+
+MaterialwirtschaftScreen buildLinkedProjectMaterialPurchaseOrderDestination({
+  required ApiClient api,
+  required LinkedProjectMaterialNavigationContext materialContext,
+}) {
+  return buildPurchaseOrderFlowDestination(
+    api: api,
+    destinationContext: materialContext,
+  );
+}
+
+MaterialwirtschaftScreen buildStockMovementFlowDestination({
+  required ApiClient api,
+  required StockMovementDestinationContext destinationContext,
+}) {
+  return buildStockMovementCreateDestination(
+    api: api,
+    initialPrefill: destinationContext.stockMovementPrefill,
+  );
+}
+
+MaterialwirtschaftScreen buildLinkedProjectMaterialStockMovementDestination({
+  required ApiClient api,
+  required LinkedProjectMaterialNavigationContext materialContext,
+}) {
+  return buildStockMovementFlowDestination(
+    api: api,
+    destinationContext: materialContext,
+  );
+}
+
+MaterialwirtschaftScreen buildProjectStockMovementDestination({
+  required ApiClient api,
+  required ProjectCommercialNavigationContext projectContext,
+}) {
+  return buildStockMovementFlowDestination(
+    api: api,
+    destinationContext: projectContext,
+  );
+}
+
+MaterialwirtschaftScreen buildWarehouseListDestination({
+  required ApiClient api,
+  WarehouseSelectionContext? initialSelection,
+}) {
+  return buildMaterialwirtschaftScreenDestination(
+    api: api,
+    initialWarehouseSelection: initialSelection,
+    initialSection: 1,
+  );
+}
+
+// Compatibility wrapper for raw warehouse ids; prefer buildWarehouseListDestination.
+@Deprecated(
+  'Use buildWarehouseListDestination with WarehouseSelectionContext instead.',
+)
 MaterialwirtschaftScreen buildWarehouseSelectionDestination({
   required ApiClient api,
   String? warehouseId,
 }) {
-  return buildMaterialwirtschaftScreenDestination(
+  return buildWarehouseListDestination(
     api: api,
-    initialWarehouseSelection: warehouseId == null
+    initialSelection: warehouseId == null
         ? null
-        : WarehouseSelectionContext(warehouseId: warehouseId),
-    initialSection: 1,
+        : WarehouseSelectionContext.detail(warehouseId),
   );
+}
+
+class _RawMaterialDetailDestinationContext
+    extends MaterialDetailDestinationContext {
+  const _RawMaterialDetailDestinationContext(this.materialId);
+
+  @override
+  final String materialId;
 }

@@ -16,6 +16,7 @@ List<Widget> buildMaterialFollowUpActionButtons({
   required VoidCallback onOpenPurchaseOrder,
   required VoidCallback onChangeLink,
   required VoidCallback onUnlink,
+  bool includeOpenMaterialAction = true,
 }) {
   if (!linked) {
     if (!canManageLink) {
@@ -31,7 +32,7 @@ List<Widget> buildMaterialFollowUpActionButtons({
   }
 
   return [
-    if (canOpenLinkedMaterialDetail(api))
+    if (includeOpenMaterialAction && canOpenLinkedMaterialDetail(api))
       OutlinedButton(
         onPressed: isBusy ? null : onOpenMaterial,
         child: const Text('Material'),

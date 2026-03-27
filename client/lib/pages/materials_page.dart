@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_destinations.dart';
 import '../commercial_navigation.dart';
+import '../material_follow_up_actions.dart';
 import '../web/browser.dart' as browser;
 
 class MaterialsPage extends StatefulWidget {
@@ -308,6 +309,42 @@ class _MaterialsPageState extends State<MaterialsPage> {
         );
       }
     }
+  }
+
+  MaterialNavigationContext? get _selectedMaterialContext {
+    final material = selected;
+    if (material == null) return null;
+    try {
+      return MaterialNavigationContext.fromMaterial(material);
+    } on ArgumentError {
+      return null;
+    }
+  }
+
+  Future<void> _openStockMovementForSelectedMaterial() async {
+    final materialContext = _selectedMaterialContext;
+    if (materialContext == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildMaterialStockMovementCreateDestination(
+          api: widget.api,
+          materialContext: materialContext,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openPurchaseOrderForSelectedMaterial() async {
+    final materialContext = _selectedMaterialContext;
+    if (materialContext == null) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => buildMaterialPurchaseOrderCreateDestination(
+          api: widget.api,
+          materialContext: materialContext,
+        ),
+      ),
+    );
   }
 
   Future<void> _openCreateDialog() async {
@@ -668,25 +705,24 @@ class _MaterialsPageState extends State<MaterialsPage> {
                                     Text(
                                         'Kategorie: ${selected!['kategorie']}'),
                                 ])),
-                            if (selectedId != null &&
-                                widget.api
-                                    .hasPermission('stock_movements.write'))
-                              FilledButton.tonal(
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          buildMaterialStockMovementDestination(
-                                        api: widget.api,
-                                        materialId: selectedId!,
-                                        reference:
-                                            selected!['nummer']?.toString(),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: const Text('Bestandsbewegung'),
+                            Wrap(
+                              spacing: 6,
+                              children: buildMaterialFollowUpActionButtons(
+                                api: widget.api,
+                                linked: true,
+                                canManageLink: false,
+                                isBusy: loading,
+                                includeOpenMaterialAction: false,
+                                onAdopt: () {},
+                                onOpenMaterial: () {},
+                                onOpenStockMovement:
+                                    _openStockMovementForSelectedMaterial,
+                                onOpenPurchaseOrder:
+                                    _openPurchaseOrderForSelectedMaterial,
+                                onChangeLink: () {},
+                                onUnlink: () {},
                               ),
+                            ),
                             if (canWrite) ...[
                               IconButton(
                                   onPressed: _editSelected,

@@ -6,8 +6,16 @@ import 'package:nalaerp_client/commercial_navigation.dart';
 import 'package:nalaerp_client/pages/dashboard_page.dart';
 import 'package:nalaerp_client/pages/invoices_page.dart';
 import 'package:nalaerp_client/pages/materialwirtschaft_screen.dart';
+import 'package:nalaerp_client/pages/purchase_order_detail_page.dart';
 import 'package:nalaerp_client/pages/purchase_orders_page.dart';
 import 'package:nalaerp_client/pages/projects_page.dart';
+import 'package:nalaerp_client/pages/stock_movements_page.dart';
+import 'package:nalaerp_client/material_selection.dart';
+import 'package:nalaerp_client/project_navigation.dart';
+import 'package:nalaerp_client/purchase_order_item_payloads.dart';
+import 'package:nalaerp_client/purchase_order_material_selection.dart';
+import 'package:nalaerp_client/purchase_order_receipt_flow.dart';
+import 'package:nalaerp_client/stock_movement_payloads.dart';
 import 'package:nalaerp_client/pages/quotes_page.dart';
 import 'package:nalaerp_client/pages/sales_orders_page.dart';
 
@@ -31,6 +39,7 @@ class _FakeApiClient extends ApiClient {
     this.convertedQuote,
     this.purchaseOrderList = const [],
     this.purchaseOrderDetail,
+    this.purchaseOrderItems = const [],
     this.contactList = const [],
     this.materialList = const [],
     this.materialDetail,
@@ -58,6 +67,7 @@ class _FakeApiClient extends ApiClient {
   final Map<String, dynamic>? convertedQuote;
   final List<dynamic> purchaseOrderList;
   final Map<String, dynamic>? purchaseOrderDetail;
+  final List<dynamic> purchaseOrderItems;
   final List<dynamic> contactList;
   final List<dynamic> materialList;
   final Map<String, dynamic>? materialDetail;
@@ -65,6 +75,8 @@ class _FakeApiClient extends ApiClient {
   final List<dynamic> materialDocuments;
   final List<dynamic> warehouseList;
   final Map<String, List<dynamic>> locationMap;
+  final List<Map<String, dynamic>> createdStockMovements = [];
+  final List<Map<String, dynamic>> updatedPurchaseOrders = [];
 
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
@@ -229,8 +241,20 @@ class _FakeApiClient extends ApiClient {
   Future<Map<String, dynamic>> getPurchaseOrder(String id) async =>
       <String, dynamic>{
         'bestellung': purchaseOrderDetail ?? <String, dynamic>{'id': id},
-        'positionen': const [],
+        'positionen': purchaseOrderItems,
       };
+
+  @override
+  Future<Map<String, dynamic>> updatePurchaseOrder(
+    String id,
+    Map<String, dynamic> patch,
+  ) async {
+    updatedPurchaseOrders.add(<String, dynamic>{'id': id, 'patch': patch});
+    if (purchaseOrderDetail != null) {
+      purchaseOrderDetail!.addAll(patch);
+    }
+    return purchaseOrderDetail ?? <String, dynamic>{'id': id, ...patch};
+  }
 
   @override
   Future<List<String>> listPOStatuses() async =>
@@ -300,6 +324,13 @@ class _FakeApiClient extends ApiClient {
       locationMap[warehouseId] ?? const [];
 
   @override
+  Future<Map<String, dynamic>> createStockMovement(
+      Map<String, dynamic> body) async {
+    createdStockMovements.add(Map<String, dynamic>.from(body));
+    return <String, dynamic>{'id': 'sm-${createdStockMovements.length}'};
+  }
+
+  @override
   Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id) async =>
       convertedSalesOrder ?? <String, dynamic>{'id': 'so-converted'};
 
@@ -344,6 +375,328 @@ Future<void> _prepareSmallViewport(WidgetTester tester) async {
 }
 
 void main() {
+  test(
+      'Stock-movement payload builder trims optional fields and normalizes currency',
+      () {
+    final payload = buildStockMovementPayload(
+      materialId: ' mat-1 ',
+      warehouseId: ' wh-1 ',
+      locationId: ' ',
+      batchCode: ' B-01 ',
+      quantity: 4,
+      unit: ' kg ',
+      type: ' purchase ',
+      reason: ' Wareneingang ',
+      reference: ' BE-2026-0001 ',
+      purchasePrice: 12.5,
+      currency: ' eur ',
+    );
+
+    expect(
+      payload,
+      <String, dynamic>{
+        'material_id': 'mat-1',
+        'warehouse_id': 'wh-1',
+        'batch_code': 'B-01',
+        'menge': 4,
+        'einheit': 'kg',
+        'typ': 'purchase',
+        'grund': 'Wareneingang',
+        'referenz': 'BE-2026-0001',
+        'ek_preis': 12.5,
+        'waehrung': 'EUR',
+      },
+    );
+  });
+
+  test('Material selection resolves label, description and unit generically',
+      () {
+    final selection = resolveMaterialSelection(
+      const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'einheit': 'kg',
+        },
+      ],
+      'mat-1',
+    );
+
+    expect(selection, isNotNull);
+    expect(selection!.label, 'MAT-100 – Profilstahl');
+    expect(selection.description, 'Profilstahl');
+    expect(selection.unit, 'kg');
+  });
+
+  test('Material label resolver prefers normalized label over raw id', () {
+    expect(
+      resolveMaterialLabel(
+        const [
+          {
+            'id': 'mat-1',
+            'nummer': 'MAT-100',
+            'bezeichnung': 'Profilstahl',
+            'einheit': 'kg',
+          },
+        ],
+        'mat-1',
+      ),
+      'MAT-100 – Profilstahl',
+    );
+  });
+
+  test('Material reference label uses bullet-separated reference format', () {
+    expect(
+      materialReferenceLabel(const {
+        'id': 'mat-1',
+        'nummer': 'MAT-100',
+        'bezeichnung': 'Profilstahl',
+        'einheit': 'kg',
+      }),
+      'MAT-100 • Profilstahl',
+    );
+  });
+
+  test('Project material resolvers derive title and linked label consistently',
+      () {
+    const item = {
+      'article_code': 'Beschlagset',
+      'description': 'Beschlagset links',
+      'material_nummer': 'MAT-001',
+    };
+
+    expect(resolveProjectMaterialDisplayTitle(item), 'Beschlagset');
+    expect(resolveProjectLinkedMaterialLabel(item), 'MAT-001');
+    expect(buildProjectLinkedMaterialSuffix(item), '  •  verknüpft: MAT-001');
+    expect(
+        buildProjectLinkedMaterialSuffix(const {'material_nummer': '  '}), '');
+  });
+
+  test('Project navigation helpers derive consistent note and reason labels',
+      () {
+    expect(buildProjectPurchaseOrderNote('PRJ-0101 • Tor 1'),
+        'Projektbezug: PRJ-0101 • Tor 1');
+    expect(buildProjectPurchaseOrderDescription('PRJ-0101 • Tor 1'),
+        'Projektbedarf: PRJ-0101 • Tor 1');
+    expect(buildLinkedProjectMaterialNote('Variante A'),
+        'Projektmaterial aus Variante Variante A');
+    expect(buildLinkedProjectMaterialNote(null), 'Projektmaterial');
+    expect(projectFlowReasonLabel, 'Projektbedarf');
+  });
+
+  test(
+      'Purchase-order material selection derives label, description and unit from a material',
+      () {
+    final selection = resolvePurchaseOrderMaterialSelection(
+      const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'einheit': 'kg',
+        },
+      ],
+      'mat-1',
+    );
+
+    expect(selection, isNotNull);
+    expect(selection!.label, 'MAT-100 – Profilstahl');
+    expect(selection.description, 'Profilstahl');
+    expect(selection.unit, 'kg');
+  });
+
+  test(
+      'Purchase-order item payload builder normalizes numbers, currency and delivery date',
+      () {
+    final payload = buildPurchaseOrderItemPayload(
+      materialId: ' mat-1 ',
+      description: ' Profilstahl ',
+      quantityText: '4.5',
+      unitText: ' kg ',
+      priceText: '12.5',
+      currencyText: ' eur ',
+      deliveryDate: DateTime(2026, 3, 24, 16, 30),
+    );
+
+    expect(
+      payload,
+      <String, dynamic>{
+        'bezeichnung': 'Profilstahl',
+        'menge': 4.5,
+        'einheit': 'kg',
+        'preis': 12.5,
+        'waehrung': 'EUR',
+        'material_id': 'mat-1',
+        'liefertermin': '2026-03-24T00:00:00.000',
+      },
+    );
+  });
+
+  test(
+      'Purchase-order create payload builder embeds a normalized single item payload',
+      () {
+    final payload = buildPurchaseOrderCreatePayload(
+      supplierId: 'sup-1',
+      number: ' BE-2026-0001 ',
+      currencyText: ' eur ',
+      status: 'draft',
+      note: ' Test ',
+      itemPayload: buildPurchaseOrderItemPayload(
+        materialId: 'mat-1',
+        description: 'Profilstahl',
+        quantityText: '4',
+        unitText: 'kg',
+        priceText: '12.5',
+        currencyText: 'eur',
+      ),
+    );
+
+    expect(payload['lieferant_id'], 'sup-1');
+    expect(payload['nummer'], 'BE-2026-0001');
+    expect(payload['waehrung'], 'EUR');
+    expect(payload['status'], 'draft');
+    expect(payload['notiz'], 'Test');
+    expect((payload['positionen'] as List<dynamic>), hasLength(1));
+    expect(
+      (payload['positionen'] as List<dynamic>).single,
+      containsPair('material_id', 'mat-1'),
+    );
+  });
+
+  test(
+      'Purchase-order receipt builder derives stock movements from material items only',
+      () {
+    final bodies = buildPurchaseOrderReceiptStockMovements(
+      order: const {
+        'nummer': 'BE-2026-0001',
+      },
+      items: const [
+        {
+          'material_id': 'mat-1',
+          'menge': 4,
+          'einheit': 'kg',
+          'preis': 12.5,
+          'waehrung': 'EUR',
+        },
+        {
+          'bezeichnung': 'Freitext',
+          'menge': 1,
+          'einheit': 'Stk',
+        },
+      ],
+      warehouseId: 'wh-1',
+      locationId: 'loc-1',
+      defaultCurrency: 'EUR',
+    );
+
+    expect(bodies, hasLength(1));
+    expect(
+      bodies.single,
+      <String, dynamic>{
+        'material_id': 'mat-1',
+        'warehouse_id': 'wh-1',
+        'location_id': 'loc-1',
+        'menge': 4,
+        'einheit': 'kg',
+        'typ': 'purchase',
+        'grund': 'Wareneingang',
+        'referenz': 'BE-2026-0001',
+        'ek_preis': 12.5,
+        'waehrung': 'EUR',
+      },
+    );
+  });
+
+  testWidgets('StockMovementsPage autofills unit when a material is selected',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'stock_movements.write'},
+      materialList: const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-200',
+          'bezeichnung': 'Beschlagset',
+          'einheit': 'Stk',
+        },
+      ],
+      warehouseList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StockMovementsPage(
+          api: api,
+          openCreateOnStart: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MAT-200 – Beschlagset').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextFormField, 'Stk'),
+      ),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'PurchaseOrdersPage autofills description and unit when a material is selected in create dialog',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'purchase_orders.write'},
+      purchaseOrderList: const [],
+      materialList: const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'einheit': 'kg',
+        },
+      ],
+      contactList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: buildPurchaseOrdersPage(
+          api: api,
+          openCreateOnStart: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('MAT-100 – Profilstahl').last);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextFormField, 'Profilstahl'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextFormField, 'kg'),
+      ),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('PurchaseOrdersPage adopts CommercialListContext for list start',
       (tester) async {
     await _prepareLargeViewport(tester);
@@ -380,6 +733,136 @@ void main() {
 
     expect(find.text('BE-2026-0001  •  draft'), findsOneWidget);
     expect(find.text('BE-2026-0002  •  ordered'), findsNothing);
+  });
+
+  testWidgets(
+      'PurchaseOrderDetailPage books receipt movements via shared receipt builder',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final purchaseOrder = <String, dynamic>{
+      'id': 'po-1',
+      'nummer': 'BE-2026-0001',
+      'status': 'ordered',
+      'waehrung': 'EUR',
+      'datum': '2026-03-24',
+    };
+    final api = _FakeApiClient(
+      purchaseOrderDetail: purchaseOrder,
+      purchaseOrderItems: const [
+        {
+          'id': 'item-1',
+          'position': 1,
+          'material_id': 'mat-1',
+          'bezeichnung': 'Profilstahl',
+          'menge': 4,
+          'einheit': 'kg',
+          'preis': 12.5,
+          'waehrung': 'EUR',
+        },
+        {
+          'id': 'item-2',
+          'position': 2,
+          'bezeichnung': 'Freitextposition',
+          'menge': 1,
+          'einheit': 'Stk',
+          'preis': 20,
+        },
+      ],
+      warehouseList: const [
+        {
+          'id': 'wh-1',
+          'code': 'WH-A',
+          'name': 'Hauptlager',
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PurchaseOrderDetailPage(api: api, id: 'po-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Empfangen'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('WH-A – Hauptlager').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Buchen'));
+    await tester.pumpAndSettle();
+
+    expect(api.createdStockMovements, hasLength(1));
+    expect(
+      api.createdStockMovements.single,
+      containsPair('material_id', 'mat-1'),
+    );
+    expect(
+      api.createdStockMovements.single,
+      containsPair('warehouse_id', 'wh-1'),
+    );
+    expect(
+      api.createdStockMovements.single,
+      containsPair('grund', 'Wareneingang'),
+    );
+    expect(
+      api.createdStockMovements.single,
+      containsPair('referenz', 'BE-2026-0001'),
+    );
+    expect(api.updatedPurchaseOrders, hasLength(1));
+    expect(api.updatedPurchaseOrders.single['id'], 'po-1');
+    expect(
+      api.updatedPurchaseOrders.single['patch'],
+      <String, dynamic>{'status': 'received'},
+    );
+  });
+
+  testWidgets(
+      'PurchaseOrderDetailPage shows resolved material label when item description is empty',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      purchaseOrderDetail: const {
+        'id': 'po-1',
+        'nummer': 'BE-2026-0001',
+        'status': 'ordered',
+        'waehrung': 'EUR',
+        'datum': '2026-03-24',
+      },
+      purchaseOrderItems: const [
+        {
+          'id': 'item-1',
+          'position': 1,
+          'material_id': 'mat-1',
+          'bezeichnung': '',
+          'menge': 4,
+          'einheit': 'kg',
+          'preis': 12.5,
+          'waehrung': 'EUR',
+        },
+      ],
+      materialList: const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'einheit': 'kg',
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: PurchaseOrderDetailPage(api: api, id: 'po-1'),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('MAT-100 – Profilstahl'), findsOneWidget);
+    expect(find.text('mat-1'), findsNothing);
   });
 
   testWidgets(
@@ -651,6 +1134,260 @@ void main() {
   });
 
   testWidgets(
+      'Stock-movement destination opens materialwirtschaft with shared prefill context',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'stock_movements.write'},
+      materialList: const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'einheit': 'kg',
+        },
+      ],
+      warehouseList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: buildStockMovementCreateDestination(
+          api: api,
+          initialPrefill: const StockMovementPrefillContext(
+            materialId: 'mat-1',
+            reason: 'Projektbedarf',
+            reference: 'PRJ-0101',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bestandsbewegung'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Projektbedarf'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'PRJ-0101'), findsOneWidget);
+  });
+
+  test(
+      'Material purchase-order destination forwards shared material prefill context',
+      () {
+    final api = _FakeApiClient();
+    final screen = buildMaterialPurchaseOrderCreateDestination(
+      api: api,
+      materialContext: MaterialNavigationContext.fromMaterial(const {
+        'id': 'mat-1',
+        'nummer': 'MAT-100',
+        'bezeichnung': 'Profilstahl',
+        'einheit': 'kg',
+      }),
+    );
+
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedNote,
+      'Materialbezug: MAT-100 • Profilstahl',
+    );
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedItemDescription,
+      'MAT-100 • Profilstahl',
+    );
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedItemMaterialId,
+      'mat-1',
+    );
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedItemQuantity,
+      1,
+    );
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedItemUnit,
+      'kg',
+    );
+  });
+
+  test('Material purchase-order prefill constructor derives shared defaults',
+      () {
+    const prefill = PurchaseOrderCreatePrefillContext.material(
+      materialLabel: 'MAT-100 • Profilstahl',
+      materialId: 'mat-1',
+      unit: 'kg',
+    );
+
+    expect(prefill.normalizedNote, 'Materialbezug: MAT-100 • Profilstahl');
+    expect(prefill.normalizedItemDescription, 'MAT-100 • Profilstahl');
+    expect(prefill.normalizedItemMaterialId, 'mat-1');
+    expect(prefill.normalizedItemQuantity, 1);
+    expect(prefill.normalizedItemUnit, 'kg');
+  });
+
+  test(
+      'Purchase-order flow destination forwards shared project context and prefill',
+      () {
+    final api = _FakeApiClient();
+    final screen = buildPurchaseOrderFlowDestination(
+      api: api,
+      destinationContext: ProjectCommercialNavigationContext.fromProject(const {
+        'id': 'project-1',
+        'nummer': 'PRJ-0101',
+        'name': 'Tor 1',
+      }),
+    );
+
+    expect(
+      screen.initialPurchaseOrdersContext?.normalizedSearchQuery,
+      'PRJ-0101',
+    );
+    expect(
+      screen.initialPurchaseOrderCreatePrefill?.normalizedNote,
+      'Projektbezug: PRJ-0101 • Tor 1',
+    );
+  });
+
+  test('Material list destination forwards a shared material context', () {
+    final api = _FakeApiClient();
+    final screen = buildMaterialListDestination(
+      api: api,
+      initialContext: const MaterialListContext(
+        detailId: 'mat-1',
+        searchQuery: 'MAT-100',
+        type: 'rohstoff',
+      ),
+    );
+
+    expect(screen.initialMaterialsContext?.normalizedDetailId, 'mat-1');
+    expect(screen.initialMaterialsContext?.normalizedSearchQuery, 'MAT-100');
+    expect(screen.initialMaterialsContext?.normalizedType, 'rohstoff');
+  });
+
+  test('Material detail flow destination forwards shared detail context', () {
+    final api = _FakeApiClient();
+    final screen = buildMaterialDetailFlowDestination(
+      api: api,
+      destinationContext: MaterialNavigationContext.fromMaterial(const {
+        'id': 'mat-1',
+        'nummer': 'MAT-100',
+        'bezeichnung': 'Profilstahl',
+        'einheit': 'kg',
+      }),
+    );
+
+    expect(screen.initialMaterialsContext?.normalizedDetailId, 'mat-1');
+  });
+
+  test(
+      'Material detail destination still delegates through shared material context',
+      () {
+    final api = _FakeApiClient();
+    final screen = buildMaterialDetailDestination(
+      api: api,
+      materialId: ' mat-1 ',
+    );
+
+    expect(screen.initialMaterialsContext?.normalizedDetailId, 'mat-1');
+    expect(screen.initialMaterialsContext?.effectiveSearchQuery, 'mat-1');
+  });
+
+  test(
+      'Material stock-movement destination forwards shared material prefill context',
+      () {
+    final api = _FakeApiClient();
+    final screen = buildMaterialStockMovementCreateDestination(
+      api: api,
+      materialContext: MaterialNavigationContext.fromMaterial(const {
+        'id': 'mat-1',
+        'nummer': 'MAT-100',
+        'bezeichnung': 'Profilstahl',
+        'einheit': 'kg',
+      }),
+    );
+
+    expect(screen.initialStockMovementPrefill?.normalizedMaterialId, 'mat-1');
+    expect(
+      screen.initialStockMovementPrefill?.normalizedReference,
+      'MAT-100 • Profilstahl',
+    );
+  });
+
+  test('Stock-movement flow destination forwards shared project reason context',
+      () {
+    final api = _FakeApiClient();
+    final screen = buildStockMovementFlowDestination(
+      api: api,
+      destinationContext: ProjectCommercialNavigationContext.fromProject(const {
+        'id': 'project-1',
+        'nummer': 'PRJ-0101',
+        'name': 'Tor 1',
+      }),
+    );
+
+    expect(
+      screen.initialStockMovementPrefill?.normalizedReference,
+      'PRJ-0101',
+    );
+    expect(
+      screen.initialStockMovementPrefill?.normalizedReason,
+      'Projektbedarf',
+    );
+  });
+
+  test('Stock-movement reference constructor normalizes shared reference data',
+      () {
+    const prefill = StockMovementPrefillContext.reference(
+      materialId: ' mat-1 ',
+      reason: ' Projektbedarf ',
+      reference: ' PRJ-0101 ',
+    );
+
+    expect(prefill.normalizedMaterialId, 'mat-1');
+    expect(prefill.normalizedReason, 'Projektbedarf');
+    expect(prefill.normalizedReference, 'PRJ-0101');
+  });
+
+  test('Warehouse list destination forwards a shared warehouse selection', () {
+    final api = _FakeApiClient();
+    final screen = buildWarehouseListDestination(
+      api: api,
+      initialSelection: const WarehouseSelectionContext(warehouseId: 'wh-2'),
+    );
+
+    expect(screen.initialSection, 1);
+    expect(screen.initialWarehouseSelection?.normalizedWarehouseId, 'wh-2');
+  });
+
+  test(
+      'Legacy raw wrapper destinations still normalize through shared contexts',
+      () {
+    final api = _FakeApiClient();
+    final stockMovementScreen = buildMaterialStockMovementDestination(
+      api: api,
+      materialId: ' mat-1 ',
+      reference: ' MAT-100 ',
+      reason: ' Projektbedarf ',
+    );
+    final warehouseScreen = buildWarehouseSelectionDestination(
+      api: api,
+      warehouseId: ' wh-2 ',
+    );
+
+    expect(
+      stockMovementScreen.initialStockMovementPrefill?.normalizedMaterialId,
+      'mat-1',
+    );
+    expect(
+      stockMovementScreen.initialStockMovementPrefill?.normalizedReference,
+      'MAT-100',
+    );
+    expect(
+      stockMovementScreen.initialStockMovementPrefill?.normalizedReason,
+      'Projektbedarf',
+    );
+    expect(
+      warehouseScreen.initialWarehouseSelection?.normalizedWarehouseId,
+      'wh-2',
+    );
+  });
+
+  testWidgets(
       'MaterialwirtschaftScreen routes material context into the materials section',
       (tester) async {
     await _prepareLargeViewport(tester);
@@ -759,11 +1496,14 @@ void main() {
   });
 
   testWidgets(
-      'MaterialsPage opens stock-movement dialog with material prefill from selected material',
+      'MaterialsPage reuses shared stock-movement follow-up action for selected material',
       (tester) async {
     await _prepareLargeViewport(tester);
     final api = _FakeApiClient(
-      permissions: const {'stock_movements.write'},
+      permissions: const {
+        'stock_movements.write',
+        'purchase_orders.write',
+      },
       materialList: const [
         {
           'id': 'mat-1',
@@ -797,12 +1537,92 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Bestandsbewegung'));
+    expect(find.text('Material'), findsNothing);
+    expect(find.text('Bewegung'), findsOneWidget);
+    expect(find.text('Bestellen'), findsOneWidget);
+
+    await tester.tap(find.text('Bewegung'));
     await tester.pumpAndSettle();
 
     expect(find.text('Bestandsbewegung'), findsOneWidget);
     expect(find.text('MAT-100 – Profilstahl'), findsWidgets);
-    expect(find.widgetWithText(TextField, 'MAT-100'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'MAT-100 • Profilstahl'),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'MaterialsPage reuses shared purchase-order follow-up action for selected material',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {
+        'stock_movements.write',
+        'purchase_orders.write',
+      },
+      materialList: const [
+        {
+          'id': 'mat-1',
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'typ': 'rohstoff',
+          'einheit': 'kg',
+          'kategorie': 'Stahl',
+        },
+      ],
+      materialDetail: const {
+        'id': 'mat-1',
+        'nummer': 'MAT-100',
+        'bezeichnung': 'Profilstahl',
+        'typ': 'rohstoff',
+        'einheit': 'kg',
+        'kategorie': 'Stahl',
+      },
+      materialStock: const [],
+      materialDocuments: const [],
+      warehouseList: const [],
+      purchaseOrderList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: buildMaterialsPage(
+          api: api,
+          initialContext: const MaterialListContext.detail('mat-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Material'), findsNothing);
+    expect(find.text('Bewegung'), findsOneWidget);
+    expect(find.text('Bestellen'), findsOneWidget);
+
+    await tester.tap(find.text('Bestellen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bestellung anlegen'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(
+            TextFormField, 'Materialbezug: MAT-100 • Profilstahl'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextFormField, 'MAT-100 • Profilstahl'),
+      ),
+      findsWidgets,
+    );
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.widgetWithText(TextFormField, '1'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets(
@@ -2801,6 +3621,68 @@ void main() {
       findsOneWidget,
     );
     expect(find.widgetWithText(TextField, 'PRJ-0101'), findsOneWidget);
+  });
+
+  testWidgets(
+      'ProjectDetailPage hides purchase-order action without purchase-order permission',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'projects.write'},
+      projectPhases: const [],
+      quoteList: const [],
+      salesOrderList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectDetailPage(
+          api: api,
+          project: const {
+            'id': 'project-1',
+            'name': 'Tor 1',
+            'nummer': 'PRJ-0101',
+          },
+          canWrite: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bestellung'), findsNothing);
+    expect(find.text('Materialbewegung'), findsNothing);
+  });
+
+  testWidgets(
+      'ProjectDetailPage still shows stock movement without purchase-order permission',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'projects.write', 'stock_movements.write'},
+      projectPhases: const [],
+      quoteList: const [],
+      salesOrderList: const [],
+      materialList: const [],
+      warehouseList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectDetailPage(
+          api: api,
+          project: const {
+            'id': 'project-1',
+            'name': 'Tor 1',
+            'nummer': 'PRJ-0101',
+          },
+          canWrite: true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bestellung'), findsNothing);
+    expect(find.text('Materialbewegung'), findsOneWidget);
   });
 
   testWidgets(

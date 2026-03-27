@@ -3,6 +3,7 @@ import '../api.dart';
 import '../commercial_context.dart';
 import '../commercial_destinations.dart';
 import '../material_follow_up_actions.dart';
+import '../project_material_flow_actions.dart';
 import '../project_navigation.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import '../web/browser.dart' as browser;
@@ -469,19 +470,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
           const Text('Aktionen',
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 12),
-          if (widget.canWrite)
-            FilledButton.icon(
-                onPressed: _openPurchaseOrderFlow,
-                icon: const Icon(Icons.shopping_cart_checkout_rounded),
-                label: const Text('Bestellung')),
-          const SizedBox(height: 8),
-          if (widget.api.hasPermission('stock_movements.write'))
-            FilledButton.icon(
-                onPressed: _openStockMovementFlow,
-                icon: const Icon(Icons.swap_horiz_rounded),
-                label: const Text('Materialbewegung')),
-          if (widget.api.hasPermission('stock_movements.write'))
-            const SizedBox(height: 8),
+          ..._buildProjectMaterialFlowActions(),
           if (widget.api.hasPermission('quotes.write'))
             FilledButton.icon(
                 onPressed: _openQuoteCreateFlow,
@@ -572,10 +561,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _openPurchaseOrderFlow() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => buildPurchaseOrderCreateDestination(
+        builder: (_) => buildProjectPurchaseOrderCreateDestination(
           api: widget.api,
-          initialContext: _navigation.purchaseOrdersContext,
-          initialCreatePrefill: _navigation.purchaseOrderPrefill,
+          projectContext: _navigation,
         ),
       ),
     );
@@ -584,12 +572,31 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
   Future<void> _openStockMovementFlow() async {
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => buildMaterialwirtschaftScreenDestination(
+        builder: (_) => buildProjectStockMovementDestination(
           api: widget.api,
-          initialStockMovementPrefill: _navigation.stockMovementPrefill,
+          projectContext: _navigation,
         ),
       ),
     );
+  }
+
+  List<Widget> _buildProjectMaterialFlowActions() {
+    final actions = buildProjectMaterialFlowActionButtons(
+      api: widget.api,
+      canWrite: widget.canWrite,
+      onOpenPurchaseOrder: _openPurchaseOrderFlow,
+      onOpenStockMovement: _openStockMovementFlow,
+    );
+    if (actions.isEmpty) {
+      return const <Widget>[];
+    }
+    return [
+      for (var i = 0; i < actions.length; i++) ...[
+        actions[i],
+        if (i != actions.length - 1) const SizedBox(height: 8),
+      ],
+      const SizedBox(height: 8),
+    ];
   }
 
   Future<void> _openProjectQuotes() async {
@@ -1303,17 +1310,12 @@ class _VariantTileState extends State<_VariantTile> {
                     .toString();
                 final lenStr = _fmt4(lenVal);
                 final qtyStr = _qtyDisplayForProfile(p);
-                final linkedStr =
-                    ((p)['material_nummer'] ?? '').toString().isNotEmpty
-                        ? '  •  verknüpft: ' + (p)['material_nummer']
-                        : '';
                 return ListTile(
                   dense: true,
                   leading: const Icon(Icons.straighten_rounded),
-                  title: Text(((p)['article_code'] ?? (p)['description'] ?? '')
-                      .toString()),
-                  subtitle:
-                      Text('Länge $lenStr $lenUnit, Menge $qtyStr$linkedStr'),
+                  title: Text(resolveProjectMaterialDisplayTitle(p)),
+                  subtitle: Text(
+                      'Länge $lenStr $lenUnit, Menge $qtyStr${buildProjectLinkedMaterialSuffix(p)}'),
                   onTap: (p['material_id'] as String?)?.isNotEmpty == true
                       ? () => _openLinkedMaterialFromRow(p)
                       : null,
@@ -1328,13 +1330,10 @@ class _VariantTileState extends State<_VariantTile> {
                   ((_materials!['articles'] ?? []) as List).map((a) => ListTile(
                         dense: true,
                         leading: const Icon(Icons.extension_rounded),
-                        title: Text(
-                            ((a as Map<String, dynamic>)['article_code'] ??
-                                    (a)['description'] ??
-                                    '')
-                                .toString()),
+                        title: Text(resolveProjectMaterialDisplayTitle(
+                            a as Map<String, dynamic>)),
                         subtitle: Text(
-                            'Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${((a)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (a)['material_nummer'] : ''}'),
+                            'Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${buildProjectLinkedMaterialSuffix(a as Map<String, dynamic>)}'),
                         onTap: (a['material_id'] as String?)?.isNotEmpty == true
                             ? () => _openLinkedMaterialFromRow(
                                 a as Map<String, dynamic>)
@@ -1349,13 +1348,10 @@ class _VariantTileState extends State<_VariantTile> {
                   ((_materials!['glass'] ?? []) as List).map((g) => ListTile(
                         dense: true,
                         leading: const Icon(Icons.window_rounded),
-                        title: Text(
-                            ((g as Map<String, dynamic>)['configuration'] ??
-                                    (g)['description'] ??
-                                    '')
-                                .toString()),
+                        title: Text(resolveProjectMaterialDisplayTitle(
+                            g as Map<String, dynamic>)),
                         subtitle: Text(
-                            'Menge ${(g)['qty'] ?? 1}${((g)['material_nummer'] ?? '').toString().isNotEmpty ? '  •  verknüpft: ' + (g)['material_nummer'] : ''}'),
+                            'Menge ${(g)['qty'] ?? 1}${buildProjectLinkedMaterialSuffix(g as Map<String, dynamic>)}'),
                         onTap: (g['material_id'] as String?)?.isNotEmpty == true
                             ? () => _openLinkedMaterialFromRow(
                                 g as Map<String, dynamic>)
@@ -1508,9 +1504,9 @@ class _VariantTileState extends State<_VariantTile> {
     if (materialContext == null) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => buildMaterialDetailDestination(
+        builder: (_) => buildMaterialDetailFlowDestination(
           api: widget.api,
-          materialId: materialContext.materialId,
+          destinationContext: materialContext,
         ),
       ),
     );
@@ -1521,11 +1517,9 @@ class _VariantTileState extends State<_VariantTile> {
     if (materialContext == null) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => buildMaterialStockMovementDestination(
+        builder: (_) => buildLinkedProjectMaterialStockMovementDestination(
           api: widget.api,
-          materialId: materialContext.materialId,
-          reference: materialContext.movementReference,
-          reason: 'Projektbedarf',
+          materialContext: materialContext,
         ),
       ),
     );
@@ -1536,9 +1530,9 @@ class _VariantTileState extends State<_VariantTile> {
     if (materialContext == null) return;
     await Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => buildPurchaseOrderCreateDestination(
+        builder: (_) => buildLinkedProjectMaterialPurchaseOrderDestination(
           api: widget.api,
-          initialCreatePrefill: materialContext.purchaseOrderPrefill,
+          materialContext: materialContext,
         ),
       ),
     );
