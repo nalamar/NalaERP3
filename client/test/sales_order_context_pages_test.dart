@@ -470,7 +470,190 @@ void main() {
     expect(resolveProjectLinkedMaterialLabel(item), 'MAT-001');
     expect(buildProjectLinkedMaterialSuffix(item), '  •  verknüpft: MAT-001');
     expect(
+        buildLinkedProjectMaterialDescription(item), 'Beschlagset • MAT-001');
+    expect(
         buildProjectLinkedMaterialSuffix(const {'material_nummer': '  '}), '');
+  });
+
+  test(
+      'Project material default descriptions stay consistent per material kind',
+      () {
+    expect(
+      resolveProjectMaterialDefaultDescription(
+        const {
+          'article_code': 'ART-100',
+          'description': 'Beschlagset links',
+        },
+        kind: 'articles',
+      ),
+      'Beschlagset links',
+    );
+    expect(
+      resolveProjectMaterialDefaultDescription(
+        const {
+          'article_code': 'ART-100',
+        },
+        kind: 'profiles',
+      ),
+      'ART-100',
+    );
+    expect(
+      resolveProjectMaterialDefaultDescription(
+        const {
+          'configuration': '6/16/6 ESG',
+        },
+        kind: 'glass',
+      ),
+      '6/16/6 ESG',
+    );
+    expect(
+      resolveProjectMaterialDefaultDescription(const {}, kind: 'glass'),
+      'Glas',
+    );
+    expect(
+      resolveProjectMaterialDefaultNumber(
+        const {
+          'supplier_code': 'SUP',
+          'article_code': 'ART-100',
+        },
+        kind: 'articles',
+      ),
+      'SUP-ART-100',
+    );
+    expect(
+      resolveProjectMaterialDefaultNumber(
+        const {
+          'description': 'Rahmenprofil',
+        },
+        kind: 'profiles',
+      ),
+      'RAHMENPROFIL',
+    );
+    expect(
+      resolveProjectMaterialDefaultNumber(
+        const {
+          'configuration': '6/16/6 ESG',
+        },
+        kind: 'glass',
+      ),
+      'GLAS-6/16/6 ESG',
+    );
+    expect(
+      buildProjectMaterialCandidateTitle(
+        const {
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+        },
+      ),
+      'MAT-100 — Profilstahl',
+    );
+    expect(
+      buildProjectMaterialCandidateSubtitle(
+        const {
+          'typ': 'profil',
+          'einheit': 'kg',
+          'kategorie': 'stahl',
+        },
+      ),
+      'profil • kg • stahl',
+    );
+    expect(
+      mergeProjectMaterialOverrides(
+        const {
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'typ': 'profil',
+        },
+        const {
+          'nummer': 'MAT-200',
+        },
+      ),
+      <String, dynamic>{
+        'nummer': 'MAT-200',
+        'bezeichnung': 'Profilstahl',
+        'typ': 'profil',
+      },
+    );
+    expect(
+      buildProjectMaterialCreateBody(
+        defaults: const {
+          'nummer': 'MAT-100',
+          'bezeichnung': 'Profilstahl',
+          'typ': 'profil',
+          'einheit': 'kg',
+        },
+        values: const {
+          'nummer': ' MAT-200 ',
+          'bezeichnung': ' Profilstahl verzinkt ',
+          'einheit': ' stk ',
+          'kategorie': ' Stahl ',
+          'norm': ' EN 1090 ',
+          'werkstoffnummer': ' 1.0038 ',
+          'dichte': '7.85',
+        },
+        variantId: 'variant-1',
+        kind: 'profiles',
+      ),
+      <String, dynamic>{
+        'nummer': 'MAT-200',
+        'bezeichnung': 'Profilstahl verzinkt',
+        'typ': 'profil',
+        'einheit': 'stk',
+        'kategorie': 'Stahl',
+        'norm': 'EN 1090',
+        'werkstoffnummer': '1.0038',
+        'dichte': 7.85,
+        'attribute': <String, dynamic>{
+          'source': 'logikal-import',
+          'variant_id': 'variant-1',
+          'kind': 'profiles',
+        },
+      },
+    );
+    expect(
+      hasValidProjectMaterialCreateBody(
+        const {
+          'nummer': ' MAT-200 ',
+          'bezeichnung': ' Profilstahl verzinkt ',
+        },
+      ),
+      isTrue,
+    );
+    expect(
+      hasValidProjectMaterialCreateBody(
+        const {
+          'nummer': '   ',
+          'bezeichnung': 'Profilstahl verzinkt',
+        },
+      ),
+      isFalse,
+    );
+    expect(
+      resolveProjectMaterialDuplicateSearchQuery(
+        const {
+          'nummer': ' MAT-200 ',
+        },
+      ),
+      'MAT-200',
+    );
+    expect(
+      matchesProjectMaterialDuplicateNumber(
+        const {
+          'nummer': 'MAT-200-A',
+        },
+        'mat-200',
+      ),
+      isTrue,
+    );
+    expect(
+      matchesProjectMaterialDuplicateNumber(
+        const {
+          'nummer': 'ABC-100',
+        },
+        'mat-200',
+      ),
+      isFalse,
+    );
   });
 
   test('Project navigation helpers derive consistent note and reason labels',
@@ -3823,6 +4006,85 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'ProjectDetailPage renders project material subtitles consistently across material kinds',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      projectPhases: const [
+        {'id': 'phase-1', 'name': 'Los 1', 'nummer': '1'},
+      ],
+      phaseElevations: const {
+        'phase-1': [
+          {'id': 'elev-1', 'nummer': '1', 'name': 'Position 1', 'menge': 1},
+        ],
+      },
+      elevationVariants: const {
+        'elev-1': [
+          {'id': 'variant-1', 'name': 'Variante A', 'menge': 1},
+        ],
+      },
+      variantMaterials: const {
+        'variant-1': {
+          'profiles': [
+            {
+              'id': 'profile-1',
+              'article_code': 'PR-100',
+              'description': 'Rahmenprofil',
+              'qty': 2,
+              'unit': 'm',
+              'length_mm': 1200,
+            },
+          ],
+          'articles': [
+            {
+              'id': 'article-1',
+              'article_code': 'Beschlagset',
+              'description': 'Beschlagset links',
+              'qty': 3,
+              'unit': 'Stk',
+            },
+          ],
+          'glass': [
+            {
+              'id': 'glass-1',
+              'configuration': '6/16/6 ESG',
+              'qty': 4,
+            },
+          ],
+        },
+      },
+      quoteList: const [],
+      salesOrderList: const [],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProjectDetailPage(
+          api: api,
+          project: const {
+            'id': 'project-1',
+            'name': 'Tor 1',
+            'nummer': 'PRJ-0101',
+          },
+          canWrite: false,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Los 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('1: Position 1'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Variante A'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Länge 1200 mm, Menge 2 m'), findsOneWidget);
+    expect(find.text('Menge 3 Stk'), findsOneWidget);
+    expect(find.text('Menge 4'), findsOneWidget);
   });
 
   testWidgets(

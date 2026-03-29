@@ -1289,76 +1289,26 @@ class _VariantTileState extends State<_VariantTile> {
             padding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Profile',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              ...List<Widget>.from(
-                  ((_materials!['profiles'] ?? []) as List).map((p0) {
-                final p = (p0 as Map<String, dynamic>);
-                _ensureComputedQtyForProfile(p);
-                final lenVal = _looseGet(p, [
-                  'Lenght_Output',
-                  'Length_Output',
-                  'length_output',
-                  'Lenght',
-                  'Length',
-                  'length_mm'
-                ]);
-                final lenUnit = (_looseGet(
-                            p, ['Lenght_Unit', 'Length_Unit', 'length_unit']) ??
-                        'mm')
-                    .toString();
-                final lenStr = _fmt4(lenVal);
-                final qtyStr = _qtyDisplayForProfile(p);
-                return ListTile(
-                  dense: true,
-                  leading: const Icon(Icons.straighten_rounded),
-                  title: Text(resolveProjectMaterialDisplayTitle(p)),
-                  subtitle: Text(
-                      'Länge $lenStr $lenUnit, Menge $qtyStr${buildProjectLinkedMaterialSuffix(p)}'),
-                  onTap: (p['material_id'] as String?)?.isNotEmpty == true
-                      ? () => _openLinkedMaterialFromRow(p)
-                      : null,
-                  trailing: _buildMaterialActions(p, 'profiles'),
-                );
-              })),
-              const SizedBox(height: 12),
-              const Text('Artikel',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              ...List<Widget>.from(
-                  ((_materials!['articles'] ?? []) as List).map((a) => ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.extension_rounded),
-                        title: Text(resolveProjectMaterialDisplayTitle(
-                            a as Map<String, dynamic>)),
-                        subtitle: Text(
-                            'Menge ${(a)['qty'] ?? 1} ${(a)['unit'] ?? ''}${buildProjectLinkedMaterialSuffix(a as Map<String, dynamic>)}'),
-                        onTap: (a['material_id'] as String?)?.isNotEmpty == true
-                            ? () => _openLinkedMaterialFromRow(
-                                a as Map<String, dynamic>)
-                            : null,
-                        trailing: _buildMaterialActions(
-                            a as Map<String, dynamic>, 'articles'),
-                      ))),
-              const SizedBox(height: 12),
-              const Text('Glas', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 6),
-              ...List<Widget>.from(
-                  ((_materials!['glass'] ?? []) as List).map((g) => ListTile(
-                        dense: true,
-                        leading: const Icon(Icons.window_rounded),
-                        title: Text(resolveProjectMaterialDisplayTitle(
-                            g as Map<String, dynamic>)),
-                        subtitle: Text(
-                            'Menge ${(g)['qty'] ?? 1}${buildProjectLinkedMaterialSuffix(g as Map<String, dynamic>)}'),
-                        onTap: (g['material_id'] as String?)?.isNotEmpty == true
-                            ? () => _openLinkedMaterialFromRow(
-                                g as Map<String, dynamic>)
-                            : null,
-                        trailing: _buildMaterialActions(
-                            g as Map<String, dynamic>, 'glass'),
-                      ))),
+              ..._buildProjectMaterialSection(
+                title: 'Profile',
+                items: ((_materials!['profiles'] ?? []) as List),
+                kind: 'profiles',
+                icon: Icons.straighten_rounded,
+                prepareItem: _ensureComputedQtyForProfile,
+                addTopSpacing: false,
+              ),
+              ..._buildProjectMaterialSection(
+                title: 'Artikel',
+                items: ((_materials!['articles'] ?? []) as List),
+                kind: 'articles',
+                icon: Icons.extension_rounded,
+              ),
+              ..._buildProjectMaterialSection(
+                title: 'Glas',
+                items: ((_materials!['glass'] ?? []) as List),
+                kind: 'glass',
+                icon: Icons.window_rounded,
+              ),
             ]),
           ),
       ],
@@ -1466,6 +1416,74 @@ class _VariantTileState extends State<_VariantTile> {
     return '${q ?? 1} ${u.isNotEmpty ? u : ''}'.trim();
   }
 
+  String _projectMaterialSubtitle(Map<String, dynamic> it, String kind) {
+    final linkedSuffix = buildProjectLinkedMaterialSuffix(it);
+    switch (kind) {
+      case 'profiles':
+        final lenVal = _looseGet(it, [
+          'Lenght_Output',
+          'Length_Output',
+          'length_output',
+          'Lenght',
+          'Length',
+          'length_mm'
+        ]);
+        final lenUnit =
+            (_looseGet(it, ['Lenght_Unit', 'Length_Unit', 'length_unit']) ??
+                    'mm')
+                .toString();
+        final lenStr = _fmt4(lenVal);
+        final qtyStr = _qtyDisplayForProfile(it);
+        return 'Länge $lenStr $lenUnit, Menge $qtyStr$linkedSuffix';
+      case 'articles':
+        return 'Menge ${it['qty'] ?? 1} ${(it['unit'] ?? '')}$linkedSuffix';
+      case 'glass':
+        return 'Menge ${it['qty'] ?? 1}$linkedSuffix';
+    }
+    return linkedSuffix;
+  }
+
+  Widget _buildProjectMaterialTile(
+    Map<String, dynamic> it, {
+    required String kind,
+    required IconData icon,
+  }) {
+    return ListTile(
+      dense: true,
+      leading: Icon(icon),
+      title: Text(resolveProjectMaterialDisplayTitle(it)),
+      subtitle: Text(_projectMaterialSubtitle(it, kind)),
+      onTap: (it['material_id'] as String?)?.isNotEmpty == true
+          ? () => _openLinkedMaterialFromRow(it)
+          : null,
+      trailing: _buildMaterialActions(it, kind),
+    );
+  }
+
+  List<Widget> _buildProjectMaterialSection({
+    required String title,
+    required List<dynamic> items,
+    required String kind,
+    required IconData icon,
+    void Function(Map<String, dynamic> item)? prepareItem,
+    bool addTopSpacing = true,
+  }) {
+    return [
+      if (addTopSpacing) const SizedBox(height: 12),
+      Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      const SizedBox(height: 6),
+      ...List<Widget>.from(items.map((entry) {
+        final item = entry as Map<String, dynamic>;
+        prepareItem?.call(item);
+        return _buildProjectMaterialTile(
+          item,
+          kind: kind,
+          icon: icon,
+        );
+      })),
+    ];
+  }
+
   Widget _buildMaterialActions(Map<String, dynamic> it, String kind) {
     final linked = (it['material_id'] as String?)?.isNotEmpty == true;
     final actions = buildMaterialFollowUpActionButtons(
@@ -1538,6 +1556,44 @@ class _VariantTileState extends State<_VariantTile> {
     );
   }
 
+  Future<void> _linkMaterialId(
+    Map<String, dynamic> it,
+    String kind,
+    String materialId,
+  ) async {
+    await widget.api.linkVariantMaterial(
+      widget.projectId,
+      widget.variant['id'] as String,
+      kind,
+      it['id'] as String,
+      materialId,
+    );
+  }
+
+  Future<void> _createAndLinkMaterial(
+    Map<String, dynamic> it,
+    String kind,
+    Map<String, dynamic> body,
+  ) async {
+    final created = await widget.api.createMaterial(body);
+    final materialId = (created['id'] ?? '').toString();
+    if (materialId.isEmpty) {
+      return;
+    }
+    await _linkMaterialId(it, kind, materialId);
+  }
+
+  Future<bool> _reloadVariantMaterials() async {
+    if (!mounted) return false;
+    await _load();
+    return mounted;
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _unlink(Map<String, dynamic> it, String kind) async {
     setState(() {
       _saving = true;
@@ -1545,11 +1601,8 @@ class _VariantTileState extends State<_VariantTile> {
     try {
       await widget.api.linkVariantMaterial(widget.projectId,
           widget.variant['id'] as String, kind, it['id'] as String, '');
-      if (!mounted) return;
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Verknüpfung gelöst')));
+      if (!await _reloadVariantMaterials()) return;
+      _showSuccessSnackBar('Verknüpfung gelöst');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1579,26 +1632,13 @@ class _VariantTileState extends State<_VariantTile> {
     });
     try {
       if (choice.useExisting && choice.materialId != null) {
-        await widget.api.linkVariantMaterial(
-            widget.projectId,
-            widget.variant['id'] as String,
-            kind,
-            it['id'] as String,
-            choice.materialId!);
+        await _linkMaterialId(it, kind, choice.materialId!);
       } else if (choice.proposed != null) {
-        final body = {...prop, ...choice.proposed!};
-        final created = await widget.api.createMaterial(body);
-        final mid = (created['id'] ?? '').toString();
-        if (mid.isNotEmpty) {
-          await widget.api.linkVariantMaterial(widget.projectId,
-              widget.variant['id'] as String, kind, it['id'] as String, mid);
-        }
+        final body = mergeProjectMaterialOverrides(prop, choice.proposed);
+        await _createAndLinkMaterial(it, kind, body);
       }
-      if (!mounted) return;
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Verknüpfung aktualisiert')));
+      if (!await _reloadVariantMaterials()) return;
+      _showSuccessSnackBar('Verknüpfung aktualisiert');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1632,28 +1672,13 @@ class _VariantTileState extends State<_VariantTile> {
       ),
     );
     if (res == null) return;
-    // Sanitize types
-    final body = <String, dynamic>{
-      'nummer': (res['nummer'] ?? def['nummer']).toString().trim(),
-      'bezeichnung':
-          (res['bezeichnung'] ?? def['bezeichnung']).toString().trim(),
-      'typ': (res['typ'] ?? def['typ']).toString().trim(),
-      'einheit': (res['einheit'] ?? def['einheit']).toString().trim(),
-      if ((res['kategorie'] ?? '').toString().trim().isNotEmpty)
-        'kategorie': res['kategorie'].toString().trim(),
-      if ((res['norm'] ?? '').toString().trim().isNotEmpty)
-        'norm': res['norm'].toString().trim(),
-      if ((res['werkstoffnummer'] ?? '').toString().trim().isNotEmpty)
-        'werkstoffnummer': res['werkstoffnummer'].toString().trim(),
-      'dichte': double.tryParse('${res['dichte'] ?? 0}') ?? 0,
-      'attribute': <String, dynamic>{
-        'source': 'logikal-import',
-        'variant_id': widget.variant['id'],
-        'kind': kind,
-      },
-    };
-    if (body['nummer'].toString().isEmpty ||
-        body['bezeichnung'].toString().isEmpty) {
+    final body = buildProjectMaterialCreateBody(
+      defaults: def,
+      values: res,
+      variantId: (widget.variant['id'] ?? '').toString(),
+      kind: kind,
+    );
+    if (!hasValidProjectMaterialCreateBody(body)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Nummer und Bezeichnung sind erforderlich')));
@@ -1664,13 +1689,17 @@ class _VariantTileState extends State<_VariantTile> {
     });
     try {
       // Duplikat-Check und Auswahl vorhandener Materialien
-      final existing = await widget.api
-          .listMaterials(q: body['nummer'] as String, limit: 50);
+      final duplicateSearchQuery = resolveProjectMaterialDuplicateSearchQuery(
+        body,
+      );
+      final existing =
+          await widget.api.listMaterials(q: duplicateSearchQuery, limit: 50);
       final matches = existing.where((e) {
         final m = (e as Map<String, dynamic>);
-        final numA = (m['nummer']?.toString() ?? '').trim().toLowerCase();
-        final numB = (body['nummer'] as String).trim().toLowerCase();
-        return numA.contains(numB) || numB.contains(numA);
+        return matchesProjectMaterialDuplicateNumber(
+          m,
+          duplicateSearchQuery,
+        );
       }).toList();
 
       if (matches.isNotEmpty) {
@@ -1686,16 +1715,10 @@ class _VariantTileState extends State<_VariantTile> {
         if (choice.useExisting && choice.materialId != null) {
           // Link setzen
           try {
-            await widget.api.linkVariantMaterial(
-                widget.projectId,
-                widget.variant['id'] as String,
-                kind,
-                it['id'] as String,
-                choice.materialId!);
+            await _linkMaterialId(it, kind, choice.materialId!);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                content: Text('Vorhandenes Material verknüpft')));
-            await _load();
+            _showSuccessSnackBar('Vorhandenes Material verknüpft');
+            await _reloadVariantMaterials();
             return;
           } catch (e) {
             if (!mounted) return;
@@ -1707,23 +1730,15 @@ class _VariantTileState extends State<_VariantTile> {
         }
         // Ansonsten: Neu anlegen mit ggf. angepasster Nummer
         if (choice.proposed != null) {
-          for (final k in choice.proposed!.keys) {
-            body[k] = choice.proposed![k];
-          }
+          body
+            ..clear()
+            ..addAll(mergeProjectMaterialOverrides(body, choice.proposed));
         }
       }
 
-      final created = await widget.api.createMaterial(body);
-      final mid = (created['id'] ?? '').toString();
-      if (mid.isNotEmpty) {
-        await widget.api.linkVariantMaterial(widget.projectId,
-            widget.variant['id'] as String, kind, it['id'] as String, mid);
-        if (!mounted) return;
-        await _load();
-      }
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Material übernommen und verknüpft')));
+      await _createAndLinkMaterial(it, kind, body);
+      if (!await _reloadVariantMaterials()) return;
+      _showSuccessSnackBar('Material übernommen und verknüpft');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -1739,49 +1754,26 @@ class _VariantTileState extends State<_VariantTile> {
 
   Map<String, dynamic> _defaultsForMaterial(
       Map<String, dynamic> it, String kind) {
-    String nummer = '';
-    String bezeichnung = '';
+    final bezeichnung =
+        resolveProjectMaterialDefaultDescription(it, kind: kind);
+    final nummer = resolveProjectMaterialDefaultNumber(it, kind: kind);
     String typ = 'artikel';
     String einheit = 'stk';
     String kategorie = 'import';
     switch (kind) {
       case 'profiles':
-        final supplier = (it['supplier_code'] ?? '').toString().trim();
-        final code = (it['article_code'] ?? '').toString().trim();
-        final desc = (it['description'] ?? '').toString().trim();
-        nummer = [supplier, code].where((s) => s.isNotEmpty).join('-');
-        if (nummer.isEmpty)
-          nummer = code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'PROFIL');
-        bezeichnung =
-            desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Profil');
         typ = 'profil';
         einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
             ? it['unit']
             : 'stk';
         break;
       case 'articles':
-        final supplier = (it['supplier_code'] ?? '').toString().trim();
-        final code = (it['article_code'] ?? '').toString().trim();
-        final desc = (it['description'] ?? '').toString().trim();
-        nummer = [supplier, code].where((s) => s.isNotEmpty).join('-');
-        if (nummer.isEmpty)
-          nummer =
-              code.isNotEmpty ? code : (desc.isNotEmpty ? desc : 'ARTIKEL');
-        bezeichnung =
-            desc.isNotEmpty ? desc : (code.isNotEmpty ? code : 'Artikel');
         typ = 'artikel';
         einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
             ? it['unit']
             : 'stk';
         break;
       case 'glass':
-        final conf = (it['configuration'] ?? '').toString().trim();
-        final desc = (it['description'] ?? '').toString().trim();
-        nummer = conf.isNotEmpty
-            ? 'GLAS-$conf'
-            : (desc.isNotEmpty ? 'GLAS-$desc' : 'GLAS');
-        bezeichnung =
-            desc.isNotEmpty ? desc : (conf.isNotEmpty ? conf : 'Glas');
         typ = 'glas';
         einheit = (it['unit'] ?? '').toString().trim().isNotEmpty
             ? it['unit']
@@ -1856,11 +1848,8 @@ class _MaterialSelectDialogState extends State<_MaterialSelectDialog> {
                   return ListTile(
                     dense: true,
                     leading: const Icon(Icons.inventory_2_outlined),
-                    title: Text('${m['nummer']} — ${m['bezeichnung']}'),
-                    subtitle: Text([m['typ'], m['einheit'], m['kategorie']]
-                        .whereType<String>()
-                        .where((s) => s.isNotEmpty)
-                        .join(' • ')),
+                    title: Text(buildProjectMaterialCandidateTitle(m)),
+                    subtitle: Text(buildProjectMaterialCandidateSubtitle(m)),
                     onTap: () => Navigator.pop(
                         context, _MaterialChoice.existing(m['id'] as String)),
                   );

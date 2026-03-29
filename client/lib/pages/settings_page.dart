@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_destinations.dart';
-import 'dart:typed_data';
 import '../web/browser.dart' as browser;
 
 class SettingsPage extends StatefulWidget {
@@ -163,6 +162,18 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  void _showSettingsSuccess(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  void _showSettingsError(Object error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('Fehler: $error')));
+  }
+
   Future<void> _saveCompanyProfile() async {
     try {
       await widget.api.updateCompanyProfile({
@@ -184,15 +195,9 @@ class _SettingsPageState extends State<SettingsPage> {
         'iban': companyIbanCtrl.text,
         'bic': companyBicCtrl.text,
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Firmenprofil gespeichert')));
-      }
+      _showSettingsSuccess('Firmenprofil gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -230,15 +235,9 @@ class _SettingsPageState extends State<SettingsPage> {
         'date_format': localizationDateFormatCtrl.text,
         'number_format': localizationNumberFormatCtrl.text,
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lokalisierung gespeichert')));
-      }
+      _showSettingsSuccess('Lokalisierung gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -268,15 +267,9 @@ class _SettingsPageState extends State<SettingsPage> {
         'document_header_text': brandingHeaderCtrl.text,
         'document_footer_text': brandingFooterCtrl.text,
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Branding gespeichert')));
-      }
+      _showSettingsSuccess('Branding gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -422,19 +415,11 @@ class _SettingsPageState extends State<SettingsPage> {
             .updateCompanyBranch((existing['id'] ?? '').toString(), body);
       }
       await _loadBranches();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(existing == null
-                  ? 'Niederlassung gespeichert'
-                  : 'Niederlassung aktualisiert')),
-        );
-      }
+      _showSettingsSuccess(existing == null
+          ? 'Niederlassung gespeichert'
+          : 'Niederlassung aktualisiert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -460,15 +445,9 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await widget.api.deleteCompanyBranch(id);
       await _loadBranches();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Niederlassung gelöscht')));
-      }
+      _showSettingsSuccess('Niederlassung gelöscht');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -495,13 +474,9 @@ class _SettingsPageState extends State<SettingsPage> {
       _unitCodeCtrl.clear();
       _unitNameCtrl.clear();
       await _loadUnits();
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Einheit gespeichert')));
+      _showSettingsSuccess('Einheit gespeichert');
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      _showSettingsError(e);
     }
   }
 
@@ -523,13 +498,9 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await widget.api.deleteUnit(code);
       await _loadUnits();
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Einheit gelöscht')));
+      _showSettingsSuccess('Einheit gelöscht');
     } catch (e) {
-      if (mounted)
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      _showSettingsError(e);
     }
   }
 
@@ -556,15 +527,9 @@ class _SettingsPageState extends State<SettingsPage> {
       await widget.api
           .updateNumberingPattern('purchase_order', poPatternCtrl.text.trim());
       await _updatePreviewPO();
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Gespeichert')));
-      }
+      _showSettingsSuccess('Gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -573,97 +538,199 @@ class _SettingsPageState extends State<SettingsPage> {
       await widget.api
           .updateNumberingPattern('project', prjPatternCtrl.text.trim());
       await _updatePreviewPRJ();
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Gespeichert')));
-      }
+      _showSettingsSuccess('Gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
+    }
+  }
+
+  void _applyPdfTemplateData(
+    Map<String, dynamic> template, {
+    required TextEditingController headerCtrl,
+    required TextEditingController footerCtrl,
+    required TextEditingController topFirstCtrl,
+    required TextEditingController topOtherCtrl,
+    required void Function(String value) setEffectiveHeaderText,
+    required void Function(String value) setEffectiveFooterText,
+    required void Function(String value) setEffectiveDisplayName,
+    required void Function(String value) setEffectiveClaim,
+    required void Function(String value) setEffectivePrimaryColor,
+    required void Function(String value) setEffectiveAccentColor,
+    required void Function(String? value) setLogoDocId,
+    required void Function(String? value) setBgFirstDocId,
+    required void Function(String? value) setBgOtherDocId,
+  }) {
+    final headerText = (template['header_text'] ?? '').toString();
+    final footerText = (template['footer_text'] ?? '').toString();
+    final topFirstMm =
+        double.tryParse('${template['top_first_mm'] ?? '30'}') ?? 30;
+    final topOtherMm =
+        double.tryParse('${template['top_other_mm'] ?? '20'}') ?? 20;
+    headerCtrl.text = headerText;
+    footerCtrl.text = footerText;
+    topFirstCtrl.text = topFirstMm.toStringAsFixed(0);
+    topOtherCtrl.text = topOtherMm.toStringAsFixed(0);
+    setEffectiveHeaderText(
+        (template['effective_header_text'] ?? '').toString());
+    setEffectiveFooterText(
+        (template['effective_footer_text'] ?? '').toString());
+    setEffectiveDisplayName(
+        (template['effective_display_name'] ?? '').toString());
+    setEffectiveClaim((template['effective_claim'] ?? '').toString());
+    setEffectivePrimaryColor(
+        (template['effective_primary_color'] ?? '').toString());
+    setEffectiveAccentColor(
+        (template['effective_accent_color'] ?? '').toString());
+    setLogoDocId(template['logo_doc_id'] as String?);
+    setBgFirstDocId(template['bg_first_doc_id'] as String?);
+    setBgOtherDocId(template['bg_other_doc_id'] as String?);
+  }
+
+  ({
+    TextEditingController headerCtrl,
+    TextEditingController footerCtrl,
+    TextEditingController topFirstCtrl,
+    TextEditingController topOtherCtrl,
+  }) _pdfTemplateControllers(String entity) {
+    final isPurchaseOrder = entity == 'purchase_order';
+    final isInvoiceOut = entity == 'invoice_out';
+    final isQuote = entity == 'quote';
+    return (
+      headerCtrl: isPurchaseOrder
+          ? poHeaderCtrl
+          : isInvoiceOut
+              ? invoiceHeaderCtrl
+              : isQuote
+                  ? quoteHeaderCtrl
+                  : salesOrderHeaderCtrl,
+      footerCtrl: isPurchaseOrder
+          ? poFooterCtrl
+          : isInvoiceOut
+              ? invoiceFooterCtrl
+              : isQuote
+                  ? quoteFooterCtrl
+                  : salesOrderFooterCtrl,
+      topFirstCtrl: isPurchaseOrder
+          ? poTopFirstCtrl
+          : isInvoiceOut
+              ? invoiceTopFirstCtrl
+              : isQuote
+                  ? quoteTopFirstCtrl
+                  : salesOrderTopFirstCtrl,
+      topOtherCtrl: isPurchaseOrder
+          ? poTopOtherCtrl
+          : isInvoiceOut
+              ? invoiceTopOtherCtrl
+              : isQuote
+                  ? quoteTopOtherCtrl
+                  : salesOrderTopOtherCtrl,
+    );
+  }
+
+  void _setPdfTemplateDocumentId(
+    String entity,
+    String kind,
+    String? value,
+  ) {
+    if (entity == 'purchase_order') {
+      if (kind == 'logo') poLogoDocId = value;
+      if (kind == 'bg-first') poBgFirstDocId = value;
+      if (kind == 'bg-other') poBgOtherDocId = value;
+    } else if (entity == 'invoice_out') {
+      if (kind == 'logo') invoiceLogoDocId = value;
+      if (kind == 'bg-first') invoiceBgFirstDocId = value;
+      if (kind == 'bg-other') invoiceBgOtherDocId = value;
+    } else if (entity == 'quote') {
+      if (kind == 'logo') quoteLogoDocId = value;
+      if (kind == 'bg-first') quoteBgFirstDocId = value;
+      if (kind == 'bg-other') quoteBgOtherDocId = value;
+    } else if (entity == 'sales_order') {
+      if (kind == 'logo') salesOrderLogoDocId = value;
+      if (kind == 'bg-first') salesOrderBgFirstDocId = value;
+      if (kind == 'bg-other') salesOrderBgOtherDocId = value;
     }
   }
 
   Future<void> _loadPdfTemplate(String entity) async {
     try {
       final t = await widget.api.getPdfTemplate(entity);
-      final headerText = (t['header_text'] ?? '').toString();
-      final footerText = (t['footer_text'] ?? '').toString();
-      final tf = double.tryParse('${t['top_first_mm'] ?? '30'}') ?? 30;
-      final to = double.tryParse('${t['top_other_mm'] ?? '20'}') ?? 20;
       if (entity == 'purchase_order') {
-        poHeaderCtrl.text = headerText;
-        poFooterCtrl.text = footerText;
-        poTopFirstCtrl.text = tf.toStringAsFixed(0);
-        poTopOtherCtrl.text = to.toStringAsFixed(0);
-        poEffectiveHeaderText = (t['effective_header_text'] ?? '').toString();
-        poEffectiveFooterText = (t['effective_footer_text'] ?? '').toString();
-        poEffectiveDisplayName = (t['effective_display_name'] ?? '').toString();
-        poEffectiveClaim = (t['effective_claim'] ?? '').toString();
-        poEffectivePrimaryColor =
-            (t['effective_primary_color'] ?? '').toString();
-        poEffectiveAccentColor = (t['effective_accent_color'] ?? '').toString();
-        poLogoDocId = t['logo_doc_id'] as String?;
-        poBgFirstDocId = t['bg_first_doc_id'] as String?;
-        poBgOtherDocId = t['bg_other_doc_id'] as String?;
+        _applyPdfTemplateData(
+          t,
+          headerCtrl: poHeaderCtrl,
+          footerCtrl: poFooterCtrl,
+          topFirstCtrl: poTopFirstCtrl,
+          topOtherCtrl: poTopOtherCtrl,
+          setEffectiveHeaderText: (value) => poEffectiveHeaderText = value,
+          setEffectiveFooterText: (value) => poEffectiveFooterText = value,
+          setEffectiveDisplayName: (value) => poEffectiveDisplayName = value,
+          setEffectiveClaim: (value) => poEffectiveClaim = value,
+          setEffectivePrimaryColor: (value) => poEffectivePrimaryColor = value,
+          setEffectiveAccentColor: (value) => poEffectiveAccentColor = value,
+          setLogoDocId: (value) => poLogoDocId = value,
+          setBgFirstDocId: (value) => poBgFirstDocId = value,
+          setBgOtherDocId: (value) => poBgOtherDocId = value,
+        );
       } else if (entity == 'invoice_out') {
-        invoiceHeaderCtrl.text = headerText;
-        invoiceFooterCtrl.text = footerText;
-        invoiceTopFirstCtrl.text = tf.toStringAsFixed(0);
-        invoiceTopOtherCtrl.text = to.toStringAsFixed(0);
-        invoiceEffectiveHeaderText =
-            (t['effective_header_text'] ?? '').toString();
-        invoiceEffectiveFooterText =
-            (t['effective_footer_text'] ?? '').toString();
-        invoiceEffectiveDisplayName =
-            (t['effective_display_name'] ?? '').toString();
-        invoiceEffectiveClaim = (t['effective_claim'] ?? '').toString();
-        invoiceEffectivePrimaryColor =
-            (t['effective_primary_color'] ?? '').toString();
-        invoiceEffectiveAccentColor =
-            (t['effective_accent_color'] ?? '').toString();
-        invoiceLogoDocId = t['logo_doc_id'] as String?;
-        invoiceBgFirstDocId = t['bg_first_doc_id'] as String?;
-        invoiceBgOtherDocId = t['bg_other_doc_id'] as String?;
+        _applyPdfTemplateData(
+          t,
+          headerCtrl: invoiceHeaderCtrl,
+          footerCtrl: invoiceFooterCtrl,
+          topFirstCtrl: invoiceTopFirstCtrl,
+          topOtherCtrl: invoiceTopOtherCtrl,
+          setEffectiveHeaderText: (value) => invoiceEffectiveHeaderText = value,
+          setEffectiveFooterText: (value) => invoiceEffectiveFooterText = value,
+          setEffectiveDisplayName: (value) =>
+              invoiceEffectiveDisplayName = value,
+          setEffectiveClaim: (value) => invoiceEffectiveClaim = value,
+          setEffectivePrimaryColor: (value) =>
+              invoiceEffectivePrimaryColor = value,
+          setEffectiveAccentColor: (value) =>
+              invoiceEffectiveAccentColor = value,
+          setLogoDocId: (value) => invoiceLogoDocId = value,
+          setBgFirstDocId: (value) => invoiceBgFirstDocId = value,
+          setBgOtherDocId: (value) => invoiceBgOtherDocId = value,
+        );
       } else if (entity == 'quote') {
-        quoteHeaderCtrl.text = headerText;
-        quoteFooterCtrl.text = footerText;
-        quoteTopFirstCtrl.text = tf.toStringAsFixed(0);
-        quoteTopOtherCtrl.text = to.toStringAsFixed(0);
-        quoteEffectiveHeaderText =
-            (t['effective_header_text'] ?? '').toString();
-        quoteEffectiveFooterText =
-            (t['effective_footer_text'] ?? '').toString();
-        quoteEffectiveDisplayName =
-            (t['effective_display_name'] ?? '').toString();
-        quoteEffectiveClaim = (t['effective_claim'] ?? '').toString();
-        quoteEffectivePrimaryColor =
-            (t['effective_primary_color'] ?? '').toString();
-        quoteEffectiveAccentColor =
-            (t['effective_accent_color'] ?? '').toString();
-        quoteLogoDocId = t['logo_doc_id'] as String?;
-        quoteBgFirstDocId = t['bg_first_doc_id'] as String?;
-        quoteBgOtherDocId = t['bg_other_doc_id'] as String?;
+        _applyPdfTemplateData(
+          t,
+          headerCtrl: quoteHeaderCtrl,
+          footerCtrl: quoteFooterCtrl,
+          topFirstCtrl: quoteTopFirstCtrl,
+          topOtherCtrl: quoteTopOtherCtrl,
+          setEffectiveHeaderText: (value) => quoteEffectiveHeaderText = value,
+          setEffectiveFooterText: (value) => quoteEffectiveFooterText = value,
+          setEffectiveDisplayName: (value) => quoteEffectiveDisplayName = value,
+          setEffectiveClaim: (value) => quoteEffectiveClaim = value,
+          setEffectivePrimaryColor: (value) =>
+              quoteEffectivePrimaryColor = value,
+          setEffectiveAccentColor: (value) => quoteEffectiveAccentColor = value,
+          setLogoDocId: (value) => quoteLogoDocId = value,
+          setBgFirstDocId: (value) => quoteBgFirstDocId = value,
+          setBgOtherDocId: (value) => quoteBgOtherDocId = value,
+        );
       } else if (entity == 'sales_order') {
-        salesOrderHeaderCtrl.text = headerText;
-        salesOrderFooterCtrl.text = footerText;
-        salesOrderTopFirstCtrl.text = tf.toStringAsFixed(0);
-        salesOrderTopOtherCtrl.text = to.toStringAsFixed(0);
-        salesOrderEffectiveHeaderText =
-            (t['effective_header_text'] ?? '').toString();
-        salesOrderEffectiveFooterText =
-            (t['effective_footer_text'] ?? '').toString();
-        salesOrderEffectiveDisplayName =
-            (t['effective_display_name'] ?? '').toString();
-        salesOrderEffectiveClaim = (t['effective_claim'] ?? '').toString();
-        salesOrderEffectivePrimaryColor =
-            (t['effective_primary_color'] ?? '').toString();
-        salesOrderEffectiveAccentColor =
-            (t['effective_accent_color'] ?? '').toString();
-        salesOrderLogoDocId = t['logo_doc_id'] as String?;
-        salesOrderBgFirstDocId = t['bg_first_doc_id'] as String?;
-        salesOrderBgOtherDocId = t['bg_other_doc_id'] as String?;
+        _applyPdfTemplateData(
+          t,
+          headerCtrl: salesOrderHeaderCtrl,
+          footerCtrl: salesOrderFooterCtrl,
+          topFirstCtrl: salesOrderTopFirstCtrl,
+          topOtherCtrl: salesOrderTopOtherCtrl,
+          setEffectiveHeaderText: (value) =>
+              salesOrderEffectiveHeaderText = value,
+          setEffectiveFooterText: (value) =>
+              salesOrderEffectiveFooterText = value,
+          setEffectiveDisplayName: (value) =>
+              salesOrderEffectiveDisplayName = value,
+          setEffectiveClaim: (value) => salesOrderEffectiveClaim = value,
+          setEffectivePrimaryColor: (value) =>
+              salesOrderEffectivePrimaryColor = value,
+          setEffectiveAccentColor: (value) =>
+              salesOrderEffectiveAccentColor = value,
+          setLogoDocId: (value) => salesOrderLogoDocId = value,
+          setBgFirstDocId: (value) => salesOrderBgFirstDocId = value,
+          setBgOtherDocId: (value) => salesOrderBgOtherDocId = value,
+        );
       }
       if (mounted) setState(() {});
     } catch (_) {
@@ -673,58 +740,24 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _savePdfTemplate(String entity) async {
     try {
-      final isPurchaseOrder = entity == 'purchase_order';
-      final isInvoiceOut = entity == 'invoice_out';
-      final isQuote = entity == 'quote';
-      final headerCtrl = isPurchaseOrder
-          ? poHeaderCtrl
-          : isInvoiceOut
-              ? invoiceHeaderCtrl
-              : isQuote
-                  ? quoteHeaderCtrl
-                  : salesOrderHeaderCtrl;
-      final footerCtrl = isPurchaseOrder
-          ? poFooterCtrl
-          : isInvoiceOut
-              ? invoiceFooterCtrl
-              : isQuote
-                  ? quoteFooterCtrl
-                  : salesOrderFooterCtrl;
-      final topFirstCtrl = isPurchaseOrder
-          ? poTopFirstCtrl
-          : isInvoiceOut
-              ? invoiceTopFirstCtrl
-              : isQuote
-                  ? quoteTopFirstCtrl
-                  : salesOrderTopFirstCtrl;
-      final topOtherCtrl = isPurchaseOrder
-          ? poTopOtherCtrl
-          : isInvoiceOut
-              ? invoiceTopOtherCtrl
-              : isQuote
-                  ? quoteTopOtherCtrl
-                  : salesOrderTopOtherCtrl;
-      final tf =
-          double.tryParse(topFirstCtrl.text.trim().replaceAll(',', '.')) ?? 30;
-      final to =
-          double.tryParse(topOtherCtrl.text.trim().replaceAll(',', '.')) ?? 20;
+      final controllers = _pdfTemplateControllers(entity);
+      final tf = double.tryParse(
+              controllers.topFirstCtrl.text.trim().replaceAll(',', '.')) ??
+          30;
+      final to = double.tryParse(
+              controllers.topOtherCtrl.text.trim().replaceAll(',', '.')) ??
+          20;
       await widget.api.updatePdfTemplate(
         entity,
-        headerText: headerCtrl.text,
-        footerText: footerCtrl.text,
+        headerText: controllers.headerCtrl.text,
+        footerText: controllers.footerCtrl.text,
         topFirstMm: tf,
         topOtherMm: to,
       );
       await _loadPdfTemplate(entity);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('PDF-Template gespeichert')));
-      }
+      _showSettingsSuccess('PDF-Template gespeichert');
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showSettingsError(e);
     }
   }
 
@@ -737,29 +770,11 @@ class _SettingsPageState extends State<SettingsPage> {
           contentType: picked.contentType);
       final id = (res['document_id'] ?? '').toString();
       setState(() {
-        if (entity == 'purchase_order') {
-          if (kind == 'logo') poLogoDocId = id;
-          if (kind == 'bg-first') poBgFirstDocId = id;
-          if (kind == 'bg-other') poBgOtherDocId = id;
-        } else if (entity == 'invoice_out') {
-          if (kind == 'logo') invoiceLogoDocId = id;
-          if (kind == 'bg-first') invoiceBgFirstDocId = id;
-          if (kind == 'bg-other') invoiceBgOtherDocId = id;
-        } else if (entity == 'quote') {
-          if (kind == 'logo') quoteLogoDocId = id;
-          if (kind == 'bg-first') quoteBgFirstDocId = id;
-          if (kind == 'bg-other') quoteBgOtherDocId = id;
-        } else if (entity == 'sales_order') {
-          if (kind == 'logo') salesOrderLogoDocId = id;
-          if (kind == 'bg-first') salesOrderBgFirstDocId = id;
-          if (kind == 'bg-other') salesOrderBgOtherDocId = id;
-        }
+        _setPdfTemplateDocumentId(entity, kind, id);
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Upload erfolgreich')));
+      _showSettingsSuccess('Upload erfolgreich');
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      _showSettingsError(e);
     }
   }
 
@@ -767,29 +782,11 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       await widget.api.deletePdfImage(entity, kind);
       setState(() {
-        if (entity == 'purchase_order') {
-          if (kind == 'logo') poLogoDocId = null;
-          if (kind == 'bg-first') poBgFirstDocId = null;
-          if (kind == 'bg-other') poBgOtherDocId = null;
-        } else if (entity == 'invoice_out') {
-          if (kind == 'logo') invoiceLogoDocId = null;
-          if (kind == 'bg-first') invoiceBgFirstDocId = null;
-          if (kind == 'bg-other') invoiceBgOtherDocId = null;
-        } else if (entity == 'quote') {
-          if (kind == 'logo') quoteLogoDocId = null;
-          if (kind == 'bg-first') quoteBgFirstDocId = null;
-          if (kind == 'bg-other') quoteBgOtherDocId = null;
-        } else if (entity == 'sales_order') {
-          if (kind == 'logo') salesOrderLogoDocId = null;
-          if (kind == 'bg-first') salesOrderBgFirstDocId = null;
-          if (kind == 'bg-other') salesOrderBgOtherDocId = null;
-        }
+        _setPdfTemplateDocumentId(entity, kind, null);
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Bild entfernt')));
+      _showSettingsSuccess('Bild entfernt');
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+      _showSettingsError(e);
     }
   }
 
@@ -1161,74 +1158,22 @@ class _SettingsPageState extends State<SettingsPage> {
                 initiallyExpanded: false,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
                 children: [
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Bestellungen'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: poPatternCtrl,
-                            decoration: const InputDecoration(
-                                labelText: 'Pattern',
-                                hintText: 'z. B. PO-{YYYY}-{NNNN}'),
-                            onChanged: (_) {
-                              _updatePreviewPO();
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          Text('Vorschau: $previewPO'),
-                          const SizedBox(height: 8),
-                          const Text(
-                              'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                                onPressed: _savePO,
-                                icon: const Icon(Icons.save),
-                                label: const Text('Speichern')),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _buildNumberingCard(
+                    title: 'Bestellungen',
+                    controller: poPatternCtrl,
+                    preview: previewPO,
+                    hintText: 'z. B. PO-{YYYY}-{NNNN}',
+                    onChanged: _updatePreviewPO,
+                    onSave: _savePO,
                   ),
                   const SizedBox(height: 12),
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Projekte'),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: prjPatternCtrl,
-                            decoration: const InputDecoration(
-                                labelText: 'Pattern',
-                                hintText: 'z. B. PRJ-{YYYY}-{NNNN}'),
-                            onChanged: (_) {
-                              _updatePreviewPRJ();
-                            },
-                          ),
-                          const SizedBox(height: 8),
-                          Text('Vorschau: $previewPRJ'),
-                          const SizedBox(height: 8),
-                          const Text(
-                              'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}'),
-                          const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                                onPressed: _savePRJ,
-                                icon: const Icon(Icons.save),
-                                label: const Text('Speichern')),
-                          ),
-                        ],
-                      ),
-                    ),
+                  _buildNumberingCard(
+                    title: 'Projekte',
+                    controller: prjPatternCtrl,
+                    preview: previewPRJ,
+                    hintText: 'z. B. PRJ-{YYYY}-{NNNN}',
+                    onChanged: _updatePreviewPRJ,
+                    onSave: _savePRJ,
                   ),
                 ],
               ),
@@ -1306,86 +1251,9 @@ class _SettingsPageState extends State<SettingsPage> {
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildPdfTemplateCard(
-                              title: 'Bestellungen (purchase_order)',
-                              entity: 'purchase_order',
-                              headerCtrl: poHeaderCtrl,
-                              footerCtrl: poFooterCtrl,
-                              topFirstCtrl: poTopFirstCtrl,
-                              topOtherCtrl: poTopOtherCtrl,
-                              effectiveHeaderText: poEffectiveHeaderText,
-                              effectiveFooterText: poEffectiveFooterText,
-                              effectiveDisplayName: poEffectiveDisplayName,
-                              effectiveClaim: poEffectiveClaim,
-                              effectivePrimaryColor: poEffectivePrimaryColor,
-                              effectiveAccentColor: poEffectiveAccentColor,
-                              logoDocId: poLogoDocId,
-                              bgFirstDocId: poBgFirstDocId,
-                              bgOtherDocId: poBgOtherDocId,
-                            ),
-                            const Divider(height: 32),
-                            _buildPdfTemplateCard(
-                              title: 'Ausgangsrechnungen (invoice_out)',
-                              entity: 'invoice_out',
-                              headerCtrl: invoiceHeaderCtrl,
-                              footerCtrl: invoiceFooterCtrl,
-                              topFirstCtrl: invoiceTopFirstCtrl,
-                              topOtherCtrl: invoiceTopOtherCtrl,
-                              effectiveHeaderText: invoiceEffectiveHeaderText,
-                              effectiveFooterText: invoiceEffectiveFooterText,
-                              effectiveDisplayName: invoiceEffectiveDisplayName,
-                              effectiveClaim: invoiceEffectiveClaim,
-                              effectivePrimaryColor:
-                                  invoiceEffectivePrimaryColor,
-                              effectiveAccentColor: invoiceEffectiveAccentColor,
-                              logoDocId: invoiceLogoDocId,
-                              bgFirstDocId: invoiceBgFirstDocId,
-                              bgOtherDocId: invoiceBgOtherDocId,
-                            ),
-                            const Divider(height: 32),
-                            _buildPdfTemplateCard(
-                              title: 'Angebote (quote)',
-                              entity: 'quote',
-                              headerCtrl: quoteHeaderCtrl,
-                              footerCtrl: quoteFooterCtrl,
-                              topFirstCtrl: quoteTopFirstCtrl,
-                              topOtherCtrl: quoteTopOtherCtrl,
-                              effectiveHeaderText: quoteEffectiveHeaderText,
-                              effectiveFooterText: quoteEffectiveFooterText,
-                              effectiveDisplayName: quoteEffectiveDisplayName,
-                              effectiveClaim: quoteEffectiveClaim,
-                              effectivePrimaryColor: quoteEffectivePrimaryColor,
-                              effectiveAccentColor: quoteEffectiveAccentColor,
-                              logoDocId: quoteLogoDocId,
-                              bgFirstDocId: quoteBgFirstDocId,
-                              bgOtherDocId: quoteBgOtherDocId,
-                            ),
-                            const Divider(height: 32),
-                            _buildPdfTemplateCard(
-                              title: 'Aufträge (sales_order)',
-                              entity: 'sales_order',
-                              headerCtrl: salesOrderHeaderCtrl,
-                              footerCtrl: salesOrderFooterCtrl,
-                              topFirstCtrl: salesOrderTopFirstCtrl,
-                              topOtherCtrl: salesOrderTopOtherCtrl,
-                              effectiveHeaderText:
-                                  salesOrderEffectiveHeaderText,
-                              effectiveFooterText:
-                                  salesOrderEffectiveFooterText,
-                              effectiveDisplayName:
-                                  salesOrderEffectiveDisplayName,
-                              effectiveClaim: salesOrderEffectiveClaim,
-                              effectivePrimaryColor:
-                                  salesOrderEffectivePrimaryColor,
-                              effectiveAccentColor:
-                                  salesOrderEffectiveAccentColor,
-                              logoDocId: salesOrderLogoDocId,
-                              bgFirstDocId: salesOrderBgFirstDocId,
-                              bgOtherDocId: salesOrderBgOtherDocId,
-                            ),
-                          ]),
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: _buildPdfTemplateCards(),
+                      ),
                     ),
                   ),
                 ],
@@ -1395,6 +1263,169 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildNumberingCard({
+    required String title,
+    required TextEditingController controller,
+    required String preview,
+    required String hintText,
+    required VoidCallback onChanged,
+    required VoidCallback onSave,
+  }) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title),
+            const SizedBox(height: 8),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Pattern',
+                hintText: hintText,
+              ),
+              onChanged: (_) {
+                onChanged();
+              },
+            ),
+            const SizedBox(height: 8),
+            Text('Vorschau: $preview'),
+            const SizedBox(height: 8),
+            const Text(
+              'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}',
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton.icon(
+                onPressed: onSave,
+                icon: const Icon(Icons.save),
+                label: const Text('Speichern'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildPdfTemplateCards() {
+    final cards = _pdfTemplateCardConfigs();
+    return [
+      for (var index = 0; index < cards.length; index++) ...[
+        if (index > 0) const Divider(height: 32),
+        _buildPdfTemplateCard(
+          title: cards[index].title,
+          entity: cards[index].entity,
+          headerCtrl: cards[index].headerCtrl,
+          footerCtrl: cards[index].footerCtrl,
+          topFirstCtrl: cards[index].topFirstCtrl,
+          topOtherCtrl: cards[index].topOtherCtrl,
+          effectiveHeaderText: cards[index].effectiveHeaderText,
+          effectiveFooterText: cards[index].effectiveFooterText,
+          effectiveDisplayName: cards[index].effectiveDisplayName,
+          effectiveClaim: cards[index].effectiveClaim,
+          effectivePrimaryColor: cards[index].effectivePrimaryColor,
+          effectiveAccentColor: cards[index].effectiveAccentColor,
+          logoDocId: cards[index].logoDocId,
+          bgFirstDocId: cards[index].bgFirstDocId,
+          bgOtherDocId: cards[index].bgOtherDocId,
+        ),
+      ],
+    ];
+  }
+
+  List<
+      ({
+        String title,
+        String entity,
+        TextEditingController headerCtrl,
+        TextEditingController footerCtrl,
+        TextEditingController topFirstCtrl,
+        TextEditingController topOtherCtrl,
+        String effectiveHeaderText,
+        String effectiveFooterText,
+        String effectiveDisplayName,
+        String effectiveClaim,
+        String effectivePrimaryColor,
+        String effectiveAccentColor,
+        String? logoDocId,
+        String? bgFirstDocId,
+        String? bgOtherDocId,
+      })> _pdfTemplateCardConfigs() {
+    return [
+      (
+        title: 'Bestellungen (purchase_order)',
+        entity: 'purchase_order',
+        headerCtrl: poHeaderCtrl,
+        footerCtrl: poFooterCtrl,
+        topFirstCtrl: poTopFirstCtrl,
+        topOtherCtrl: poTopOtherCtrl,
+        effectiveHeaderText: poEffectiveHeaderText,
+        effectiveFooterText: poEffectiveFooterText,
+        effectiveDisplayName: poEffectiveDisplayName,
+        effectiveClaim: poEffectiveClaim,
+        effectivePrimaryColor: poEffectivePrimaryColor,
+        effectiveAccentColor: poEffectiveAccentColor,
+        logoDocId: poLogoDocId,
+        bgFirstDocId: poBgFirstDocId,
+        bgOtherDocId: poBgOtherDocId,
+      ),
+      (
+        title: 'Ausgangsrechnungen (invoice_out)',
+        entity: 'invoice_out',
+        headerCtrl: invoiceHeaderCtrl,
+        footerCtrl: invoiceFooterCtrl,
+        topFirstCtrl: invoiceTopFirstCtrl,
+        topOtherCtrl: invoiceTopOtherCtrl,
+        effectiveHeaderText: invoiceEffectiveHeaderText,
+        effectiveFooterText: invoiceEffectiveFooterText,
+        effectiveDisplayName: invoiceEffectiveDisplayName,
+        effectiveClaim: invoiceEffectiveClaim,
+        effectivePrimaryColor: invoiceEffectivePrimaryColor,
+        effectiveAccentColor: invoiceEffectiveAccentColor,
+        logoDocId: invoiceLogoDocId,
+        bgFirstDocId: invoiceBgFirstDocId,
+        bgOtherDocId: invoiceBgOtherDocId,
+      ),
+      (
+        title: 'Angebote (quote)',
+        entity: 'quote',
+        headerCtrl: quoteHeaderCtrl,
+        footerCtrl: quoteFooterCtrl,
+        topFirstCtrl: quoteTopFirstCtrl,
+        topOtherCtrl: quoteTopOtherCtrl,
+        effectiveHeaderText: quoteEffectiveHeaderText,
+        effectiveFooterText: quoteEffectiveFooterText,
+        effectiveDisplayName: quoteEffectiveDisplayName,
+        effectiveClaim: quoteEffectiveClaim,
+        effectivePrimaryColor: quoteEffectivePrimaryColor,
+        effectiveAccentColor: quoteEffectiveAccentColor,
+        logoDocId: quoteLogoDocId,
+        bgFirstDocId: quoteBgFirstDocId,
+        bgOtherDocId: quoteBgOtherDocId,
+      ),
+      (
+        title: 'Aufträge (sales_order)',
+        entity: 'sales_order',
+        headerCtrl: salesOrderHeaderCtrl,
+        footerCtrl: salesOrderFooterCtrl,
+        topFirstCtrl: salesOrderTopFirstCtrl,
+        topOtherCtrl: salesOrderTopOtherCtrl,
+        effectiveHeaderText: salesOrderEffectiveHeaderText,
+        effectiveFooterText: salesOrderEffectiveFooterText,
+        effectiveDisplayName: salesOrderEffectiveDisplayName,
+        effectiveClaim: salesOrderEffectiveClaim,
+        effectivePrimaryColor: salesOrderEffectivePrimaryColor,
+        effectiveAccentColor: salesOrderEffectiveAccentColor,
+        logoDocId: salesOrderLogoDocId,
+        bgFirstDocId: salesOrderBgFirstDocId,
+        bgOtherDocId: salesOrderBgOtherDocId,
+      ),
+    ];
   }
 
   Widget _buildPdfTemplateCard({
@@ -1447,27 +1478,15 @@ class _SettingsPageState extends State<SettingsPage> {
             hintText: 'z. B. Firmenname, Adresse, Kontaktdaten',
           ),
         ),
-        if (effectiveHeaderText.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektiver Kopftext: $effectiveHeaderText',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        if (effectiveDisplayName.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektiver Brand-Name: $effectiveDisplayName',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        if (effectiveClaim.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektiver Claim: $effectiveClaim',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+        ..._buildPdfTemplateEffectiveHint(
+          'Effektiver Kopftext',
+          effectiveHeaderText,
+        ),
+        ..._buildPdfTemplateEffectiveHint(
+          'Effektiver Brand-Name',
+          effectiveDisplayName,
+        ),
+        ..._buildPdfTemplateEffectiveHint('Effektiver Claim', effectiveClaim),
         const SizedBox(height: 8),
         TextField(
           controller: footerCtrl,
@@ -1477,27 +1496,18 @@ class _SettingsPageState extends State<SettingsPage> {
             hintText: 'z. B. Bankdaten, USt-IdNr.',
           ),
         ),
-        if (effectiveFooterText.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektiver Fußtext: $effectiveFooterText',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        if (effectivePrimaryColor.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektive Primärfarbe: $effectivePrimaryColor',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        if (effectiveAccentColor.isNotEmpty) ...[
-          const SizedBox(height: 6),
-          Text(
-            'Effektive Akzentfarbe: $effectiveAccentColor',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
+        ..._buildPdfTemplateEffectiveHint(
+          'Effektiver Fußtext',
+          effectiveFooterText,
+        ),
+        ..._buildPdfTemplateEffectiveHint(
+          'Effektive Primärfarbe',
+          effectivePrimaryColor,
+        ),
+        ..._buildPdfTemplateEffectiveHint(
+          'Effektive Akzentfarbe',
+          effectiveAccentColor,
+        ),
         const SizedBox(height: 12),
         Row(children: [
           Expanded(
@@ -1520,23 +1530,23 @@ class _SettingsPageState extends State<SettingsPage> {
         ]),
         const SizedBox(height: 12),
         Wrap(spacing: 12, runSpacing: 8, children: [
-          _imageRow(
-            'Logo',
-            logoDocId,
-            onUpload: () => _pickAndUpload(entity, 'logo'),
-            onDelete: () => _deleteImage(entity, 'logo'),
+          _buildPdfTemplateImageSlot(
+            entity: entity,
+            label: 'Logo',
+            kind: 'logo',
+            docId: logoDocId,
           ),
-          _imageRow(
-            'Hintergrund (Seite 1)',
-            bgFirstDocId,
-            onUpload: () => _pickAndUpload(entity, 'bg-first'),
-            onDelete: () => _deleteImage(entity, 'bg-first'),
+          _buildPdfTemplateImageSlot(
+            entity: entity,
+            label: 'Hintergrund (Seite 1)',
+            kind: 'bg-first',
+            docId: bgFirstDocId,
           ),
-          _imageRow(
-            'Hintergrund (Folge)',
-            bgOtherDocId,
-            onUpload: () => _pickAndUpload(entity, 'bg-other'),
-            onDelete: () => _deleteImage(entity, 'bg-other'),
+          _buildPdfTemplateImageSlot(
+            entity: entity,
+            label: 'Hintergrund (Folge)',
+            kind: 'bg-other',
+            docId: bgOtherDocId,
           ),
         ]),
         const SizedBox(height: 12),
@@ -1550,6 +1560,33 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       ],
     );
+  }
+
+  Widget _buildPdfTemplateImageSlot({
+    required String entity,
+    required String label,
+    required String kind,
+    required String? docId,
+  }) {
+    return _imageRow(
+      label,
+      docId,
+      onUpload: () => _pickAndUpload(entity, kind),
+      onDelete: () => _deleteImage(entity, kind),
+    );
+  }
+
+  List<Widget> _buildPdfTemplateEffectiveHint(String label, String value) {
+    if (value.isEmpty) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 6),
+      Text(
+        '$label: $value',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+    ];
   }
 
   Widget _imageRow(String label, String? docId,
