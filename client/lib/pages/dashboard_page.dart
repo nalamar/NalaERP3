@@ -64,6 +64,11 @@ class DashboardPage extends StatelessWidget {
             );
           },
         ),
+      if (_can('quotes.read') && _can('sales_orders.read'))
+        _WorkflowCockpitDashCard(
+          api: api,
+          color: color,
+        ),
       if (_can('invoices_out.read'))
         _DashCard(
           title: 'Rechnungen',
@@ -133,7 +138,7 @@ class DashboardPage extends StatelessWidget {
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.08), Colors.white],
+            colors: [color.withValues(alpha: 0.08), Colors.white],
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
           ),
@@ -236,20 +241,122 @@ class _SalesOrdersDashCardState extends State<_SalesOrdersDashCard> {
   }
 }
 
+class _WorkflowCockpitDashCard extends StatefulWidget {
+  const _WorkflowCockpitDashCard({
+    required this.api,
+    required this.color,
+  });
+
+  final ApiClient api;
+  final Color color;
+
+  @override
+  State<_WorkflowCockpitDashCard> createState() =>
+      _WorkflowCockpitDashCardState();
+}
+
+class _WorkflowCockpitDashCardState extends State<_WorkflowCockpitDashCard> {
+  late Future<Map<String, dynamic>> _workflowFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _workflowFuture = widget.api.getCommercialWorkflow();
+  }
+
+  String _kindLabel(String kind) {
+    switch (kind) {
+      case 'quote_sent_pending':
+        return 'Angebot wartet auf Entscheidung';
+      case 'quote_accepted_pending_followup':
+        return 'Angebot braucht Folgebeleg';
+      case 'sales_order_pending_invoice':
+        return 'Auftrag wartet auf Rechnung';
+      case 'sales_order_partially_invoiced':
+        return 'Auftrag ist teilfakturiert';
+      default:
+        return 'Offene Folgeaktion';
+    }
+  }
+
+  String _itemLabel(Map<String, dynamic> item) {
+    final number = ((item['quote_number'] ??
+                item['sales_order_number'] ??
+                item['invoice_number'] ??
+                '')
+            .toString())
+        .trim();
+    final contact = (item['contact_name'] ?? '').toString().trim();
+    final action = (item['next_action_label'] ?? '').toString().trim();
+    final base = _kindLabel((item['kind'] ?? '').toString());
+    if (number.isNotEmpty && contact.isNotEmpty) {
+      return '$base: $number • $contact';
+    }
+    if (number.isNotEmpty) {
+      return '$base: $number';
+    }
+    if (contact.isNotEmpty) {
+      return '$base: $contact';
+    }
+    if (action.isNotEmpty) {
+      return '$base: $action';
+    }
+    return base;
+  }
+
+  List<String> _buildLines(Map<String, dynamic> data) {
+    final items = ((data['items'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((e) => e.cast<String, dynamic>())
+        .toList();
+    if (items.isEmpty) {
+      return const ['Keine offenen Folgeaktionen'];
+    }
+
+    final lines = items.take(3).map(_itemLabel).toList();
+    if (items.length > 3) {
+      lines.add('+${items.length - 3} weitere');
+    }
+    return lines;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>>(
+      future: _workflowFuture,
+      builder: (context, snapshot) {
+        final subtitleLines = switch (snapshot.connectionState) {
+          ConnectionState.waiting => ['Workflow wird geladen…'],
+          _ when snapshot.hasError => ['Workflow aktuell nicht verfügbar'],
+          _ => _buildLines(snapshot.data ?? const <String, dynamic>{}),
+        };
+
+        return _DashCard(
+          title: 'Offene Folgeaktionen',
+          subtitleWidget: CommercialSummaryText(
+            lines: subtitleLines,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+          ),
+          icon: Icons.alt_route_rounded,
+          color: widget.color,
+        );
+      },
+    );
+  }
+}
+
 class _DashCard extends StatelessWidget {
   const _DashCard(
       {required this.title,
       required this.icon,
       required this.color,
-      required this.onTap,
-      this.subtitle,
+      this.onTap,
       this.subtitleWidget});
   final String title;
-  final String? subtitle;
   final Widget? subtitleWidget;
   final IconData icon;
   final Color color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -268,30 +375,24 @@ class _DashCard extends StatelessWidget {
                 blurRadius: 12,
                 offset: const Offset(0, 6))
           ],
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             CircleAvatar(
-                backgroundColor: color.withOpacity(0.12),
+                backgroundColor: color.withValues(alpha: 0.12),
                 radius: 28,
                 child: Icon(icon, color: color, size: 30)),
             const SizedBox(height: 12),
             Text(title,
                 style:
                     const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            if (subtitle != null || subtitleWidget != null) ...[
+            if (subtitleWidget != null) ...[
               const SizedBox(height: 6),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: subtitleWidget ??
-                    Text(
-                      subtitle!,
-                      textAlign: TextAlign.center,
-                      style:
-                          TextStyle(fontSize: 12, color: Colors.grey.shade700),
-                    ),
+                child: subtitleWidget,
               ),
             ],
           ],

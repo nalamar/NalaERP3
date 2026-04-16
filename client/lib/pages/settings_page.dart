@@ -108,6 +108,28 @@ class _SettingsPageState extends State<SettingsPage> {
   final _unitCodeCtrl = TextEditingController();
   final _unitNameCtrl = TextEditingController();
   bool _unitsLoading = false;
+  List<Map<String, dynamic>> _materialGroups = [];
+  final _materialGroupCodeCtrl = TextEditingController();
+  final _materialGroupNameCtrl = TextEditingController();
+  final _materialGroupDescriptionCtrl = TextEditingController();
+  final _materialGroupSortOrderCtrl = TextEditingController(text: '0');
+  bool _materialGroupIsActive = true;
+  bool _materialGroupsLoading = false;
+  List<Map<String, dynamic>> _quoteTextBlocks = [];
+  final _quoteTextBlockIdCtrl = TextEditingController();
+  final _quoteTextBlockCodeCtrl = TextEditingController();
+  final _quoteTextBlockNameCtrl = TextEditingController();
+  final _quoteTextBlockBodyCtrl = TextEditingController();
+  final _quoteTextBlockSortOrderCtrl = TextEditingController(text: '0');
+  String _quoteTextBlockCategory = 'intro';
+  bool _quoteTextBlockIsActive = true;
+  bool _quoteTextBlocksLoading = false;
+  static const List<String> _quoteTextBlockCategories = <String>[
+    'intro',
+    'scope',
+    'closing',
+    'legal',
+  ];
 
   @override
   void initState() {
@@ -122,10 +144,16 @@ class _SettingsPageState extends State<SettingsPage> {
       await _loadBranches();
       await _loadLocalizationSettings();
       await _loadBrandingSettings();
-      final cfg = await widget.api.getNumberingConfig('purchase_order');
-      poPatternCtrl.text = (cfg['pattern'] ?? 'PO-{YYYY}-{NNNN}').toString();
-      final pcfg = await widget.api.getNumberingConfig('project');
-      prjPatternCtrl.text = (pcfg['pattern'] ?? 'PRJ-{YYYY}-{NNNN}').toString();
+      await _loadNumberingPattern(
+        'purchase_order',
+        poPatternCtrl,
+        'PO-{YYYY}-{NNNN}',
+      );
+      await _loadNumberingPattern(
+        'project',
+        prjPatternCtrl,
+        'PRJ-{YYYY}-{NNNN}',
+      );
       await _updatePreviewPO();
       await _updatePreviewPRJ();
       await _loadPdfTemplate('purchase_order');
@@ -133,8 +161,19 @@ class _SettingsPageState extends State<SettingsPage> {
       await _loadPdfTemplate('quote');
       await _loadPdfTemplate('sales_order');
       await _loadUnits();
+      await _loadMaterialGroups();
+      await _loadQuoteTextBlocks();
     } catch (e) {/* ignore */}
     setState(() => loading = false);
+  }
+
+  Future<void> _loadNumberingPattern(
+    String entity,
+    TextEditingController controller,
+    String fallbackPattern,
+  ) async {
+    final config = await widget.api.getNumberingConfig(entity);
+    controller.text = (config['pattern'] ?? fallbackPattern).toString();
   }
 
   Future<void> _loadCompanyProfile() async {
@@ -308,7 +347,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => StatefulBuilder(
-        builder: (context, setLocalState) => AlertDialog(
+        builder: (dialogContext, setLocalState) => AlertDialog(
           title: Text(existing == null
               ? 'Niederlassung anlegen'
               : 'Niederlassung bearbeiten'),
@@ -318,61 +357,48 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(children: [
-                    Expanded(
-                        child: TextField(
-                            controller: codeCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Code'))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: TextField(
-                            controller: nameCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Name'))),
-                  ]),
+                  _buildTwoFieldRow(
+                    left: TextField(
+                      controller: codeCtrl,
+                      decoration: const InputDecoration(labelText: 'Code'),
+                    ),
+                    right: TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: 'Name'),
+                    ),
+                  ),
                   const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                        child: TextField(
-                            controller: streetCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Straße'))),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                        width: 120,
-                        child: TextField(
-                            controller: postalCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'PLZ'))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: TextField(
-                            controller: cityCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Ort'))),
-                    const SizedBox(width: 12),
-                    SizedBox(
-                        width: 90,
-                        child: TextField(
-                            controller: countryCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Land'))),
-                  ]),
+                  _buildAddressFieldRow(
+                    street: TextField(
+                      controller: streetCtrl,
+                      decoration: const InputDecoration(labelText: 'Straße'),
+                    ),
+                    postalCode: TextField(
+                      controller: postalCtrl,
+                      decoration: const InputDecoration(labelText: 'PLZ'),
+                    ),
+                    city: TextField(
+                      controller: cityCtrl,
+                      decoration: const InputDecoration(labelText: 'Ort'),
+                    ),
+                    country: TextField(
+                      controller: countryCtrl,
+                      decoration: const InputDecoration(labelText: 'Land'),
+                    ),
+                    postalWidth: 120,
+                    countryWidth: 90,
+                  ),
                   const SizedBox(height: 12),
-                  Row(children: [
-                    Expanded(
-                        child: TextField(
-                            controller: emailCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'E-Mail'))),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: TextField(
-                            controller: phoneCtrl,
-                            decoration:
-                                const InputDecoration(labelText: 'Telefon'))),
-                  ]),
+                  _buildTwoFieldRow(
+                    left: TextField(
+                      controller: emailCtrl,
+                      decoration: const InputDecoration(labelText: 'E-Mail'),
+                    ),
+                    right: TextField(
+                      controller: phoneCtrl,
+                      decoration: const InputDecoration(labelText: 'Telefon'),
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -384,14 +410,11 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Abbrechen')),
-            FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Speichern')),
-          ],
+          actions: _buildDialogActions(
+            dialogContext: dialogContext,
+            confirmLabel: 'Speichern',
+            onConfirm: () => Navigator.pop(dialogContext, true),
+          ),
         ),
       ),
     );
@@ -426,20 +449,9 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _deleteBranch(Map<String, dynamic> branch) async {
     final id = (branch['id'] ?? '').toString();
     final name = (branch['name'] ?? '').toString();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Niederlassung löschen'),
-        content: Text('Niederlassung "$name" wirklich löschen?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Löschen')),
-        ],
-      ),
+    final ok = await _confirmDelete(
+      title: 'Niederlassung löschen',
+      message: 'Niederlassung "$name" wirklich löschen?',
     );
     if (ok != true) return;
     try {
@@ -481,19 +493,10 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _deleteUnit(String code) async {
-    final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-                title: const Text('Einheit löschen'),
-                content: Text('Code "$code" wirklich löschen?'),
-                actions: [
-                  TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: const Text('Abbrechen')),
-                  FilledButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: const Text('Löschen'))
-                ]));
+    final ok = await _confirmDelete(
+      title: 'Einheit löschen',
+      message: 'Code "$code" wirklich löschen?',
+    );
     if (ok != true) return;
     try {
       await widget.api.deleteUnit(code);
@@ -504,44 +507,220 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _updatePreviewPO() async {
+  Future<void> _loadMaterialGroups() async {
     try {
-      final p = await widget.api.previewNumbering('purchase_order');
-      setState(() => previewPO = p);
-    } catch (e) {
-      setState(() => previewPO = '');
+      setState(() => _materialGroupsLoading = true);
+      final list = await widget.api.listMaterialGroups();
+      setState(() => _materialGroups = list);
+    } catch (e) {/* ignore */} finally {
+      setState(() => _materialGroupsLoading = false);
     }
   }
 
-  Future<void> _updatePreviewPRJ() async {
+  Future<void> _saveMaterialGroup() async {
+    final code = _materialGroupCodeCtrl.text.trim();
+    final name = _materialGroupNameCtrl.text.trim();
+    final description = _materialGroupDescriptionCtrl.text.trim();
+    final sortOrder =
+        int.tryParse(_materialGroupSortOrderCtrl.text.trim()) ?? 0;
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Code erforderlich')));
+      return;
+    }
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Name erforderlich')));
+      return;
+    }
     try {
-      final p = await widget.api.previewNumbering('project');
-      setState(() => previewPRJ = p);
+      await widget.api.upsertMaterialGroup(
+        code: code,
+        name: name,
+        description: description,
+        sortOrder: sortOrder,
+        isActive: _materialGroupIsActive,
+      );
+      _materialGroupCodeCtrl.clear();
+      _materialGroupNameCtrl.clear();
+      _materialGroupDescriptionCtrl.clear();
+      _materialGroupSortOrderCtrl.text = '0';
+      setState(() => _materialGroupIsActive = true);
+      await _loadMaterialGroups();
+      _showSettingsSuccess('Materialgruppe gespeichert');
     } catch (e) {
-      setState(() => previewPRJ = '');
+      _showSettingsError(e);
     }
   }
 
-  Future<void> _savePO() async {
+  Future<void> _deleteMaterialGroup(String code) async {
+    final ok = await _confirmDelete(
+      title: 'Materialgruppe löschen',
+      message: 'Code "$code" wirklich löschen?',
+    );
+    if (ok != true) return;
     try {
-      await widget.api
-          .updateNumberingPattern('purchase_order', poPatternCtrl.text.trim());
-      await _updatePreviewPO();
+      await widget.api.deleteMaterialGroup(code);
+      await _loadMaterialGroups();
+      _showSettingsSuccess('Materialgruppe gelöscht');
+    } catch (e) {
+      _showSettingsError(e);
+    }
+  }
+
+  Future<void> _loadQuoteTextBlocks() async {
+    try {
+      setState(() => _quoteTextBlocksLoading = true);
+      final list = await widget.api.listQuoteTextBlocks();
+      setState(() => _quoteTextBlocks = list);
+    } catch (e) {/* ignore */} finally {
+      setState(() => _quoteTextBlocksLoading = false);
+    }
+  }
+
+  void _resetQuoteTextBlockForm() {
+    _quoteTextBlockIdCtrl.clear();
+    _quoteTextBlockCodeCtrl.clear();
+    _quoteTextBlockNameCtrl.clear();
+    _quoteTextBlockBodyCtrl.clear();
+    _quoteTextBlockSortOrderCtrl.text = '0';
+    setState(() {
+      _quoteTextBlockCategory = 'intro';
+      _quoteTextBlockIsActive = true;
+    });
+  }
+
+  Future<void> _saveQuoteTextBlock() async {
+    final code = _quoteTextBlockCodeCtrl.text.trim();
+    final name = _quoteTextBlockNameCtrl.text.trim();
+    final body = _quoteTextBlockBodyCtrl.text.trim();
+    final sortOrder =
+        int.tryParse(_quoteTextBlockSortOrderCtrl.text.trim()) ?? 0;
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Code erforderlich')));
+      return;
+    }
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Name erforderlich')));
+      return;
+    }
+    if (body.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Text erforderlich')));
+      return;
+    }
+    try {
+      await widget.api.upsertQuoteTextBlock(
+        id: _quoteTextBlockIdCtrl.text.trim(),
+        code: code,
+        name: name,
+        category: _quoteTextBlockCategory,
+        body: body,
+        sortOrder: sortOrder,
+        isActive: _quoteTextBlockIsActive,
+      );
+      _resetQuoteTextBlockForm();
+      await _loadQuoteTextBlocks();
+      _showSettingsSuccess('Textbaustein gespeichert');
+    } catch (e) {
+      _showSettingsError(e);
+    }
+  }
+
+  Future<void> _deleteQuoteTextBlock(Map<String, dynamic> block) async {
+    final id = (block['id'] ?? '').toString();
+    final code = (block['code'] ?? '').toString();
+    final ok = await _confirmDelete(
+      title: 'Textbaustein löschen',
+      message: 'Textbaustein "$code" wirklich löschen?',
+    );
+    if (ok != true) return;
+    try {
+      await widget.api.deleteQuoteTextBlock(id);
+      if (_quoteTextBlockIdCtrl.text.trim() == id) {
+        _resetQuoteTextBlockForm();
+      }
+      await _loadQuoteTextBlocks();
+      _showSettingsSuccess('Textbaustein gelöscht');
+    } catch (e) {
+      _showSettingsError(e);
+    }
+  }
+
+  Future<bool?> _confirmDelete({
+    required String title,
+    required String message,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: _buildDialogActions(
+          dialogContext: dialogContext,
+          confirmLabel: 'Löschen',
+          onConfirm: () => Navigator.pop(dialogContext, true),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _updateNumberingPreview(
+    String entity,
+    void Function(String value) setPreview,
+  ) async {
+    try {
+      final preview = await widget.api.previewNumbering(entity);
+      setState(() => setPreview(preview));
+    } catch (e) {
+      setState(() => setPreview(''));
+    }
+  }
+
+  Future<void> _updatePreviewPO() {
+    return _updateNumberingPreview(
+      'purchase_order',
+      (value) => previewPO = value,
+    );
+  }
+
+  Future<void> _updatePreviewPRJ() {
+    return _updateNumberingPreview(
+      'project',
+      (value) => previewPRJ = value,
+    );
+  }
+
+  Future<void> _saveNumberingPattern(
+    String entity,
+    TextEditingController controller,
+    Future<void> Function() refreshPreview,
+  ) async {
+    try {
+      await widget.api.updateNumberingPattern(entity, controller.text.trim());
+      await refreshPreview();
       _showSettingsSuccess('Gespeichert');
     } catch (e) {
       _showSettingsError(e);
     }
   }
 
-  Future<void> _savePRJ() async {
-    try {
-      await widget.api
-          .updateNumberingPattern('project', prjPatternCtrl.text.trim());
-      await _updatePreviewPRJ();
-      _showSettingsSuccess('Gespeichert');
-    } catch (e) {
-      _showSettingsError(e);
-    }
+  Future<void> _savePO() {
+    return _saveNumberingPattern(
+      'purchase_order',
+      poPatternCtrl,
+      _updatePreviewPO,
+    );
+  }
+
+  Future<void> _savePRJ() {
+    return _saveNumberingPattern(
+      'project',
+      prjPatternCtrl,
+      _updatePreviewPRJ,
+    );
   }
 
   void _applyPdfTemplateData(
@@ -812,9 +991,7 @@ class _SettingsPageState extends State<SettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               ExpansionTile(
-                title: const Text('Firmenprofil',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: _buildSectionTitle('Firmenprofil'),
                 initiallyExpanded: true,
                 children: [
                   Card(
@@ -823,134 +1000,138 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyNameCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Firmenname'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyLegalFormCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Rechtsform'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: companyNameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Firmenname',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: companyLegalFormCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Rechtsform',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyBranchCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText:
-                                            'Niederlassung / Standort'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyInvoiceEmailCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Rechnungs-E-Mail'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: companyBranchCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Niederlassung / Standort',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: companyInvoiceEmailCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Rechnungs-E-Mail',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyStreetCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Straße'))),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                                width: 140,
-                                child: TextField(
-                                    controller: companyPostalCodeCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'PLZ'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyCityCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Ort'))),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                                width: 100,
-                                child: TextField(
-                                    controller: companyCountryCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Land'))),
-                          ]),
+                          _buildAddressFieldRow(
+                            street: TextField(
+                              controller: companyStreetCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Straße',
+                              ),
+                            ),
+                            postalCode: TextField(
+                              controller: companyPostalCodeCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'PLZ',
+                              ),
+                            ),
+                            city: TextField(
+                              controller: companyCityCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Ort',
+                              ),
+                            ),
+                            country: TextField(
+                              controller: companyCountryCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Land',
+                              ),
+                            ),
+                            postalWidth: 140,
+                            countryWidth: 100,
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyEmailCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'E-Mail'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyPhoneCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Telefon'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyWebsiteCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Website'))),
-                          ]),
+                          _buildThreeFieldRow(
+                            first: TextField(
+                              controller: companyEmailCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'E-Mail',
+                              ),
+                            ),
+                            second: TextField(
+                              controller: companyPhoneCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Telefon',
+                              ),
+                            ),
+                            third: TextField(
+                              controller: companyWebsiteCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Website',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyTaxNoCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Steuernummer'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyVatIdCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'USt-IdNr.'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: companyTaxNoCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Steuernummer',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: companyVatIdCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'USt-IdNr.',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           const Text('Bankdaten',
                               style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyBankNameCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Bank'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyAccountHolderCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Kontoinhaber'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: companyBankNameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Bank',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: companyAccountHolderCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Kontoinhaber',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: companyIbanCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'IBAN'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: companyBicCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'BIC'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: companyIbanCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'IBAN',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: companyBicCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'BIC',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                                onPressed: _saveCompanyProfile,
-                                icon: const Icon(Icons.save),
-                                label: const Text('Speichern')),
+                          _buildSectionSaveAction(
+                            onPressed: _saveCompanyProfile,
+                            icon: const Icon(Icons.save),
+                            label: const Text('Speichern'),
                           ),
                           const SizedBox(height: 16),
                           const Divider(),
@@ -958,61 +1139,62 @@ class _SettingsPageState extends State<SettingsPage> {
                           const Text('Steuer, Währung und Lokalisierung',
                               style: TextStyle(fontWeight: FontWeight.bold)),
                           const SizedBox(height: 8),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationCurrencyCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Standardwährung'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationTaxCountryCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Steuerland'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationVatRateCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Standard-USt. %'),
-                                    keyboardType: TextInputType.number)),
-                          ]),
+                          _buildThreeFieldRow(
+                            first: TextField(
+                              controller: localizationCurrencyCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Standardwährung',
+                              ),
+                            ),
+                            second: TextField(
+                              controller: localizationTaxCountryCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Steuerland',
+                              ),
+                            ),
+                            third: TextField(
+                              controller: localizationVatRateCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Standard-USt. %',
+                              ),
+                              keyboardType: TextInputType.number,
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationLocaleCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Locale'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationTimezoneCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Zeitzone'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: localizationLocaleCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Locale',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: localizationTimezoneCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Zeitzone',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationDateFormatCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Datumsformat'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: localizationNumberFormatCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Zahlenformat'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: localizationDateFormatCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Datumsformat',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: localizationNumberFormatCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Zahlenformat',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                                onPressed: _saveLocalizationSettings,
-                                icon: const Icon(Icons.language),
-                                label: const Text('Lokalisierung speichern')),
+                          _buildSectionSaveAction(
+                            onPressed: _saveLocalizationSettings,
+                            icon: const Icon(Icons.language),
+                            label: const Text('Lokalisierung speichern'),
                           ),
                           const SizedBox(height: 16),
                           Row(
@@ -1029,8 +1211,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             ],
                           ),
                           const SizedBox(height: 8),
-                          if (_branchesLoading)
-                            const LinearProgressIndicator(minHeight: 2),
+                          if (_branchesLoading) _buildInlineLoadingIndicator(),
                           if (!_branchesLoading && _branches.isEmpty)
                             const Padding(
                               padding: EdgeInsets.symmetric(vertical: 8),
@@ -1065,12 +1246,14 @@ class _SettingsPageState extends State<SettingsPage> {
                               trailing: Wrap(
                                 spacing: 4,
                                 children: [
-                                  IconButton(
-                                      icon: const Icon(Icons.edit_outlined),
-                                      onPressed: () => _editBranch(b)),
-                                  IconButton(
-                                      icon: const Icon(Icons.delete_outline),
-                                      onPressed: () => _deleteBranch(b)),
+                                  _buildListTileActionButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () => _editBranch(b),
+                                  ),
+                                  _buildListTileActionButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _deleteBranch(b),
+                                  ),
                                 ],
                               ),
                             );
@@ -1083,9 +1266,7 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Branding & Dokumentlayout',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: _buildSectionTitle('Branding & Dokumentlayout'),
                 initiallyExpanded: false,
                 children: [
                   Card(
@@ -1094,33 +1275,35 @@ class _SettingsPageState extends State<SettingsPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: brandingDisplayNameCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Brand-Name'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: brandingClaimCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Claim / Zusatzzeile'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: brandingDisplayNameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Brand-Name',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: brandingClaimCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Claim / Zusatzzeile',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
-                          Row(children: [
-                            Expanded(
-                                child: TextField(
-                                    controller: brandingPrimaryColorCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Primärfarbe (Hex)'))),
-                            const SizedBox(width: 12),
-                            Expanded(
-                                child: TextField(
-                                    controller: brandingAccentColorCtrl,
-                                    decoration: const InputDecoration(
-                                        labelText: 'Akzentfarbe (Hex)'))),
-                          ]),
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: brandingPrimaryColorCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Primärfarbe (Hex)',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: brandingAccentColorCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Akzentfarbe (Hex)',
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           TextField(
                             controller: brandingHeaderCtrl,
@@ -1136,13 +1319,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                 labelText: 'Standard-Fußtext für Dokumente'),
                           ),
                           const SizedBox(height: 12),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: FilledButton.icon(
-                              onPressed: _saveBrandingSettings,
-                              icon: const Icon(Icons.palette_outlined),
-                              label: const Text('Branding speichern'),
-                            ),
+                          _buildSectionSaveAction(
+                            onPressed: _saveBrandingSettings,
+                            icon: const Icon(Icons.palette_outlined),
+                            label: const Text('Branding speichern'),
                           ),
                         ],
                       ),
@@ -1152,36 +1332,14 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Nummernkreise',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: _buildSectionTitle('Nummernkreise'),
                 initiallyExpanded: false,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
-                children: [
-                  _buildNumberingCard(
-                    title: 'Bestellungen',
-                    controller: poPatternCtrl,
-                    preview: previewPO,
-                    hintText: 'z. B. PO-{YYYY}-{NNNN}',
-                    onChanged: _updatePreviewPO,
-                    onSave: _savePO,
-                  ),
-                  const SizedBox(height: 12),
-                  _buildNumberingCard(
-                    title: 'Projekte',
-                    controller: prjPatternCtrl,
-                    preview: previewPRJ,
-                    hintText: 'z. B. PRJ-{YYYY}-{NNNN}',
-                    onChanged: _updatePreviewPRJ,
-                    onSave: _savePRJ,
-                  ),
-                ],
+                children: _buildNumberingCards(),
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('Maßeinheiten',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: _buildSectionTitle('Maßeinheiten'),
                 initiallyExpanded: false,
                 children: [
                   Card(
@@ -1210,8 +1368,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                   label: const Text('Speichern')),
                             ]),
                             const SizedBox(height: 12),
-                            if (_unitsLoading)
-                              const LinearProgressIndicator(minHeight: 2),
+                            if (_unitsLoading) _buildInlineLoadingIndicator(),
                             ListView.builder(
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
@@ -1225,9 +1382,10 @@ class _SettingsPageState extends State<SettingsPage> {
                                   leading: const Icon(Icons.straighten_rounded),
                                   title: Text(code),
                                   subtitle: name.isNotEmpty ? Text(name) : null,
-                                  trailing: IconButton(
-                                      icon: const Icon(Icons.delete_outline),
-                                      onPressed: () => _deleteUnit(code)),
+                                  trailing: _buildListTileActionButton(
+                                    icon: const Icon(Icons.delete_outline),
+                                    onPressed: () => _deleteUnit(code),
+                                  ),
                                   onTap: () {
                                     _unitCodeCtrl.text = code;
                                     _unitNameCtrl.text = name;
@@ -1242,9 +1400,283 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               const SizedBox(height: 12),
               ExpansionTile(
-                title: const Text('PDF-Templates',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                title: _buildSectionTitle('Materialgruppen'),
+                initiallyExpanded: false,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: _materialGroupCodeCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Code',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: _materialGroupNameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _materialGroupDescriptionCtrl,
+                            decoration: const InputDecoration(
+                              labelText: 'Beschreibung',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              SizedBox(
+                                width: 140,
+                                child: TextField(
+                                  controller: _materialGroupSortOrderCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Sortierung',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: SwitchListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  title: const Text('Aktiv'),
+                                  value: _materialGroupIsActive,
+                                  onChanged: (value) => setState(
+                                    () => _materialGroupIsActive = value,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          _buildSectionSaveAction(
+                            onPressed: _saveMaterialGroup,
+                            icon: const Icon(Icons.save),
+                            label: const Text('Speichern'),
+                          ),
+                          const SizedBox(height: 12),
+                          if (_materialGroupsLoading)
+                            _buildInlineLoadingIndicator(),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _materialGroups.length,
+                            itemBuilder: (ctx, i) {
+                              final group = _materialGroups[i];
+                              final code = (group['code'] ?? '').toString();
+                              final name = (group['name'] ?? '').toString();
+                              final description =
+                                  (group['description'] ?? '').toString();
+                              final sortOrder =
+                                  (group['sort_order'] ?? 0).toString();
+                              final isActive = group['is_active'] != false;
+                              final subtitleParts = <String>[
+                                if (description.isNotEmpty) description,
+                                'Sortierung: $sortOrder',
+                                if (!isActive) 'inaktiv',
+                              ];
+                              return ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  isActive
+                                      ? Icons.category_outlined
+                                      : Icons.category_outlined,
+                                ),
+                                title: Text(code),
+                                subtitle: Text(
+                                  subtitleParts.isEmpty
+                                      ? name
+                                      : '$name • ${subtitleParts.join(' • ')}',
+                                ),
+                                trailing: _buildListTileActionButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteMaterialGroup(code),
+                                ),
+                                onTap: () {
+                                  _materialGroupCodeCtrl.text = code;
+                                  _materialGroupNameCtrl.text = name;
+                                  _materialGroupDescriptionCtrl.text =
+                                      description;
+                                  _materialGroupSortOrderCtrl.text = sortOrder;
+                                  setState(
+                                    () => _materialGroupIsActive = isActive,
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ExpansionTile(
+                title: _buildSectionTitle('Angebots-Textbausteine'),
+                initiallyExpanded: false,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTwoFieldRow(
+                            left: TextField(
+                              controller: _quoteTextBlockCodeCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Code',
+                              ),
+                            ),
+                            right: TextField(
+                              controller: _quoteTextBlockNameCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Name',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<String>(
+                                  initialValue: _quoteTextBlockCategory,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Kategorie',
+                                  ),
+                                  items: _quoteTextBlockCategories
+                                      .map(
+                                        (category) => DropdownMenuItem<String>(
+                                          value: category,
+                                          child: Text(category),
+                                        ),
+                                      )
+                                      .toList(),
+                                  onChanged: (value) {
+                                    if (value == null) return;
+                                    setState(
+                                      () => _quoteTextBlockCategory = value,
+                                    );
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              SizedBox(
+                                width: 140,
+                                child: TextField(
+                                  controller: _quoteTextBlockSortOrderCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Sortierung',
+                                  ),
+                                  keyboardType: TextInputType.number,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _quoteTextBlockBodyCtrl,
+                            minLines: 4,
+                            maxLines: 8,
+                            decoration: const InputDecoration(
+                              labelText: 'Textbaustein',
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: const Text('Aktiv'),
+                            value: _quoteTextBlockIsActive,
+                            onChanged: (value) => setState(
+                              () => _quoteTextBlockIsActive = value,
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              _buildSectionSaveAction(
+                                onPressed: _saveQuoteTextBlock,
+                                icon: const Icon(Icons.save),
+                                label: const Text('Speichern'),
+                              ),
+                              const SizedBox(width: 12),
+                              TextButton.icon(
+                                onPressed: _resetQuoteTextBlockForm,
+                                icon: const Icon(Icons.clear),
+                                label: const Text('Zurücksetzen'),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          if (_quoteTextBlocksLoading)
+                            _buildInlineLoadingIndicator(),
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _quoteTextBlocks.length,
+                            itemBuilder: (ctx, i) {
+                              final block = _quoteTextBlocks[i];
+                              final id = (block['id'] ?? '').toString();
+                              final code = (block['code'] ?? '').toString();
+                              final name = (block['name'] ?? '').toString();
+                              final category =
+                                  (block['category'] ?? '').toString();
+                              final body = (block['body'] ?? '').toString();
+                              final sortOrder =
+                                  (block['sort_order'] ?? 0).toString();
+                              final isActive = block['is_active'] != false;
+                              final preview = body.replaceAll('\n', ' ').trim();
+                              final subtitleParts = <String>[
+                                if (category.isNotEmpty) category,
+                                'Sortierung: $sortOrder',
+                                if (!isActive) 'inaktiv',
+                                if (preview.isNotEmpty) preview,
+                              ];
+                              return ListTile(
+                                dense: true,
+                                leading: const Icon(Icons.short_text_rounded),
+                                title: Text('$code • $name'),
+                                subtitle: Text(subtitleParts.join(' • ')),
+                                trailing: _buildListTileActionButton(
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () => _deleteQuoteTextBlock(block),
+                                ),
+                                onTap: () {
+                                  _quoteTextBlockIdCtrl.text = id;
+                                  _quoteTextBlockCodeCtrl.text = code;
+                                  _quoteTextBlockNameCtrl.text = name;
+                                  _quoteTextBlockBodyCtrl.text = body;
+                                  _quoteTextBlockSortOrderCtrl.text = sortOrder;
+                                  setState(() {
+                                    _quoteTextBlockCategory =
+                                        _quoteTextBlockCategories
+                                                .contains(category)
+                                            ? category
+                                            : 'intro';
+                                    _quoteTextBlockIsActive = isActive;
+                                  });
+                                },
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              ExpansionTile(
+                title: _buildSectionTitle('PDF-Templates'),
                 initiallyExpanded: false,
                 children: [
                   Card(
@@ -1298,18 +1730,168 @@ class _SettingsPageState extends State<SettingsPage> {
               'Variablen: {YYYY}, {YY}, {MM}, {DD}, {NN}, {NNN}, {NNNN}',
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: onSave,
-                icon: const Icon(Icons.save),
-                label: const Text('Speichern'),
-              ),
+            _buildSectionSaveAction(
+              onPressed: onSave,
+              icon: const Icon(Icons.save),
+              label: const Text('Speichern'),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    );
+  }
+
+  Widget _buildTwoFieldRow({
+    required Widget left,
+    required Widget right,
+    double spacing = 12,
+  }) {
+    return Row(
+      children: [
+        Expanded(child: left),
+        SizedBox(width: spacing),
+        Expanded(child: right),
+      ],
+    );
+  }
+
+  Widget _buildThreeFieldRow({
+    required Widget first,
+    required Widget second,
+    required Widget third,
+    double spacing = 12,
+  }) {
+    return Row(
+      children: [
+        Expanded(child: first),
+        SizedBox(width: spacing),
+        Expanded(child: second),
+        SizedBox(width: spacing),
+        Expanded(child: third),
+      ],
+    );
+  }
+
+  Widget _buildAddressFieldRow({
+    required Widget street,
+    required Widget postalCode,
+    required Widget city,
+    required Widget country,
+    required double postalWidth,
+    required double countryWidth,
+    double spacing = 12,
+  }) {
+    return Row(
+      children: [
+        Expanded(child: street),
+        SizedBox(width: spacing),
+        SizedBox(width: postalWidth, child: postalCode),
+        SizedBox(width: spacing),
+        Expanded(child: city),
+        SizedBox(width: spacing),
+        SizedBox(width: countryWidth, child: country),
+      ],
+    );
+  }
+
+  Widget _buildInlineLoadingIndicator() {
+    return const LinearProgressIndicator(minHeight: 2);
+  }
+
+  List<Widget> _buildDialogActions({
+    required BuildContext dialogContext,
+    required String confirmLabel,
+    required VoidCallback onConfirm,
+    String cancelLabel = 'Abbrechen',
+  }) {
+    return [
+      TextButton(
+        onPressed: () => Navigator.pop(dialogContext, false),
+        child: Text(cancelLabel),
+      ),
+      FilledButton(
+        onPressed: onConfirm,
+        child: Text(confirmLabel),
+      ),
+    ];
+  }
+
+  Widget _buildListTileActionButton({
+    required Widget icon,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      icon: icon,
+      onPressed: onPressed,
+    );
+  }
+
+  List<Widget> _buildNumberingCards() {
+    final configs = _numberingCardConfigs();
+    return [
+      for (var i = 0; i < configs.length; i++) ...[
+        _buildNumberingCard(
+          title: configs[i].title,
+          controller: configs[i].controller,
+          preview: configs[i].preview,
+          hintText: configs[i].hintText,
+          onChanged: configs[i].onChanged,
+          onSave: configs[i].onSave,
+        ),
+        if (i < configs.length - 1) const SizedBox(height: 12),
+      ],
+    ];
+  }
+
+  Widget _buildSectionSaveAction({
+    required VoidCallback onPressed,
+    required Widget icon,
+    required Widget label,
+  }) {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: icon,
+        label: label,
+      ),
+    );
+  }
+
+  List<
+      ({
+        String title,
+        TextEditingController controller,
+        String preview,
+        String hintText,
+        VoidCallback onChanged,
+        VoidCallback onSave,
+      })> _numberingCardConfigs() {
+    return [
+      (
+        title: 'Bestellungen',
+        controller: poPatternCtrl,
+        preview: previewPO,
+        hintText: 'z. B. PO-{YYYY}-{NNNN}',
+        onChanged: _updatePreviewPO,
+        onSave: _savePO,
+      ),
+      (
+        title: 'Projekte',
+        controller: prjPatternCtrl,
+        preview: previewPRJ,
+        hintText: 'z. B. PRJ-{YYYY}-{NNNN}',
+        onChanged: _updatePreviewPRJ,
+        onSave: _savePRJ,
+      ),
+    ];
   }
 
   List<Widget> _buildPdfTemplateCards() {
@@ -1550,13 +2132,10 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ]),
         const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerRight,
-          child: FilledButton.icon(
-            onPressed: () => _savePdfTemplate(entity),
-            icon: const Icon(Icons.save),
-            label: const Text('Speichern'),
-          ),
+        _buildSectionSaveAction(
+          onPressed: () => _savePdfTemplate(entity),
+          icon: const Icon(Icons.save),
+          label: const Text('Speichern'),
         ),
       ],
     );
@@ -1601,26 +2180,53 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(width: 4),
           Text(docId.substring(0, docId.length >= 8 ? 8 : docId.length)),
           const SizedBox(width: 8),
-          TextButton.icon(
-              onPressed: () {
-                widget.api.downloadDocument(docId, filename: 'preview');
-              },
-              icon: const Icon(Icons.visibility),
-              label: const Text('Anzeigen')),
+          _buildImageTextAction(
+            onPressed: () {
+              widget.api.downloadDocument(docId, filename: 'preview');
+            },
+            icon: const Icon(Icons.visibility),
+            label: const Text('Anzeigen'),
+          ),
           const SizedBox(width: 8),
-          TextButton.icon(
-              onPressed: onDelete,
-              icon: const Icon(Icons.delete),
-              label: const Text('Entfernen')),
+          _buildImageTextAction(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete),
+            label: const Text('Entfernen'),
+          ),
         ] else ...[
           const Text('— nicht gesetzt —'),
         ],
         const SizedBox(width: 8),
-        OutlinedButton.icon(
-            onPressed: onUpload,
-            icon: const Icon(Icons.upload),
-            label: const Text('Hochladen')),
+        _buildImageOutlinedAction(
+          onPressed: onUpload,
+          icon: const Icon(Icons.upload),
+          label: const Text('Hochladen'),
+        ),
       ],
+    );
+  }
+
+  Widget _buildImageTextAction({
+    required VoidCallback onPressed,
+    required Widget icon,
+    required Widget label,
+  }) {
+    return TextButton.icon(
+      onPressed: onPressed,
+      icon: icon,
+      label: label,
+    );
+  }
+
+  Widget _buildImageOutlinedAction({
+    required VoidCallback onPressed,
+    required Widget icon,
+    required Widget label,
+  }) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: icon,
+      label: label,
     );
   }
 }

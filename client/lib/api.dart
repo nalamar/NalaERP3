@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
@@ -60,7 +59,8 @@ class ApiClient {
     return '$scheme://$host:8080';
   }
 
-  Uri _u(String path, [Map<String, String>? q]) => Uri.parse('$baseUrl$path').replace(queryParameters: q);
+  Uri _u(String path, [Map<String, String>? q]) =>
+      Uri.parse('$baseUrl$path').replace(queryParameters: q);
 
   Map<String, String> _headers([Map<String, String>? extra]) {
     final out = <String, String>{};
@@ -132,7 +132,8 @@ class ApiClient {
 
   String _decodeBody(http.Response response) => utf8.decode(response.bodyBytes);
 
-  ApiException _apiExceptionFromResponse(http.Response response, {String? fallbackMessage}) {
+  ApiException _apiExceptionFromResponse(http.Response response,
+      {String? fallbackMessage}) {
     final body = _decodeBody(response).trim();
     if (body.isNotEmpty) {
       try {
@@ -158,7 +159,8 @@ class ApiClient {
     }
     return ApiException(
       statusCode: response.statusCode,
-      message: fallbackMessage ?? (body.isNotEmpty ? body : 'Fehler: ${response.statusCode}'),
+      message: fallbackMessage ??
+          (body.isNotEmpty ? body : 'Fehler: ${response.statusCode}'),
     );
   }
 
@@ -167,15 +169,20 @@ class ApiClient {
   }
 
   Future<List<dynamic>> _getList(String path, [Map<String, String>? q]) async {
-    final r = await _sendWithAuth((headers) => http.get(_u(path, q), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u(path, q), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> _getJson(String path, [Map<String, String>? q]) async {
-    final r = await _sendWithAuth((headers) => http.get(_u(path, q), headers: headers));
+
+  Future<Map<String, dynamic>> _getJson(String path,
+      [Map<String, String>? q]) async {
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u(path, q), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
+
   Future<dynamic> _postJson(String path, Object body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
@@ -189,6 +196,7 @@ class ApiClient {
     }
     return jsonDecode(_decodeBody(r));
   }
+
   Future<void> _putJson(String path, Object body) async {
     final r = await _sendWithAuth(
       (headers) => http.put(
@@ -201,15 +209,19 @@ class ApiClient {
       _throwApiException(r);
     }
   }
+
   Future<void> _delete(String path) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u(path), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.delete(_u(path), headers: headers));
     if (r.statusCode < 200 || r.statusCode >= 300) {
       _throwApiException(r);
     }
   }
 
-  Future<http.Response> _getBytesResponse(String path, {Map<String, String>? q}) async {
-    final r = await _sendWithAuth((headers) => http.get(_u(path, q), headers: headers));
+  Future<http.Response> _getBytesResponse(String path,
+      {Map<String, String>? q}) async {
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u(path, q), headers: headers));
     if (r.statusCode < 200 || r.statusCode >= 300) {
       _throwApiException(r);
     }
@@ -246,7 +258,8 @@ class ApiClient {
     final body = jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
     final data = (body['data'] as Map).cast<String, dynamic>();
     final tokens = (data['tokens'] as Map).cast<String, dynamic>();
-    _persistTokens((tokens['access_token'] ?? '').toString(), (tokens['refresh_token'] ?? '').toString());
+    _persistTokens((tokens['access_token'] ?? '').toString(),
+        (tokens['refresh_token'] ?? '').toString());
     return data;
   }
 
@@ -254,7 +267,10 @@ class ApiClient {
     _restorePersistedTokens();
     final token = _refreshToken;
     if (token == null || token.isEmpty) {
-      throw const ApiException(statusCode: 401, code: 'unauthorized', message: 'Keine Sitzung vorhanden');
+      throw const ApiException(
+          statusCode: 401,
+          code: 'unauthorized',
+          message: 'Keine Sitzung vorhanden');
     }
     final r = await http.post(
       _u('/api/v1/auth/refresh'),
@@ -267,9 +283,11 @@ class ApiClient {
     }
     final body = jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
     final data = (body['data'] as Map).cast<String, dynamic>();
-    _persistTokens((data['access_token'] ?? '').toString(), _refreshToken ?? '');
+    _persistTokens(
+        (data['access_token'] ?? '').toString(), _refreshToken ?? '');
     if ((data['refresh_token'] ?? '').toString().isNotEmpty) {
-      _persistTokens((data['access_token'] ?? '').toString(), (data['refresh_token'] ?? '').toString());
+      _persistTokens((data['access_token'] ?? '').toString(),
+          (data['refresh_token'] ?? '').toString());
     }
     return data;
   }
@@ -303,22 +321,33 @@ class ApiClient {
   }
 
   // -------- Settings: Numbering --------
-  Future<Map<String, dynamic>> getNumberingConfig(String entity) => _getJson('/api/v1/settings/numbering/$entity');
+  Future<Map<String, dynamic>> getNumberingConfig(String entity) =>
+      _getJson('/api/v1/settings/numbering/$entity');
   Future<String> previewNumbering(String entity) async {
     final m = await _getJson('/api/v1/settings/numbering/$entity/preview');
     return (m['preview'] ?? '').toString();
   }
-  Future<void> updateNumberingPattern(String entity, String pattern) => _putJson('/api/v1/settings/numbering/$entity', {'pattern': pattern});
+
+  Future<void> updateNumberingPattern(String entity, String pattern) =>
+      _putJson('/api/v1/settings/numbering/$entity', {'pattern': pattern});
 
   // -------- Settings: Company --------
-  Future<Map<String, dynamic>> getCompanyProfile() => _getJson('/api/v1/settings/company/');
-  Future<void> updateCompanyProfile(Map<String, dynamic> body) => _putJson('/api/v1/settings/company/', body);
-  Future<Map<String, dynamic>> getLocalizationSettings() => _getJson('/api/v1/settings/company/localization');
-  Future<void> updateLocalizationSettings(Map<String, dynamic> body) => _putJson('/api/v1/settings/company/localization', body);
-  Future<Map<String, dynamic>> getBrandingSettings() => _getJson('/api/v1/settings/company/branding');
-  Future<void> updateBrandingSettings(Map<String, dynamic> body) => _putJson('/api/v1/settings/company/branding', body);
-  Future<List<dynamic>> listCompanyBranches() => _getList('/api/v1/settings/company/branches');
-  Future<Map<String, dynamic>> createCompanyBranch(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> getCompanyProfile() =>
+      _getJson('/api/v1/settings/company/');
+  Future<void> updateCompanyProfile(Map<String, dynamic> body) =>
+      _putJson('/api/v1/settings/company/', body);
+  Future<Map<String, dynamic>> getLocalizationSettings() =>
+      _getJson('/api/v1/settings/company/localization');
+  Future<void> updateLocalizationSettings(Map<String, dynamic> body) =>
+      _putJson('/api/v1/settings/company/localization', body);
+  Future<Map<String, dynamic>> getBrandingSettings() =>
+      _getJson('/api/v1/settings/company/branding');
+  Future<void> updateBrandingSettings(Map<String, dynamic> body) =>
+      _putJson('/api/v1/settings/company/branding', body);
+  Future<List<dynamic>> listCompanyBranches() =>
+      _getList('/api/v1/settings/company/branches');
+  Future<Map<String, dynamic>> createCompanyBranch(
+      Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/settings/company/branches'),
@@ -329,7 +358,9 @@ class ApiClient {
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
-  Future<Map<String, dynamic>> updateCompanyBranch(String branchId, Map<String, dynamic> body) async {
+
+  Future<Map<String, dynamic>> updateCompanyBranch(
+      String branchId, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.patch(
         _u('/api/v1/settings/company/branches/$branchId'),
@@ -340,11 +371,15 @@ class ApiClient {
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
-  Future<void> deleteCompanyBranch(String branchId) => _delete('/api/v1/settings/company/branches/$branchId');
+
+  Future<void> deleteCompanyBranch(String branchId) =>
+      _delete('/api/v1/settings/company/branches/$branchId');
 
   // -------- Settings: PDF Templates --------
-  Future<Map<String, dynamic>> getPdfTemplate(String entity) => _getJson('/api/v1/settings/pdf/$entity');
-  Future<void> updatePdfTemplate(String entity, {
+  Future<Map<String, dynamic>> getPdfTemplate(String entity) =>
+      _getJson('/api/v1/settings/pdf/$entity');
+  Future<void> updatePdfTemplate(
+    String entity, {
     required String headerText,
     required String footerText,
     required double topFirstMm,
@@ -357,12 +392,18 @@ class ApiClient {
       'top_other_mm': topOtherMm,
     });
   }
-  Future<Map<String, dynamic>> uploadPdfImage(String entity, String kind, String filename, Uint8List bytes, {String? contentType}) async {
+
+  Future<Map<String, dynamic>> uploadPdfImage(
+      String entity, String kind, String filename, Uint8List bytes,
+      {String? contentType}) async {
     final uri = _u('/api/v1/settings/pdf/$entity/upload/$kind');
     final req = http.MultipartRequest('POST', uri);
     req.headers.addAll(_headers());
-    final mediaType = (contentType != null && contentType.isNotEmpty) ? MediaType.parse(contentType) : MediaType('application', 'octet-stream');
-    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mediaType));
+    final mediaType = (contentType != null && contentType.isNotEmpty)
+        ? MediaType.parse(contentType)
+        : MediaType('application', 'octet-stream');
+    req.files.add(http.MultipartFile.fromBytes('file', bytes,
+        filename: filename, contentType: mediaType));
     final streamed = await req.send();
     final resp = await http.Response.fromStream(streamed);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -370,7 +411,9 @@ class ApiClient {
     }
     return jsonDecode(utf8.decode(resp.bodyBytes)) as Map<String, dynamic>;
   }
-  Future<void> deletePdfImage(String entity, String kind) => _delete('/api/v1/settings/pdf/$entity/upload/$kind');
+
+  Future<void> deletePdfImage(String entity, String kind) =>
+      _delete('/api/v1/settings/pdf/$entity/upload/$kind');
 
   Future<void> downloadPurchaseOrderPdf(String id, {String? filename}) async {
     final r = await _getBytesResponse('/api/v1/purchase-orders/$id/pdf');
@@ -393,13 +436,15 @@ class ApiClient {
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
     if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
-    if (sourceSalesOrderId != null && sourceSalesOrderId.isNotEmpty) qp['source_sales_order_id'] = sourceSalesOrderId;
+    if (sourceSalesOrderId != null && sourceSalesOrderId.isNotEmpty)
+      qp['source_sales_order_id'] = sourceSalesOrderId;
     if (limit != null) qp['limit'] = '$limit';
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/invoices-out', qp.isEmpty ? null : qp);
   }
 
-  Future<Map<String, dynamic>> createInvoiceOut(Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> createInvoiceOut(
+      Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/invoices-out/'),
@@ -411,17 +456,20 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getInvoiceOut(String id) => _getJson('/api/v1/invoices-out/$id');
+  Future<Map<String, dynamic>> getInvoiceOut(String id) =>
+      _getJson('/api/v1/invoices-out/$id');
 
   Future<Map<String, dynamic>> bookInvoiceOut(String id) async {
     final r = await _sendWithAuth(
-      (headers) => http.post(_u('/api/v1/invoices-out/$id/book'), headers: headers),
+      (headers) =>
+          http.post(_u('/api/v1/invoices-out/$id/book'), headers: headers),
     );
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> addInvoicePayment(String id, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> addInvoicePayment(
+      String id, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/invoices-out/$id/payments'),
@@ -433,7 +481,8 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> listInvoicePayments(String id) => _getList('/api/v1/invoices-out/$id/payments');
+  Future<List<dynamic>> listInvoicePayments(String id) =>
+      _getList('/api/v1/invoices-out/$id/payments');
 
   Future<void> downloadInvoiceOutPdf(String id, {String? filename}) async {
     final r = await _getBytesResponse('/api/v1/invoices-out/$id/pdf');
@@ -444,7 +493,13 @@ class ApiClient {
     );
   }
 
-  Future<List<dynamic>> listQuotes({String? q, String? status, String? contactId, String? projectId, int? limit, int? offset}) async {
+  Future<List<dynamic>> listQuotes(
+      {String? q,
+      String? status,
+      String? contactId,
+      String? projectId,
+      int? limit,
+      int? offset}) async {
     final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
@@ -467,9 +522,11 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> getQuote(String id) => _getJson('/api/v1/quotes/$id');
+  Future<Map<String, dynamic>> getQuote(String id) =>
+      _getJson('/api/v1/quotes/$id');
 
-  Future<Map<String, dynamic>> updateQuote(String id, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> updateQuote(
+      String id, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.patch(
         _u('/api/v1/quotes/$id'),
@@ -481,7 +538,24 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateQuoteStatus(String id, String status) async {
+  Future<Map<String, dynamic>> applyQuoteMaterialCandidate(
+    String quoteId,
+    String itemId,
+    String materialId,
+  ) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/apply-material-candidate'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'material_id': materialId}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateQuoteStatus(
+      String id, String status) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/quotes/$id/status'),
@@ -559,7 +633,111 @@ class ApiClient {
     );
   }
 
-  Future<List<dynamic>> listSalesOrders({String? q, String? status, String? contactId, String? projectId, int? limit, int? offset}) async {
+  Future<Map<String, dynamic>> uploadGAEBQuoteImport(
+    String filename,
+    Uint8List bytes, {
+    required String projectId,
+    String? contactId,
+    String? contentType,
+  }) async {
+    final req =
+        http.MultipartRequest('POST', _u('/api/v1/quotes/imports/gaeb'));
+    req.headers.addAll(_headers());
+    req.fields['project_id'] = projectId;
+    if (contactId != null && contactId.trim().isNotEmpty) {
+      req.fields['contact_id'] = contactId.trim();
+    }
+    req.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: contentType != null ? MediaType.parse(contentType) : null,
+      ),
+    );
+    final streamed = await req.send();
+    final r = await http.Response.fromStream(streamed);
+    if (r.statusCode != 201) {
+      _throwApiException(r, fallbackMessage: 'GAEB-Upload fehlgeschlagen');
+    }
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> listQuoteImports({
+    String? projectId,
+    String? contactId,
+    int? limit,
+    int? offset,
+  }) async {
+    final qp = <String, String>{};
+    if (projectId != null && projectId.isNotEmpty) qp['project_id'] = projectId;
+    if (contactId != null && contactId.isNotEmpty) qp['contact_id'] = contactId;
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/quotes/imports', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> getQuoteImport(String id) =>
+      _getJson('/api/v1/quotes/imports/$id');
+
+  Future<List<dynamic>> listQuoteImportItems(String importId) =>
+      _getList('/api/v1/quotes/imports/$importId/items');
+
+  Future<Map<String, dynamic>> getQuoteImportItem(
+    String importId,
+    String itemId,
+  ) =>
+      _getJson('/api/v1/quotes/imports/$importId/items/$itemId');
+
+  Future<Map<String, dynamic>> updateQuoteImportItemReview({
+    required String importId,
+    required String itemId,
+    required String reviewStatus,
+    String reviewNote = '',
+  }) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/quotes/imports/$importId/items/$itemId/review'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'review_status': reviewStatus,
+          'review_note': reviewNote,
+        }),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> markQuoteImportReviewed(String importId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/quotes/imports/$importId/review'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> applyQuoteImport(String importId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/imports/$importId/apply'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> listSalesOrders(
+      {String? q,
+      String? status,
+      String? contactId,
+      String? projectId,
+      int? limit,
+      int? offset}) async {
     final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
@@ -571,15 +749,18 @@ class ApiClient {
   }
 
   Future<List<String>> listSalesOrderStatuses() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/sales-orders/statuses'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/sales-orders/statuses'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(_decodeBody(r)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
 
-  Future<Map<String, dynamic>> getSalesOrder(String id) => _getJson('/api/v1/sales-orders/$id');
+  Future<Map<String, dynamic>> getSalesOrder(String id) =>
+      _getJson('/api/v1/sales-orders/$id');
 
-  Future<Map<String, dynamic>> updateSalesOrder(String id, Map<String, dynamic> patch) async {
+  Future<Map<String, dynamic>> updateSalesOrder(
+      String id, Map<String, dynamic> patch) async {
     final r = await _sendWithAuth(
       (headers) => http.patch(
         _u('/api/v1/sales-orders/$id'),
@@ -591,7 +772,8 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> createSalesOrderItem(String id, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> createSalesOrderItem(
+      String id, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/sales-orders/$id/items'),
@@ -603,7 +785,8 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> updateSalesOrderItem(String id, String itemId, Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> updateSalesOrderItem(
+      String id, String itemId, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.patch(
         _u('/api/v1/sales-orders/$id/items/$itemId'),
@@ -615,9 +798,11 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> deleteSalesOrderItem(String id, String itemId) async {
+  Future<Map<String, dynamic>> deleteSalesOrderItem(
+      String id, String itemId) async {
     final r = await _sendWithAuth(
-      (headers) => http.delete(_u('/api/v1/sales-orders/$id/items/$itemId'), headers: headers),
+      (headers) => http.delete(_u('/api/v1/sales-orders/$id/items/$itemId'),
+          headers: headers),
     );
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
@@ -632,7 +817,8 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> updateSalesOrderStatus(String id, String status) async {
+  Future<Map<String, dynamic>> updateSalesOrderStatus(
+      String id, String status) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
         _u('/api/v1/sales-orders/$id/status'),
@@ -676,14 +862,16 @@ class ApiClient {
   }
 
   // -------- Projects --------
-  Future<List<dynamic>> listProjects({String? q, String? status, int? limit, int? offset}) async {
-    final qp = <String,String>{};
+  Future<List<dynamic>> listProjects(
+      {String? q, String? status, int? limit, int? offset}) async {
+    final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
     if (limit != null) qp['limit'] = '$limit';
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/projects', qp.isEmpty ? null : qp);
   }
+
   Future<Map<String, dynamic>> createProject(Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
@@ -695,7 +883,32 @@ class ApiClient {
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> getProject(String id) => _getJson('/api/v1/projects/$id');
+
+  Future<Map<String, dynamic>> getProject(String id) =>
+      _getJson('/api/v1/projects/$id');
+  Future<Map<String, dynamic>> getProjectCommercialContext(String id) =>
+      _getJson('/api/v1/projects/$id/commercial-context');
+  Future<Map<String, dynamic>> getCommercialWorkflow({
+    String? projectId,
+    String? contactId,
+    String? kind,
+  }) {
+    final query = <String, String>{};
+    if (projectId != null && projectId.trim().isNotEmpty) {
+      query['project_id'] = projectId.trim();
+    }
+    if (contactId != null && contactId.trim().isNotEmpty) {
+      query['contact_id'] = contactId.trim();
+    }
+    if (kind != null && kind.trim().isNotEmpty) {
+      query['kind'] = kind.trim();
+    }
+    return _getJson(
+      '/api/v1/workflow/commercial',
+      query.isEmpty ? null : query,
+    );
+  }
+
   Future<void> downloadProjectQuotePdf(String id, {String? filename}) async {
     final r = await _getBytesResponse('/api/v1/projects/$id/quote-pdf');
     browser.downloadBytes(
@@ -705,7 +918,9 @@ class ApiClient {
     );
   }
 
-  Future<Map<String, dynamic>> importLogikalProject(String filename, Uint8List bytes, {String? contentType}) async {
+  Future<Map<String, dynamic>> importLogikalProject(
+      String filename, Uint8List bytes,
+      {String? contentType}) async {
     final uri = _u('/api/v1/projects/import/logikal');
     // 1) Versuche Multipart (stabil im Web, kein Custom-Header nötig)
     try {
@@ -713,9 +928,14 @@ class ApiClient {
       req.headers.addAll(_headers());
       MediaType? mt;
       if (contentType != null && contentType.isNotEmpty) {
-        try { mt = MediaType.parse(contentType); } catch (_) { mt = null; }
+        try {
+          mt = MediaType.parse(contentType);
+        } catch (_) {
+          mt = null;
+        }
       }
-      req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mt));
+      req.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mt));
       final streamed = await req.send();
       final r = await http.Response.fromStream(streamed);
       if (r.statusCode == 201) {
@@ -730,161 +950,284 @@ class ApiClient {
       'Content-Type': 'application/octet-stream',
       'X-Filename': filename,
     };
-    final r = await _sendWithAuth((authHeaders) => http.post(uri, headers: {...authHeaders, ...headers}, body: bytes));
+    final r = await _sendWithAuth((authHeaders) =>
+        http.post(uri, headers: {...authHeaders, ...headers}, body: bytes));
     if (r.statusCode != 201) {
       _throwApiException(r, fallbackMessage: 'Import fehlgeschlagen');
     }
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> analyzeLogikalProject(String filename, Uint8List bytes, {String? contentType}) async {
+  Future<Map<String, dynamic>> analyzeLogikalProject(
+      String filename, Uint8List bytes,
+      {String? contentType}) async {
     final uri = _u('/api/v1/projects/analyze/logikal');
     try {
       final req = http.MultipartRequest('POST', uri);
       req.headers.addAll(_headers());
       MediaType? mt;
       if (contentType != null && contentType.isNotEmpty) {
-        try { mt = MediaType.parse(contentType); } catch (_) { mt = null; }
+        try {
+          mt = MediaType.parse(contentType);
+        } catch (_) {
+          mt = null;
+        }
       }
-      req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: mt));
+      req.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mt));
       final streamed = await req.send();
       final r = await http.Response.fromStream(streamed);
-      if (r.statusCode != 200) { _throwApiException(r, fallbackMessage: 'Analyse fehlgeschlagen'); }
+      if (r.statusCode != 200) {
+        _throwApiException(r, fallbackMessage: 'Analyse fehlgeschlagen');
+      }
       return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
     } catch (_) {
-      final headers = <String, String>{ 'Content-Type': 'application/octet-stream', 'X-Filename': filename };
-      final r = await _sendWithAuth((authHeaders) => http.post(uri, headers: {...authHeaders, ...headers}, body: bytes));
-      if (r.statusCode != 200) { _throwApiException(r, fallbackMessage: 'Analyse fehlgeschlagen'); }
+      final headers = <String, String>{
+        'Content-Type': 'application/octet-stream',
+        'X-Filename': filename
+      };
+      final r = await _sendWithAuth((authHeaders) =>
+          http.post(uri, headers: {...authHeaders, ...headers}, body: bytes));
+      if (r.statusCode != 200) {
+        _throwApiException(r, fallbackMessage: 'Analyse fehlgeschlagen');
+      }
       return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
     }
   }
 
   // -------- Project tree --------
-  Future<List<dynamic>> listProjectPhases(String projectId) => _getList('/api/v1/projects/$projectId/phases');
-  Future<Map<String, dynamic>> createPhase(String projectId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/projects/$projectId/phases'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+  Future<List<dynamic>> listProjectPhases(String projectId) =>
+      _getList('/api/v1/projects/$projectId/phases');
+  Future<Map<String, dynamic>> createPhase(
+      String projectId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/projects/$projectId/phases'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> getPhase(String projectId, String phaseId) => _getJson('/api/v1/projects/$projectId/phases/$phaseId');
-  Future<Map<String, dynamic>> updatePhase(String projectId, String phaseId, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/projects/$projectId/phases/$phaseId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<Map<String, dynamic>> getPhase(String projectId, String phaseId) =>
+      _getJson('/api/v1/projects/$projectId/phases/$phaseId');
+  Future<Map<String, dynamic>> updatePhase(
+      String projectId, String phaseId, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/projects/$projectId/phases/$phaseId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deletePhase(String projectId, String phaseId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/projects/$projectId/phases/$phaseId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/projects/$projectId/phases/$phaseId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<List<dynamic>> listPhaseElevations(String projectId, String phaseId) => _getList('/api/v1/projects/$projectId/phases/$phaseId/elevations');
-  Future<Map<String, dynamic>> createElevation(String projectId, String phaseId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<List<dynamic>> listPhaseElevations(String projectId, String phaseId) =>
+      _getList('/api/v1/projects/$projectId/phases/$phaseId/elevations');
+  Future<Map<String, dynamic>> createElevation(
+      String projectId, String phaseId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/projects/$projectId/phases/$phaseId/elevations'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> getElevation(String projectId, String phaseId, String elevationId) => _getJson('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId');
-  Future<Map<String, dynamic>> updateElevation(String projectId, String phaseId, String elevationId, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<Map<String, dynamic>> getElevation(
+          String projectId, String phaseId, String elevationId) =>
+      _getJson(
+          '/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId');
+  Future<Map<String, dynamic>> updateElevation(String projectId, String phaseId,
+      String elevationId, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<void> deleteElevation(String projectId, String phaseId, String elevationId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'), headers: headers));
+
+  Future<void> deleteElevation(
+      String projectId, String phaseId, String elevationId) async {
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/projects/$projectId/phases/$phaseId/elevations/$elevationId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<List<dynamic>> listElevationVariants(String projectId, String elevationId) => _getList('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations');
-  Future<Map<String, dynamic>> createVariant(String projectId, String elevationId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<List<dynamic>> listElevationVariants(
+          String projectId, String elevationId) =>
+      _getList(
+          '/api/v1/projects/$projectId/elevations/$elevationId/single-elevations');
+  Future<Map<String, dynamic>> createVariant(
+      String projectId, String elevationId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> getVariant(String projectId, String elevationId, String variantId) => _getJson('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId');
-  Future<Map<String, dynamic>> updateVariant(String projectId, String elevationId, String variantId, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<Map<String, dynamic>> getVariant(
+          String projectId, String elevationId, String variantId) =>
+      _getJson(
+          '/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId');
+  Future<Map<String, dynamic>> updateVariant(String projectId,
+      String elevationId, String variantId, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<void> deleteVariant(String projectId, String elevationId, String variantId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'), headers: headers));
+
+  Future<void> deleteVariant(
+      String projectId, String elevationId, String variantId) async {
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/projects/$projectId/elevations/$elevationId/single-elevations/$variantId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<Map<String, dynamic>> getVariantMaterials(String projectId, String variantId) => _getJson('/api/v1/projects/$projectId/single-elevations/$variantId/materials');
-  Future<void> linkVariantMaterial(String projectId, String variantId, String kind, String itemId, String materialId) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/projects/$projectId/single-elevations/$variantId/materials/$kind/$itemId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode({'material_id': materialId})));
+
+  Future<Map<String, dynamic>> getVariantMaterials(
+          String projectId, String variantId) =>
+      _getJson(
+          '/api/v1/projects/$projectId/single-elevations/$variantId/materials');
+  Future<void> linkVariantMaterial(String projectId, String variantId,
+      String kind, String itemId, String materialId) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/projects/$projectId/single-elevations/$variantId/materials/$kind/$itemId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'material_id': materialId})));
     if (r.statusCode != 204) _throwApiException(r);
   }
 
   // -------- Project import logs --------
-  Future<List<dynamic>> listProjectImports(String projectId) => _getList('/api/v1/projects/$projectId/imports');
-  Future<List<dynamic>> listImportChanges(String projectId, String importId) => _getList('/api/v1/projects/$projectId/imports/$importId/changes');
-  Future<void> downloadProjectImportChangesCsv(String projectId, String importId, {String? filename}) async {
-    final r = await _getBytesResponse('/api/v1/projects/$projectId/imports/$importId/changes', q: const {'format': 'csv'});
+  Future<List<dynamic>> listProjectImports(String projectId) =>
+      _getList('/api/v1/projects/$projectId/imports');
+  Future<List<dynamic>> listImportChanges(String projectId, String importId) =>
+      _getList('/api/v1/projects/$projectId/imports/$importId/changes');
+  Future<void> downloadProjectImportChangesCsv(
+      String projectId, String importId,
+      {String? filename}) async {
+    final r = await _getBytesResponse(
+        '/api/v1/projects/$projectId/imports/$importId/changes',
+        q: const {'format': 'csv'});
     browser.downloadBytes(
       r.bodyBytes,
       filename: filename ?? 'import-$importId.csv',
       contentType: r.headers['content-type'] ?? 'text/csv',
     );
   }
-  Future<void> downloadProjectImportChangesJson(String projectId, String importId, {String? filename}) async {
-    final r = await _getBytesResponse('/api/v1/projects/$projectId/imports/$importId/changes');
+
+  Future<void> downloadProjectImportChangesJson(
+      String projectId, String importId,
+      {String? filename}) async {
+    final r = await _getBytesResponse(
+        '/api/v1/projects/$projectId/imports/$importId/changes');
     browser.downloadBytes(
       r.bodyBytes,
       filename: filename ?? 'import-$importId.json',
       contentType: r.headers['content-type'] ?? 'application/json',
     );
   }
+
   Future<void> undoProjectImport(String projectId, String importId) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/projects/$projectId/imports/$importId/undo'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/projects/$projectId/imports/$importId/undo'),
+        headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
   }
-  Future<void> uploadProjectAssets(String projectId, String filename, Uint8List bytes) async {
+
+  Future<void> uploadProjectAssets(
+      String projectId, String filename, Uint8List bytes) async {
     final uri = _u('/api/v1/projects/$projectId/assets');
     final req = http.MultipartRequest('POST', uri);
     req.headers.addAll(_headers());
-    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: MediaType('application', 'zip')));
+    req.files.add(http.MultipartFile.fromBytes('file', bytes,
+        filename: filename, contentType: MediaType('application', 'zip')));
     final streamed = await req.send();
     final resp = await http.Response.fromStream(streamed);
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       _throwApiException(resp, fallbackMessage: 'Assets-Upload fehlgeschlagen');
     }
   }
-  String projectAssetUrl(String projectId, String relPath) => _u('/api/v1/projects/$projectId/assets', {'path': relPath}).toString();
+
+  String projectAssetUrl(String projectId, String relPath) =>
+      _u('/api/v1/projects/$projectId/assets', {'path': relPath}).toString();
 
   // -------- Purchase Orders --------
-  Future<List<String>> listPOStatuses() async => (await _getList('/api/v1/purchase-orders/statuses')).map((e)=> e.toString()).toList();
-  Future<List<dynamic>> listPurchaseOrders({String? q, String? status, int? limit, int? offset}) async {
-    final qp = <String,String>{};
+  Future<List<String>> listPOStatuses() async =>
+      (await _getList('/api/v1/purchase-orders/statuses'))
+          .map((e) => e.toString())
+          .toList();
+  Future<List<dynamic>> listPurchaseOrders(
+      {String? q, String? status, int? limit, int? offset}) async {
+    final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (status != null && status.isNotEmpty) qp['status'] = status;
     if (limit != null) qp['limit'] = '$limit';
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/purchase-orders', qp.isEmpty ? null : qp);
   }
-  Future<dynamic> createPurchaseOrder(Map<String, dynamic> body) => _postJson('/api/v1/purchase-orders/', body);
-  Future<Map<String, dynamic>> getPurchaseOrder(String id) => _getJson('/api/v1/purchase-orders/$id');
-  Future<Map<String, dynamic>> updatePurchaseOrder(String id, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/purchase-orders/$id'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<dynamic> createPurchaseOrder(Map<String, dynamic> body) =>
+      _postJson('/api/v1/purchase-orders/', body);
+  Future<Map<String, dynamic>> getPurchaseOrder(String id) =>
+      _getJson('/api/v1/purchase-orders/$id');
+  Future<Map<String, dynamic>> updatePurchaseOrder(
+      String id, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/purchase-orders/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> createPurchaseOrderItem(String orderId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/purchase-orders/$orderId/items'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createPurchaseOrderItem(
+      String orderId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/purchase-orders/$orderId/items'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> updatePurchaseOrderItem(String orderId, String itemId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/purchase-orders/$orderId/items/$itemId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> updatePurchaseOrderItem(
+      String orderId, String itemId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/purchase-orders/$orderId/items/$itemId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deletePurchaseOrderItem(String orderId, String itemId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/purchase-orders/$orderId/items/$itemId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/purchase-orders/$orderId/items/$itemId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
 
   // -------- Materials --------
-  Future<List<dynamic>> listMaterials({String? q, String? typ, String? kategorie, int? limit, int? offset}) async {
-    final qp = <String,String>{};
+  Future<List<dynamic>> listMaterials(
+      {String? q,
+      String? typ,
+      String? kategorie,
+      int? limit,
+      int? offset}) async {
+    final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (typ != null && typ.isNotEmpty) qp['typ'] = typ;
     if (kategorie != null && kategorie.isNotEmpty) qp['kategorie'] = kategorie;
@@ -892,34 +1235,56 @@ class ApiClient {
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/materials', qp.isEmpty ? null : qp);
   }
+
   Future<Map<String, dynamic>> createMaterial(Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/materials/'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/materials/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<Map<String, dynamic>> getMaterial(String id) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/materials/$id'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/materials/$id'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> updateMaterial(String id, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/materials/$id'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<Map<String, dynamic>> updateMaterial(
+      String id, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/materials/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteMaterial(String id) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/materials/$id'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.delete(_u('/api/v1/materials/$id'), headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
+
   Future<List<dynamic>> stockByMaterial(String id) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/materials/$id/stock'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/materials/$id/stock'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> uploadMaterialDocument(String materialId, String filename, Uint8List bytes, {String? contentType}) async {
-    final req = http.MultipartRequest('POST', _u('/api/v1/materials/$materialId/documents'));
+
+  Future<Map<String, dynamic>> uploadMaterialDocument(
+      String materialId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    final req = http.MultipartRequest(
+        'POST', _u('/api/v1/materials/$materialId/documents'));
     req.headers.addAll(_headers());
-    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: contentType != null ? MediaType.parse(contentType) : null));
+    req.files.add(http.MultipartFile.fromBytes('file', bytes,
+        filename: filename,
+        contentType:
+            contentType != null ? MediaType.parse(contentType) : null));
     final streamed = await req.send();
     final r = await http.Response.fromStream(streamed);
     if (r.statusCode != 201) {
@@ -927,41 +1292,146 @@ class ApiClient {
     }
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<String>> listMaterialTypes() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/materials/types'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/materials/types'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
+
   Future<List<String>> listMaterialCategories() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/materials/categories'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/materials/categories'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
+
   // Settings – Units
   Future<List<Map<String, dynamic>>> listUnits() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/settings/units/'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/settings/units/'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e as Map<String, dynamic>).toList();
   }
+
   Future<void> upsertUnit(String code, String name) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/settings/units/'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode({'code': code, 'name': name})));
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/settings/units/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code, 'name': name})));
     if (r.statusCode < 200 || r.statusCode >= 300) {
       _throwApiException(r);
     }
   }
+
   Future<void> deleteUnit(String code) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/settings/units/$code'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.delete(_u('/api/v1/settings/units/$code'), headers: headers));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      _throwApiException(r);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listMaterialGroups() async {
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/settings/material-groups/'), headers: headers));
+    if (r.statusCode != 200) _throwApiException(r);
+    final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+    return arr.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<void> upsertMaterialGroup({
+    required String code,
+    required String name,
+    String description = '',
+    int sortOrder = 0,
+    bool isActive = true,
+  }) async {
+    final r = await _sendWithAuth((headers) => http.post(
+          _u('/api/v1/settings/material-groups/'),
+          headers: {...headers, 'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'code': code,
+            'name': name,
+            'description': description,
+            'sort_order': sortOrder,
+            'is_active': isActive,
+          }),
+        ));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      _throwApiException(r);
+    }
+  }
+
+  Future<void> deleteMaterialGroup(String code) async {
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/settings/material-groups/$code'),
+        headers: headers));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      _throwApiException(r);
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> listQuoteTextBlocks() async {
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/settings/quote-text-blocks/'), headers: headers));
+    if (r.statusCode != 200) _throwApiException(r);
+    final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+    return arr.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  Future<void> upsertQuoteTextBlock({
+    String? id,
+    required String code,
+    required String name,
+    required String category,
+    required String body,
+    int sortOrder = 0,
+    bool isActive = true,
+  }) async {
+    final payload = <String, dynamic>{
+      'code': code,
+      'name': name,
+      'category': category,
+      'body': body,
+      'sort_order': sortOrder,
+      'is_active': isActive,
+    };
+    if (id != null && id.isNotEmpty) {
+      payload['id'] = id;
+    }
+    final r = await _sendWithAuth((headers) => http.post(
+          _u('/api/v1/settings/quote-text-blocks/'),
+          headers: {...headers, 'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        ));
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      _throwApiException(r);
+    }
+  }
+
+  Future<void> deleteQuoteTextBlock(String id) async {
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/settings/quote-text-blocks/$id'),
+        headers: headers));
     if (r.statusCode < 200 || r.statusCode >= 300) {
       _throwApiException(r);
     }
   }
 
   // -------- Contacts --------
-  Future<List<dynamic>> listContacts({String? q, String? rolle, String? status, String? typ, int? limit, int? offset}) async {
-    final qp = <String,String>{};
+  Future<List<dynamic>> listContacts(
+      {String? q,
+      String? rolle,
+      String? status,
+      String? typ,
+      int? limit,
+      int? offset}) async {
+    final qp = <String, String>{};
     if (q != null && q.isNotEmpty) qp['q'] = q;
     if (rolle != null && rolle.isNotEmpty) qp['rolle'] = rolle;
     if (status != null && status.isNotEmpty) qp['status'] = status;
@@ -970,128 +1440,225 @@ class ApiClient {
     if (offset != null) qp['offset'] = '$offset';
     return _getList('/api/v1/contacts', qp.isEmpty ? null : qp);
   }
+
   Future<Map<String, dynamic>> createContact(Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/contacts/'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/contacts/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<Map<String, dynamic>> getContact(String id) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$id'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/contacts/$id'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
-  Future<Map<String, dynamic>> updateContact(String id, Map<String, dynamic> patch) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/contacts/$id'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(patch)));
+
+  Future<Map<String, dynamic>> updateContact(
+      String id, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/contacts/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteContact(String id) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/contacts/$id'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.delete(_u('/api/v1/contacts/$id'), headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
+
   Future<List<String>> listContactRoles() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/roles'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/contacts/roles'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
+
   Future<List<String>> listContactStatuses() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/statuses'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/contacts/statuses'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
+
   Future<List<String>> listContactTypes() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/types'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/contacts/types'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     final arr = jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
     return arr.map((e) => e.toString()).toList();
   }
-  Future<Map<String, dynamic>> createContactAddress(String contactId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/contacts/$contactId/addresses'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createContactAddress(
+      String contactId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/contacts/$contactId/addresses'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listContactAddresses(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/addresses'), headers: headers));
+    final r = await _sendWithAuth((headers) => http
+        .get(_u('/api/v1/contacts/$contactId/addresses'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> updateContactAddress(String contactId, String addrId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/contacts/$contactId/addresses/$addrId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> updateContactAddress(
+      String contactId, String addrId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/contacts/$contactId/addresses/$addrId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteContactAddress(String contactId, String addrId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/contacts/$contactId/addresses/$addrId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/contacts/$contactId/addresses/$addrId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<Map<String, dynamic>> createContactPerson(String contactId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/contacts/$contactId/persons'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createContactPerson(
+      String contactId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/contacts/$contactId/persons'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listContactPersons(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/persons'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/contacts/$contactId/persons'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> updateContactPerson(String contactId, String personId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/contacts/$contactId/persons/$personId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> updateContactPerson(
+      String contactId, String personId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/contacts/$contactId/persons/$personId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteContactPerson(String contactId, String personId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/contacts/$contactId/persons/$personId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/contacts/$contactId/persons/$personId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<Map<String, dynamic>> createContactNote(String contactId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/contacts/$contactId/notes'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createContactNote(
+      String contactId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/contacts/$contactId/notes'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listContactNotes(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/notes'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/contacts/$contactId/notes'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> updateContactNote(String contactId, String noteId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/contacts/$contactId/notes/$noteId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> updateContactNote(
+      String contactId, String noteId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/contacts/$contactId/notes/$noteId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteContactNote(String contactId, String noteId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/contacts/$contactId/notes/$noteId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/contacts/$contactId/notes/$noteId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<Map<String, dynamic>> createContactTask(String contactId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/contacts/$contactId/tasks'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createContactTask(
+      String contactId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/contacts/$contactId/tasks'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listContactTasks(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/tasks'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/contacts/$contactId/tasks'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
+
   Future<List<dynamic>> listContactActivity(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/activity'), headers: headers));
+    final r = await _sendWithAuth((headers) =>
+        http.get(_u('/api/v1/contacts/$contactId/activity'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> updateContactTask(String contactId, String taskId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.patch(_u('/api/v1/contacts/$contactId/tasks/$taskId'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> getContactCommercialContext(
+      String contactId) async {
+    final r = await _sendWithAuth((headers) => http.get(
+        _u('/api/v1/contacts/$contactId/commercial-context'),
+        headers: headers));
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateContactTask(
+      String contactId, String taskId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.patch(
+        _u('/api/v1/contacts/$contactId/tasks/$taskId'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<void> deleteContactTask(String contactId, String taskId) async {
-    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/contacts/$contactId/tasks/$taskId'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.delete(
+        _u('/api/v1/contacts/$contactId/tasks/$taskId'),
+        headers: headers));
     if (r.statusCode != 204) _throwApiException(r);
   }
-  Future<Map<String, dynamic>> uploadContactDocument(String contactId, String filename, Uint8List bytes, {String? contentType}) async {
-    final req = http.MultipartRequest('POST', _u('/api/v1/contacts/$contactId/documents'));
+
+  Future<Map<String, dynamic>> uploadContactDocument(
+      String contactId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    final req = http.MultipartRequest(
+        'POST', _u('/api/v1/contacts/$contactId/documents'));
     req.headers.addAll(_headers());
-    req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: contentType != null ? MediaType.parse(contentType) : null));
+    req.files.add(http.MultipartFile.fromBytes('file', bytes,
+        filename: filename,
+        contentType:
+            contentType != null ? MediaType.parse(contentType) : null));
     final streamed = await req.send();
     final r = await http.Response.fromStream(streamed);
     if (r.statusCode != 201) {
@@ -1099,47 +1666,69 @@ class ApiClient {
     }
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listContactDocuments(String contactId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/contacts/$contactId/documents'), headers: headers));
+    final r = await _sendWithAuth((headers) => http
+        .get(_u('/api/v1/contacts/$contactId/documents'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
 
   // -------- Warehouses & Locations --------
-  Future<Map<String, dynamic>> createWarehouse(Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/warehouses/'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+  Future<Map<String, dynamic>> createWarehouse(
+      Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/warehouses/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listWarehouses() async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/warehouses'), headers: headers));
+    final r = await _sendWithAuth(
+        (headers) => http.get(_u('/api/v1/warehouses'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
-  Future<Map<String, dynamic>> createLocation(String warehouseId, Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/warehouses/$warehouseId/locations'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> createLocation(
+      String warehouseId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/warehouses/$warehouseId/locations'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
+
   Future<List<dynamic>> listLocations(String warehouseId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/warehouses/$warehouseId/locations'), headers: headers));
+    final r = await _sendWithAuth((headers) => http.get(
+        _u('/api/v1/warehouses/$warehouseId/locations'),
+        headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
 
   // -------- Stock Movements --------
-  Future<Map<String, dynamic>> createStockMovement(Map<String, dynamic> body) async {
-    final r = await _sendWithAuth((headers) => http.post(_u('/api/v1/stock-movements/'), headers: {...headers, 'Content-Type': 'application/json'}, body: jsonEncode(body)));
+  Future<Map<String, dynamic>> createStockMovement(
+      Map<String, dynamic> body) async {
+    final r = await _sendWithAuth((headers) => http.post(
+        _u('/api/v1/stock-movements/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body)));
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
 
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
-    final r = await _sendWithAuth((headers) => http.get(_u('/api/v1/materials/$materialId/documents'), headers: headers));
+    final r = await _sendWithAuth((headers) => http
+        .get(_u('/api/v1/materials/$materialId/documents'), headers: headers));
     if (r.statusCode != 200) _throwApiException(r);
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
+
   Future<void> downloadDocument(String docId, {String? filename}) async {
     final r = await _getBytesResponse('/api/v1/documents/$docId');
     browser.downloadBytes(

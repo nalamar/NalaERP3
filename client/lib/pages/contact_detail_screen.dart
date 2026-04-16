@@ -19,6 +19,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
   List<dynamic> tasks = [];
   List<dynamic> documents = [];
   List<dynamic> activity = [];
+  Map<String, dynamic>? commercialContext;
   bool loading = false;
 
   String _roleLabel(String value) {
@@ -134,6 +135,98 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
     return '$day.$month.$year';
   }
 
+  String _formatMoney(dynamic value) {
+    final amount = switch (value) {
+      num n => n.toDouble(),
+      _ => double.tryParse(value?.toString() ?? '') ?? 0,
+    };
+    return '${amount.toStringAsFixed(2).replaceAll('.', ',')} EUR';
+  }
+
+  String _invoiceStatusLabel(String value) {
+    switch (value) {
+      case 'draft':
+        return 'Entwurf';
+      case 'booked':
+        return 'Gebucht';
+      case 'partially_paid':
+        return 'Teilbezahlt';
+      case 'paid':
+        return 'Bezahlt';
+      case 'canceled':
+        return 'Storniert';
+      default:
+        return value;
+    }
+  }
+
+  Widget _buildCommercialStatCard(String title, String value, String subtitle) {
+    return Expanded(
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 6),
+              Text(value,
+                  style: const TextStyle(
+                      fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              Text(subtitle,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCommercialListSection(
+    String title,
+    List<dynamic> items, {
+    required String emptyText,
+    required String Function(Map<String, dynamic>) subtitleBuilder,
+    IconData icon = Icons.receipt_long_outlined,
+  }) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style:
+                  const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Expanded(
+            child: items.isEmpty
+                ? Center(child: Text(emptyText))
+                : ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (ctx, i) {
+                      final item = items[i] as Map<String, dynamic>;
+                      final number = (item['number'] ?? '—').toString();
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(icon, size: 20),
+                        title: Text(number),
+                        subtitle: Text(
+                          subtitleBuilder(item),
+                          maxLines: 3,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _activityTitle(Map<String, dynamic> item) {
     final title = (item['titel'] ?? '').toString().trim();
     if (title.isNotEmpty) {
@@ -201,6 +294,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
       final t = await widget.api.listContactTasks(widget.id);
       final d = await widget.api.listContactDocuments(widget.id);
       final h = await widget.api.listContactActivity(widget.id);
+      final cc = await widget.api.getContactCommercialContext(widget.id);
       setState(() {
         contact = c;
         addresses = a;
@@ -209,6 +303,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
         tasks = t;
         documents = d;
         activity = h;
+        commercialContext = cc;
       });
     } catch (e) {
       if (mounted) {
@@ -257,7 +352,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     SizedBox(
                         width: 160,
                         child: DropdownButtonFormField<String>(
-                            value: typ,
+                            initialValue: typ,
                             items: [
                               const DropdownMenuItem(
                                   value: 'org', child: Text('Organisation')),
@@ -272,7 +367,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     SizedBox(
                         width: 200,
                         child: DropdownButtonFormField<String>(
-                            value: rolle,
+                            initialValue: rolle,
                             items: [
                               const DropdownMenuItem(
                                   value: 'customer', child: Text('Kunde')),
@@ -294,7 +389,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     SizedBox(
                         width: 180,
                         child: DropdownButtonFormField<String>(
-                            value: status,
+                            initialValue: status,
                             items: [
                               const DropdownMenuItem(
                                   value: 'lead', child: Text('Interessent')),
@@ -476,7 +571,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     SizedBox(
                         width: 200,
                         child: DropdownButtonFormField<String>(
-                            value: art,
+                            initialValue: art,
                             items: const [
                               DropdownMenuItem(
                                   value: 'billing', child: Text('Rechnung')),
@@ -536,7 +631,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       onPressed: () async {
                         try {
                           await widget.api.deleteContactAddress(
-                              widget.id, (addr!['id'] as String));
+                              widget.id, (addr['id'] as String));
                           Navigator.of(ctx).pop();
                           await _loadAll();
                         } catch (e) {
@@ -566,7 +661,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                           });
                         } else {
                           await widget.api.updateContactAddress(
-                              widget.id, (addr!['id'] as String), {
+                              widget.id, (addr['id'] as String), {
                             'art': art,
                             'zeile1': z1.text.trim(),
                             'zeile2': z2.text.trim(),
@@ -642,7 +737,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       SizedBox(
                           width: 180,
                           child: DropdownButtonFormField<String>(
-                            value: role,
+                            initialValue: role,
                             items: const [
                               DropdownMenuItem(
                                   value: 'management',
@@ -669,7 +764,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       SizedBox(
                           width: 180,
                           child: DropdownButtonFormField<String>(
-                            value: channel.isEmpty ? null : channel,
+                            initialValue: channel.isEmpty ? null : channel,
                             items: const [
                               DropdownMenuItem(
                                   value: 'email', child: Text('E-Mail')),
@@ -723,7 +818,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                         onPressed: () async {
                           try {
                             await widget.api.deleteContactPerson(
-                                widget.id, (pers!['id'] as String));
+                                widget.id, (pers['id'] as String));
                             Navigator.of(ctx).pop();
                             await _loadAll();
                           } catch (e) {
@@ -758,7 +853,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                                 .createContactPerson(widget.id, payload);
                           } else {
                             await widget.api.updateContactPerson(
-                                widget.id, (pers!['id'] as String), payload);
+                                widget.id, (pers['id'] as String), payload);
                           }
                           if (mounted) Navigator.of(ctx).pop();
                           await _loadAll();
@@ -813,7 +908,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                       onPressed: () async {
                         try {
                           await widget.api.deleteContactNote(
-                              widget.id, (note!['id'] as String));
+                              widget.id, (note['id'] as String));
                           if (mounted) Navigator.of(ctx).pop();
                           await _loadAll();
                         } catch (e) {
@@ -838,7 +933,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                           });
                         } else {
                           await widget.api.updateContactNote(
-                              widget.id, (note!['id'] as String), {
+                              widget.id, (note['id'] as String), {
                             'titel': titel.text.trim(),
                             'inhalt': inhalt.text.trim()
                           });
@@ -885,7 +980,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                                 const InputDecoration(labelText: 'Titel')),
                         const SizedBox(height: 12),
                         DropdownButtonFormField<String>(
-                          value: status,
+                          initialValue: status,
                           items: const [
                             DropdownMenuItem(
                                 value: 'open', child: Text('Offen')),
@@ -950,7 +1045,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                         onPressed: () async {
                           try {
                             await widget.api.deleteContactTask(
-                                widget.id, (task!['id'] as String));
+                                widget.id, (task['id'] as String));
                             if (mounted) Navigator.of(ctx).pop();
                             await _loadAll();
                           } catch (e) {
@@ -968,14 +1063,14 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                   FilledButton(
                       onPressed: () async {
                         try {
+                          final dueAt = dueDate;
                           final payload = {
                             'titel': titel.text.trim(),
                             'beschreibung': beschreibung.text.trim(),
                             'status': status,
-                            'faellig_am': dueDate == null
+                            'faellig_am': dueAt == null
                                 ? ''
-                                : DateTime(dueDate!.year, dueDate!.month,
-                                        dueDate!.day)
+                                : DateTime(dueAt.year, dueAt.month, dueAt.day)
                                     .toUtc()
                                     .toIso8601String(),
                           };
@@ -984,7 +1079,7 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                                 .createContactTask(widget.id, payload);
                           } else {
                             await widget.api.updateContactTask(
-                                widget.id, (task!['id'] as String), payload);
+                                widget.id, (task['id'] as String), payload);
                           }
                           if (mounted) Navigator.of(ctx).pop();
                           await _loadAll();
@@ -1034,6 +1129,12 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
     final color = Theme.of(context).colorScheme.primary;
     final canWrite = widget.api.hasPermission('contacts.write');
     final c = contact;
+    final cc = commercialContext;
+    final commercialStats =
+        (cc?['stats'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final commercialQuotes = (cc?['quotes'] as List?) ?? const [];
+    final commercialSalesOrders = (cc?['sales_orders'] as List?) ?? const [];
+    final commercialInvoices = (cc?['invoices_out'] as List?) ?? const [];
     return Scaffold(
       appBar: AppBar(
         backgroundColor: color,
@@ -1101,6 +1202,94 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
                     const SizedBox(height: 8),
                     Text(
                         'Steuerland: ${(c['steuer_land'] ?? 'DE')}  •  Steuerbefreit: ${(c['steuerbefreit'] ?? false) == true ? 'Ja' : 'Nein'}'),
+                    const Divider(),
+                  ],
+                  if (cc != null) ...[
+                    const Text('Kommerzieller Kontext',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _buildCommercialStatCard(
+                          'Angebote',
+                          '${commercialStats['quote_count'] ?? 0}',
+                          _formatMoney(commercialStats['quote_gross_total']),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildCommercialStatCard(
+                          'Aufträge',
+                          '${commercialStats['sales_order_count'] ?? 0}',
+                          _formatMoney(
+                              commercialStats['sales_order_gross_total']),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildCommercialStatCard(
+                          'Rechnungen',
+                          '${commercialStats['invoice_count'] ?? 0}',
+                          _formatMoney(commercialStats['invoice_gross_total']),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildCommercialStatCard(
+                          'Offen',
+                          '${commercialStats['open_invoice_count'] ?? 0}',
+                          _formatMoney(commercialStats['invoice_open_total']),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 220,
+                      child: Row(
+                        children: [
+                          _buildCommercialListSection(
+                            'Angebote',
+                            commercialQuotes,
+                            emptyText: 'Keine Angebote',
+                            icon: Icons.request_quote_outlined,
+                            subtitleBuilder: (item) =>
+                                '${(item['status'] ?? '').toString()}  •  ${(item['project_name'] ?? '').toString().isEmpty ? 'Ohne Projekt' : item['project_name']}'
+                                '${(item['gross_amount'] ?? 0) is num || double.tryParse((item['gross_amount'] ?? '').toString()) != null ? '  •  ${_formatMoney(item['gross_amount'])}' : ''}',
+                          ),
+                          const VerticalDivider(width: 16),
+                          _buildCommercialListSection(
+                            'Aufträge',
+                            commercialSalesOrders,
+                            emptyText: 'Keine Aufträge',
+                            icon: Icons.shopping_cart_checkout_outlined,
+                            subtitleBuilder: (item) =>
+                                '${(item['status'] ?? '').toString()}  •  ${(item['project_name'] ?? '').toString().isEmpty ? 'Ohne Projekt' : item['project_name']}'
+                                '${(item['gross_amount'] ?? 0) is num || double.tryParse((item['gross_amount'] ?? '').toString()) != null ? '  •  ${_formatMoney(item['gross_amount'])}' : ''}',
+                          ),
+                          const VerticalDivider(width: 16),
+                          _buildCommercialListSection(
+                            'Rechnungen',
+                            commercialInvoices,
+                            emptyText: 'Keine Rechnungen',
+                            icon: Icons.receipt_long_outlined,
+                            subtitleBuilder: (item) {
+                              final gross = switch (item['gross_amount']) {
+                                num n => n.toDouble(),
+                                _ => double.tryParse(
+                                        (item['gross_amount'] ?? '')
+                                            .toString()) ??
+                                    0,
+                              };
+                              final paid = switch (item['paid_amount']) {
+                                num n => n.toDouble(),
+                                _ => double.tryParse((item['paid_amount'] ?? '')
+                                        .toString()) ??
+                                    0,
+                              };
+                              final open = gross - paid;
+                              return '${_invoiceStatusLabel((item['status'] ?? '').toString())}'
+                                  '  •  ${_formatMoney(gross)}'
+                                  '${open > 0.0001 ? '  •  Offen ${_formatMoney(open)}' : ''}';
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
                     const Divider(),
                   ],
                   Expanded(

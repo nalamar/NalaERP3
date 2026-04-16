@@ -659,3 +659,133 @@ func TestPDFTemplateSettingsFlowForSalesOrderUsesBrandingFallbacks(t *testing.T)
 		t.Fatalf("expected normalized accent color, got %q", payload.EffectiveAccentColor)
 	}
 }
+
+func TestMaterialGroupDeleteRejectsTrimmedLegacyReferences(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-material-groups@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(t.Context(), `
+		INSERT INTO material_groups (code, name, is_active, sort_order)
+		VALUES ('stahl', 'Stahl', TRUE, 10)
+		ON CONFLICT (code) DO UPDATE
+		SET name = EXCLUDED.name,
+			is_active = EXCLUDED.is_active,
+			sort_order = EXCLUDED.sort_order,
+			updated_at = now()
+	`); err != nil {
+		t.Fatalf("seed material group: %v", err)
+	}
+
+	if _, err := env.PG.Exec(t.Context(), `
+		INSERT INTO materials (
+			id, nummer, bezeichnung, typ, einheit, dichte, kategorie, attributes
+		) VALUES (
+			'material-group-delete-trim-itest',
+			'MAT-TRIM-0001',
+			'Trim Referenz',
+			'profil',
+			'Stk',
+			2.7,
+			' stahl ',
+			'{}'::jsonb
+		)
+		ON CONFLICT (id) DO UPDATE
+		SET kategorie = EXCLUDED.kategorie,
+			updated_at = now()
+	`); err != nil {
+		t.Fatalf("seed material with trimmed category reference: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-material-groups@example.com", "Secret123!")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/settings/material-groups/stahl", nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+
+	if deleteRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for blocked material group delete, got %d with body %s", deleteRec.Code, deleteRec.Body.String())
+	}
+	if body := deleteRec.Body.String(); body != "Materialgruppe wird noch von Materialien verwendet\n" {
+		t.Fatalf("expected material group reference message, got %q", body)
+	}
+}
+
+func TestQuoteTextBlocksSettingsFlow(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-quote-text-blocks@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-quote-text-blocks@example.com", "Secret123!")
+
+	createBody := []byte(`{
+		"code":"intro-standard",
+		"name":"Standard-Einleitung",
+		"category":"intro",
+		"body":"Vielen Dank fuer Ihre Anfrage.",
+		"sort_order":10,
+		"is_active":true
+	}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/settings/quote-text-blocks", bytes.NewReader(createBody))
+	createReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createReq.Header.Set("Content-Type", "application/json")
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for quote text block upsert, got %d with body %s", createRec.Code, createRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/quote-text-blocks", nil)
+	listReq.Header.Set("Authorization", "Bearer "+accessToken)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote text block list, got %d with body %s", listRec.Code, listRec.Body.String())
+	}
+
+	var items []struct {
+		ID        string `json:"id"`
+		Code      string `json:"code"`
+		Name      string `json:"name"`
+		Category  string `json:"category"`
+		Body      string `json:"body"`
+		SortOrder int    `json:"sort_order"`
+		IsActive  bool   `json:"is_active"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode quote text blocks: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 quote text block, got %d", len(items))
+	}
+	if items[0].ID == "" {
+		t.Fatal("expected persisted quote text block id")
+	}
+	if items[0].Code != "intro-standard" || items[0].Category != "intro" {
+		t.Fatalf("unexpected quote text block payload: %#v", items[0])
+	}
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/settings/quote-text-blocks/"+items[0].ID, nil)
+	deleteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	deleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(deleteRec, deleteReq)
+	if deleteRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for quote text block delete, got %d with body %s", deleteRec.Code, deleteRec.Body.String())
+	}
+
+	listAfterReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/quote-text-blocks", nil)
+	listAfterReq.Header.Set("Authorization", "Bearer "+accessToken)
+	listAfterRec := httptest.NewRecorder()
+	handler.ServeHTTP(listAfterRec, listAfterReq)
+	if listAfterRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote text block list after delete, got %d with body %s", listAfterRec.Code, listAfterRec.Body.String())
+	}
+	items = nil
+	if err := json.Unmarshal(listAfterRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode quote text blocks after delete: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected empty quote text block list after delete, got %d", len(items))
+	}
+}

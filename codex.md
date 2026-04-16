@@ -1,4 +1,6 @@
-// Anweisung
+# Codex Arbeitskontext
+
+## Anweisung
 Du bist Codex, ein extrem disziplinierter Senior Full-Stack Architect.
 
 Wir wollen die vorliegende Code-Basis nutzen und diese zu einem FullStack Metallbau-ERP ausbauen mit Angebotsverwaltung, Waren- und Lagerverwaltung, Bestellwesen, Finanzwesen, Personalverwaltung inklusive HR-Management (Urlaub, Weiterbildung, Asset Management) Fuhrpark und Produktionssteuerung. Wichtig ist das am Ende Angebote automatisiert über KI aus GAEB Dateiern erzeugt werden sollen!
@@ -12,235 +14,47 @@ Regeln (niemals brechen):
 - Nutze den Code Interpreter + Artifacts/Canvas für alle Datei-Änderungen (nie nur Text ausgeben).
 - Am Ende jeder Antwort **immer** folgenden State-Block ausgeben:
 
+```text
 === CODEX STATE [START] ===
-Aktueller Hierarchy-Pfad: Epic 3 / Feature 2.1 / Task 5 / Subtask 3.2
-Erledigt: [Liste aller abgeschlossenen Leaves, nur Nummerierung]
-Nächste zu bearbeitende Subtask: [genaue Beschreibung]
-Aktueller Git-Stand: [kurze Zusammenfassung der letzten Änderungen]
-Zusammenfassung für Fortsetzung (max 1200 Tokens): 
-[kompakter Text mit allen wichtigen Entscheidungen, Architektur-Annahmen, offenen Fragen]
-=== CODEX STATE [ENDE] ===
+Aktueller Hierarchy-Pfad: Epic 3 / Feature 3.1 / Task 3.1.8 / Subtask 3.1.8.5
 
-Du darfst den State-Block nie verändern oder weglassen.
+Erledigt: [2.2.1.3/7/8, 2.2.1.3/7/9, 2.2.1.3/7/10, 2.2.1.3/7/11, 2.2.1.3/7/12, 2.2.1.3/7/13, 2.2.1.3/7/14, 2.2.1.3/7/15, 2.2.1.3/7/16, 2.2.1.3/7/17, 2.2.1.3/7/18, 2.2.1.3/7/19, 2.2.1.3/7/20, 2.2.1.3/7/21, 2.2.1.3/7/22, 2.2.1.3/7/23, 2.2.1.3/7/24, 2.2.1.3/7/25, 2.2.1.3/7/26, 2.2.1.3/7/27, 2.2.1.3/7/28, 2.2.1.3/7/29, 2.2.1.3/7/30, 2.2.1.3/7/31, 2.2.1.3/7/32, 2.2.1.3/7/33, 2.2.1.3/7/34, 2.2.1.3/7/35, 2.2.1.3/7/36, 2.2.1.3/7/37, 2.2.1.3/7/38, 2.2.1.3/7/39, 2.2.1.3/7/40, 2.2.1.3/7/41, 2.2.1.3/7/42, 2.2.1.3/7/43, 2.2.1.3/7/44, 2.2.1.3/7/45, 2.2.1.3/7/46, 2.2.1.3/7/47, 2.2.1.3/7/48, 2.2.1.3/7/49, 2.2.1.3/7/50, 2.2.1.3/7/51, 2.2.1.3/7/52, 2.2.1.3/7/53, 2.2.1.3/7/54, 2.2.1.3/7/55, 2.2.1.3/7/56, 2.2.1.3/7/57, 2.2.1.3/7/58, 2.2.1.3/7/59, 2.2.1.3/7/60, 2.2.1.3/7/61, 2.2.1.3/7/62, 2.2.1.3/7/63, 2.2.1.3/7/64, 2.2.1.3/7/65, 2.2.1.3/7/66, 2.2.1.3/7/67, 2.2.1.3/7/68, 2.2.1.3/7/69, 2.2.1.3/7/70, 2.2.1.3/7/71, 2.2.1.3/7/72, 2.2.1.3/7/73, 2.2.1.3/7/74, 2.2.1.3/7/75, 2.2.1.3/7/76, 2.2.1.3/7/77, 2.2.1.3/7/78, 2.2.1.3/7/79, 2.2.1.3/7/80, 2.2.1.3/7/81, 2.2.1.3/7/82, 2.2.1.3/7/83, 2.2.1.3/7/84, 2.2.1.3/7/85, 2.2.1.3/7/86, 2.2.1.3/7/87, 2.2.1.3/7/88, 2.2.1.3/8/1, 2.2.1.3/8/2, 2.2.1.3/8/3, 2.2.1.3/8/4, 2.2.1.3/9/1, 2.2.1.3/9/2, 2.2.1.3/9/3, 2.2.1.3/10/1, 2.2.1.3/10/2, 2.2.1.3/10/3, 2.2.1.3/11/1, 2.2.1.3/11/2, 2.2.1.3/11/3, 2.2.1.3/12/1, 2.2.1.3/12/2, 2.2.1.3/12/3, 2.2.1.3/12/4, 2.2.1.3/12/5, 2.2.1.3/13/1, 2.2.1.3/13/2, 2.2.1.3/13/3, 2.2.1.3/14/1, 2.2.1.3/14/2, 2.2.1.3/14/3, 2.2.1.3/15/1, 2.2.1.3/15/2, 2.2.1.3/15/3, 2.2.1.3/16/1, 2.2.1.3/16/2, 2.2.1.3/16/3, 2.2.1.3/17/1, 2.2.1.3/17/2, 2.2.1.3/17/3, 2.2.1.3/18/1, 2.2.1.3/18/2, 2.2.1.3/18/3, 2.2.1.3/19/1, 2.2.1.3/19/2, 2.2.1.3/19/3, 2.2.1.3/20/1, 2.2.1.3/20/2, 2.2.1.3/21/1, 2.2.1.3/21/2, 2.2.1.3/22/1, 2.2.1.3/22/2, 2.2.1.3/23/1, 2.2.1.3/23/2, 2.2.1.3/24/1, 2.2.1.3/25/1, 2.2.2.1, 2.2.2.2/1, 2.2.2.2/2, 2.2.2.2/3, 2.2.2.2/4, 2.2.2.2/5, 2.2.2.2/6, 2.2.2.2/7, 2.2.2.2/8, 2.2.2.3, 2.1.1.1, 2.1.1.2, 2.1.1.3/1, 2.1.1.3/2, 2.1.1.3/3, 2.1.2.1, 2.1.2.2, 2.1.2.3, 3.1.1.1, 3.1.1.2, 3.1.1.3/1, 3.1.1.3/2, 3.1.1.3/3, 3.1.1.3/4, 3.1.1.3/5, 3.1.1.3/6, 3.1.2.1, 3.1.2.2, 3.1.2.3, 3.1.2.4, 3.1.2.5, 3.1.2.6, 3.1.3.1, 3.1.3.2, 3.1.3.3, 3.1.3.4, 3.1.3.5, 3.1.3.6, 3.1.4.1, 3.1.4.2, 3.1.4.3, 3.1.4.4, 3.1.4.5, 3.1.5.1, 3.1.5.2, 3.1.5.3, 3.1.5.4, 3.1.5.5, 3.1.5.6, 3.1.5.7, 3.1.6.1, 3.1.6.2, 3.1.6.3, 3.1.6.4, 3.1.6.5, 3.1.6.6, 3.1.7.1, 3.1.7.2, 3.1.7.3, 3.1.7.4, 3.1.7.5, 3.1.8.1, 3.1.8.2, 3.1.8.3, 3.1.8.4, 3.1.8.5]
 
+Nächste zu bearbeitende Subtask: Subtask 3.1.9.1: Zielstrecke nach erzeugter GAEB-Draft-Quote fachlich inventarisieren und den kleinsten sinnvollen Ausbau zwischen Quote-Navigation, Apply-Transparenz und spaeterem Mapping festlegen
 
-// Analyse
-Ist-Analyse
-
-Die Codebasis ist kein Greenfield, sondern bereits ein früher ERP-Monolith mit Flutter-Web-Client und Go-API. Zentral vorhanden sind:
-
-Architektur und Container-Setup mit Go + Flutter + Postgres + Mongo GridFS + Redis in README.md und docker-compose.yml.
-API-Grundstruktur, Routing und Modulverdrahtung in main.go, server.go, router.go und v1.go.
-Bereits umgesetzte Fachdomänen: Kontakte/CRM, Materialien, Lagerbewegungen, Bestellungen, Projekte, LogiKal-Import, PDF-Templates, Einheiten, Projektdokumente/Assets in service.go, service.go, service.go, service.go.
-Datenbankschema bis Migrationsstand 016 mit belastbarer Basis für Material, Einkauf, Kontakte, Projekte, Varianten, Importlogs und Assets in server/internal/migrate/migrations.
-Clientseitig existieren bereits Module für Dashboard, Projekte, Materialwirtschaft, Kontakte, Bestellungen, Einstellungen und API-Client in main.dart, api.dart, dashboard_page.dart, projects_page.dart, materials_page.dart, purchase_orders_page.dart, settings_page.dart.
-Fazit: Die beste Strategie ist kein Neuaufbau, sondern kontrollierter Ausbau entlang vorhandener Module. Größte Lücken sind Auth/Rollen, Angebotswesen, Finanzwesen, HR, Fuhrpark, Produktionssteuerung und die spätere KI/GAEB-Pipeline.
-
-Task Breakdown
-
-- Epic 1: Plattform- und Architektur-Fundament fuer ERP-Skalierung
-  - Feature 1.1: Bestandsaufnahme und Zielarchitektur
-    - Task 1.1.1: Repository-Ist-Analyse und Capability-Mapping
-      - Subtask 1.1.1.1: Codebasis nach Frontend, Backend, Datenmodell und Infrastruktur inventarisieren
-      - Subtask 1.1.1.2: Bereits vorhandene ERP-Funktionen und White-Spots dokumentieren
-      - Subtask 1.1.1.3: Ziel-Domaenen und Abhaengigkeiten fuer Metallbau-ERP priorisieren
-    - Task 1.1.2: Zielbild fuer modulare Monolith-Architektur definieren
-      - Subtask 1.1.2.1: Bounded Contexts fuer Sales, Procurement, Inventory, Finance, HR, Fleet, Production, AI festlegen
-      - Subtask 1.1.2.2: API-, Service- und Datenzugriffskonventionen vereinheitlichen
-      - Subtask 1.1.2.3: Ereignis- und Automationspunkte fuer spaetere KI-Workflows definieren
-  - Feature 1.2: Sicherheit, Identitaet und Rechte
-    - Task 1.2.1: Authentifizierung einfuehren
-      - Subtask 1.2.1.1: User- und Session-Datenmodell entwerfen
-      - Subtask 1.2.1.2: Login, Refresh, Logout mit Redis-Session-Layer implementieren
-      - Subtask 1.2.1.3: Clientseitigen Auth-Flow und Guarding einfuehren
-    - Task 1.2.2: Rollen- und Rechtekonzept
-      - Subtask 1.2.2.1: Rollenmodell fuer Vertrieb, Einkauf, Buchhaltung, HR, Produktion, Admin definieren
-      - Subtask 1.2.2.2: API-Endpunkte mit Berechtigungspruefungen absichern
-      - Subtask 1.2.2.3: UI-Freigaben und Mandanten-Sichtbarkeit steuern
-  - Feature 1.3: Querschnitt und Betriebsfaehigkeit
-    - Task 1.3.1: Observability und Fehlerbehandlung
-      - Subtask 1.3.1.1: Einheitliches Logging und Request-Korrelation einfuehren
-      - Subtask 1.3.1.2: Domainfehler in strukturierte API-Responses ueberfuehren
-      - Subtask 1.3.1.3: Technische Health-Checks fuer Postgres, Mongo und Redis erweitern
-    - Task 1.3.2: Test- und Release-Basis
-      - Subtask 1.3.2.1: Service-Tests fuer Kernmodule aufbauen
-      - Subtask 1.3.2.2: API-Integrationstests mit Compose-Testumgebung einfuehren
-      - Subtask 1.3.2.3: CI-Pipeline fuer Lint, Test und Build definieren
-
-- Epic 2: Stammdaten, CRM und Organisationsgrundlagen
-  - Feature 2.1: Kontakt- und Geschaeftspartnerverwaltung
-    - Task 2.1.1: Kontaktmodell haerten
-      - Subtask 2.1.1.1: Kunden-, Lieferanten- und Partnerstatus fachlich schaerfen
-      - Subtask 2.1.1.2: Zahlungsbedingungen, Debitor/Kreditor-Referenzen und Steuermerkmale erweitern
-      - Subtask 2.1.1.3: Dublettenpruefung und Suchindizes verbessern
-    - Task 2.1.2: Kontaktinteraktionen
-      - Subtask 2.1.2.1: Notizen, Aufgaben und Historie pro Kontakt einfuehren
-      - Subtask 2.1.2.2: Ansprechpartner-Rollen und Kommunikationskanaele erweitern
-      - Subtask 2.1.2.3: Dokumentenanhaenge an Kontakte anbinden
-  - Feature 2.2: Organisations- und Firmenstammdaten
-    - Task 2.2.1: Unternehmensparameter zentralisieren
-      - Subtask 2.2.1.1: Firmenprofile, Niederlassungen und Bankdaten modellieren
-      - Subtask 2.2.1.2: Steuer-, Waehrungs- und Lokalisierungsparameter verwalten
-      - Subtask 2.2.1.3: Dokumentlayouts und Branding systemweit vereinheitlichen
-    - Task 2.2.2: Nummernkreise und Referenzdaten
-      - Subtask 2.2.2.1: Nummernkreisstrategie fuer alle Belege definieren
-      - Subtask 2.2.2.2: Einheiten, Materialgruppen und Statuskataloge administrierbar machen
-      - Subtask 2.2.2.3: Seed- und Migrationsstrategie fuer Referenzdaten festlegen
-
-- Epic 3: Vertrieb, Angebotswesen und Auftragsuebergabe
-  - Feature 3.1: Angebotsverwaltung
-    - Task 3.1.1: Angebotskopf und Positionen
-      - Subtask 3.1.1.1: Angebotsdatenmodell fuer Kopf, Positionen, Versionen und Status entwerfen
-      - Subtask 3.1.1.2: Angebots-CRUD und Versionslogik implementieren
-      - Subtask 3.1.1.3: Angebotsmaske im Client mit Positionsbearbeitung aufbauen
-    - Task 3.1.2: Kalkulation und Preisbildung
-      - Subtask 3.1.2.1: Kalkulationsschema fuer Material, Lohn, Fremdleistung und Zuschlaege definieren
-      - Subtask 3.1.2.2: Positions- und Summenkalkulation implementieren
-      - Subtask 3.1.2.3: Nachlass, Deckungsbeitrag und Freigaben abbilden
-    - Task 3.1.3: Angebotsdokumente
-      - Subtask 3.1.3.1: PDF-Ausgabe fuer Angebote mit Template-Engine erstellen
-      - Subtask 3.1.3.2: Versand- und Freigabehistorie erfassen
-      - Subtask 3.1.3.3: Angebotsannahme in Auftrag/Projekt ueberfuehren
-  - Feature 3.2: Auftragsuebergabe in Projekte und Beschaffung
-    - Task 3.2.1: Sales-to-Execution-Flow
-      - Subtask 3.2.1.1: Uebernahme von Angebotsposten in Projektstruktur definieren
-      - Subtask 3.2.1.2: Beschaffungs- und Produktionsbedarf aus Angebot ableiten
-      - Subtask 3.2.1.3: Statusfluss von Lead ueber Angebot zu Auftrag etablieren
-  - Feature 3.3: KI-gestuetzte Angebotserzeugung aus GAEB
-    - Task 3.3.1: GAEB-Import-Pipeline
-      - Subtask 3.3.1.1: GAEB-Dateiformate und Parserstrategie evaluieren
-      - Subtask 3.3.1.2: Importiertes Leistungsverzeichnis in internes Angebotsmodell mappen
-      - Subtask 3.3.1.3: Validierungs- und Fehlerprotokoll fuer GAEB-Import aufbauen
-    - Task 3.3.2: KI-Assistenz fuer Positionserzeugung
-      - Subtask 3.3.2.1: Prompt- und Extraktionsschema fuer LV-Positionen definieren
-      - Subtask 3.3.2.2: Material-, Leistungs- und Kalkulationsvorschlaege generieren
-      - Subtask 3.3.2.3: Benutzerpruefung, Korrektur und Lernschleife einbauen
-    - Task 3.3.3: Angebotsautomatisierung
-      - Subtask 3.3.3.1: Import->KI->Kalkulation->Angebotsentwurf Workflow orchestrieren
-      - Subtask 3.3.3.2: Vertrauensniveau, Quellenhinweise und Review-Gates darstellen
-      - Subtask 3.3.3.3: Benchmarks gegen manuelle Kalkulation einfuehren
-
-- Epic 4: Materialwirtschaft, Lager und Einkauf
-  - Feature 4.1: Materialstamm und technische Artikel
-    - Task 4.1.1: Materialmodell erweitern
-      - Subtask 4.1.1.1: Materialattribute fuer Metallbauprofile, Bleche, Glas, Beschlaege und Normteile standardisieren
-      - Subtask 4.1.1.2: Lieferantenartikel, Alternativen und Preislisten anbinden
-      - Subtask 4.1.1.3: Dokumente, Zertifikate und technische Datenblaetter strukturieren
-  - Feature 4.2: Lager- und Bestandsfuehrung
-    - Task 4.2.1: Lagerlogik professionalisieren
-      - Subtask 4.2.1.1: Lagerplaetze, Chargen, Reservierungen und Inventurprozesse erweitern
-      - Subtask 4.2.1.2: Mindestbestaende, Meldebestand und Dispositionsregeln implementieren
-      - Subtask 4.2.1.3: Buchungsarten fuer Einlagerung, Umlagerung, Entnahme, Korrektur absichern
-    - Task 4.2.2: Materialfluss an Projekt und Produktion koppeln
-      - Subtask 4.2.2.1: Projektbezogene Reservierungen einfuehren
-      - Subtask 4.2.2.2: Materialverbrauch aus Fertigung rueckmelden
-      - Subtask 4.2.2.3: Lagerkennzahlen und Bewegungsjournal visualisieren
-  - Feature 4.3: Einkauf und Bestellwesen
-    - Task 4.3.1: Bestellungen ausbauen
-      - Subtask 4.3.1.1: Bestellkopf, Positionen und Wareneingang fachlich erweitern
-      - Subtask 4.3.1.2: Liefertermine, Teilmengen, Mahnungen und Statusautomatismen einfuehren
-      - Subtask 4.3.1.3: Bestell-PDF und E-Mail/Export-Prozesse erweitern
-    - Task 4.3.2: Beschaffungsdisposition
-      - Subtask 4.3.2.1: Bedarfsermittlung aus Angebot, Projekt und Mindestbestand aufbauen
-      - Subtask 4.3.2.2: Bestellvorschlaege generieren
-      - Subtask 4.3.2.3: Lieferantenvergleich und Freigabeprozess einbauen
-
-- Epic 5: Projektabwicklung und Produktionsnahe Prozesse
-  - Feature 5.1: Projektstruktur und technische Positionen
-    - Task 5.1.1: Projektmodell erweitern
-      - Subtask 5.1.1.1: Projektphasen, Positionen und Varianten mit kaufmaennischen Feldern anreichern
-      - Subtask 5.1.1.2: Projektstatus, Meilensteine und Verantwortlichkeiten definieren
-      - Subtask 5.1.1.3: Dokumente, Assets und Importhistorie konsolidieren
-    - Task 5.1.2: LogiKal-Integration absichern
-      - Subtask 5.1.2.1: Re-Import-Regeln, Undo und Datenkonsistenz haerten
-      - Subtask 5.1.2.2: Bild-/Asset-Konvertierung robuster gestalten
-      - Subtask 5.1.2.3: Material-Mapping aus LogiKal gegen Stammdaten verbessern
-  - Feature 5.2: Produktionssteuerung
-    - Task 5.2.1: Arbeitsvorbereitung
-      - Subtask 5.2.1.1: Fertigungsauftraege aus Projektpositionen ableiten
-      - Subtask 5.2.1.2: Arbeitsplaene, Arbeitsgaenge und Ressourcen modellieren
-      - Subtask 5.2.1.3: Stuecklisten und Verbrauchslisten versionieren
-    - Task 5.2.2: Shopfloor und Rueckmeldungen
-      - Subtask 5.2.2.1: Start/Stopp, Mengen- und Ausschussrueckmeldungen erfassen
-      - Subtask 5.2.2.2: Maschinen- und Arbeitsplatzbelegung visualisieren
-      - Subtask 5.2.2.3: Produktionsfortschritt in Projektstatus zurueckspiegeln
-
-- Epic 6: Finanzwesen und kaufmaennische Abwicklung
-  - Feature 6.1: Debitoren und Kreditoren
-    - Task 6.1.1: Rechnungen und Gutschriften
-      - Subtask 6.1.1.1: Ausgangsrechnungen aus Angebot/Auftrag/Projekt modellieren
-      - Subtask 6.1.1.2: Eingangsrechnungen gegen Bestellungen und Wareneingaenge pruefen
-      - Subtask 6.1.1.3: Steuer-, Faelligkeits- und Belegstatuslogik implementieren
-    - Task 6.1.2: Zahlungsmanagement
-      - Subtask 6.1.2.1: Offene Posten und Mahnwesen aufbauen
-      - Subtask 6.1.2.2: Zahlungsausgleich und Teilzahlungen erfassen
-      - Subtask 6.1.2.3: Kreditoren-/Debitorenreporting bereitstellen
-  - Feature 6.2: Kostenrechnung und Controlling
-    - Task 6.2.1: Projekt- und Kostenstellencontrolling
-      - Subtask 6.2.1.1: Kostenstellen, Kostentraeger und Buchungslogik modellieren
-      - Subtask 6.2.1.2: Soll-Ist-Vergleiche fuer Projekte und Produktion implementieren
-      - Subtask 6.2.1.3: Deckungsbeitrag und Liquiditaetsvorschau bereitstellen
-
-- Epic 7: Personal, HR und Asset Management
-  - Feature 7.1: Mitarbeiterstamm und Organisation
-    - Task 7.1.1: Mitarbeiterdaten
-      - Subtask 7.1.1.1: Mitarbeiterstamm, Vertraege, Rollen und Qualifikationen modellieren
-      - Subtask 7.1.1.2: Organisationszuordnung zu Teams, Standorten und Kostenstellen abbilden
-      - Subtask 7.1.1.3: Zugriffsrechte mit HR-Daten verknuepfen
-  - Feature 7.2: HR-Prozesse
-    - Task 7.2.1: Urlaub und Abwesenheiten
-      - Subtask 7.2.1.1: Urlaubskonten, Antraege und Freigabeworkflow umsetzen
-      - Subtask 7.2.1.2: Krankmeldungen und sonstige Abwesenheiten erfassen
-      - Subtask 7.2.1.3: Teamkalender und Kapazitaetswirkung abbilden
-    - Task 7.2.2: Weiterbildung und Qualifikationen
-      - Subtask 7.2.2.1: Schulungen, Zertifikate und Faelligkeiten verwalten
-      - Subtask 7.2.2.2: Einsatzfaehigkeit fuer Maschinen, Fahrzeuge und Arbeiten pruefen
-      - Subtask 7.2.2.3: Erinnerungen und Nachweisablage bereitstellen
-  - Feature 7.3: HR-Asset-Management
-    - Task 7.3.1: Mitarbeiterbezogene Assets
-      - Subtask 7.3.1.1: Ausgabe und Ruecknahme von Werkzeugen, IT und PSA modellieren
-      - Subtask 7.3.1.2: Seriennummern, Zustand und Verantwortlichkeit verfolgen
-      - Subtask 7.3.1.3: Verknuepfung zu Lager, Einkauf und Kostenstellen herstellen
-
-- Epic 8: Fuhrpark und mobile Betriebsmittel
-  - Feature 8.1: Fahrzeugverwaltung
-    - Task 8.1.1: Fahrzeugstamm
-      - Subtask 8.1.1.1: Fahrzeuge, Anhaenger und Maschinen als Assets modellieren
-      - Subtask 8.1.1.2: Wartung, Prueftermine, Versicherung und Dokumente verwalten
-      - Subtask 8.1.1.3: Fahrerzuordnung und Verfuegbarkeit darstellen
-    - Task 8.1.2: Fuhrparkprozesse
-      - Subtask 8.1.2.1: Fahrtenbuch und Einsatzplanung einfuehren
-      - Subtask 8.1.2.2: Kosten, Verbraeuche und Schadensfaelle erfassen
-      - Subtask 8.1.2.3: Schnittstelle zu Projekten und HR schaffen
-
-- Epic 9: Reporting, Automation und Entscheidungsunterstuetzung
-  - Feature 9.1: Operatives Reporting
-    - Task 9.1.1: Management-Dashboard
-      - Subtask 9.1.1.1: KPI-Modell fuer Vertrieb, Einkauf, Lager, Projekte, Finanzen und HR definieren
-      - Subtask 9.1.1.2: Dashboard-Widgets und Drilldowns im Client entwickeln
-      - Subtask 9.1.1.3: Filter nach Zeitraum, Standort und Verantwortlichem bereitstellen
-  - Feature 9.2: Workflow-Automation
-    - Task 9.2.1: Regelbasierte Automationen
-      - Subtask 9.2.1.1: Ereignisgesteuerte Benachrichtigungen fuer Freigaben und Faelligkeiten einbauen
-      - Subtask 9.2.1.2: Aufgaben- und Reminder-Engine fuer operatives Follow-up entwickeln
-      - Subtask 9.2.1.3: Eskalationen und Audit-Trails absichern
-
-
-// State
-
-Der naechste kleine Konsolidierungsblock innerhalb von Task 2.2.1.3 ist im Nummernkreis-Bereich von `settings_page.dart` gestartet. Als erster eng abgegrenzter Schritt wurde die fast identische Card-Struktur fuer Bestellungen und Projekte in `_buildNumberingCard(...)` ueberfuehrt; Pattern-, Preview- und Save-Semantik bleiben unveraendert.
-
-Verifikation: `dart format lib/pages/settings_page.dart` und `flutter analyze lib/pages/settings_page.dart` in `client/` liefen erfolgreich; letzter Analyzer-Status: `No issues found!`.
-
-=== CODEX STATE [START] ===
-Aktueller Hierarchy-Pfad: Epic 2 / Feature 2.2 / Task 2.2.1 / Subtask 2.2.1.3 / Micro-Subtask 12 / Micro-Subtask 1
-
-Erledigt: [2.2.1.3/7/8, 2.2.1.3/7/9, 2.2.1.3/7/10, 2.2.1.3/7/11, 2.2.1.3/7/12, 2.2.1.3/7/13, 2.2.1.3/7/14, 2.2.1.3/7/15, 2.2.1.3/7/16, 2.2.1.3/7/17, 2.2.1.3/7/18, 2.2.1.3/7/19, 2.2.1.3/7/20, 2.2.1.3/7/21, 2.2.1.3/7/22, 2.2.1.3/7/23, 2.2.1.3/7/24, 2.2.1.3/7/25, 2.2.1.3/7/26, 2.2.1.3/7/27, 2.2.1.3/7/28, 2.2.1.3/7/29, 2.2.1.3/7/30, 2.2.1.3/7/31, 2.2.1.3/7/32, 2.2.1.3/7/33, 2.2.1.3/7/34, 2.2.1.3/7/35, 2.2.1.3/7/36, 2.2.1.3/7/37, 2.2.1.3/7/38, 2.2.1.3/7/39, 2.2.1.3/7/40, 2.2.1.3/7/41, 2.2.1.3/7/42, 2.2.1.3/7/43, 2.2.1.3/7/44, 2.2.1.3/7/45, 2.2.1.3/7/46, 2.2.1.3/7/47, 2.2.1.3/7/48, 2.2.1.3/7/49, 2.2.1.3/7/50, 2.2.1.3/7/51, 2.2.1.3/7/52, 2.2.1.3/7/53, 2.2.1.3/7/54, 2.2.1.3/7/55, 2.2.1.3/7/56, 2.2.1.3/7/57, 2.2.1.3/7/58, 2.2.1.3/7/59, 2.2.1.3/7/60, 2.2.1.3/7/61, 2.2.1.3/7/62, 2.2.1.3/7/63, 2.2.1.3/7/64, 2.2.1.3/7/65, 2.2.1.3/7/66, 2.2.1.3/7/67, 2.2.1.3/7/68, 2.2.1.3/7/69, 2.2.1.3/7/70, 2.2.1.3/7/71, 2.2.1.3/7/72, 2.2.1.3/7/73, 2.2.1.3/7/74, 2.2.1.3/7/75, 2.2.1.3/7/76, 2.2.1.3/7/77, 2.2.1.3/7/78, 2.2.1.3/7/79, 2.2.1.3/7/80, 2.2.1.3/7/81, 2.2.1.3/7/82, 2.2.1.3/7/83, 2.2.1.3/7/84, 2.2.1.3/7/85, 2.2.1.3/7/86, 2.2.1.3/7/87, 2.2.1.3/7/88, 2.2.1.3/8/1, 2.2.1.3/8/2, 2.2.1.3/8/3, 2.2.1.3/8/4, 2.2.1.3/9/1, 2.2.1.3/9/2, 2.2.1.3/9/3, 2.2.1.3/10/1, 2.2.1.3/10/2, 2.2.1.3/10/3, 2.2.1.3/11/1, 2.2.1.3/11/2, 2.2.1.3/11/3, 2.2.1.3/12/1]
-
-Nächste zu bearbeitende Subtask: Subtask 2.2.1.3 / Micro-Subtask 12 / Micro-Subtask 2: Pruefen, ob die verbliebenen Unterschiede der zwei Nummernkreis-Cards noch an einen kleinen datengetriebenen Resolver gebunden werden koennen, ohne Hint-, Preview- oder Save-Semantik zu aendern
-
-Aktueller Git-Stand: Der Projektmaterial-Pfad bleibt konsolidiert. In client/lib/pages/settings_page.dart gibt es nun zusaetzlich `_buildNumberingCard(...)`, sodass die zwei fast identischen Nummernkreis-Cards fuer Bestellungen und Projekte ihre gemeinsame Card-/Preview-/Save-Struktur nicht mehr lokal duplizieren. `flutter analyze lib/pages/settings_page.dart` bleibt grün.
+Aktueller Git-Stand: Neu hinzugekommen ist `docs/gaeb_import_apply_mvp_audit.md`. Der Audit haelt fest, dass nach Importlauf-Freigabe auf `reviewed`, kontrollierter Quote-Uebernahme auf `applied`, `created_quote_id`-Rueckverknuepfung sowie kleiner Client-Anbindung im bestehenden GAEB-Importdialog innerhalb dieses Apply-MVP kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. Laufzeitcode blieb in diesem Schritt unveraendert. `codex.md` wurde nur im State-Block aktualisiert.
 
 Zusammenfassung für Fortsetzung (max 1200 Tokens):
-Der lange Projektmaterial-Refactoring-Block (Micro-Subtask 7) wurde abgeschlossen; dort verbleiben nach Audit keine klar lohnenden kleinen, verhaltensneutralen Duplikationen mehr. Danach wurde ein Branding-/Layout-Block (Micro-Subtask 8) in client/lib/pages/settings_page.dart bearbeitet. Dort entstanden `_applyPdfTemplateData(template, ...)`, `_pdfTemplateControllers(entity)` und `_setPdfTemplateDocumentId(entity, kind, value)`, damit der PDF-Template-Pfad fuer Laden, Speichern und Upload/Delete entity-bezogen konsistent bleibt, ohne lokale verschachtelte Zuweisungslogik mehrfach auszuschreiben. Anschließend wurde Micro-Subtask 9 als kleiner Konsolidierungsblock fuer wiederholte Settings-Feedback-Semantik umgesetzt. `_showSettingsSuccess(message)` und `_showSettingsError(error)` decken jetzt die einfachen Save-, Branch-, Unit-, PDF-Template- sowie Upload/Delete-Pfade ab; nur der bewusst spezielle Pflichtvalidierungsfall `Code erforderlich` in `_saveUnit()` blieb lokal. Danach wurde der PDF-Template-UI-Pfad weiter bereinigt: `_buildPdfTemplateImageSlot(...)`, `_buildPdfTemplateEffectiveHint(...)`, `_buildPdfTemplateCards()` und `_pdfTemplateCardConfigs()` kapseln inzwischen die kleinen Wiederholungen rund um Bildslots, effektive Hinweiszeilen und die vier Template-Karten. Dieser Kartenblock wurde nach Audit als sinnvoll abgeschlossen bewertet. Nun wurde Micro-Subtask 12 gestartet, diesmal im Nummernkreis-Bereich derselben `settings_page.dart`. Als erster eng abgegrenzter Schritt entstand `_buildNumberingCard(...)`, das die fast identische Card-Struktur fuer Bestellungen und Projekte kapselt: Titel, Pattern-Field, Preview-Text, Variablen-Hinweis und Speichern-Button werden jetzt gemeinsam gerendert. Die Unterschiede bleiben als Parameter erhalten (`title`, `controller`, `preview`, `hintText`, `onChanged`, `onSave`), sodass Pattern-, Preview- und Save-Semantik unveraendert bleiben. Verifikation nach dem Schritt: `dart format lib/pages/settings_page.dart` und `flutter analyze lib/pages/settings_page.dart` in `client/`; Ergebnis `No issues found!`. Naechster sinnvoller Schritt in diesem Leaf: prüfen, ob die zwei verbleibenden Nummernkreis-Definitionen noch in einen kleinen datengetriebenen Resolver ueberfuehrt werden koennen, ohne Hint-, Preview- oder Save-Semantik zu ändern. Falls der Mehrwert zu gering ist, Micro-Subtask 12 fruehzeitig beenden statt kosmetisch weiter zu extrahieren.
-=== CODEX STATE [ENDE]
+Epic 3 laeuft entlang eines fokussierten kommerziellen Ausbaupfads. Der erste groessere Implementierungsstrang war die kommerzielle Kontextsicht pro Kontakt und Projekt, die bereits mit read-only Aggregationsendpoints und Client-Anbindung umgesetzt wurde. Danach wurde der Angebotsrevisionsstrang aufgebaut. In `docs/quote_revision_strategy.md` wurde festgelegt, dass Revisionen als neue Quote-Datensaetze modelliert werden, mit dem Minimalmodell `root_quote_id`, `revision_no`, `superseded_by_quote_id`. In `3.1.2.2` wurde zuerst nur die Leseschicht vorbereitet: Migration `041_quote_revisions.sql`, Rueckfuellung aller Bestandsquotes auf `root_quote_id = id` und `revision_no = 1`, neue Revisionsfelder in `server/internal/quotes/service.go` sowie Integrationstest-Haertung in `server/internal/http/quotes_integration_test.go`. In `3.1.2.3` wurde mit `docs/quote_revision_endpoint_design.md` der erste kontrollierte Schreibpfad sauber begrenzt: `POST /api/v1/quotes/{id}/revise`, kein grosser Request-Body, klare Guard Rails und transaktionales Klonen. In `3.1.2.4` wurde dieser Write-Flow umgesetzt; in `3.1.2.5` wurden anschliessend die bestehenden Mutationspfade gegen historische Angebotsversionen gehaertet. Der Audit von `3.1.2.6` ergab bewusst keinen weiteren kleinen Haertungsschritt mit gutem Signal. Danach wurde der Workflow-Cockpit-Strang gestartet und bis zu einer kleinen read-only Dashboard-Vorschau fuer offene Folgeaktionen umgesetzt; auch dort ergab der Audit keinen weiteren kleinen Haertungsschritt mit gutem Signal. Anschliessend wurde der Vorlagen-/Textbaustein-Strang als kleiner Settings-Katalog `quote_text_blocks` aufgebaut; Backend und minimale Settings-Client-Anbindung sind fertig und ebenfalls sauber auditiert. Im GAEB-Strang wurde zunaechst bewusst nur der parserfreie Importlauf umgesetzt: `quote_imports` als Metadatencontainer, GridFS-Ablage fuer Quelldateien, Upload/List/Detail-Routen unter `/api/v1/quotes/imports`, kleine Angebots-UI in `quotes_page.dart` und serverseitige Dateityp-Haertung fuer `.x83`, `.x84`, `.d83`, `.p83`, `.gaeb`, `.xml`. Der finale Audit in `docs/gaeb_quote_import_final_audit.md` hat diesen parserfreien Block bewusst beendet. Danach wurde der parsernahe Block aufgebaut: `docs/gaeb_parser_review_inventory.md` definierte zuerst das Ziel `GAEB parse -> Importpositionen speichern -> Review-Anker schaffen`, `docs/gaeb_import_items_model_strategy.md` schnitt dies auf `quote_import_items` plus Statuspfad `uploaded -> parsed/failed`, `server/internal/migrate/migrations/045_quote_import_items.sql` und die Erweiterungen in `server/internal/quotes/imports.go` implementierten Rohpositionsspeicher, `SaveImportParseResult(...)`, `MarkImportFailed(...)`, `ListImportItems(...)`, `GetImportItem(...)` und spaeter den Review-Schreibpfad `UpdateImportItemReview(...)`. Darauf folgten reine Lesepfade in `server/internal/http/v1.go` sowie die kleine Client-Sicht in `client/lib/pages/quotes_page.dart`, die Rohpositionsliste, Detaildialog und spaeter den kleinen Review-Dialog direkt im bestehenden GAEB-Importdialog sichtbar macht; der Audit in `docs/gaeb_import_items_readonly_audit.md` hat den parsernahen read-only Block beendet. In `3.1.7.1` wurde mit `docs/gaeb_review_workflow_inventory.md` die fachliche Luecke zwischen Rohpositionssicht und spaeterer Uebernahme inventarisiert. `docs/gaeb_review_model_strategy.md` verengte den ersten schreibenden Review-Pfad auf `review_status` und `review_note` je `quote_import_item`. In `3.1.7.3` wurde dieser Backend-Pfad technisch umgesetzt (`UpdateImportItemReview(...)`, `PATCH /api/v1/quotes/imports/{id}/items/{itemID}/review`), und in `3.1.7.4` zog die minimale Client-Anbindung mit `updateQuoteImportItemReview(...)` sowie kleinem Review-Dialog im bestehenden Importpositionsdialog nach. Der Audit in `docs/gaeb_review_mvp_audit.md` hat diesen Block als sauber abgeschlossen bewertet. Im Apply-Strang wurde in `3.1.8.1` mit `docs/gaeb_import_apply_inventory.md` die fachliche Zielstrecke nach dem Positions-Review inventarisiert: kleinster sicherer Einstiegspunkt ist nicht Mutation bestehender Quotes, sondern eine kontrollierte Uebernahme in genau eine neue Draft-Quote. In `3.1.8.2` wurde dies in `docs/gaeb_import_apply_model_strategy.md` technisch auf `parsed -> reviewed -> applied`, `MarkImportReviewed(...)`, `ApplyImportToDraftQuote(...)`, `PATCH /api/v1/quotes/imports/{id}/review` und `POST /api/v1/quotes/imports/{id}/apply` zugeschnitten. In `3.1.8.3` wurde dieser erste Backend-Pfad umgesetzt. `server/internal/quotes/imports.go` enthaelt jetzt `MarkImportReviewed(...)`, das nur `parsed`-Importlaeufe ohne offene `pending`-Positionen und mit mindestens einer reviewten Position auf `reviewed` setzt, sowie `ApplyImportToDraftQuote(...)`, das nur auf `reviewed`-Importlaeufen arbeitet, `created_quote_id` als Idempotenzanker prueft, offene `pending`-Positionen ausschliesst, nur `accepted`-Positionen laedt und ueber den bestehenden Quote-Service genau eine neue Quote im Status `draft` erzeugt. Die erste Feldabbildung bleibt bewusst eng: `project_id` und optional `contact_id` des Importlaufs gehen in die Quote ein; pro Position werden nur `description`, `qty` und `unit` uebernommen, waehrend `unit_price = 0` und `tax_code = ''` bleiben. Danach setzt der Pfad `created_quote_id` und den Importstatus auf `applied`. `server/internal/http/v1.go` bindet `PATCH /api/v1/quotes/imports/{id}/review` und `POST /api/v1/quotes/imports/{id}/apply` unter `quotes.write` an; `server/internal/http/quotes_integration_test.go` deckt Guard Rail fuer Freigabe bei offenen `pending`-Positionen sowie den Erfolgspfad `reviewed -> applied -> neue Draft-Quote` inklusive Rueckverknuepfung ueber `created_quote_id` ab. In `3.1.8.4` wurde die minimale Client-Anbindung fuer diesen Freigabe-/Apply-Pfad umgesetzt. `client/lib/api.dart` bietet `markQuoteImportReviewed(...)` und `applyQuoteImport(...)`. In `client/lib/pages/quotes_page.dart` wurde der bestehende GAEB-Importdialog auf einen kleinen statusabhaengigen Handlungsraum erweitert: Bei `parsed` ist eine Freigabe-Aktion auf `reviewed` sichtbar, bei `reviewed` ein Apply-Button zur Erzeugung einer neuen Draft-Quote. Beide Aktionen laufen ueber den bestehenden Dialog, zeigen kleine Progress-Dialoge, aktualisieren danach Importdetail, Importliste und Quotes-Ansicht und machen `created_quote_id` direkt sichtbar. Im jetzt abgeschlossenen Audit `3.1.8.5` wurde in `docs/gaeb_import_apply_mvp_audit.md` festgehalten, dass innerhalb dieses ersten Freigabe-/Apply-MVP kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. Die verbleibenden sinnvollen Folgepunkte sind bereits neue Ausbaustufen wie direkte Navigation in die erzeugte Quote, globale Freigabe-/Apply-Uebersicht, Apply-Transparenz, Re-Apply-/Ruecknahme-Logik oder spaeter Preis-, Steuer- und Material-Mapping. Der naechste sinnvolle Abschnitt ist deshalb nicht weiterer Apply-Feinschliff, sondern `3.1.9.1`: die Zielstrecke nach erzeugter GAEB-Draft-Quote fachlich inventarisieren und den kleinsten sinnvollen Ausbau zwischen Quote-Navigation, Apply-Transparenz und spaeterem Mapping festlegen.
+=== CODEX STATE [ENDE] ===
+```
+
+## Analyse
+- Repo-Stand ist fuer Epic 2 im Bereich Stammdaten, Settings-Konsolidierung, Nummernkreise, Referenzdaten und Contacts deutlich weiter als initial angenommen.
+- `Subtask 2.2.2.3` wurde abgeschlossen; danach war der Ruecksprung in weitere Epic-2-Validierungen fachlich nicht mehr sinnvoll.
+- Epic 2 ist deshalb als Basis-/Stammdaten- und Contacts-Haertungsstrang zu behandeln; der naechste sinnvolle Arbeitsbereich ist Epic 3.
+- Der vorhandene Epic-3-relevante Vertriebsstack ist bereits substanziell ausgebaut:
+  - Angebote: `server/internal/quotes`, `client/lib/pages/quotes_page.dart`
+  - Auftraege: `client/lib/pages/sales_orders_page.dart`, Sales-Endpoints in `server/internal/http/v1.go`
+  - Ausgangsrechnungen inkl. Zahlungen/PDF: AR-Endpoints in `server/internal/http/v1.go`, Client-API und zugehoerige Pages
+  - Nummernkreise fuer `quote`, `sales_order`, `invoice_out` sind vorhanden und dokumentiert
+  - Konvertierungen Quote → Auftrag / Rechnung sowie Auftrag → Rechnung sind bereits implementiert und getestet
+- Der groesste Epic-3-Gap liegt deshalb nicht in blankem CRUD, sondern in der strukturierten Gap-Matrix des kommerziellen Flows bis hin zum spaeteren GAEB-/KI-Angebotspfad.
+
+## Arbeitsannahmen
+- Epic 3 fokussiert den kommerziellen Workflow: Angebot, Auftrag, Faktura, Folgebelege, Workflow-Transparenz und spaeter GAEB-/KI-Automatisierung.
+- Der erste Epic-3-Schritt ist bewusst eine belastbare Ist-Stand-Inventur, um vorhandene Funktion von echten Luecken zu trennen.
+- `codex.md` enthaelt kuenftig diese Anweisung und Analyse dauerhaft; nur der State-Block am Ende wird jeweils ersetzt.
+
+=== CODEX STATE [START] ===
+Aktueller Hierarchy-Pfad: Epic 3 / Feature 3.1 / Task 3.1.15 / Subtask 3.1.15.4
+
+Erledigt: [2.2.1.3/7/8, 2.2.1.3/7/9, 2.2.1.3/7/10, 2.2.1.3/7/11, 2.2.1.3/7/12, 2.2.1.3/7/13, 2.2.1.3/7/14, 2.2.1.3/7/15, 2.2.1.3/7/16, 2.2.1.3/7/17, 2.2.1.3/7/18, 2.2.1.3/7/19, 2.2.1.3/7/20, 2.2.1.3/7/21, 2.2.1.3/7/22, 2.2.1.3/7/23, 2.2.1.3/7/24, 2.2.1.3/7/25, 2.2.1.3/7/26, 2.2.1.3/7/27, 2.2.1.3/7/28, 2.2.1.3/7/29, 2.2.1.3/7/30, 2.2.1.3/7/31, 2.2.1.3/7/32, 2.2.1.3/7/33, 2.2.1.3/7/34, 2.2.1.3/7/35, 2.2.1.3/7/36, 2.2.1.3/7/37, 2.2.1.3/7/38, 2.2.1.3/7/39, 2.2.1.3/7/40, 2.2.1.3/7/41, 2.2.1.3/7/42, 2.2.1.3/7/43, 2.2.1.3/7/44, 2.2.1.3/7/45, 2.2.1.3/7/46, 2.2.1.3/7/47, 2.2.1.3/7/48, 2.2.1.3/7/49, 2.2.1.3/7/50, 2.2.1.3/7/51, 2.2.1.3/7/52, 2.2.1.3/7/53, 2.2.1.3/7/54, 2.2.1.3/7/55, 2.2.1.3/7/56, 2.2.1.3/7/57, 2.2.1.3/7/58, 2.2.1.3/7/59, 2.2.1.3/7/60, 2.2.1.3/7/61, 2.2.1.3/7/62, 2.2.1.3/7/63, 2.2.1.3/7/64, 2.2.1.3/7/65, 2.2.1.3/7/66, 2.2.1.3/7/67, 2.2.1.3/7/68, 2.2.1.3/7/69, 2.2.1.3/7/70, 2.2.1.3/7/71, 2.2.1.3/7/72, 2.2.1.3/7/73, 2.2.1.3/7/74, 2.2.1.3/7/75, 2.2.1.3/7/76, 2.2.1.3/7/77, 2.2.1.3/7/78, 2.2.1.3/7/79, 2.2.1.3/7/80, 2.2.1.3/7/81, 2.2.1.3/7/82, 2.2.1.3/7/83, 2.2.1.3/7/84, 2.2.1.3/7/85, 2.2.1.3/7/86, 2.2.1.3/7/87, 2.2.1.3/7/88, 2.2.1.3/8/1, 2.2.1.3/8/2, 2.2.1.3/8/3, 2.2.1.3/8/4, 2.2.1.3/9/1, 2.2.1.3/9/2, 2.2.1.3/9/3, 2.2.1.3/10/1, 2.2.1.3/10/2, 2.2.1.3/10/3, 2.2.1.3/11/1, 2.2.1.3/11/2, 2.2.1.3/11/3, 2.2.1.3/12/1, 2.2.1.3/12/2, 2.2.1.3/12/3, 2.2.1.3/12/4, 2.2.1.3/12/5, 2.2.1.3/13/1, 2.2.1.3/13/2, 2.2.1.3/13/3, 2.2.1.3/14/1, 2.2.1.3/14/2, 2.2.1.3/14/3, 2.2.1.3/15/1, 2.2.1.3/15/2, 2.2.1.3/15/3, 2.2.1.3/16/1, 2.2.1.3/16/2, 2.2.1.3/16/3, 2.2.1.3/17/1, 2.2.1.3/17/2, 2.2.1.3/17/3, 2.2.1.3/18/1, 2.2.1.3/18/2, 2.2.1.3/18/3, 2.2.1.3/19/1, 2.2.1.3/19/2, 2.2.1.3/19/3, 2.2.1.3/20/1, 2.2.1.3/20/2, 2.2.1.3/21/1, 2.2.1.3/21/2, 2.2.1.3/22/1, 2.2.1.3/22/2, 2.2.1.3/23/1, 2.2.1.3/23/2, 2.2.1.3/24/1, 2.2.1.3/25/1, 2.2.2.1, 2.2.2.2/1, 2.2.2.2/2, 2.2.2.2/3, 2.2.2.2/4, 2.2.2.2/5, 2.2.2.2/6, 2.2.2.2/7, 2.2.2.2/8, 2.2.2.3, 2.1.1.1, 2.1.1.2, 2.1.1.3/1, 2.1.1.3/2, 2.1.1.3/3, 2.1.2.1, 2.1.2.2, 2.1.2.3, 3.1.1.1, 3.1.1.2, 3.1.1.3/1, 3.1.1.3/2, 3.1.1.3/3, 3.1.1.3/4, 3.1.1.3/5, 3.1.1.3/6, 3.1.2.1, 3.1.2.2, 3.1.2.3, 3.1.2.4, 3.1.2.5, 3.1.2.6, 3.1.3.1, 3.1.3.2, 3.1.3.3, 3.1.3.4, 3.1.3.5, 3.1.3.6, 3.1.4.1, 3.1.4.2, 3.1.4.3, 3.1.4.4, 3.1.4.5, 3.1.5.1, 3.1.5.2, 3.1.5.3, 3.1.5.4, 3.1.5.5, 3.1.5.6, 3.1.5.7, 3.1.6.1, 3.1.6.2, 3.1.6.3, 3.1.6.4, 3.1.6.5, 3.1.6.6, 3.1.7.1, 3.1.7.2, 3.1.7.3, 3.1.7.4, 3.1.7.5, 3.1.8.1, 3.1.8.2, 3.1.8.3, 3.1.8.4, 3.1.8.5, 3.1.9.1, 3.1.9.2, 3.1.9.3, 3.1.9.4, 3.1.10.1, 3.1.10.2, 3.1.10.3, 3.1.10.4, 3.1.10.5, 3.1.11.1, 3.1.11.2, 3.1.11.3, 3.1.11.4, 3.1.11.5, 3.1.11.6, 3.1.12.1, 3.1.12.2, 3.1.12.3, 3.1.12.4, 3.1.12.5, 3.1.13.1, 3.1.13.2, 3.1.13.3, 3.1.13.4, 3.1.13.5, 3.1.14.1, 3.1.14.2, 3.1.14.3, 3.1.14.4, 3.1.14.5, 3.1.15.1, 3.1.15.2, 3.1.15.3, 3.1.15.4]
+
+Nächste zu bearbeitende Subtask: Subtask 3.1.15.5: Abschluss-Audit fuer die kleine Kandidatenauswahl-Aktion durchfuehren und entscheiden, ob vor spaeterer Suche, Ranking- oder Automatiklogik noch genau ein kleiner Haertungsschritt mit gutem Signal uebrig ist
+
+Aktueller Git-Stand: Die minimale Client-Anbindung fuer die Kandidatenauswahl-Aktion ist umgesetzt. In `client/lib/api.dart` gibt es jetzt `applyQuoteMaterialCandidate(...)` fuer den engen Backend-Pfad `POST /api/v1/quotes/{id}/items/{itemID}/apply-material-candidate`. In `client/lib/pages/quotes_page.dart` kennt `_QuoteItemDraft` jetzt auch die read-only Positions-ID `id`; der bestehende Quote-Editor zeigt bei sichtbaren Materialkandidaten pro Kandidat eine explizite `Uebernehmen`-Aktion direkt in der vorhandenen Kandidatenliste an. Nach erfolgreicher Uebernahme wird der Dialog aus der Serverantwort heraus aktualisiert, sodass `material_id`, `price_mapping_status`, Kandidatenstatus und Kandidatenliste unmittelbar den neuen Zustand zeigen. Der Scope bleibt bewusst eng: keine Suche, kein Ranking, keine Bulk-Aktion und keine automatische Uebernahme. Verifikation: `dart format lib/api.dart lib/pages/quotes_page.dart` sowie `flutter analyze lib/api.dart lib/pages/quotes_page.dart` in `client/` sind gruen. `codex.md` wurde nur im State-Block aktualisiert.
+
+Zusammenfassung für Fortsetzung (max 1200 Tokens):
+Epic 3 laeuft entlang eines fokussierten kommerziellen Ausbaupfads. Nach den bereits abgeschlossenen Straengen fuer kommerzielle Kontextsicht, Angebotsrevisionen, Workflow-Cockpit sowie Textbausteinkatalog wurde der GAEB-Pfad in klar getrennten Schritten aufgebaut: zuerst parserfreier Importlauf (`quote_imports`, Upload/List/Detail, Dateityp-Haertung), danach parsernahe Rohpositionsspeicherung (`quote_import_items`, Status `uploaded -> parsed/failed`), anschliessend read-only Sicht und erster schreibender Review-Pfad auf Positionsebene (`review_status`, `review_note`, `PATCH .../items/{itemID}/review`). Dieser Review-Block ist abgeschlossen und auditiert. Danach folgte die kontrollierte Uebergabe in die Angebotsdomaene: in `3.1.8.1`/`3.1.8.2` wurde der sichere Einstiegspunkt fachlich und technisch zugeschnitten (`parsed -> reviewed -> applied`, neue Draft-Quote nur aus `accepted`-Positionen). In `3.1.8.3` wurde der Backend-Pfad umgesetzt (`MarkImportReviewed(...)`, `ApplyImportToDraftQuote(...)` in `server/internal/quotes/imports.go`, Routen `PATCH /api/v1/quotes/imports/{id}/review` und `POST /api/v1/quotes/imports/{id}/apply` in `server/internal/http/v1.go`) inklusive Guard Rails gegen offene `pending`-Positionen und Doppel-Apply via `created_quote_id`. In `3.1.8.4` wurde die minimale Client-Anbindung im bestehenden GAEB-Importdialog umgesetzt (`markQuoteImportReviewed(...)`, `applyQuoteImport(...)` in `client/lib/api.dart`; statusabhaengige Freigabe-/Apply-Aktionen in `client/lib/pages/quotes_page.dart`), inklusive Aktualisierung von Importdetail, Importliste und Quotes-Ansicht. Der Audit `docs/gaeb_import_apply_mvp_audit.md` hat diesen Block als sauber abgeschlossen bewertet. In `3.1.9.1` wurde die Zielstrecke nach erzeugter Draft-Quote inventarisiert (`docs/gaeb_post_apply_inventory.md`). Kernentscheidung dort: kleinster sinnvoller Folgeausbau ist nicht fruehes Mapping und nicht globale Apply-Konsole, sondern zuerst die direkte Anschlussfuehrung nach erfolgreichem Apply ueber `created_quote_id`. In `3.1.9.2` wurde dies in `docs/gaeb_post_apply_navigation_strategy.md` in ein minimales technisches Zielmodell ueberfuehrt: kleine, clientseitige Navigation im bestehenden Dialog plus minimale Transparenzzeile, ohne Re-Apply/Ruecknahme, ohne Mapping, ohne Mutation bestehender Quotes. In `3.1.9.3` wurde dieser kleine Implementierungsschritt umgesetzt: `Quote oeffnen` aus `created_quote_id` im bestehenden GAEB-Importdialog plus kurze Transparenzzeile; `dart format` und `flutter analyze` im Client waren gruen. Im Audit `3.1.9.4` (`docs/gaeb_post_apply_navigation_audit.md`) wurde festgehalten, dass innerhalb dieses Navigationsblocks kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.10.1` wurde anschliessend der naechste Abschnitt inventarisiert (`docs/gaeb_apply_transparency_inventory.md`). Die Kernentscheidung dort: der kleinste sinnvolle Folgeausbau vor groesserem Mapping ist eine schlanke Apply-Transparenz auf Importlauf-Ebene. In `3.1.10.2` wurde diese Richtung in `docs/gaeb_apply_transparency_strategy.md` technisch zugeschnitten: read-only Summary-Felder in bestehenden Importlauf-Responses, direkt aus `quote_import_items.review_status`, ohne neuen Endpoint. In `3.1.10.3` wurde der Backend-Schritt dazu umgesetzt. `server/internal/quotes/imports.go` erweitert `QuoteImport` um `accepted_count`, `rejected_count` und `pending_count`; `ListImports(...)` und `GetImport(...)` liefern diese Zahlen jetzt ueber kleine SQL-Aggregationen direkt mit aus. In `3.1.10.4` wurde die minimale Client-Anbindung umgesetzt. In `client/lib/pages/quotes_page.dart` zeigt der bestehende GAEB-Importdialog jetzt eine kleine read-only Review-Summary in der Form `x uebernommen, y abgelehnt, z offen` direkt unter den Import-Metadaten an. Im Audit `3.1.10.5` wurde in `docs/gaeb_apply_transparency_audit.md` festgehalten, dass innerhalb dieses Transparenzblocks kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.11.1` wurde mit `docs/gaeb_mapping_inventory.md` der naechste Folgeabschnitt inventarisiert. Die Kernentscheidung dort lautet: Nach dem nun stabilen GAEB-Import-/Review-/Apply-/Transparenzpfad ist der naechste sinnvolle Ausbau nicht sofort Preis-, Steuer- oder Materialautomatik, sondern zuerst ein kleiner Herkunfts- und Mapping-Anker zwischen akzeptierter Importposition und erzeugter Quote-Position. In `3.1.11.2` wurde diese Richtung in `docs/gaeb_mapping_anchor_strategy.md` technisch zugeschnitten. In `3.1.11.3` wurde die erste Backend-Stufe dafuer umgesetzt: Migration `046_quote_import_item_links.sql`, transaktionale Quote-Erzeugung ueber `createQuoteTx(...)` und Link-Schreiben direkt im erfolgreichen Apply-Pfad. In `3.1.11.4` wurde die minimale read-only Sicht auf diesen Herkunftsanker auf Backend-Seite nachgezogen. `server/internal/quotes/imports.go` erweitert `QuoteImportItem` jetzt um `linked_quote_id`, `linked_quote_item_id` und `linked_quote_position`; `ListImportItems(...)` und `GetImportItem(...)` lesen diese Herkunftsinfos ueber `quote_import_item_links` und `quote_items` direkt auf den bestehenden Item-Lesepfaden mit aus. In `3.1.11.5` wurde die minimale Client-Anbindung dafuer umgesetzt. In `client/lib/pages/quotes_page.dart` zeigt der bestehende Importpositionsdialog jetzt einen kleinen read-only Abschnitt `Quote-Verknüpfung`; solange kein Link existiert, bleibt die Anzeige leer erklaerend, und bei vorhandener Verknuepfung werden Ziel-Quote, Ziel-Quote-Position und Quote-Item-ID sichtbar. Zusaetzlich kann die Ziel-Quote dort direkt ueber `Quote öffnen` geladen werden, ohne neue Mapping-Bearbeitung oder neuen Workflow-Screen. Im Audit `3.1.11.6` wurde in `docs/gaeb_mapping_anchor_audit.md` festgehalten, dass innerhalb dieses Herkunfts-/Mapping-Anker-Blocks kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.12.1` wurde mit `docs/gaeb_price_material_mapping_inventory.md` der naechste Folgeabschnitt fachlich inventarisiert. Die Kernentscheidung dort lautet: Nach vorhandenem Herkunftsanker ist der naechste sinnvolle Ausbau nicht sofort Preis-, Steuer- oder Materialautomatik, sondern zuerst ein kleiner manueller Mapping-Einstieg auf Ebene der bereits erzeugten Quote-Position. In `3.1.12.2` wurde diese Richtung in `docs/gaeb_price_material_mapping_strategy.md` in ein minimales technisches Zielmodell ueberfuehrt. In `3.1.12.3` wurde die erste kleine Backend-Stufe dafuer umgesetzt: `quote_items` besitzen jetzt optionalen `material_id`-Bezug und einen engen `price_mapping_status`; bestehende Quote-Pfade lesen und schreiben diese Felder ueber den vorhandenen Quote-Patch mit, inklusive Guard Rails fuer `materials(id)` und den Statusraum `open/manual`. In `3.1.12.4` wurde die minimale Client-Anbindung fuer diesen manuellen Mapping-Einstieg umgesetzt. In `client/lib/pages/quotes_page.dart` zeigt der bestehende Quote-Editor jetzt pro Position zusaetzlich `Material-ID` und den Status `open/manual`; beide Felder werden ueber den vorhandenen Quote-Speicherpfad mitgeschrieben. Im Audit `3.1.12.5` wurde in `docs/gaeb_manual_mapping_mvp_audit.md` festgehalten, dass innerhalb dieses ersten manuellen Preis-/Material-Mapping-Einstiegs kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.13.1` wurde mit `docs/gaeb_mapping_suggestions_inventory.md` die Zielstrecke fuer spaetere Vorschlags- und Automatiklogik inventarisiert. Die Kernentscheidung dort lautet: Nach dem vorhandenen manuellen Mapping-Einstieg ist der naechste sinnvolle Folgeausbau nicht sofort automatische Material- oder Preisuebernahme, sondern zuerst ein kleiner Vorschlags- bzw. Kandidatenanker, bevorzugt entlang spaeterer Materialkandidaten. In `3.1.13.2` wurde diese Richtung in `docs/gaeb_mapping_suggestion_strategy.md` technisch zugeschnitten. In `3.1.13.3` wurde die erste kleine Backend-Stufe dafuer umgesetzt. `server/internal/quotes/service.go` erweitert `QuoteItemInput` um `material_candidate_status`; `Get(...)` leitet den Wert read-only direkt aus bestehendem Herkunftslink und vorhandenem `material_id` ab (`available` bei importierter, noch nicht materialgemappter Quote-Position, sonst `none`). In `3.1.13.4` wurde die minimale Client-Anbindung fuer diesen read-only Vorschlagsanker umgesetzt. In `client/lib/pages/quotes_page.dart` kennt `_QuoteItemDraft` jetzt `material_candidate_status`; der bestehende Quote-Editor zeigt pro Position direkt unter dem manuellen Mapping-Block eine kleine Transparenzzeile an (`Materialkandidat: verfuegbar` bzw. `Materialkandidat: keiner sichtbar`). Im Audit `3.1.13.5` wurde in `docs/gaeb_mapping_suggestion_audit.md` festgehalten, dass innerhalb dieses read-only Materialkandidaten- bzw. Vorschlagsanker-Blocks kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.14.1` wurde mit `docs/gaeb_material_candidate_list_inventory.md` die naechste Folgestufe fachlich inventarisiert. Die Kernentscheidung dort lautet: Nach dem vorhandenen read-only Vorschlagsanker ist der naechste sinnvolle Folgeausbau nicht sofort Materialsuche, Kandidatenranking oder automatische Uebernahme, sondern zuerst eine kleine read-only Materialkandidatenliste direkt an uebernommenen Quote-Positionen. In `3.1.14.2` wurde diese Richtung in `docs/gaeb_material_candidate_list_strategy.md` technisch zugeschnitten. In `3.1.14.3` wurde die erste kleine Backend-Stufe dafuer umgesetzt. `server/internal/quotes/service.go` erweitert `QuoteItemInput` jetzt um `material_candidates`; `Get(...)` liefert fuer importierte, noch nicht materialgemappte Quote-Positionen mit vorhandenem Herkunftslink bis zu drei read-only Kandidaten aus, wenn `quote_import_items.description` exakt auf `materials.bezeichnung` oder `materials.nummer` passt. In `3.1.14.4` wurde die minimale Client-Anbindung dafuer umgesetzt. In `client/lib/pages/quotes_page.dart` kennt `_QuoteItemDraft` jetzt `material_candidates`; der bestehende Quote-Editor zeigt unter dem bisherigen Materialkandidaten-Status bei vorhandenen Treffern eine kleine read-only Liste mit `material_no`, `material_label` und `material_id` direkt pro Position an. Im Audit `3.1.14.5` wurde in `docs/gaeb_material_candidate_list_audit.md` festgehalten, dass innerhalb dieses read-only Materialkandidatenlisten-Blocks kein weiterer kleiner Haertungsschritt mit gutem Signal uebrig ist. In `3.1.15.1` wurde mit `docs/gaeb_material_candidate_selection_inventory.md` die naechste Folgestufe fachlich inventarisiert. Die Kernentscheidung dort lautet: Nach der vorhandenen read-only Materialkandidatenliste ist der naechste sinnvolle Folgeausbau nicht sofort Materialsuche, Kandidatenranking oder automatische Uebernahme, sondern zuerst eine kleine Kandidatenauswahl-Aktion direkt aus bereits sichtbaren Kandidaten an der Quote-Position. In `3.1.15.2` wurde diese Richtung in `docs/gaeb_material_candidate_selection_strategy.md` technisch zugeschnitten. Im jetzt abgeschlossenen `3.1.15.3` wurde die erste kleine Backend-Stufe dafuer umgesetzt. `server/internal/quotes/service.go` liefert Quote-Positions-IDs jetzt read-only mit aus und bietet mit `ApplyMaterialCandidate(...)` einen engen Write-Pfad, der nur sichtbare Kandidaten auf eine einzelne Draft-Position uebernimmt, `material_id` setzt und `price_mapping_status` auf `manual` stellt. `server/internal/http/v1.go` bindet dazu `POST /api/v1/quotes/{id}/items/{itemID}/apply-material-candidate` unter `quotes.write` an. `server/internal/http/quotes_integration_test.go` haertet Erfolg und Guard Rail ab: nicht sichtbare Kandidaten werden abgewiesen, sichtbare Kandidaten werden sauber uebernommen und lassen Kandidatenstatus sowie Kandidatenliste anschliessend verschwinden. Verifikation: `gofmt -w internal/quotes/service.go internal/http/v1.go internal/http/quotes_integration_test.go` sowie `go test ./internal/quotes ./internal/http` in `server/` sind gruen. Der naechste sinnvolle Schritt ist jetzt `3.1.15.4`: die minimale Client-Anbindung fuer diese Kandidatenauswahl-Aktion im bestehenden Quote-Editor.
+=== CODEX STATE [ENDE] ===

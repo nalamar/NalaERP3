@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_destinations.dart';
@@ -54,6 +52,21 @@ class _MaterialsPageState extends State<MaterialsPage> {
   final breiteCtrl = TextEditingController();
   final hoeheCtrl = TextEditingController();
   final katCtrl = TextEditingController(text: '');
+
+  List<String> _categoryOptions([String? currentCategory]) {
+    final out = <String>[];
+    void addValue(String? value) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isEmpty || out.contains(normalized)) return;
+      out.add(normalized);
+    }
+
+    for (final category in categories) {
+      addValue(category);
+    }
+    addValue(currentCategory);
+    return out;
+  }
 
   String _errorMessage(Object error,
       {String fallback = 'Vorgang fehlgeschlagen'}) {
@@ -178,8 +191,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
     final m = selected ?? await widget.api.getMaterial(selectedId!);
     final res = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (_) =>
-          _EditMaterialDialog(initial: m, api: widget.api, units: units),
+      builder: (_) => _EditMaterialDialog(
+          initial: m, api: widget.api, units: units, categories: categories),
     );
     if (res == null) return;
     try {
@@ -358,132 +371,161 @@ class _MaterialsPageState extends State<MaterialsPage> {
         : (widget.initialContext?.normalizedCategory ?? katCtrl.text.trim());
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Material anlegen'),
-        content: Form(
-          key: formKey,
-          child: SizedBox(
-            width: 520,
-            child: SingleChildScrollView(
-              child: Wrap(
-                runSpacing: 8,
-                spacing: 8,
-                children: [
-                  SizedBox(
-                    width: 160,
-                    child: TextFormField(
-                        controller: nummerCtrl,
-                        decoration: const InputDecoration(labelText: 'Nummer'),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Pflichtfeld'
-                            : null),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final categoryOptions = _categoryOptions(katCtrl.text);
+          final selectedCategory = categoryOptions.contains(katCtrl.text.trim())
+              ? katCtrl.text.trim()
+              : null;
+          return AlertDialog(
+            title: const Text('Material anlegen'),
+            content: Form(
+              key: formKey,
+              child: SizedBox(
+                width: 520,
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    runSpacing: 8,
+                    spacing: 8,
+                    children: [
+                      SizedBox(
+                        width: 160,
+                        child: TextFormField(
+                            controller: nummerCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Nummer'),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Pflichtfeld'
+                                : null),
+                      ),
+                      SizedBox(
+                        width: 220,
+                        child: TextFormField(
+                            controller: bezCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Bezeichnung'),
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Pflichtfeld'
+                                : null),
+                      ),
+                      SizedBox(
+                          width: 140,
+                          child: TextFormField(
+                              controller: typCtrl,
+                              decoration:
+                                  const InputDecoration(labelText: 'Typ'),
+                              validator: (v) => (v == null || v.trim().isEmpty)
+                                  ? 'Pflichtfeld'
+                                  : null)),
+                      SizedBox(
+                          width: 160,
+                          child: DropdownButtonFormField<String>(
+                            isDense: true,
+                            decoration:
+                                const InputDecoration(labelText: 'Einheit'),
+                            initialValue: _unitSel,
+                            items: [
+                              for (final u in units)
+                                DropdownMenuItem<String>(
+                                    value: (u['code'] ?? '').toString(),
+                                    child: Text((u['code'] ?? '').toString()))
+                            ],
+                            onChanged: (v) {
+                              setDialogState(() {
+                                _unitSel = v;
+                              });
+                            },
+                            validator: (v) => (v == null || v.trim().isEmpty)
+                                ? 'Pflichtfeld'
+                                : null,
+                          )),
+                      SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                            controller: dichteCtrl,
+                            decoration:
+                                const InputDecoration(labelText: 'Dichte'),
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return null;
+                              final d = double.tryParse(v.trim());
+                              if (d == null) return 'Zahl erforderlich';
+                              if (d < 0) return '≥ 0 erwartet';
+                              return null;
+                            },
+                          )),
+                      SizedBox(
+                          width: 140,
+                          child: TextFormField(
+                              controller: normCtrl,
+                              decoration:
+                                  const InputDecoration(labelText: 'Norm'))),
+                      SizedBox(
+                          width: 180,
+                          child: TextFormField(
+                              controller: wnrCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'Werkstoffnummer'))),
+                      SizedBox(
+                        width: 160,
+                        child: DropdownButtonFormField<String>(
+                          isDense: true,
+                          decoration:
+                              const InputDecoration(labelText: 'Kategorie'),
+                          initialValue: selectedCategory,
+                          items: [
+                            const DropdownMenuItem<String>(
+                                value: '', child: Text('Keine')),
+                            for (final category in categoryOptions)
+                              DropdownMenuItem<String>(
+                                  value: category, child: Text(category)),
+                          ],
+                          onChanged: (value) {
+                            setDialogState(() {
+                              katCtrl.text = value?.trim() ?? '';
+                            });
+                          },
+                        ),
+                      ),
+                      SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                              controller: laengeCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'Länge (mm)'),
+                              keyboardType: TextInputType.number)),
+                      SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                              controller: breiteCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'Breite (mm)'),
+                              keyboardType: TextInputType.number)),
+                      SizedBox(
+                          width: 120,
+                          child: TextFormField(
+                              controller: hoeheCtrl,
+                              decoration:
+                                  const InputDecoration(labelText: 'Höhe (mm)'),
+                              keyboardType: TextInputType.number)),
+                    ],
                   ),
-                  SizedBox(
-                    width: 220,
-                    child: TextFormField(
-                        controller: bezCtrl,
-                        decoration:
-                            const InputDecoration(labelText: 'Bezeichnung'),
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Pflichtfeld'
-                            : null),
-                  ),
-                  SizedBox(
-                      width: 140,
-                      child: TextFormField(
-                          controller: typCtrl,
-                          decoration: const InputDecoration(labelText: 'Typ'),
-                          validator: (v) => (v == null || v.trim().isEmpty)
-                              ? 'Pflichtfeld'
-                              : null)),
-                  SizedBox(
-                      width: 160,
-                      child: DropdownButtonFormField<String>(
-                        isDense: true,
-                        decoration: const InputDecoration(labelText: 'Einheit'),
-                        value: _unitSel,
-                        items: [
-                          for (final u in units)
-                            DropdownMenuItem<String>(
-                                value: (u['code'] ?? '').toString(),
-                                child: Text((u['code'] ?? '').toString()))
-                        ],
-                        onChanged: (v) {
-                          _unitSel = v;
-                        },
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Pflichtfeld'
-                            : null,
-                      )),
-                  SizedBox(
-                      width: 120,
-                      child: TextFormField(
-                        controller: dichteCtrl,
-                        decoration: const InputDecoration(labelText: 'Dichte'),
-                        validator: (v) {
-                          if (v == null || v.trim().isEmpty) return null;
-                          final d = double.tryParse(v.trim());
-                          if (d == null) return 'Zahl erforderlich';
-                          if (d < 0) return '≥ 0 erwartet';
-                          return null;
-                        },
-                      )),
-                  SizedBox(
-                      width: 140,
-                      child: TextFormField(
-                          controller: normCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Norm'))),
-                  SizedBox(
-                      width: 180,
-                      child: TextFormField(
-                          controller: wnrCtrl,
-                          decoration: const InputDecoration(
-                              labelText: 'Werkstoffnummer'))),
-                  SizedBox(
-                      width: 160,
-                      child: TextFormField(
-                          controller: katCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Kategorie'))),
-                  SizedBox(
-                      width: 120,
-                      child: TextFormField(
-                          controller: laengeCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Länge (mm)'),
-                          keyboardType: TextInputType.number)),
-                  SizedBox(
-                      width: 120,
-                      child: TextFormField(
-                          controller: breiteCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Breite (mm)'),
-                          keyboardType: TextInputType.number)),
-                  SizedBox(
-                      width: 120,
-                      child: TextFormField(
-                          controller: hoeheCtrl,
-                          decoration:
-                              const InputDecoration(labelText: 'Höhe (mm)'),
-                          keyboardType: TextInputType.number)),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Abbrechen')),
-          FilledButton.icon(
-              onPressed: () async {
-                await _create();
-                if (mounted) Navigator.of(ctx).pop();
-              },
-              icon: const Icon(Icons.check),
-              label: const Text('Anlegen')),
-        ],
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('Abbrechen')),
+              FilledButton.icon(
+                  onPressed: () async {
+                    await _create();
+                    if (mounted) Navigator.of(ctx).pop();
+                  },
+                  icon: const Icon(Icons.check),
+                  label: const Text('Anlegen')),
+            ],
+          );
+        },
       ),
     );
   }
@@ -548,7 +590,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
                                 labelText: 'Typ',
                                 contentPadding: EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 10)),
-                            value: types.contains(filterTyp) ? filterTyp : null,
+                            initialValue:
+                                types.contains(filterTyp) ? filterTyp : null,
                             items: [
                               const DropdownMenuItem<String?>(
                                   value: null, child: Text('Alle')),
@@ -573,7 +616,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                                 labelText: 'Kategorie',
                                 contentPadding: EdgeInsets.symmetric(
                                     horizontal: 12, vertical: 10)),
-                            value: categories.contains(filterKat)
+                            initialValue: categories.contains(filterKat)
                                 ? filterKat
                                 : null,
                             items: [
@@ -649,8 +692,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                             '${m['typ']}',
                             if (dim.isNotEmpty) dim else '${m['einheit']}',
                           ]
-                              .where((e) =>
-                                  (e != null && e.toString().trim().isNotEmpty))
+                              .where((e) => e.toString().trim().isNotEmpty)
                               .join('  •  ')),
                           onTap: () => _select(m['id'] as String),
                         );
@@ -823,10 +865,14 @@ class _MaterialsPageState extends State<MaterialsPage> {
 
 class _EditMaterialDialog extends StatefulWidget {
   const _EditMaterialDialog(
-      {required this.initial, required this.api, required this.units});
+      {required this.initial,
+      required this.api,
+      required this.units,
+      required this.categories});
   final Map<String, dynamic> initial;
   final ApiClient api;
   final List<Map<String, dynamic>> units;
+  final List<String> categories;
   @override
   State<_EditMaterialDialog> createState() => _EditMaterialDialogState();
 }
@@ -845,7 +891,6 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
       text: widget.initial['werkstoffnummer']?.toString() ?? '');
   String? einheit;
   List<Map<String, dynamic>> _units = const [];
-  bool _unitsLoading = false;
   late final dichte =
       TextEditingController(text: (widget.initial['dichte'] ?? 0).toString());
   late final laenge = TextEditingController(
@@ -856,6 +901,22 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
       text: (widget.initial['height_mm'] ?? '').toString());
   late final kat = TextEditingController(
       text: widget.initial['kategorie']?.toString() ?? '');
+
+  List<String> _categoryOptions() {
+    final out = <String>[];
+    void addValue(String? value) {
+      final normalized = value?.trim() ?? '';
+      if (normalized.isEmpty || out.contains(normalized)) return;
+      out.add(normalized);
+    }
+
+    for (final category in widget.categories) {
+      addValue(category);
+    }
+    addValue(widget.initial['kategorie']?.toString());
+    addValue(kat.text);
+    return out;
+  }
 
   @override
   void initState() {
@@ -869,13 +930,10 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
 
   Future<void> _loadUnitsFallback() async {
     try {
-      setState(() => _unitsLoading = true);
       final list = await widget.api.listUnits();
       if (mounted) setState(() => _units = list);
     } catch (_) {
       // ignore – wenn es fehlschlägt, bleibt die Liste leer
-    } finally {
-      if (mounted) setState(() => _unitsLoading = false);
     }
   }
 
@@ -929,7 +987,8 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
                   child: DropdownButtonFormField<String>(
                     isDense: true,
                     decoration: const InputDecoration(labelText: 'Einheit'),
-                    value: einheit ?? widget.initial['einheit']?.toString(),
+                    initialValue:
+                        einheit ?? widget.initial['einheit']?.toString(),
                     items: [
                       for (final u in _units)
                         DropdownMenuItem<String>(
@@ -952,10 +1011,25 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
             ]),
             Row(children: [
               Expanded(
-                  child: TextFormField(
-                      controller: kat,
-                      decoration:
-                          const InputDecoration(labelText: 'Kategorie'))),
+                  child: DropdownButtonFormField<String>(
+                isDense: true,
+                decoration: const InputDecoration(labelText: 'Kategorie'),
+                initialValue: _categoryOptions().contains(kat.text.trim())
+                    ? kat.text.trim()
+                    : null,
+                items: [
+                  const DropdownMenuItem<String>(
+                      value: '', child: Text('Keine')),
+                  for (final category in _categoryOptions())
+                    DropdownMenuItem<String>(
+                        value: category, child: Text(category)),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    kat.text = value?.trim() ?? '';
+                  });
+                },
+              )),
             ]),
             Row(children: [
               Expanded(

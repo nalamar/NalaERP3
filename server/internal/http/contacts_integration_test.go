@@ -796,6 +796,203 @@ func TestContactActivityFeedAggregatesNotesTasksAndDocuments(t *testing.T) {
 	}
 }
 
+func TestContactCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-contact-context@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-contact-context@example.com", "Secret123!")
+
+	createContactBody := []byte(`{
+		"typ":"org",
+		"rolle":"customer",
+		"status":"active",
+		"name":"Commercial Context GmbH"
+	}`)
+	createContactReq := httptest.NewRequest(http.MethodPost, "/api/v1/contacts/", bytes.NewReader(createContactBody))
+	createContactReq.Header.Set("Content-Type", "application/json")
+	createContactReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createContactRec := httptest.NewRecorder()
+	handler.ServeHTTP(createContactRec, createContactReq)
+
+	if createContactRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", createContactRec.Code, createContactRec.Body.String())
+	}
+
+	var createdContact struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createContactRec.Body.Bytes(), &createdContact); err != nil {
+		t.Fatalf("decode create contact response: %v", err)
+	}
+
+	createQuoteBody := []byte(`{
+		"contact_id":"` + createdContact.ID + `",
+		"currency":"EUR",
+		"items":[
+			{"description":"Geländer", "qty":2, "unit":"Stk", "unit_price":150, "tax_code":"19"}
+		]
+	}`)
+	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader(createQuoteBody))
+	createQuoteReq.Header.Set("Content-Type", "application/json")
+	createQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createQuoteRec, createQuoteReq)
+
+	if createQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", createQuoteRec.Code, createQuoteRec.Body.String())
+	}
+
+	var createdQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createQuoteRec.Body.Bytes(), &createdQuote); err != nil {
+		t.Fatalf("decode create quote response: %v", err)
+	}
+
+	acceptQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptQuoteReq.Header.Set("Content-Type", "application/json")
+	acceptQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptQuoteRec, acceptQuoteReq)
+
+	if acceptQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", acceptQuoteRec.Code, acceptQuoteRec.Body.String())
+	}
+
+	convertSalesOrderReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/convert-to-sales-order", nil)
+	convertSalesOrderReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertSalesOrderRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertSalesOrderRec, convertSalesOrderReq)
+
+	if convertSalesOrderRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", convertSalesOrderRec.Code, convertSalesOrderRec.Body.String())
+	}
+
+	var createdSalesOrder struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(convertSalesOrderRec.Body.Bytes(), &createdSalesOrder); err != nil {
+		t.Fatalf("decode sales order response: %v", err)
+	}
+
+	getSalesOrderReq := httptest.NewRequest(http.MethodGet, "/api/v1/sales-orders/"+createdSalesOrder.ID, nil)
+	getSalesOrderReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getSalesOrderRec := httptest.NewRecorder()
+	handler.ServeHTTP(getSalesOrderRec, getSalesOrderReq)
+
+	if getSalesOrderRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", getSalesOrderRec.Code, getSalesOrderRec.Body.String())
+	}
+
+	var salesOrderDetail struct {
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(getSalesOrderRec.Body.Bytes(), &salesOrderDetail); err != nil {
+		t.Fatalf("decode sales order detail: %v", err)
+	}
+	if len(salesOrderDetail.Items) != 1 {
+		t.Fatalf("expected 1 sales order item, got %d", len(salesOrderDetail.Items))
+	}
+
+	convertInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
+		"invoice_date":"2026-03-18T00:00:00Z",
+		"due_date":"2026-04-01T00:00:00Z",
+		"revenue_account":"8000",
+		"items":[
+			{"sales_order_item_id":"`+salesOrderDetail.Items[0].ID+`","qty":2}
+		]
+	}`)))
+	convertInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertInvoiceReq.Header.Set("Content-Type", "application/json")
+	convertInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertInvoiceRec, convertInvoiceReq)
+
+	if convertInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", convertInvoiceRec.Code, convertInvoiceRec.Body.String())
+	}
+
+	contextReq := httptest.NewRequest(http.MethodGet, "/api/v1/contacts/"+createdContact.ID+"/commercial-context", nil)
+	contextReq.Header.Set("Authorization", "Bearer "+accessToken)
+	contextRec := httptest.NewRecorder()
+	handler.ServeHTTP(contextRec, contextReq)
+
+	if contextRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", contextRec.Code, contextRec.Body.String())
+	}
+
+	var out struct {
+		ContactID string `json:"contact_id"`
+		Quotes    []struct {
+			ID                 string `json:"id"`
+			ContactID          string `json:"contact_id"`
+			LinkedSalesOrderID string `json:"linked_sales_order_id"`
+			LinkedInvoiceOutID string `json:"linked_invoice_out_id"`
+		} `json:"quotes"`
+		SalesOrders []struct {
+			ID                 string `json:"id"`
+			ContactID          string `json:"contact_id"`
+			LinkedInvoiceOutID string `json:"linked_invoice_out_id"`
+		} `json:"sales_orders"`
+		InvoicesOut []struct {
+			ID          string  `json:"id"`
+			ContactID   string  `json:"contact_id"`
+			Status      string  `json:"status"`
+			PaidAmount  float64 `json:"paid_amount"`
+			GrossAmount float64 `json:"gross_amount"`
+		} `json:"invoices_out"`
+		Stats struct {
+			QuoteCount           int     `json:"quote_count"`
+			SalesOrderCount      int     `json:"sales_order_count"`
+			InvoiceCount         int     `json:"invoice_count"`
+			OpenInvoiceCount     int     `json:"open_invoice_count"`
+			QuoteGrossTotal      float64 `json:"quote_gross_total"`
+			SalesOrderGrossTotal float64 `json:"sales_order_gross_total"`
+			InvoiceGrossTotal    float64 `json:"invoice_gross_total"`
+			InvoiceOpenTotal     float64 `json:"invoice_open_total"`
+		} `json:"stats"`
+	}
+	if err := json.Unmarshal(contextRec.Body.Bytes(), &out); err != nil {
+		t.Fatalf("decode commercial context response: %v", err)
+	}
+
+	if out.ContactID != createdContact.ID {
+		t.Fatalf("expected contact id %q, got %q", createdContact.ID, out.ContactID)
+	}
+	if len(out.Quotes) != 1 {
+		t.Fatalf("expected 1 quote, got %d", len(out.Quotes))
+	}
+	if len(out.SalesOrders) != 1 {
+		t.Fatalf("expected 1 sales order, got %d", len(out.SalesOrders))
+	}
+	if len(out.InvoicesOut) != 1 {
+		t.Fatalf("expected 1 invoice, got %d", len(out.InvoicesOut))
+	}
+	if out.Quotes[0].ContactID != createdContact.ID {
+		t.Fatalf("expected quote contact id %q, got %q", createdContact.ID, out.Quotes[0].ContactID)
+	}
+	if out.SalesOrders[0].ContactID != createdContact.ID {
+		t.Fatalf("expected sales order contact id %q, got %q", createdContact.ID, out.SalesOrders[0].ContactID)
+	}
+	if out.InvoicesOut[0].ContactID != createdContact.ID {
+		t.Fatalf("expected invoice contact id %q, got %q", createdContact.ID, out.InvoicesOut[0].ContactID)
+	}
+	if out.Stats.QuoteCount != 1 || out.Stats.SalesOrderCount != 1 || out.Stats.InvoiceCount != 1 {
+		t.Fatalf("expected 1/1/1 counts, got %#v", out.Stats)
+	}
+	if out.Stats.OpenInvoiceCount != 1 {
+		t.Fatalf("expected 1 open invoice, got %#v", out.Stats.OpenInvoiceCount)
+	}
+	if out.Stats.QuoteGrossTotal <= 0 || out.Stats.SalesOrderGrossTotal <= 0 || out.Stats.InvoiceGrossTotal <= 0 {
+		t.Fatalf("expected gross totals > 0, got %#v", out.Stats)
+	}
+	if out.Stats.InvoiceOpenTotal <= 0 {
+		t.Fatalf("expected open invoice total > 0, got %#v", out.Stats.InvoiceOpenTotal)
+	}
+}
+
 func TestContactPersonsRoleAndChannelRoundtripFlow(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
 	testutil.SeedAuthUser(t, env, "integration-contact-persons@example.com", "Secret123!", "admin")
@@ -1406,6 +1603,64 @@ func TestContactsCreateReturnsValidationErrorForDuplicateCreditorNumber(t *testi
 		t.Fatalf("expected validation_error, got %q", resp.Error.Code)
 	}
 	if resp.Error.Message != "Kontakt mit gleicher Kreditor-Nr. bereits vorhanden" {
+		t.Fatalf("unexpected error message %q", resp.Error.Message)
+	}
+}
+
+func TestContactsCreateReturnsValidationErrorForDuplicateTaxNumber(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-contacts-duplicate-taxno@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-contacts-duplicate-taxno@example.com", "Secret123!")
+
+	firstBody := []byte(`{
+		"typ":"org",
+		"rolle":"customer",
+		"status":"active",
+		"name":"Tax Number One GmbH",
+		"steuernummer":"12/345/67890"
+	}`)
+	firstReq := httptest.NewRequest(http.MethodPost, "/api/v1/contacts/", bytes.NewReader(firstBody))
+	firstReq.Header.Set("Content-Type", "application/json")
+	firstReq.Header.Set("Authorization", "Bearer "+accessToken)
+	firstRec := httptest.NewRecorder()
+	handler.ServeHTTP(firstRec, firstReq)
+
+	if firstRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", firstRec.Code, firstRec.Body.String())
+	}
+
+	secondBody := []byte(`{
+		"typ":"org",
+		"rolle":"supplier",
+		"status":"active",
+		"name":"Tax Number Two GmbH",
+		"steuernummer":" 12/345/67890 "
+	}`)
+	secondReq := httptest.NewRequest(http.MethodPost, "/api/v1/contacts/", bytes.NewReader(secondBody))
+	secondReq.Header.Set("Content-Type", "application/json")
+	secondReq.Header.Set("Authorization", "Bearer "+accessToken)
+	secondRec := httptest.NewRecorder()
+	handler.ServeHTTP(secondRec, secondReq)
+
+	if secondRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", secondRec.Code, secondRec.Body.String())
+	}
+
+	var resp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(secondRec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.Error.Code != "validation_error" {
+		t.Fatalf("expected validation_error, got %q", resp.Error.Code)
+	}
+	if resp.Error.Message != "Kontakt mit gleicher Steuernummer bereits vorhanden" {
 		t.Fatalf("unexpected error message %q", resp.Error.Message)
 	}
 }

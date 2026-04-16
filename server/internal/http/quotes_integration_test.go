@@ -3,10 +3,14 @@ package apihttp
 import (
 	"bytes"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/google/uuid"
+	"nalaerp3/internal/quotes"
 	"nalaerp3/internal/testutil"
 )
 
@@ -95,12 +99,15 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	}
 
 	var createdQuote struct {
-		ID          string  `json:"id"`
-		Number      string  `json:"number"`
-		ProjectID   string  `json:"project_id"`
-		ContactID   string  `json:"contact_id"`
-		ContactName string  `json:"contact_name"`
-		GrossAmount float64 `json:"gross_amount"`
+		ID                  string  `json:"id"`
+		Number              string  `json:"number"`
+		RootQuoteID         string  `json:"root_quote_id"`
+		RevisionNo          int     `json:"revision_no"`
+		SupersededByQuoteID string  `json:"superseded_by_quote_id"`
+		ProjectID           string  `json:"project_id"`
+		ContactID           string  `json:"contact_id"`
+		ContactName         string  `json:"contact_name"`
+		GrossAmount         float64 `json:"gross_amount"`
 	}
 	if err := json.Unmarshal(createQuoteRec.Body.Bytes(), &createdQuote); err != nil {
 		t.Fatalf("decode quote create response: %v", err)
@@ -117,6 +124,15 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	if createdQuote.ContactName != "Quote Test Kunde GmbH" {
 		t.Fatalf("expected contact name, got %q", createdQuote.ContactName)
 	}
+	if createdQuote.RootQuoteID != createdQuote.ID {
+		t.Fatalf("expected root quote id %q, got %q", createdQuote.ID, createdQuote.RootQuoteID)
+	}
+	if createdQuote.RevisionNo != 1 {
+		t.Fatalf("expected revision_no 1, got %d", createdQuote.RevisionNo)
+	}
+	if createdQuote.SupersededByQuoteID != "" {
+		t.Fatalf("expected no superseded_by_quote_id on new quote, got %q", createdQuote.SupersededByQuoteID)
+	}
 	if createdQuote.GrossAmount <= 0 {
 		t.Fatalf("expected gross amount > 0, got %v", createdQuote.GrossAmount)
 	}
@@ -129,12 +145,20 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 		t.Fatalf("expected 200 for quote list, got %d with body %s", listRec.Code, listRec.Body.String())
 	}
 
-	var list []map[string]any
+	var list []struct {
+		ID                  string `json:"id"`
+		RootQuoteID         string `json:"root_quote_id"`
+		RevisionNo          int    `json:"revision_no"`
+		SupersededByQuoteID string `json:"superseded_by_quote_id"`
+	}
 	if err := json.Unmarshal(listRec.Body.Bytes(), &list); err != nil {
 		t.Fatalf("decode quote list response: %v", err)
 	}
 	if len(list) != 1 {
 		t.Fatalf("expected one quote list item, got %d", len(list))
+	}
+	if list[0].ID != createdQuote.ID || list[0].RootQuoteID != createdQuote.ID || list[0].RevisionNo != 1 || list[0].SupersededByQuoteID != "" {
+		t.Fatalf("expected revision metadata on quote list item, got %+v", list[0])
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/"+createdQuote.ID, nil)
@@ -146,9 +170,12 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	}
 
 	var fetched struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
-		Items  []struct {
+		ID                  string `json:"id"`
+		RootQuoteID         string `json:"root_quote_id"`
+		RevisionNo          int    `json:"revision_no"`
+		SupersededByQuoteID string `json:"superseded_by_quote_id"`
+		Status              string `json:"status"`
+		Items               []struct {
 			Description string  `json:"description"`
 			Qty         float64 `json:"qty"`
 			UnitPrice   float64 `json:"unit_price"`
@@ -159,6 +186,9 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	}
 	if fetched.Status != "draft" {
 		t.Fatalf("expected draft status, got %q", fetched.Status)
+	}
+	if fetched.RootQuoteID != createdQuote.ID || fetched.RevisionNo != 1 || fetched.SupersededByQuoteID != "" {
+		t.Fatalf("expected revision metadata on quote get, got root=%q rev=%d superseded=%q", fetched.RootQuoteID, fetched.RevisionNo, fetched.SupersededByQuoteID)
 	}
 	if len(fetched.Items) != 2 {
 		t.Fatalf("expected 2 quote items, got %d", len(fetched.Items))
@@ -1011,5 +1041,2145 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	}
 	if pdfRec.Body.Len() == 0 {
 		t.Fatal("expected non-empty quote pdf response")
+	}
+}
+
+func TestQuoteUpdateAllowsManualMaterialMappingOnItems(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-quote-mapping@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-quote-mapping@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Quote Mapping Kunde GmbH",
+		"email":    "quote-mapping@example.com",
+		"telefon":  "+49 211 333333",
+		"waehrung": "EUR",
+	})
+
+	createMaterialReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-GAEB-0001",
+		"bezeichnung":"Aluminium Profil 70mm",
+		"einheit":"m"
+	}`)))
+	createMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createMaterialReq.Header.Set("Content-Type", "application/json")
+	createMaterialRec := httptest.NewRecorder()
+	handler.ServeHTTP(createMaterialRec, createMaterialReq)
+	if createMaterialRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for material create, got %d with body %s", createMaterialRec.Code, createMaterialRec.Body.String())
+	}
+
+	var createdMaterial struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createMaterialRec.Body.Bytes(), &createdMaterial); err != nil {
+		t.Fatalf("decode material create response: %v", err)
+	}
+
+	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"contact_id":"`+customerID+`",
+		"currency":"EUR",
+		"note":"Quote fuer manuelles Mapping",
+		"items":[{"description":"GAEB Position","qty":1,"unit":"Stk","unit_price":0,"tax_code":""}]
+	}`)))
+	createQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createQuoteReq.Header.Set("Content-Type", "application/json")
+	createQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createQuoteRec, createQuoteReq)
+	if createQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for quote create, got %d with body %s", createQuoteRec.Code, createQuoteRec.Body.String())
+	}
+
+	var createdQuote struct {
+		ID        string `json:"id"`
+		ContactID string `json:"contact_id"`
+		QuoteDate string `json:"quote_date"`
+		Items     []struct {
+			PriceMappingStatus      string `json:"price_mapping_status"`
+			MaterialID              string `json:"material_id"`
+			MaterialCandidateStatus string `json:"material_candidate_status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(createQuoteRec.Body.Bytes(), &createdQuote); err != nil {
+		t.Fatalf("decode quote create response: %v", err)
+	}
+	if createdQuote.ID == "" || createdQuote.ContactID != customerID || createdQuote.QuoteDate == "" {
+		t.Fatalf("unexpected created quote payload: %+v", createdQuote)
+	}
+	if len(createdQuote.Items) != 1 || createdQuote.Items[0].PriceMappingStatus != "open" || createdQuote.Items[0].MaterialID != "" || createdQuote.Items[0].MaterialCandidateStatus != "none" {
+		t.Fatalf("expected default open mapping status without material, got %+v", createdQuote.Items)
+	}
+
+	updateQuoteReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/"+createdQuote.ID, bytes.NewReader([]byte(`{
+		"contact_id":"`+customerID+`",
+		"quote_date":"`+createdQuote.QuoteDate+`",
+		"currency":"EUR",
+		"note":"Mapping gesetzt",
+		"items":[{"description":"GAEB Position","qty":1,"unit":"Stk","unit_price":0,"tax_code":"","material_id":"`+createdMaterial.ID+`","price_mapping_status":"manual"}]
+	}`)))
+	updateQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	updateQuoteReq.Header.Set("Content-Type", "application/json")
+	updateQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateQuoteRec, updateQuoteReq)
+	if updateQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote update with mapping, got %d with body %s", updateQuoteRec.Code, updateQuoteRec.Body.String())
+	}
+
+	var updatedQuote struct {
+		ID    string `json:"id"`
+		Items []struct {
+			Description             string `json:"description"`
+			MaterialID              string `json:"material_id"`
+			PriceMappingStatus      string `json:"price_mapping_status"`
+			MaterialCandidateStatus string `json:"material_candidate_status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(updateQuoteRec.Body.Bytes(), &updatedQuote); err != nil {
+		t.Fatalf("decode quote update response: %v", err)
+	}
+	if updatedQuote.ID != createdQuote.ID || len(updatedQuote.Items) != 1 {
+		t.Fatalf("unexpected updated quote payload: %+v", updatedQuote)
+	}
+	if updatedQuote.Items[0].MaterialID != createdMaterial.ID || updatedQuote.Items[0].PriceMappingStatus != "manual" || updatedQuote.Items[0].MaterialCandidateStatus != "none" {
+		t.Fatalf("expected manual mapping on quote item, got %+v", updatedQuote.Items[0])
+	}
+
+	getQuoteReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/"+createdQuote.ID, nil)
+	getQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(getQuoteRec, getQuoteReq)
+	if getQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote get, got %d with body %s", getQuoteRec.Code, getQuoteRec.Body.String())
+	}
+
+	var fetchedQuote struct {
+		Items []struct {
+			MaterialID              string `json:"material_id"`
+			PriceMappingStatus      string `json:"price_mapping_status"`
+			MaterialCandidateStatus string `json:"material_candidate_status"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(getQuoteRec.Body.Bytes(), &fetchedQuote); err != nil {
+		t.Fatalf("decode quote get response: %v", err)
+	}
+	if len(fetchedQuote.Items) != 1 || fetchedQuote.Items[0].MaterialID != createdMaterial.ID || fetchedQuote.Items[0].PriceMappingStatus != "manual" || fetchedQuote.Items[0].MaterialCandidateStatus != "none" {
+		t.Fatalf("expected fetched quote item mapping, got %+v", fetchedQuote.Items)
+	}
+
+	invalidStatusReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/"+createdQuote.ID, bytes.NewReader([]byte(`{
+		"contact_id":"`+customerID+`",
+		"quote_date":"`+createdQuote.QuoteDate+`",
+		"currency":"EUR",
+		"note":"Ungueltiger Mapping-Status",
+		"items":[{"description":"GAEB Position","qty":1,"unit":"Stk","unit_price":0,"tax_code":"","price_mapping_status":"auto"}]
+	}`)))
+	invalidStatusReq.Header.Set("Authorization", "Bearer "+accessToken)
+	invalidStatusReq.Header.Set("Content-Type", "application/json")
+	invalidStatusRec := httptest.NewRecorder()
+	handler.ServeHTTP(invalidStatusRec, invalidStatusReq)
+	if invalidStatusRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid price_mapping_status, got %d with body %s", invalidStatusRec.Code, invalidStatusRec.Body.String())
+	}
+
+	invalidMaterialReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/"+createdQuote.ID, bytes.NewReader([]byte(`{
+		"contact_id":"`+customerID+`",
+		"quote_date":"`+createdQuote.QuoteDate+`",
+		"currency":"EUR",
+		"note":"Ungueltiges Material",
+		"items":[{"description":"GAEB Position","qty":1,"unit":"Stk","unit_price":0,"tax_code":"","material_id":"missing-material","price_mapping_status":"manual"}]
+	}`)))
+	invalidMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
+	invalidMaterialReq.Header.Set("Content-Type", "application/json")
+	invalidMaterialRec := httptest.NewRecorder()
+	handler.ServeHTTP(invalidMaterialRec, invalidMaterialReq)
+	if invalidMaterialRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid material_id, got %d with body %s", invalidMaterialRec.Code, invalidMaterialRec.Body.String())
+	}
+}
+
+func TestQuoteGAEBImportFlowCreatesImportRunAndListsIt(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-import@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-import@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Import Kunde GmbH",
+		"email":    "gaeb-import@example.com",
+		"telefon":  "+49 211 222222",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Import Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := writer.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "lv.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := part.Write([]byte("GAEB-DUMMY-CONTENT")); err != nil {
+		t.Fatalf("write multipart file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	createImportReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", &body)
+	createImportReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createImportReq.Header.Set("Content-Type", writer.FormDataContentType())
+	createImportRec := httptest.NewRecorder()
+	handler.ServeHTTP(createImportRec, createImportReq)
+	if createImportRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import create, got %d with body %s", createImportRec.Code, createImportRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID               string `json:"id"`
+		ProjectID        string `json:"project_id"`
+		ContactID        string `json:"contact_id"`
+		SourceKind       string `json:"source_kind"`
+		SourceFilename   string `json:"source_filename"`
+		SourceDocumentID string `json:"source_document_id"`
+		Status           string `json:"status"`
+		DetectedFormat   string `json:"detected_format"`
+		ErrorMessage     string `json:"error_message"`
+		CreatedQuoteID   string `json:"created_quote_id"`
+	}
+	if err := json.Unmarshal(createImportRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode import create response: %v", err)
+	}
+	if createdImport.ID == "" {
+		t.Fatal("expected import id")
+	}
+	if createdImport.ProjectID != createdProject.ID {
+		t.Fatalf("expected project_id %q, got %q", createdProject.ID, createdImport.ProjectID)
+	}
+	if createdImport.ContactID != customerID {
+		t.Fatalf("expected contact_id %q, got %q", customerID, createdImport.ContactID)
+	}
+	if createdImport.SourceKind != "gaeb" {
+		t.Fatalf("expected source_kind gaeb, got %q", createdImport.SourceKind)
+	}
+	if createdImport.SourceFilename != "lv.x83" {
+		t.Fatalf("expected source_filename lv.x83, got %q", createdImport.SourceFilename)
+	}
+	if createdImport.SourceDocumentID == "" {
+		t.Fatal("expected source_document_id")
+	}
+	if createdImport.Status != "uploaded" {
+		t.Fatalf("expected status uploaded, got %q", createdImport.Status)
+	}
+	if createdImport.DetectedFormat != "" || createdImport.ErrorMessage != "" || createdImport.CreatedQuoteID != "" {
+		t.Fatalf("expected empty parser fields on fresh import, got %+v", createdImport)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports?project_id="+createdProject.ID, nil)
+	listReq.Header.Set("Authorization", "Bearer "+accessToken)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import list, got %d with body %s", listRec.Code, listRec.Body.String())
+	}
+
+	var list []struct {
+		ID         string `json:"id"`
+		ProjectID  string `json:"project_id"`
+		ContactID  string `json:"contact_id"`
+		Status     string `json:"status"`
+		SourceKind string `json:"source_kind"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode import list response: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected one import in list, got %d", len(list))
+	}
+	if list[0].ID != createdImport.ID || list[0].Status != "uploaded" || list[0].SourceKind != "gaeb" {
+		t.Fatalf("unexpected import list entry: %+v", list[0])
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import get, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var fetched struct {
+		ID               string `json:"id"`
+		ProjectID        string `json:"project_id"`
+		ContactID        string `json:"contact_id"`
+		SourceFilename   string `json:"source_filename"`
+		SourceDocumentID string `json:"source_document_id"`
+		Status           string `json:"status"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode import get response: %v", err)
+	}
+	if fetched.ID != createdImport.ID || fetched.ProjectID != createdProject.ID || fetched.ContactID != customerID || fetched.SourceFilename != "lv.x83" || fetched.SourceDocumentID == "" || fetched.Status != "uploaded" {
+		t.Fatalf("unexpected import detail: %+v", fetched)
+	}
+}
+
+func TestQuoteGAEBImportRejectsNonGAEBFiles(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-quote-import-invalid@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-quote-import-invalid@example.com", "Secret123!")
+
+	projectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Invalid Projekt",
+		"status":"angebot"
+	}`)))
+	projectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	projectReq.Header.Set("Content-Type", "application/json")
+	projectRec := httptest.NewRecorder()
+	handler.ServeHTTP(projectRec, projectReq)
+	if projectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", projectRec.Code, projectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(projectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "not-gaeb.pdf")
+	if err != nil {
+		t.Fatalf("create form file: %v", err)
+	}
+	if _, err := part.Write([]byte("%PDF-1.4 invalid gaeb")); err != nil {
+		t.Fatalf("write file part: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", &body)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid GAEB file type, got %d with body %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Nur GAEB-Dateien") {
+		t.Fatalf("expected GAEB file type validation message, got %s", rec.Body.String())
+	}
+}
+
+func TestQuoteGAEBImportListAndDetailExposeReviewSummaryCounts(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-quote-import-summary@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-quote-import-summary@example.com", "Secret123!")
+
+	projectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Summary Projekt",
+		"status":"angebot"
+	}`)))
+	projectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	projectReq.Header.Set("Content-Type", "application/json")
+	projectRec := httptest.NewRecorder()
+	handler.ServeHTTP(projectRec, projectReq)
+	if projectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", projectRec.Code, projectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(projectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	part, err := writer.CreateFormFile("file", "summary.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := part.Write([]byte("GAEB-SUMMARY-CONTENT")); err != nil {
+		t.Fatalf("write multipart file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", &body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode import create response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Akzeptierte Position",
+			Qty:         1,
+			Unit:        "Stk",
+			SortOrder:   1,
+		},
+		{
+			PositionNo:  "01.002",
+			OutlineNo:   "01",
+			Description: "Abgelehnte Position",
+			Qty:         2,
+			Unit:        "Std",
+			SortOrder:   2,
+		},
+		{
+			PositionNo:  "01.003",
+			OutlineNo:   "01",
+			Description: "Offene Position",
+			Qty:         3,
+			Unit:        "m",
+			SortOrder:   3,
+		},
+	}); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	if err != nil || len(items) != 3 {
+		t.Fatalf("expected 3 import items, got %d err=%v", len(items), err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+		t.Fatalf("accept import item: %v", err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen"); err != nil {
+		t.Fatalf("reject import item: %v", err)
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports?project_id="+createdProject.ID, nil)
+	listReq.Header.Set("Authorization", "Bearer "+accessToken)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import list, got %d with body %s", listRec.Code, listRec.Body.String())
+	}
+
+	var list []struct {
+		ID            string `json:"id"`
+		ItemCount     int    `json:"item_count"`
+		AcceptedCount int    `json:"accepted_count"`
+		RejectedCount int    `json:"rejected_count"`
+		PendingCount  int    `json:"pending_count"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode import list response: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("expected one import in list, got %d", len(list))
+	}
+	if list[0].ID != createdImport.ID || list[0].ItemCount != 3 || list[0].AcceptedCount != 1 || list[0].RejectedCount != 1 || list[0].PendingCount != 1 {
+		t.Fatalf("unexpected import list summary: %+v", list[0])
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import detail, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var fetched struct {
+		ID            string `json:"id"`
+		ItemCount     int    `json:"item_count"`
+		AcceptedCount int    `json:"accepted_count"`
+		RejectedCount int    `json:"rejected_count"`
+		PendingCount  int    `json:"pending_count"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode import detail response: %v", err)
+	}
+	if fetched.ID != createdImport.ID || fetched.ItemCount != 3 || fetched.AcceptedCount != 1 || fetched.RejectedCount != 1 || fetched.PendingCount != 1 {
+		t.Fatalf("unexpected import detail summary: %+v", fetched)
+	}
+}
+
+func TestQuoteGAEBImportItemReadEndpointsExposeParsedItems(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-items@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-items@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Item Test Kunde GmbH",
+		"email":    "gaeb-items@example.com",
+		"telefon":  "+49 211 666666",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Item Test Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := writer.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "parsed-items.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+	if createdImport.ID == "" {
+		t.Fatal("expected created import id")
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	parsedImport, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Fensterelement Aluminium",
+			Qty:         2,
+			Unit:        "Stk",
+			ParserHint:  "lv-position",
+			SortOrder:   1,
+		},
+		{
+			PositionNo:  "01.002",
+			OutlineNo:   "01",
+			Description: "Montage vor Ort",
+			Qty:         6,
+			Unit:        "Std",
+			IsOptional:  true,
+			ParserHint:  "optionale-position",
+			SortOrder:   2,
+		},
+	})
+	if err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+	if parsedImport.Status != "parsed" || parsedImport.ItemCount != 2 {
+		t.Fatalf("expected parsed import with item_count 2, got %+v", parsedImport)
+	}
+
+	itemsReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID+"/items", nil)
+	itemsReq.Header.Set("Authorization", "Bearer "+accessToken)
+	itemsRec := httptest.NewRecorder()
+	handler.ServeHTTP(itemsRec, itemsReq)
+	if itemsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import items list, got %d with body %s", itemsRec.Code, itemsRec.Body.String())
+	}
+
+	var items []struct {
+		ID                string  `json:"id"`
+		ImportID          string  `json:"import_id"`
+		PositionNo        string  `json:"position_no"`
+		OutlineNo         string  `json:"outline_no"`
+		Description       string  `json:"description"`
+		Qty               float64 `json:"qty"`
+		Unit              string  `json:"unit"`
+		IsOptional        bool    `json:"is_optional"`
+		ParserHint        string  `json:"parser_hint"`
+		ReviewStatus      string  `json:"review_status"`
+		SortOrder         int     `json:"sort_order"`
+		LinkedQuoteID     string  `json:"linked_quote_id"`
+		LinkedQuoteItemID string  `json:"linked_quote_item_id"`
+		LinkedQuotePos    int     `json:"linked_quote_position"`
+	}
+	if err := json.Unmarshal(itemsRec.Body.Bytes(), &items); err != nil {
+		t.Fatalf("decode import items response: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 import items, got %d with body %s", len(items), itemsRec.Body.String())
+	}
+	if items[0].ImportID != createdImport.ID || items[0].PositionNo != "01.001" || items[0].ReviewStatus != "pending" || items[0].SortOrder != 1 {
+		t.Fatalf("unexpected first import item: %+v", items[0])
+	}
+	if items[0].LinkedQuoteID != "" || items[0].LinkedQuoteItemID != "" || items[0].LinkedQuotePos != 0 {
+		t.Fatalf("expected no quote link on parsed import item, got %+v", items[0])
+	}
+	if items[1].PositionNo != "01.002" || !items[1].IsOptional || items[1].SortOrder != 2 {
+		t.Fatalf("unexpected second import item: %+v", items[1])
+	}
+
+	itemReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID+"/items/"+items[1].ID, nil)
+	itemReq.Header.Set("Authorization", "Bearer "+accessToken)
+	itemRec := httptest.NewRecorder()
+	handler.ServeHTTP(itemRec, itemReq)
+	if itemRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import item detail, got %d with body %s", itemRec.Code, itemRec.Body.String())
+	}
+
+	var itemDetail struct {
+		ID                string `json:"id"`
+		ImportID          string `json:"import_id"`
+		PositionNo        string `json:"position_no"`
+		Description       string `json:"description"`
+		ParserHint        string `json:"parser_hint"`
+		ReviewStatus      string `json:"review_status"`
+		LinkedQuoteID     string `json:"linked_quote_id"`
+		LinkedQuoteItemID string `json:"linked_quote_item_id"`
+		LinkedQuotePos    int    `json:"linked_quote_position"`
+	}
+	if err := json.Unmarshal(itemRec.Body.Bytes(), &itemDetail); err != nil {
+		t.Fatalf("decode import item detail response: %v", err)
+	}
+	if itemDetail.ID != items[1].ID || itemDetail.ImportID != createdImport.ID || itemDetail.PositionNo != "01.002" || itemDetail.ParserHint != "optionale-position" || itemDetail.ReviewStatus != "pending" {
+		t.Fatalf("unexpected import item detail: %+v", itemDetail)
+	}
+	if itemDetail.LinkedQuoteID != "" || itemDetail.LinkedQuoteItemID != "" || itemDetail.LinkedQuotePos != 0 {
+		t.Fatalf("expected no quote link on parsed import item detail, got %+v", itemDetail)
+	}
+}
+
+func TestQuoteGAEBImportItemReviewEndpointUpdatesReviewFields(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-review@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-review@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Review Kunde GmbH",
+		"email":    "gaeb-review@example.com",
+		"telefon":  "+49 211 777777",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Review Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "review-items.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Fassadenelement",
+			Qty:         3,
+			Unit:        "Stk",
+			SortOrder:   1,
+		},
+	}); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("expected one import item, got %d err=%v", len(items), err)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/imports/"+createdImport.ID+"/items/"+items[0].ID+"/review", bytes.NewReader([]byte(`{
+		"review_status":"accepted",
+		"review_note":"Fachlich freigegeben"
+	}`)))
+	reviewReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for item review patch, got %d with body %s", reviewRec.Code, reviewRec.Body.String())
+	}
+
+	var reviewed struct {
+		ID           string `json:"id"`
+		ImportID     string `json:"import_id"`
+		ReviewStatus string `json:"review_status"`
+		ReviewNote   string `json:"review_note"`
+	}
+	if err := json.Unmarshal(reviewRec.Body.Bytes(), &reviewed); err != nil {
+		t.Fatalf("decode review response: %v", err)
+	}
+	if reviewed.ID != items[0].ID || reviewed.ImportID != createdImport.ID || reviewed.ReviewStatus != "accepted" || reviewed.ReviewNote != "Fachlich freigegeben" {
+		t.Fatalf("unexpected review patch response: %+v", reviewed)
+	}
+}
+
+func TestQuoteGAEBImportItemReviewEndpointRejectsNonParsedImport(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-review-guard@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-review-guard@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Review Guard Kunde GmbH",
+		"email":    "gaeb-review-guard@example.com",
+		"telefon":  "+49 211 888888",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Review Guard Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "review-guard.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	itemID := uuid.NewString()
+	if _, err := env.PG.Exec(uploadReq.Context(), `
+		INSERT INTO quote_import_items (
+			id, import_id, position_no, outline_no, description, qty, unit,
+			is_optional, parser_hint, review_status, review_note, sort_order
+		) VALUES ($1,$2,'01.001','01','Nur Rohposition',1,'Stk',false,'seed','pending','',1)
+	`, itemID, createdImport.ID); err != nil {
+		t.Fatalf("seed import item: %v", err)
+	}
+
+	reviewReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/imports/"+createdImport.ID+"/items/"+itemID+"/review", bytes.NewReader([]byte(`{
+		"review_status":"accepted",
+		"review_note":"Sollte scheitern"
+	}`)))
+	reviewReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviewReq.Header.Set("Content-Type", "application/json")
+	reviewRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewRec, reviewReq)
+	if reviewRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-parsed import review, got %d with body %s", reviewRec.Code, reviewRec.Body.String())
+	}
+	if !strings.Contains(reviewRec.Body.String(), "Nur geparste Importläufe") {
+		t.Fatalf("expected parsed import guard message, got %s", reviewRec.Body.String())
+	}
+}
+
+func TestQuoteGAEBImportReviewEndpointRejectsPendingItems(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-import-review@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-import-review@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Import Review Kunde GmbH",
+		"email":    "gaeb-import-review@example.com",
+		"telefon":  "+49 211 999991",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Import Review Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "import-review.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Nur teilweise bewertet",
+			Qty:         1,
+			Unit:        "Stk",
+			SortOrder:   1,
+		},
+	}); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	reviewImportReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/imports/"+createdImport.ID+"/review", nil)
+	reviewImportReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviewImportRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewImportRec, reviewImportReq)
+	if reviewImportRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for import review with pending items, got %d with body %s", reviewImportRec.Code, reviewImportRec.Body.String())
+	}
+	if !strings.Contains(reviewImportRec.Body.String(), "offene Review-Positionen") {
+		t.Fatalf("expected pending review guard message, got %s", reviewImportRec.Body.String())
+	}
+}
+
+func TestQuoteGAEBImportApplyCreatesDraftQuoteFromAcceptedItems(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-apply@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-apply@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Apply Kunde GmbH",
+		"email":    "gaeb-apply@example.com",
+		"telefon":  "+49 211 999992",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Apply Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := writer.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "import-apply.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Akzeptierte Position",
+			Qty:         2,
+			Unit:        "Stk",
+			SortOrder:   1,
+		},
+		{
+			PositionNo:  "01.002",
+			OutlineNo:   "01",
+			Description: "Abgelehnte Position",
+			Qty:         5,
+			Unit:        "Std",
+			SortOrder:   2,
+		},
+	}); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("expected two import items, got %d err=%v", len(items), err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+		t.Fatalf("accept import item: %v", err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen"); err != nil {
+		t.Fatalf("reject import item: %v", err)
+	}
+
+	reviewImportReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/imports/"+createdImport.ID+"/review", nil)
+	reviewImportReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviewImportRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviewImportRec, reviewImportReq)
+	if reviewImportRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for import review, got %d with body %s", reviewImportRec.Code, reviewImportRec.Body.String())
+	}
+
+	var reviewedImport struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(reviewImportRec.Body.Bytes(), &reviewedImport); err != nil {
+		t.Fatalf("decode import review response: %v", err)
+	}
+	if reviewedImport.ID != createdImport.ID || reviewedImport.Status != "reviewed" {
+		t.Fatalf("unexpected reviewed import response: %+v", reviewedImport)
+	}
+
+	applyReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/"+createdImport.ID+"/apply", nil)
+	applyReq.Header.Set("Authorization", "Bearer "+accessToken)
+	applyRec := httptest.NewRecorder()
+	handler.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for import apply, got %d with body %s", applyRec.Code, applyRec.Body.String())
+	}
+
+	var applied struct {
+		Import struct {
+			ID             string `json:"id"`
+			Status         string `json:"status"`
+			CreatedQuoteID string `json:"created_quote_id"`
+		} `json:"import"`
+		Quote struct {
+			ID        string `json:"id"`
+			ProjectID string `json:"project_id"`
+			ContactID string `json:"contact_id"`
+			Status    string `json:"status"`
+			Note      string `json:"note"`
+			Items     []struct {
+				Description             string  `json:"description"`
+				Qty                     float64 `json:"qty"`
+				Unit                    string  `json:"unit"`
+				UnitPrice               float64 `json:"unit_price"`
+				MaterialID              string  `json:"material_id"`
+				PriceMappingStatus      string  `json:"price_mapping_status"`
+				MaterialCandidateStatus string  `json:"material_candidate_status"`
+			} `json:"items"`
+		} `json:"quote"`
+	}
+	if err := json.Unmarshal(applyRec.Body.Bytes(), &applied); err != nil {
+		t.Fatalf("decode import apply response: %v", err)
+	}
+	if applied.Import.ID != createdImport.ID || applied.Import.Status != "applied" {
+		t.Fatalf("unexpected applied import response: %+v", applied.Import)
+	}
+	if applied.Import.CreatedQuoteID == "" || applied.Import.CreatedQuoteID != applied.Quote.ID {
+		t.Fatalf("expected created quote link, got import=%+v quote=%+v", applied.Import, applied.Quote)
+	}
+	if applied.Quote.ProjectID != createdProject.ID || applied.Quote.ContactID != customerID || applied.Quote.Status != "draft" {
+		t.Fatalf("unexpected created quote metadata: %+v", applied.Quote)
+	}
+	if len(applied.Quote.Items) != 1 {
+		t.Fatalf("expected exactly one accepted quote item, got %d", len(applied.Quote.Items))
+	}
+	if applied.Quote.Items[0].Description != "Akzeptierte Position" || applied.Quote.Items[0].Qty != 2 || applied.Quote.Items[0].Unit != "Stk" || applied.Quote.Items[0].UnitPrice != 0 {
+		t.Fatalf("unexpected created quote item: %+v", applied.Quote.Items[0])
+	}
+	if applied.Quote.Items[0].MaterialID != "" || applied.Quote.Items[0].PriceMappingStatus != "open" || applied.Quote.Items[0].MaterialCandidateStatus != "available" {
+		t.Fatalf("expected open imported quote item with available candidate anchor, got %+v", applied.Quote.Items[0])
+	}
+	if !strings.Contains(applied.Quote.Note, createdImport.ID) {
+		t.Fatalf("expected import reference in quote note, got %q", applied.Quote.Note)
+	}
+
+	var linkCount int
+	if err := env.PG.QueryRow(applyReq.Context(), `
+		SELECT COUNT(*)
+		FROM quote_import_item_links
+		WHERE quote_id=$1::uuid
+	`, applied.Quote.ID).Scan(&linkCount); err != nil {
+		t.Fatalf("count import item links: %v", err)
+	}
+	if linkCount != 1 {
+		t.Fatalf("expected exactly one import item link, got %d", linkCount)
+	}
+
+	var linkedImportItemID string
+	var linkedQuoteID string
+	var linkedQuoteItemDescription string
+	if err := env.PG.QueryRow(applyReq.Context(), `
+		SELECT qil.quote_import_item_id::text, qil.quote_id::text, qi.description
+		FROM quote_import_item_links qil
+		JOIN quote_items qi ON qi.id = qil.quote_item_id
+		WHERE qil.quote_id=$1::uuid
+	`, applied.Quote.ID).Scan(&linkedImportItemID, &linkedQuoteID, &linkedQuoteItemDescription); err != nil {
+		t.Fatalf("load import item link: %v", err)
+	}
+	if linkedQuoteID != applied.Quote.ID {
+		t.Fatalf("expected linked quote id %q, got %q", applied.Quote.ID, linkedQuoteID)
+	}
+	if linkedQuoteItemDescription != "Akzeptierte Position" {
+		t.Fatalf("unexpected linked quote item description: %q", linkedQuoteItemDescription)
+	}
+	if linkedImportItemID != items[0].ID {
+		t.Fatalf("expected accepted import item %q to be linked, got %q", items[0].ID, linkedImportItemID)
+	}
+
+	appliedItemsReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID+"/items", nil)
+	appliedItemsReq.Header.Set("Authorization", "Bearer "+accessToken)
+	appliedItemsRec := httptest.NewRecorder()
+	handler.ServeHTTP(appliedItemsRec, appliedItemsReq)
+	if appliedItemsRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for applied import items list, got %d with body %s", appliedItemsRec.Code, appliedItemsRec.Body.String())
+	}
+
+	var appliedItems []struct {
+		ID                string `json:"id"`
+		ReviewStatus      string `json:"review_status"`
+		LinkedQuoteID     string `json:"linked_quote_id"`
+		LinkedQuoteItemID string `json:"linked_quote_item_id"`
+		LinkedQuotePos    int    `json:"linked_quote_position"`
+	}
+	if err := json.Unmarshal(appliedItemsRec.Body.Bytes(), &appliedItems); err != nil {
+		t.Fatalf("decode applied import items response: %v", err)
+	}
+	if len(appliedItems) != 2 {
+		t.Fatalf("expected 2 applied import items, got %d", len(appliedItems))
+	}
+	if appliedItems[0].ID != items[0].ID || appliedItems[0].ReviewStatus != "accepted" || appliedItems[0].LinkedQuoteID != applied.Quote.ID || appliedItems[0].LinkedQuoteItemID == "" || appliedItems[0].LinkedQuotePos != 1 {
+		t.Fatalf("unexpected accepted import item link view: %+v", appliedItems[0])
+	}
+	if appliedItems[1].ID != items[1].ID || appliedItems[1].ReviewStatus != "rejected" || appliedItems[1].LinkedQuoteID != "" || appliedItems[1].LinkedQuoteItemID != "" || appliedItems[1].LinkedQuotePos != 0 {
+		t.Fatalf("unexpected rejected import item link view: %+v", appliedItems[1])
+	}
+
+	appliedItemReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/imports/"+createdImport.ID+"/items/"+items[0].ID, nil)
+	appliedItemReq.Header.Set("Authorization", "Bearer "+accessToken)
+	appliedItemRec := httptest.NewRecorder()
+	handler.ServeHTTP(appliedItemRec, appliedItemReq)
+	if appliedItemRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for applied import item detail, got %d with body %s", appliedItemRec.Code, appliedItemRec.Body.String())
+	}
+
+	var appliedItemDetail struct {
+		ID                string `json:"id"`
+		ReviewStatus      string `json:"review_status"`
+		LinkedQuoteID     string `json:"linked_quote_id"`
+		LinkedQuoteItemID string `json:"linked_quote_item_id"`
+		LinkedQuotePos    int    `json:"linked_quote_position"`
+	}
+	if err := json.Unmarshal(appliedItemRec.Body.Bytes(), &appliedItemDetail); err != nil {
+		t.Fatalf("decode applied import item detail: %v", err)
+	}
+	if appliedItemDetail.ID != items[0].ID || appliedItemDetail.ReviewStatus != "accepted" || appliedItemDetail.LinkedQuoteID != applied.Quote.ID || appliedItemDetail.LinkedQuoteItemID == "" || appliedItemDetail.LinkedQuotePos != 1 {
+		t.Fatalf("unexpected applied import item detail: %+v", appliedItemDetail)
+	}
+}
+
+func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-candidates@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-candidates@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Kandidaten Kunde GmbH",
+		"email":    "gaeb-candidates@example.com",
+		"telefon":  "+49 211 999993",
+		"waehrung": "EUR",
+	})
+
+	createMaterialReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-GAEB-CAND-0001",
+		"bezeichnung":"Aluminium Profil 70mm",
+		"einheit":"m"
+	}`)))
+	createMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createMaterialReq.Header.Set("Content-Type", "application/json")
+	createMaterialRec := httptest.NewRecorder()
+	handler.ServeHTTP(createMaterialRec, createMaterialReq)
+	if createMaterialRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for material create, got %d with body %s", createMaterialRec.Code, createMaterialRec.Body.String())
+	}
+
+	var createdMaterial struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createMaterialRec.Body.Bytes(), &createdMaterial); err != nil {
+		t.Fatalf("decode material create response: %v", err)
+	}
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Kandidaten Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := writer.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "import-candidates.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Aluminium Profil 70mm",
+			Qty:         4,
+			Unit:        "m",
+			SortOrder:   1,
+		},
+	}); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("expected one import item, got %d err=%v", len(items), err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+		t.Fatalf("accept import item: %v", err)
+	}
+	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID); err != nil {
+		t.Fatalf("mark import reviewed: %v", err)
+	}
+
+	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID)
+	if err != nil {
+		t.Fatalf("apply import: %v", err)
+	}
+	if applied.Quote == nil || len(applied.Quote.Items) != 1 {
+		t.Fatalf("unexpected applied quote payload: %+v", applied)
+	}
+
+	item := applied.Quote.Items[0]
+	if item.MaterialCandidateStatus != "available" {
+		t.Fatalf("expected available material candidate status, got %+v", item)
+	}
+	if len(item.MaterialCandidates) != 1 {
+		t.Fatalf("expected one material candidate, got %+v", item.MaterialCandidates)
+	}
+	if item.MaterialCandidates[0].MaterialID != createdMaterial.ID ||
+		item.MaterialCandidates[0].MaterialNo != "MAT-GAEB-CAND-0001" ||
+		item.MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm" {
+		t.Fatalf("unexpected material candidate payload: %+v", item.MaterialCandidates[0])
+	}
+
+	getQuoteReq := httptest.NewRequest(http.MethodGet, "/api/v1/quotes/"+applied.Quote.ID.String(), nil)
+	getQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(getQuoteRec, getQuoteReq)
+	if getQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote get, got %d with body %s", getQuoteRec.Code, getQuoteRec.Body.String())
+	}
+
+	var fetched struct {
+		Items []struct {
+			MaterialCandidateStatus string `json:"material_candidate_status"`
+			MaterialCandidates      []struct {
+				MaterialID    string `json:"material_id"`
+				MaterialNo    string `json:"material_no"`
+				MaterialLabel string `json:"material_label"`
+			} `json:"material_candidates"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(getQuoteRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode quote get response: %v", err)
+	}
+	if len(fetched.Items) != 1 || fetched.Items[0].MaterialCandidateStatus != "available" {
+		t.Fatalf("unexpected fetched quote candidate status: %+v", fetched.Items)
+	}
+	if len(fetched.Items[0].MaterialCandidates) != 1 ||
+		fetched.Items[0].MaterialCandidates[0].MaterialID != createdMaterial.ID ||
+		fetched.Items[0].MaterialCandidates[0].MaterialNo != "MAT-GAEB-CAND-0001" ||
+		fetched.Items[0].MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm" {
+		t.Fatalf("unexpected fetched material candidates: %+v", fetched.Items[0].MaterialCandidates)
+	}
+}
+
+func TestQuoteApplyVisibleMaterialCandidateSetsManualMapping(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-gaeb-candidate-apply@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-gaeb-candidate-apply@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Kandidatenaktion Kunde GmbH",
+		"email":    "candidate-apply@example.com",
+		"telefon":  "+49 211 888888",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"Kandidatenaktion Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	createMaterialReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-GAEB-APPLY-0001",
+		"bezeichnung":"Aluminium Profil 90mm",
+		"einheit":"Stk",
+		"aktiv":true
+	}`)))
+	createMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createMaterialReq.Header.Set("Content-Type", "application/json")
+	createMaterialRec := httptest.NewRecorder()
+	handler.ServeHTTP(createMaterialRec, createMaterialReq)
+	if createMaterialRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for material create, got %d with body %s", createMaterialRec.Code, createMaterialRec.Body.String())
+	}
+
+	var createdMaterial struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createMaterialRec.Body.Bytes(), &createdMaterial); err != nil {
+		t.Fatalf("decode material create response: %v", err)
+	}
+
+	createOtherMaterialReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-GAEB-APPLY-0002",
+		"bezeichnung":"Stahl Profil 90mm",
+		"einheit":"Stk",
+		"aktiv":true
+	}`)))
+	createOtherMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createOtherMaterialReq.Header.Set("Content-Type", "application/json")
+	createOtherMaterialRec := httptest.NewRecorder()
+	handler.ServeHTTP(createOtherMaterialRec, createOtherMaterialReq)
+	if createOtherMaterialRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for other material create, got %d with body %s", createOtherMaterialRec.Code, createOtherMaterialRec.Body.String())
+	}
+
+	var otherMaterial struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createOtherMaterialRec.Body.Bytes(), &otherMaterial); err != nil {
+		t.Fatalf("decode other material create response: %v", err)
+	}
+
+	uploadBody := &bytes.Buffer{}
+	uploadWriter := multipart.NewWriter(uploadBody)
+	if err := uploadWriter.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := uploadWriter.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	fileWriter, err := uploadWriter.CreateFormFile("file", "gaeb-candidate-apply.x83")
+	if err != nil {
+		t.Fatalf("create upload form file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy gaeb content")); err != nil {
+		t.Fatalf("write upload file: %v", err)
+	}
+	if err := uploadWriter.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports", uploadBody)
+	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
+	uploadReq.Header.Set("Content-Type", uploadWriter.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode import upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, nil)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "itest-parser", "GAEB-X83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01",
+			Description: "Aluminium Profil 90mm",
+			Qty:         1,
+			Unit:        "Stk",
+			SortOrder:   1,
+		},
+	}); err != nil {
+		t.Fatalf("save parse result: %v", err)
+	}
+	importItems, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	if err != nil {
+		t.Fatalf("list import items: %v", err)
+	}
+	if len(importItems) != 1 {
+		t.Fatalf("expected one import item, got %+v", importItems)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, importItems[0].ID, "accepted", "Passender Kandidat sichtbar"); err != nil {
+		t.Fatalf("accept import item: %v", err)
+	}
+	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID); err != nil {
+		t.Fatalf("mark import reviewed: %v", err)
+	}
+
+	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID)
+	if err != nil {
+		t.Fatalf("apply import: %v", err)
+	}
+	if applied.Quote == nil || len(applied.Quote.Items) != 1 {
+		t.Fatalf("unexpected applied quote payload: %+v", applied)
+	}
+
+	itemID := applied.Quote.Items[0].ID
+	if itemID == "" {
+		t.Fatalf("expected quote item id in applied quote payload: %+v", applied.Quote.Items[0])
+	}
+	if len(applied.Quote.Items[0].MaterialCandidates) != 1 {
+		t.Fatalf("expected one visible material candidate, got %+v", applied.Quote.Items[0].MaterialCandidates)
+	}
+
+	invalidApplyReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+applied.Quote.ID.String()+"/items/"+itemID+"/apply-material-candidate", bytes.NewReader([]byte(`{
+		"material_id":"`+otherMaterial.ID+`"
+	}`)))
+	invalidApplyReq.Header.Set("Authorization", "Bearer "+accessToken)
+	invalidApplyReq.Header.Set("Content-Type", "application/json")
+	invalidApplyRec := httptest.NewRecorder()
+	handler.ServeHTTP(invalidApplyRec, invalidApplyReq)
+	if invalidApplyRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for non-visible candidate, got %d with body %s", invalidApplyRec.Code, invalidApplyRec.Body.String())
+	}
+
+	applyReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+applied.Quote.ID.String()+"/items/"+itemID+"/apply-material-candidate", bytes.NewReader([]byte(`{
+		"material_id":"`+createdMaterial.ID+`"
+	}`)))
+	applyReq.Header.Set("Authorization", "Bearer "+accessToken)
+	applyReq.Header.Set("Content-Type", "application/json")
+	applyRec := httptest.NewRecorder()
+	handler.ServeHTTP(applyRec, applyReq)
+	if applyRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for visible candidate apply, got %d with body %s", applyRec.Code, applyRec.Body.String())
+	}
+
+	var updatedQuote struct {
+		ID    string `json:"id"`
+		Items []struct {
+			ID                      string `json:"id"`
+			MaterialID              string `json:"material_id"`
+			PriceMappingStatus      string `json:"price_mapping_status"`
+			MaterialCandidateStatus string `json:"material_candidate_status"`
+			MaterialCandidates      []struct {
+				MaterialID string `json:"material_id"`
+			} `json:"material_candidates"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(applyRec.Body.Bytes(), &updatedQuote); err != nil {
+		t.Fatalf("decode candidate apply response: %v", err)
+	}
+	if len(updatedQuote.Items) != 1 {
+		t.Fatalf("expected one quote item after candidate apply, got %+v", updatedQuote.Items)
+	}
+	if updatedQuote.Items[0].MaterialID != createdMaterial.ID {
+		t.Fatalf("expected material_id %q after candidate apply, got %+v", createdMaterial.ID, updatedQuote.Items[0])
+	}
+	if updatedQuote.Items[0].PriceMappingStatus != "manual" {
+		t.Fatalf("expected price_mapping_status manual, got %+v", updatedQuote.Items[0])
+	}
+	if updatedQuote.Items[0].MaterialCandidateStatus != "none" {
+		t.Fatalf("expected candidate status none after candidate apply, got %+v", updatedQuote.Items[0])
+	}
+	if len(updatedQuote.Items[0].MaterialCandidates) != 0 {
+		t.Fatalf("expected no visible candidates after candidate apply, got %+v", updatedQuote.Items[0].MaterialCandidates)
+	}
+}
+
+func TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-revise@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-revise@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Revisionskunde GmbH",
+		"email":    "revision@example.com",
+		"telefon":  "+49 211 222222",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"Revisionstest Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"note":"Basisangebot fuer Revision",
+		"items":[
+			{"description":"Position A","qty":2,"unit":"Stk","unit_price":500,"tax_code":"DE19"},
+			{"description":"Position B","qty":1,"unit":"Std","unit_price":150,"tax_code":"DE19"}
+		]
+	}`)))
+	createQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createQuoteReq.Header.Set("Content-Type", "application/json")
+	createQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createQuoteRec, createQuoteReq)
+	if createQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for quote create, got %d with body %s", createQuoteRec.Code, createQuoteRec.Body.String())
+	}
+
+	var createdQuote struct {
+		ID          string `json:"id"`
+		Number      string `json:"number"`
+		RootQuoteID string `json:"root_quote_id"`
+		RevisionNo  int    `json:"revision_no"`
+	}
+	if err := json.Unmarshal(createQuoteRec.Body.Bytes(), &createdQuote); err != nil {
+		t.Fatalf("decode quote create response: %v", err)
+	}
+
+	reviseReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/revise", nil)
+	reviseReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviseRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviseRec, reviseReq)
+	if reviseRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for quote revise, got %d with body %s", reviseRec.Code, reviseRec.Body.String())
+	}
+
+	var revised struct {
+		SourceQuote struct {
+			ID                  string `json:"id"`
+			Number              string `json:"number"`
+			RootQuoteID         string `json:"root_quote_id"`
+			RevisionNo          int    `json:"revision_no"`
+			SupersededByQuoteID string `json:"superseded_by_quote_id"`
+			Status              string `json:"status"`
+			Items               []struct {
+				Description string  `json:"description"`
+				Qty         float64 `json:"qty"`
+			} `json:"items"`
+		} `json:"source_quote"`
+		RevisedQuote struct {
+			ID                  string `json:"id"`
+			Number              string `json:"number"`
+			RootQuoteID         string `json:"root_quote_id"`
+			RevisionNo          int    `json:"revision_no"`
+			SupersededByQuoteID string `json:"superseded_by_quote_id"`
+			Status              string `json:"status"`
+			Items               []struct {
+				Description string  `json:"description"`
+				Qty         float64 `json:"qty"`
+			} `json:"items"`
+		} `json:"revised_quote"`
+	}
+	if err := json.Unmarshal(reviseRec.Body.Bytes(), &revised); err != nil {
+		t.Fatalf("decode quote revise response: %v", err)
+	}
+
+	if revised.SourceQuote.ID != createdQuote.ID {
+		t.Fatalf("expected source quote id %q, got %q", createdQuote.ID, revised.SourceQuote.ID)
+	}
+	if revised.SourceQuote.RootQuoteID != createdQuote.RootQuoteID {
+		t.Fatalf("expected source root quote id %q, got %q", createdQuote.RootQuoteID, revised.SourceQuote.RootQuoteID)
+	}
+	if revised.SourceQuote.RevisionNo != 1 {
+		t.Fatalf("expected source revision_no 1, got %d", revised.SourceQuote.RevisionNo)
+	}
+	if revised.SourceQuote.SupersededByQuoteID != revised.RevisedQuote.ID {
+		t.Fatalf("expected source superseded_by_quote_id %q, got %q", revised.RevisedQuote.ID, revised.SourceQuote.SupersededByQuoteID)
+	}
+	if revised.RevisedQuote.ID == "" || revised.RevisedQuote.ID == revised.SourceQuote.ID {
+		t.Fatalf("expected different revised quote id, got %q", revised.RevisedQuote.ID)
+	}
+	if revised.RevisedQuote.Number != createdQuote.Number {
+		t.Fatalf("expected revised quote number %q, got %q", createdQuote.Number, revised.RevisedQuote.Number)
+	}
+	if revised.RevisedQuote.RootQuoteID != createdQuote.RootQuoteID {
+		t.Fatalf("expected revised root quote id %q, got %q", createdQuote.RootQuoteID, revised.RevisedQuote.RootQuoteID)
+	}
+	if revised.RevisedQuote.RevisionNo != 2 {
+		t.Fatalf("expected revised revision_no 2, got %d", revised.RevisedQuote.RevisionNo)
+	}
+	if revised.RevisedQuote.Status != "draft" {
+		t.Fatalf("expected revised quote status draft, got %q", revised.RevisedQuote.Status)
+	}
+	if revised.RevisedQuote.SupersededByQuoteID != "" {
+		t.Fatalf("expected revised quote without superseded_by_quote_id, got %q", revised.RevisedQuote.SupersededByQuoteID)
+	}
+	if len(revised.SourceQuote.Items) != 2 || len(revised.RevisedQuote.Items) != 2 {
+		t.Fatalf("expected 2 items on source and revised quote, got source=%d revised=%d", len(revised.SourceQuote.Items), len(revised.RevisedQuote.Items))
+	}
+	if revised.RevisedQuote.Items[0].Description != revised.SourceQuote.Items[0].Description || revised.RevisedQuote.Items[0].Qty != revised.SourceQuote.Items[0].Qty {
+		t.Fatalf("expected copied first quote item, got source=%+v revised=%+v", revised.SourceQuote.Items[0], revised.RevisedQuote.Items[0])
+	}
+
+	reviseAgainReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/revise", nil)
+	reviseAgainReq.Header.Set("Authorization", "Bearer "+accessToken)
+	reviseAgainRec := httptest.NewRecorder()
+	handler.ServeHTTP(reviseAgainRec, reviseAgainReq)
+	if reviseAgainRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for revising superseded quote, got %d with body %s", reviseAgainRec.Code, reviseAgainRec.Body.String())
+	}
+
+	updateSupersededReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/"+createdQuote.ID, bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"contact_id":"`+customerID+`",
+		"currency":"EUR",
+		"note":"Darf nicht gespeichert werden",
+		"items":[
+			{"description":"Position A","qty":2,"unit":"Stk","unit_price":500,"tax_code":"DE19"}
+		]
+	}`)))
+	updateSupersededReq.Header.Set("Authorization", "Bearer "+accessToken)
+	updateSupersededReq.Header.Set("Content-Type", "application/json")
+	updateSupersededRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateSupersededRec, updateSupersededReq)
+	if updateSupersededRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for updating superseded quote, got %d with body %s", updateSupersededRec.Code, updateSupersededRec.Body.String())
+	}
+
+	statusSupersededReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/status", bytes.NewReader([]byte(`{"status":"sent"}`)))
+	statusSupersededReq.Header.Set("Authorization", "Bearer "+accessToken)
+	statusSupersededReq.Header.Set("Content-Type", "application/json")
+	statusSupersededRec := httptest.NewRecorder()
+	handler.ServeHTTP(statusSupersededRec, statusSupersededReq)
+	if statusSupersededRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for status update on superseded quote, got %d with body %s", statusSupersededRec.Code, statusSupersededRec.Body.String())
+	}
+
+	convertInvoiceSupersededReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{"revenue_account":"8000"}`)))
+	convertInvoiceSupersededReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertInvoiceSupersededReq.Header.Set("Content-Type", "application/json")
+	convertInvoiceSupersededRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertInvoiceSupersededRec, convertInvoiceSupersededReq)
+	if convertInvoiceSupersededRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invoice conversion on superseded quote, got %d with body %s", convertInvoiceSupersededRec.Code, convertInvoiceSupersededRec.Body.String())
+	}
+
+	acceptRevisedReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+revised.RevisedQuote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptRevisedReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptRevisedReq.Header.Set("Content-Type", "application/json")
+	acceptRevisedRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptRevisedRec, acceptRevisedReq)
+	if acceptRevisedRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for accepting revised quote, got %d with body %s", acceptRevisedRec.Code, acceptRevisedRec.Body.String())
+	}
+
+	convertSalesOrderSupersededReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+createdQuote.ID+"/convert-to-sales-order", nil)
+	convertSalesOrderSupersededReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertSalesOrderSupersededRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertSalesOrderSupersededRec, convertSalesOrderSupersededReq)
+	if convertSalesOrderSupersededRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for sales order conversion on superseded quote, got %d with body %s", convertSalesOrderSupersededRec.Code, convertSalesOrderSupersededRec.Body.String())
+	}
+}
+
+func TestCommercialWorkflowEndpointListsOpenFollowActions(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-workflow@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-workflow@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Workflow Kunde GmbH",
+		"email":    "workflow@example.com",
+		"telefon":  "+49 211 333333",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"Workflow Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	createSentQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Sent Position","qty":1,"unit":"Stk","unit_price":1000,"tax_code":"DE19"}]
+	}`)))
+	createSentQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createSentQuoteReq.Header.Set("Content-Type", "application/json")
+	createSentQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createSentQuoteRec, createSentQuoteReq)
+	if createSentQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for sent quote create, got %d with body %s", createSentQuoteRec.Code, createSentQuoteRec.Body.String())
+	}
+	var sentQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createSentQuoteRec.Body.Bytes(), &sentQuote); err != nil {
+		t.Fatalf("decode sent quote create response: %v", err)
+	}
+	sentQuoteStatusReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+sentQuote.ID+"/status", bytes.NewReader([]byte(`{"status":"sent"}`)))
+	sentQuoteStatusReq.Header.Set("Authorization", "Bearer "+accessToken)
+	sentQuoteStatusReq.Header.Set("Content-Type", "application/json")
+	sentQuoteStatusRec := httptest.NewRecorder()
+	handler.ServeHTTP(sentQuoteStatusRec, sentQuoteStatusReq)
+	if sentQuoteStatusRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sent quote status update, got %d with body %s", sentQuoteStatusRec.Code, sentQuoteStatusRec.Body.String())
+	}
+
+	createAcceptedQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Accepted Position","qty":1,"unit":"Stk","unit_price":900,"tax_code":"DE19"}]
+	}`)))
+	createAcceptedQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createAcceptedQuoteReq.Header.Set("Content-Type", "application/json")
+	createAcceptedQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createAcceptedQuoteRec, createAcceptedQuoteReq)
+	if createAcceptedQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for accepted quote create, got %d with body %s", createAcceptedQuoteRec.Code, createAcceptedQuoteRec.Body.String())
+	}
+	var acceptedQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createAcceptedQuoteRec.Body.Bytes(), &acceptedQuote); err != nil {
+		t.Fatalf("decode accepted quote create response: %v", err)
+	}
+	acceptQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+acceptedQuote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptQuoteReq.Header.Set("Content-Type", "application/json")
+	acceptQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptQuoteRec, acceptQuoteReq)
+	if acceptQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote accept, got %d with body %s", acceptQuoteRec.Code, acceptQuoteRec.Body.String())
+	}
+
+	createPendingOrderQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Order Position","qty":2,"unit":"Stk","unit_price":700,"tax_code":"DE19"}]
+	}`)))
+	createPendingOrderQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createPendingOrderQuoteReq.Header.Set("Content-Type", "application/json")
+	createPendingOrderQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createPendingOrderQuoteRec, createPendingOrderQuoteReq)
+	if createPendingOrderQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for pending-order quote create, got %d with body %s", createPendingOrderQuoteRec.Code, createPendingOrderQuoteRec.Body.String())
+	}
+	var pendingOrderQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createPendingOrderQuoteRec.Body.Bytes(), &pendingOrderQuote); err != nil {
+		t.Fatalf("decode pending-order quote create response: %v", err)
+	}
+	acceptPendingOrderQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+pendingOrderQuote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptPendingOrderQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptPendingOrderQuoteReq.Header.Set("Content-Type", "application/json")
+	acceptPendingOrderQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptPendingOrderQuoteRec, acceptPendingOrderQuoteReq)
+	if acceptPendingOrderQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for pending-order quote accept, got %d with body %s", acceptPendingOrderQuoteRec.Code, acceptPendingOrderQuoteRec.Body.String())
+	}
+	convertPendingOrderReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+pendingOrderQuote.ID+"/convert-to-sales-order", nil)
+	convertPendingOrderReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertPendingOrderRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertPendingOrderRec, convertPendingOrderReq)
+	if convertPendingOrderRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for pending sales order conversion, got %d with body %s", convertPendingOrderRec.Code, convertPendingOrderRec.Body.String())
+	}
+	var pendingSalesOrder struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(convertPendingOrderRec.Body.Bytes(), &pendingSalesOrder); err != nil {
+		t.Fatalf("decode pending sales order response: %v", err)
+	}
+
+	createPartialOrderQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Partial Position","qty":3,"unit":"Stk","unit_price":400,"tax_code":"DE19"}]
+	}`)))
+	createPartialOrderQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createPartialOrderQuoteReq.Header.Set("Content-Type", "application/json")
+	createPartialOrderQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createPartialOrderQuoteRec, createPartialOrderQuoteReq)
+	if createPartialOrderQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for partial-order quote create, got %d with body %s", createPartialOrderQuoteRec.Code, createPartialOrderQuoteRec.Body.String())
+	}
+	var partialOrderQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createPartialOrderQuoteRec.Body.Bytes(), &partialOrderQuote); err != nil {
+		t.Fatalf("decode partial-order quote create response: %v", err)
+	}
+	acceptPartialOrderQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+partialOrderQuote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptPartialOrderQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptPartialOrderQuoteReq.Header.Set("Content-Type", "application/json")
+	acceptPartialOrderQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptPartialOrderQuoteRec, acceptPartialOrderQuoteReq)
+	if acceptPartialOrderQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for partial-order quote accept, got %d with body %s", acceptPartialOrderQuoteRec.Code, acceptPartialOrderQuoteRec.Body.String())
+	}
+	convertPartialOrderReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+partialOrderQuote.ID+"/convert-to-sales-order", nil)
+	convertPartialOrderReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertPartialOrderRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertPartialOrderRec, convertPartialOrderReq)
+	if convertPartialOrderRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for partial sales order conversion, got %d with body %s", convertPartialOrderRec.Code, convertPartialOrderRec.Body.String())
+	}
+	var partialSalesOrder struct {
+		ID    string `json:"id"`
+		Items []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(convertPartialOrderRec.Body.Bytes(), &partialSalesOrder); err != nil {
+		t.Fatalf("decode partial sales order response: %v", err)
+	}
+	if len(partialSalesOrder.Items) != 1 {
+		t.Fatalf("expected 1 partial sales order item, got %d", len(partialSalesOrder.Items))
+	}
+	partialInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+partialSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
+		"invoice_date":"2026-04-03T00:00:00Z",
+		"due_date":"2026-04-17T00:00:00Z",
+		"revenue_account":"8000",
+		"items":[{"sales_order_item_id":"`+partialSalesOrder.Items[0].ID+`","qty":1}]
+	}`)))
+	partialInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	partialInvoiceReq.Header.Set("Content-Type", "application/json")
+	partialInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(partialInvoiceRec, partialInvoiceReq)
+	if partialInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for partial invoice conversion, got %d with body %s", partialInvoiceRec.Code, partialInvoiceRec.Body.String())
+	}
+
+	createSupersededQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+createdProject.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Superseded Position","qty":1,"unit":"Stk","unit_price":500,"tax_code":"DE19"}]
+	}`)))
+	createSupersededQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createSupersededQuoteReq.Header.Set("Content-Type", "application/json")
+	createSupersededQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createSupersededQuoteRec, createSupersededQuoteReq)
+	if createSupersededQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for superseded quote create, got %d with body %s", createSupersededQuoteRec.Code, createSupersededQuoteRec.Body.String())
+	}
+	var supersededQuote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createSupersededQuoteRec.Body.Bytes(), &supersededQuote); err != nil {
+		t.Fatalf("decode superseded quote create response: %v", err)
+	}
+	supersededQuoteStatusReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+supersededQuote.ID+"/status", bytes.NewReader([]byte(`{"status":"sent"}`)))
+	supersededQuoteStatusReq.Header.Set("Authorization", "Bearer "+accessToken)
+	supersededQuoteStatusReq.Header.Set("Content-Type", "application/json")
+	supersededQuoteStatusRec := httptest.NewRecorder()
+	handler.ServeHTTP(supersededQuoteStatusRec, supersededQuoteStatusReq)
+	if supersededQuoteStatusRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for superseded quote status update, got %d with body %s", supersededQuoteStatusRec.Code, supersededQuoteStatusRec.Body.String())
+	}
+	supersededReviseReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+supersededQuote.ID+"/revise", nil)
+	supersededReviseReq.Header.Set("Authorization", "Bearer "+accessToken)
+	supersededReviseRec := httptest.NewRecorder()
+	handler.ServeHTTP(supersededReviseRec, supersededReviseReq)
+	if supersededReviseRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for superseded quote revise, got %d with body %s", supersededReviseRec.Code, supersededReviseRec.Body.String())
+	}
+
+	workflowReq := httptest.NewRequest(http.MethodGet, "/api/v1/workflow/commercial?project_id="+createdProject.ID, nil)
+	workflowReq.Header.Set("Authorization", "Bearer "+accessToken)
+	workflowRec := httptest.NewRecorder()
+	handler.ServeHTTP(workflowRec, workflowReq)
+	if workflowRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for commercial workflow, got %d with body %s", workflowRec.Code, workflowRec.Body.String())
+	}
+
+	var workflowResp struct {
+		Items []struct {
+			Kind            string  `json:"kind"`
+			Priority        string  `json:"priority"`
+			QuoteID         string  `json:"quote_id"`
+			SalesOrderID    string  `json:"sales_order_id"`
+			OpenGrossTotal  float64 `json:"open_gross_total"`
+			NextActionLabel string  `json:"next_action_label"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(workflowRec.Body.Bytes(), &workflowResp); err != nil {
+		t.Fatalf("decode commercial workflow response: %v", err)
+	}
+	if len(workflowResp.Items) != 4 {
+		t.Fatalf("expected 4 workflow items, got %d: %s", len(workflowResp.Items), workflowRec.Body.String())
+	}
+
+	kinds := make(map[string]bool)
+	foundPendingOrder := false
+	foundPartialOrder := false
+	for _, item := range workflowResp.Items {
+		kinds[item.Kind] = true
+		if item.QuoteID == supersededQuote.ID {
+			t.Fatalf("expected superseded quote %q to be excluded from workflow items", supersededQuote.ID)
+		}
+		if item.SalesOrderID == pendingSalesOrder.ID {
+			foundPendingOrder = item.Kind == "sales_order_pending_invoice" && item.Priority == "high"
+		}
+		if item.SalesOrderID == partialSalesOrder.ID {
+			foundPartialOrder = item.Kind == "sales_order_partially_invoiced" && item.OpenGrossTotal > 0 && item.NextActionLabel == "Restbetrag fakturieren"
+		}
+	}
+	if !kinds["quote_sent_pending"] {
+		t.Fatal("expected quote_sent_pending workflow item")
+	}
+	if !kinds["quote_accepted_pending_followup"] {
+		t.Fatal("expected quote_accepted_pending_followup workflow item")
+	}
+	if !kinds["sales_order_pending_invoice"] {
+		t.Fatal("expected sales_order_pending_invoice workflow item")
+	}
+	if !kinds["sales_order_partially_invoiced"] {
+		t.Fatal("expected sales_order_partially_invoiced workflow item")
+	}
+	if !foundPendingOrder {
+		t.Fatal("expected pending sales order item with high priority")
+	}
+	if !foundPartialOrder {
+		t.Fatal("expected partial sales order item with positive open amount and follow-up label")
+	}
+
+	filterReq := httptest.NewRequest(http.MethodGet, "/api/v1/workflow/commercial?project_id="+createdProject.ID+"&kind=quote_accepted_pending_followup", nil)
+	filterReq.Header.Set("Authorization", "Bearer "+accessToken)
+	filterRec := httptest.NewRecorder()
+	handler.ServeHTTP(filterRec, filterReq)
+	if filterRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for filtered commercial workflow, got %d with body %s", filterRec.Code, filterRec.Body.String())
+	}
+	var filtered struct {
+		Items []struct {
+			Kind string `json:"kind"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(filterRec.Body.Bytes(), &filtered); err != nil {
+		t.Fatalf("decode filtered workflow response: %v", err)
+	}
+	if len(filtered.Items) != 1 || filtered.Items[0].Kind != "quote_accepted_pending_followup" {
+		t.Fatalf("expected exactly one filtered accepted-quote item, got %+v", filtered.Items)
 	}
 }

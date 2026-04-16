@@ -137,14 +137,18 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 	var contactID string
 	var currency string
 	var note string
+	var supersededByQuoteID uuid.NullUUID
 	var linkedInvoiceID uuid.NullUUID
 	var linkedSalesOrderID uuid.NullUUID
-	err = tx.QueryRow(ctx, `SELECT status, project_id::text, contact_id, currency, COALESCE(note,''), linked_invoice_out_id, linked_sales_order_id
+	err = tx.QueryRow(ctx, `SELECT status, project_id::text, contact_id, currency, COALESCE(note,''), superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id
 		FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(
-		&status, &projectID, &contactID, &currency, &note, &linkedInvoiceID, &linkedSalesOrderID,
+		&status, &projectID, &contactID, &currency, &note, &supersededByQuoteID, &linkedInvoiceID, &linkedSalesOrderID,
 	)
 	if err != nil {
 		return nil, err
+	}
+	if supersededByQuoteID.Valid {
+		return nil, errors.New("Historische Angebotsversionen können nicht in Folgebelege überführt werden")
 	}
 	if status != "accepted" {
 		return nil, errors.New("nur angenommene Angebote können in Aufträge überführt werden")

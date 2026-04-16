@@ -191,3 +191,166 @@ func TestMaterialsCreateReturnsStructuredValidationError(t *testing.T) {
 		t.Fatalf("expected validation message, got %q", body.Error.Message)
 	}
 }
+
+func TestMaterialsCreateAcceptsActiveMaterialGroupCategory(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-catalog@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(t.Context(), `
+        INSERT INTO material_groups (code, name, is_active, sort_order)
+        VALUES ('catalog-active', 'Katalog Aktiv', TRUE, 10)
+        ON CONFLICT (code) DO UPDATE
+        SET name = EXCLUDED.name,
+            is_active = EXCLUDED.is_active,
+            sort_order = EXCLUDED.sort_order,
+            updated_at = now()
+    `); err != nil {
+		t.Fatalf("seed material group: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-catalog@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-CATALOG-0001",
+		"bezeichnung":"Katalogmaterial",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"kategorie":"catalog-active"
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMaterialsCreateRejectsUnknownCategory(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-invalid-category@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-invalid-category@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-INVALID-CAT",
+		"bezeichnung":"Unbekannte Kategorie",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"kategorie":"does-not-exist-yet"
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if body.Error.Code != "validation_error" {
+		t.Fatalf("expected validation_error, got %q", body.Error.Code)
+	}
+	if body.Error.Message != "Ungültige Materialkategorie" {
+		t.Fatalf("expected material category validation message, got %q", body.Error.Message)
+	}
+}
+
+func TestMaterialsCreateAllowsEmptyCategory(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-empty-category@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-empty-category@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-NO-CAT",
+		"bezeichnung":"Ohne Kategorie",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"kategorie":"   "
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMaterialsUpdateAllowsExistingLegacyCategory(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-legacy-category@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(t.Context(), `
+        INSERT INTO materials (
+            id, nummer, bezeichnung, typ, einheit, dichte, kategorie, attributes
+        ) VALUES (
+            'mat-legacy-category-itest',
+            'MAT-LEGACY-0001',
+            'Legacy Material',
+            'profil',
+            'Stk',
+            2.7,
+            'legacy-existing',
+            '{}'::jsonb
+        )
+        ON CONFLICT (id) DO UPDATE
+        SET nummer = EXCLUDED.nummer,
+            bezeichnung = EXCLUDED.bezeichnung,
+            typ = EXCLUDED.typ,
+            einheit = EXCLUDED.einheit,
+            dichte = EXCLUDED.dichte,
+            kategorie = EXCLUDED.kategorie,
+            attributes = EXCLUDED.attributes
+    `); err != nil {
+		t.Fatalf("seed legacy material: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-legacy-category@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/materials/mat-legacy-category-itest", bytes.NewReader([]byte(`{
+		"kategorie":"legacy-existing"
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		ID        string `json:"id"`
+		Kategorie string `json:"kategorie"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode update response: %v", err)
+	}
+	if body.Kategorie != "legacy-existing" {
+		t.Fatalf("expected legacy category to remain allowed, got %q", body.Kategorie)
+	}
+}

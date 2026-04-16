@@ -53,11 +53,13 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
 	pdfSvc := settings.NewPDFService(pg)
 	unitSvc := settings.NewUnitService(pg)
+	materialGroupSvc := settings.NewMaterialGroupService(pg)
+	quoteTextBlockSvc := settings.NewQuoteTextBlockService(pg)
 	companySvc := settings.NewCompanyService(pg)
 	locSvc := settings.NewLocalizationService(pg)
 	brandingSvc := settings.NewBrandingService(pg)
 	projSvc := projects.NewService(pg)
-	quoteSvc := quotes.NewService(pg, numSvc)
+	quoteSvc := quotes.NewService(pg, numSvc).WithMongo(mg, cfg.MongoDB)
 	salesSvc := sales.NewService(pg, numSvc)
 
 	r.Route("/auth", func(r chi.Router) {
@@ -506,6 +508,15 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 		r.With(requirePermission("contacts.read")).Get("/{id}/activity", func(w http.ResponseWriter, req *http.Request) {
 			id := chi.URLParam(req, "id")
 			out, err := conSvc.ListActivity(req.Context(), id)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("contacts.read")).Get("/{id}/commercial-context", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			out, err := buildContactCommercialContext(req.Context(), id, quoteSvc, salesSvc, arSvc)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -1219,6 +1230,114 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 	})
 
 	protected.Route("/quotes", func(r chi.Router) {
+		r.With(requirePermission("quotes.read")).Get("/imports", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			lim, off := 0, 0
+			if v := q.Get("limit"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					lim = n
+				}
+			}
+			if v := q.Get("offset"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					off = n
+				}
+			}
+			list, err := quoteSvc.ListImports(req.Context(), quotes.QuoteImportFilter{
+				ProjectID: q.Get("project_id"),
+				ContactID: q.Get("contact_id"),
+				Limit:     lim,
+				Offset:    off,
+			})
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+		r.With(requirePermission("quotes.write")).Post("/imports/gaeb", func(w http.ResponseWriter, req *http.Request) {
+			if err := req.ParseMultipartForm(32 << 20); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültiges Upload-Formular", err)
+				return
+			}
+			file, header, err := req.FormFile("file")
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Datei fehlt (Feld 'file')", err)
+				return
+			}
+			defer file.Close()
+			out, err := quoteSvc.CreateGAEBImport(req.Context(), quotes.QuoteImportCreateInput{
+				ProjectID: req.FormValue("project_id"),
+				ContactID: req.FormValue("contact_id"),
+			}, file, header.Filename)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/imports/{id}", func(w http.ResponseWriter, req *http.Request) {
+			out, err := quoteSvc.GetImport(req.Context(), chi.URLParam(req, "id"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/imports/{id}/items", func(w http.ResponseWriter, req *http.Request) {
+			out, err := quoteSvc.ListImportItems(req.Context(), chi.URLParam(req, "id"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/imports/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			out, err := quoteSvc.GetImportItem(req.Context(), chi.URLParam(req, "id"), chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Patch("/imports/{id}/review", func(w http.ResponseWriter, req *http.Request) {
+			out, err := quoteSvc.MarkImportReviewed(req.Context(), chi.URLParam(req, "id"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Patch("/imports/{id}/items/{itemID}/review", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				ReviewStatus string `json:"review_status"`
+				ReviewNote   string `json:"review_note"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := quoteSvc.UpdateImportItemReview(
+				req.Context(),
+				chi.URLParam(req, "id"),
+				chi.URLParam(req, "itemID"),
+				in.ReviewStatus,
+				in.ReviewNote,
+			)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/imports/{id}/apply", func(w http.ResponseWriter, req *http.Request) {
+			out, err := quoteSvc.ApplyImportToDraftQuote(req.Context(), chi.URLParam(req, "id"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
 		r.With(requirePermission("quotes.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
 			q := req.URL.Query()
 			lim, off := 0, 0
@@ -1290,6 +1409,31 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-material-candidate", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			var in struct {
+				MaterialID string `json:"material_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := quoteSvc.ApplyMaterialCandidate(req.Context(), quoteID, itemID, in.MaterialID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(requirePermission("quotes.write")).Post("/{id}/status", func(w http.ResponseWriter, req *http.Request) {
 			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
@@ -1347,6 +1491,19 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 				return
 			}
 			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/revise", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			out, err := quoteSvc.Revise(req.Context(), quoteID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
 		})
 		r.With(requirePermission("quotes.write"), requirePermission("invoices_out.write")).Post("/{id}/convert-to-invoice", func(w http.ResponseWriter, req *http.Request) {
 			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
@@ -1654,6 +1811,15 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 		r.With(requirePermission("projects.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 			id := chi.URLParam(req, "id")
 			out, err := projSvc.Get(req.Context(), id)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("projects.read")).Get("/{id}/commercial-context", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			out, err := buildProjectCommercialContext(req.Context(), id, pg, quoteSvc, salesSvc)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -2504,6 +2670,68 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 		})
 	})
 
+	protected.With(requirePermission("settings.manage")).Route("/settings/material-groups", func(r chi.Router) {
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			list, err := materialGroupSvc.List(req.Context())
+			if err != nil {
+				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+		r.Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in settings.MaterialGroup
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			if err := materialGroupSvc.Upsert(req.Context(), in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		r.Delete("/{code}", func(w http.ResponseWriter, req *http.Request) {
+			code := chi.URLParam(req, "code")
+			if err := materialGroupSvc.Delete(req.Context(), code); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	})
+
+	protected.With(requirePermission("settings.manage")).Route("/settings/quote-text-blocks", func(r chi.Router) {
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			list, err := quoteTextBlockSvc.List(req.Context())
+			if err != nil {
+				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+		r.Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in settings.QuoteTextBlock
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			if err := quoteTextBlockSvc.Upsert(req.Context(), in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		r.Delete("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			if err := quoteTextBlockSvc.Delete(req.Context(), id); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+	})
+
 	// Einstellungen – Firmenprofil / Bankdaten
 	protected.With(requirePermission("settings.manage")).Route("/settings/company", func(r chi.Router) {
 		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -2645,6 +2873,21 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 			// can't write header after body; just stop
 			return
 		}
+	})
+
+	protected.Route("/workflow", func(r chi.Router) {
+		r.With(requirePermission("quotes.read"), requirePermission("sales_orders.read")).Get("/commercial", func(w http.ResponseWriter, req *http.Request) {
+			out, err := buildCommercialWorkflow(req.Context(), pg, quoteSvc, salesSvc, commercialWorkflowFilter{
+				ProjectID: strings.TrimSpace(req.URL.Query().Get("project_id")),
+				ContactID: strings.TrimSpace(req.URL.Query().Get("contact_id")),
+				Kind:      strings.TrimSpace(req.URL.Query().Get("kind")),
+			})
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 	})
 
 	protected.Route("/stock-movements", func(r chi.Router) {

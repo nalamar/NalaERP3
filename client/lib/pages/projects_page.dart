@@ -143,7 +143,7 @@ class _ProjectsPageState extends State<ProjectsPage> {
                           final p = _projects[index] as Map<String, dynamic>;
                           return ListTile(
                             leading: CircleAvatar(
-                                backgroundColor: color.withOpacity(0.12),
+                                backgroundColor: color.withValues(alpha: 0.12),
                                 child: Icon(Icons.work_outline_rounded,
                                     color: color)),
                             title: Text(p['name']?.toString() ?? 'Projekt'),
@@ -374,14 +374,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> {
     try {
       final projectId = widget.project['id'] as String;
       final list = await widget.api.listProjectPhases(projectId);
-      final quotes =
-          await widget.api.listQuotes(projectId: projectId, limit: 200);
+      final commercialContext =
+          await widget.api.getProjectCommercialContext(projectId);
+      final quotes = (commercialContext['quotes'] as List?) ?? const [];
       final salesOrders =
-          await widget.api.listSalesOrders(projectId: projectId, limit: 200);
+          (commercialContext['sales_orders'] as List?) ?? const [];
+      final invoices = (commercialContext['invoices_out'] as List?) ?? const [];
       setState(() {
         _phases = list;
         _commercialSnapshot =
-            summarizeProjectCommercialContext(quotes, salesOrders);
+            summarizeProjectCommercialContext(quotes, salesOrders, invoices);
       });
     } catch (e) {
       setState(() {
@@ -654,10 +656,13 @@ class _ProjectCommercialCard extends StatelessWidget {
 
     return CommercialSummaryCard(
       headline:
-          '${data.quoteCount} Angebote  •  ${data.salesOrderCount} Aufträge',
+          '${data.quoteCount} Angebote  •  ${data.salesOrderCount} Aufträge  •  ${data.invoiceCount} Rechnungen',
       lines: [
         '${data.quotesWithFollowUp} Angebote mit Folgebeleg',
         '${data.partialSalesOrderCount} Aufträge in Teilfaktura',
+        '${data.openInvoiceCount} offene Rechnungen',
+        'Rechnungsvolumen: ${data.invoiceGrossAmount.toStringAsFixed(2)} EUR',
+        'Offener Rechnungsbetrag: ${data.openInvoiceAmount.toStringAsFixed(2)} EUR',
         'Offener Restbetrag: ${data.remainingGrossAmount.toStringAsFixed(2)} EUR',
       ],
       footer: canOpenQuotes || canOpenSalesOrders
@@ -1142,7 +1147,10 @@ class _NoImagePlaceholder extends StatelessWidget {
   final String text;
   @override
   Widget build(BuildContext context) {
-    final bg = Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5);
+    final bg = Theme.of(context)
+        .colorScheme
+        .surfaceContainerHighest
+        .withValues(alpha: 0.5);
     final fg = Theme.of(context).colorScheme.onSurfaceVariant;
     return Container(
       width: 200,
@@ -1217,14 +1225,6 @@ class _VariantTileState extends State<_VariantTile> {
           }
         }
       }
-    }
-    return null;
-  }
-
-  dynamic _firstNonNull(Map<String, dynamic> m, List<String> keys) {
-    for (final k in keys) {
-      if (m.containsKey(k) && m[k] != null && m[k].toString().isNotEmpty)
-        return m[k];
     }
     return null;
   }

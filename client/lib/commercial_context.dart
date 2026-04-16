@@ -15,15 +15,23 @@ class ProjectCommercialStats {
     this.quoteCount = 0,
     this.quotesWithFollowUp = 0,
     this.salesOrderCount = 0,
+    this.invoiceCount = 0,
     this.partialSalesOrderCount = 0,
     this.remainingGrossAmount = 0,
+    this.invoiceGrossAmount = 0,
+    this.openInvoiceCount = 0,
+    this.openInvoiceAmount = 0,
   });
 
   final int quoteCount;
   final int quotesWithFollowUp;
   final int salesOrderCount;
+  final int invoiceCount;
   final int partialSalesOrderCount;
   final double remainingGrossAmount;
+  final double invoiceGrossAmount;
+  final int openInvoiceCount;
+  final double openInvoiceAmount;
 }
 
 SalesOrderCommercialStats summarizeSalesOrders(List<dynamic> salesOrders) {
@@ -55,6 +63,7 @@ SalesOrderCommercialStats summarizeSalesOrders(List<dynamic> salesOrders) {
 ProjectCommercialStats summarizeProjectCommercialContext(
   List<dynamic> quotes,
   List<dynamic> salesOrders,
+  List<dynamic> invoices,
 ) {
   var quotesWithFollowUp = 0;
   for (final entry in quotes) {
@@ -66,13 +75,32 @@ ProjectCommercialStats summarizeProjectCommercialContext(
   }
 
   final salesOrderStats = summarizeSalesOrders(salesOrders);
+  var invoiceGrossAmount = 0.0;
+  var openInvoiceCount = 0;
+  var openInvoiceAmount = 0.0;
+
+  for (final entry in invoices) {
+    final item = (entry as Map).cast<String, dynamic>();
+    final gross = toCommercialDouble(item['gross_amount']);
+    final paid = toCommercialDouble(item['paid_amount']);
+    final open = gross - paid;
+    invoiceGrossAmount += gross;
+    if (open > 0.0001) {
+      openInvoiceCount += 1;
+      openInvoiceAmount += open;
+    }
+  }
 
   return ProjectCommercialStats(
     quoteCount: quotes.length,
     quotesWithFollowUp: quotesWithFollowUp,
     salesOrderCount: salesOrders.length,
+    invoiceCount: invoices.length,
     partialSalesOrderCount: salesOrderStats.partialCount,
     remainingGrossAmount: salesOrderStats.remainingGross,
+    invoiceGrossAmount: invoiceGrossAmount,
+    openInvoiceCount: openInvoiceCount,
+    openInvoiceAmount: openInvoiceAmount,
   );
 }
 
