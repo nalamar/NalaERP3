@@ -306,6 +306,72 @@ func TestCompanyLocalizationSettingsFlow(t *testing.T) {
 	}
 }
 
+func TestQuoteCalculationSettingsFlow(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-quote-calculation@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-quote-calculation@example.com", "Secret123!")
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/quote-calculation", nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for initial quote calculation settings, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var initial struct {
+		TargetMarginPercent float64 `json:"target_margin_percent"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &initial); err != nil {
+		t.Fatalf("decode initial quote calculation settings: %v", err)
+	}
+	if initial.TargetMarginPercent != 20 {
+		t.Fatalf("expected default target margin 20, got %+v", initial)
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/quote-calculation", bytes.NewReader([]byte(`{
+		"target_margin_percent": 27.5
+	}`)))
+	updateReq.Header.Set("Authorization", "Bearer "+accessToken)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for quote calculation update, got %d with body %s", updateRec.Code, updateRec.Body.String())
+	}
+
+	getAfterReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/quote-calculation", nil)
+	getAfterReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getAfterRec := httptest.NewRecorder()
+	handler.ServeHTTP(getAfterRec, getAfterReq)
+	if getAfterRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for updated quote calculation settings, got %d with body %s", getAfterRec.Code, getAfterRec.Body.String())
+	}
+
+	var updated struct {
+		TargetMarginPercent float64 `json:"target_margin_percent"`
+	}
+	if err := json.Unmarshal(getAfterRec.Body.Bytes(), &updated); err != nil {
+		t.Fatalf("decode updated quote calculation settings: %v", err)
+	}
+	if updated.TargetMarginPercent != 27.5 {
+		t.Fatalf("expected updated target margin 27.5, got %+v", updated)
+	}
+
+	invalidReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/quote-calculation", bytes.NewReader([]byte(`{
+		"target_margin_percent": -1
+	}`)))
+	invalidReq.Header.Set("Authorization", "Bearer "+accessToken)
+	invalidReq.Header.Set("Content-Type", "application/json")
+	invalidRec := httptest.NewRecorder()
+	handler.ServeHTTP(invalidRec, invalidReq)
+	if invalidRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid quote calculation settings, got %d with body %s", invalidRec.Code, invalidRec.Body.String())
+	}
+}
+
 func TestCompanyBrandingSettingsFlow(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
 	testutil.SeedAuthUser(t, env, "integration-settings-branding@example.com", "Secret123!", "admin")

@@ -344,6 +344,10 @@ class ApiClient {
       _getJson('/api/v1/settings/company/branding');
   Future<void> updateBrandingSettings(Map<String, dynamic> body) =>
       _putJson('/api/v1/settings/company/branding', body);
+  Future<Map<String, dynamic>> getQuoteCalculationSettings() =>
+      _getJson('/api/v1/settings/quote-calculation');
+  Future<void> updateQuoteCalculationSettings(Map<String, dynamic> body) =>
+      _putJson('/api/v1/settings/quote-calculation', body);
   Future<List<dynamic>> listCompanyBranches() =>
       _getList('/api/v1/settings/company/branches');
   Future<Map<String, dynamic>> createCompanyBranch(
@@ -510,6 +514,50 @@ class ApiClient {
     return _getList('/api/v1/quotes', qp.isEmpty ? null : qp);
   }
 
+  Future<List<dynamic>> listQuoteApprovalRework({
+    String? projectId,
+    String? contactId,
+    String? quoteId,
+  }) async {
+    final qp = <String, String>{};
+    if (projectId != null && projectId.isNotEmpty) {
+      qp['project_id'] = projectId;
+    }
+    if (contactId != null && contactId.isNotEmpty) {
+      qp['contact_id'] = contactId;
+    }
+    if (quoteId != null && quoteId.isNotEmpty) {
+      qp['quote_id'] = quoteId;
+    }
+    final response = await _getJson(
+      '/api/v1/quotes/approval-rework',
+      qp.isEmpty ? null : qp,
+    );
+    return (response['items'] as List?) ?? const [];
+  }
+
+  Future<List<dynamic>> listQuoteApprovalRequests({
+    String? projectId,
+    String? contactId,
+    String? quoteId,
+  }) async {
+    final qp = <String, String>{};
+    if (projectId != null && projectId.isNotEmpty) {
+      qp['project_id'] = projectId;
+    }
+    if (contactId != null && contactId.isNotEmpty) {
+      qp['contact_id'] = contactId;
+    }
+    if (quoteId != null && quoteId.isNotEmpty) {
+      qp['quote_id'] = quoteId;
+    }
+    final response = await _getJson(
+      '/api/v1/quotes/approval-requests',
+      qp.isEmpty ? null : qp,
+    );
+    return (response['items'] as List?) ?? const [];
+  }
+
   Future<Map<String, dynamic>> createQuote(Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
@@ -548,6 +596,252 @@ class ApiClient {
         _u('/api/v1/quotes/$quoteId/items/$itemId/apply-material-candidate'),
         headers: {...headers, 'Content-Type': 'application/json'},
         body: jsonEncode({'material_id': materialId}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> searchQuoteItemMaterials(
+    String quoteId,
+    String itemId, {
+    required String query,
+  }) async {
+    final qp = <String, String>{'q': query};
+    return _getList(
+      '/api/v1/quotes/$quoteId/items/$itemId/material-search',
+      qp,
+    );
+  }
+
+  Future<Map<String, dynamic>> applyQuoteMaterialSearchResult(
+    String quoteId,
+    String itemId, {
+    required String query,
+    required String materialId,
+  }) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/apply-material-search-result'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'query': query,
+          'material_id': materialId,
+        }),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemPriceSuggestion(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson('/api/v1/quotes/$quoteId/items/$itemId/price-suggestion');
+  }
+
+  Future<List<dynamic>> getQuoteItemPriceHistory(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getList('/api/v1/quotes/$quoteId/items/$itemId/price-history');
+  }
+
+  Future<List<dynamic>> getQuoteItemPriceSourcePriority(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getList(
+        '/api/v1/quotes/$quoteId/items/$itemId/price-source-priority');
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemPriceEvaluation(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson('/api/v1/quotes/$quoteId/items/$itemId/price-evaluation');
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemPriceDecisionTransparency(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson(
+        '/api/v1/quotes/$quoteId/items/$itemId/price-decision-transparency');
+  }
+
+  Future<List<dynamic>> getQuoteItemPriceDecisionHistory(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getList(
+        '/api/v1/quotes/$quoteId/items/$itemId/price-decision-history');
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemMarginAnchor(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson('/api/v1/quotes/$quoteId/items/$itemId/margin-anchor');
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemApprovalHint(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson('/api/v1/quotes/$quoteId/items/$itemId/approval-hint');
+  }
+
+  Future<List<dynamic>> getQuoteItemApprovalRequests(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getList('/api/v1/quotes/$quoteId/items/$itemId/approval-requests');
+  }
+
+  Future<Map<String, dynamic>> getQuoteItemTargetMarginAnchor(
+    String quoteId,
+    String itemId,
+  ) async {
+    return _getJson(
+        '/api/v1/quotes/$quoteId/items/$itemId/target-margin-anchor');
+  }
+
+  Future<Map<String, dynamic>> applyQuoteItemPriceSuggestion(
+    String quoteId,
+    String itemId,
+  ) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/apply-price-suggestion'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> applyQuoteItemPrimaryPriceSource(
+    String quoteId,
+    String itemId,
+  ) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/apply-primary-price-source'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> applyQuoteItemTargetPrice(
+    String quoteId,
+    String itemId,
+  ) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/apply-target-price'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> requestQuoteItemApproval(
+    String quoteId,
+    String itemId, {
+    String comment = '',
+  }) async {
+    final body = <String, String>{};
+    final trimmedComment = comment.trim();
+    if (trimmedComment.isNotEmpty) {
+      body['comment'] = trimmedComment;
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/approval-requests'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> cancelQuoteItemApprovalRequest(
+    String quoteId,
+    String itemId,
+  ) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/approval-requests/cancel'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> approveQuoteItemApprovalRequest(
+    String quoteId,
+    String itemId, {
+    String comment = '',
+  }) async {
+    final body = <String, String>{};
+    final trimmedComment = comment.trim();
+    if (trimmedComment.isNotEmpty) {
+      body['comment'] = trimmedComment;
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/approval-requests/approve'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> rejectQuoteItemApprovalRequest(
+    String quoteId,
+    String itemId, {
+    String comment = '',
+  }) async {
+    final body = <String, String>{};
+    final trimmedComment = comment.trim();
+    if (trimmedComment.isNotEmpty) {
+      body['comment'] = trimmedComment;
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/approval-requests/reject'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> resolveQuoteItemApprovalRework(
+    String quoteId,
+    String itemId, {
+    String comment = '',
+  }) async {
+    final body = <String, String>{};
+    final trimmedComment = comment.trim();
+    if (trimmedComment.isNotEmpty) {
+      body['comment'] = trimmedComment;
+    }
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/$quoteId/items/$itemId/approval-rework/resolve'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
       ),
     );
     if (r.statusCode != 200) _throwApiException(r);

@@ -58,6 +58,7 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 	companySvc := settings.NewCompanyService(pg)
 	locSvc := settings.NewLocalizationService(pg)
 	brandingSvc := settings.NewBrandingService(pg)
+	quoteCalculationSvc := settings.NewQuoteCalculationSettingsService(pg)
 	projSvc := projects.NewService(pg)
 	quoteSvc := quotes.NewService(pg, numSvc).WithMongo(mg, cfg.MongoDB)
 	salesSvc := sales.NewService(pg, numSvc)
@@ -1378,6 +1379,66 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 			}
 			writeJSON(w, http.StatusCreated, out)
 		})
+		r.With(requirePermission("quotes.read")).Get("/approval-requests", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			var filter quotes.QuoteApprovalRequestQueueFilter
+			if value := strings.TrimSpace(q.Get("project_id")); value != "" {
+				projectID, err := uuid.Parse(value)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Projekt-ID")
+					return
+				}
+				filter.ProjectID = projectID
+			}
+			if value := strings.TrimSpace(q.Get("quote_id")); value != "" {
+				quoteID, err := uuid.Parse(value)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+					return
+				}
+				filter.QuoteID = quoteID
+			}
+			filter.ContactID = strings.TrimSpace(q.Get("contact_id"))
+
+			items, err := quoteSvc.ListApprovalRequestQueue(req.Context(), filter)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, struct {
+				Items []quotes.QuoteApprovalRequestQueueItem `json:"items"`
+			}{Items: items})
+		})
+		r.With(requirePermission("quotes.read")).Get("/approval-rework", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			var filter quotes.QuoteApprovalReworkQueueFilter
+			if value := strings.TrimSpace(q.Get("project_id")); value != "" {
+				projectID, err := uuid.Parse(value)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Projekt-ID")
+					return
+				}
+				filter.ProjectID = projectID
+			}
+			if value := strings.TrimSpace(q.Get("quote_id")); value != "" {
+				quoteID, err := uuid.Parse(value)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+					return
+				}
+				filter.QuoteID = quoteID
+			}
+			filter.ContactID = strings.TrimSpace(q.Get("contact_id"))
+
+			items, err := quoteSvc.ListApprovalReworkQueue(req.Context(), filter)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, struct {
+				Items []quotes.QuoteApprovalReworkQueueItem `json:"items"`
+			}{Items: items})
+		})
 		r.With(requirePermission("quotes.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
@@ -1403,6 +1464,451 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 				return
 			}
 			out, err := quoteSvc.Update(req.Context(), quoteID, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/material-search", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.SearchMaterialsForQuoteItem(req.Context(), quoteID, itemID, req.URL.Query().Get("q"))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-suggestion", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.SuggestPriceForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-history", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.PriceHistoryForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-decision-history", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.PriceDecisionHistoryForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/margin-anchor", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.MarginAnchorForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/approval-hint", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.ApprovalHintForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/target-margin-anchor", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.TargetMarginAnchorForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-source-priority", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.PriceSourcePriorityForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-evaluation", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.PriceEvaluationForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/price-decision-transparency", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.PriceDecisionTransparencyForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-price-suggestion", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.ApplyPriceSuggestionForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-primary-price-source", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.ApplyPrimaryPriceSourceForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-target-price", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.ApplyTargetUnitPriceForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/approval-requests", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			user, ok := authUserFromContext(req.Context())
+			if !ok {
+				writeAPIError(w, req, http.StatusUnauthorized, "unauthorized", "Nicht angemeldet")
+				return
+			}
+			var in struct {
+				Comment string `json:"comment"`
+			}
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			if len([]rune(strings.TrimSpace(in.Comment))) > 500 {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Kommentar darf nicht laenger als 500 Zeichen sein")
+				return
+			}
+			out, err := quoteSvc.RequestApprovalForQuoteItem(req.Context(), quoteID, itemID, user.ID, in.Comment)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/{id}/items/{itemID}/approval-requests", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			out, err := quoteSvc.ListApprovalRequestsForQuoteItem(req.Context(), quoteID, itemID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/approval-requests/cancel", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			user, ok := authUserFromContext(req.Context())
+			if !ok {
+				writeAPIError(w, req, http.StatusUnauthorized, "unauthorized", "Nicht angemeldet")
+				return
+			}
+			out, err := quoteSvc.CancelApprovalRequestForQuoteItem(req.Context(), quoteID, itemID, user.ID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.approve")).Post("/{id}/items/{itemID}/approval-requests/approve", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			user, ok := authUserFromContext(req.Context())
+			if !ok {
+				writeAPIError(w, req, http.StatusUnauthorized, "unauthorized", "Nicht angemeldet")
+				return
+			}
+			var in struct {
+				Comment string `json:"comment"`
+			}
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			if len([]rune(strings.TrimSpace(in.Comment))) > 500 {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Kommentar darf nicht laenger als 500 Zeichen sein")
+				return
+			}
+			out, err := quoteSvc.ApproveApprovalRequestForQuoteItem(req.Context(), quoteID, itemID, user.ID, in.Comment)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.approve")).Post("/{id}/items/{itemID}/approval-requests/reject", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			user, ok := authUserFromContext(req.Context())
+			if !ok {
+				writeAPIError(w, req, http.StatusUnauthorized, "unauthorized", "Nicht angemeldet")
+				return
+			}
+			var in struct {
+				Comment string `json:"comment"`
+			}
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			if len([]rune(strings.TrimSpace(in.Comment))) > 500 {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Kommentar darf nicht laenger als 500 Zeichen sein")
+				return
+			}
+			out, err := quoteSvc.RejectApprovalRequestForQuoteItem(req.Context(), quoteID, itemID, user.ID, in.Comment)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.approve")).Post("/{id}/items/{itemID}/approval-rework/resolve", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			user, ok := authUserFromContext(req.Context())
+			if !ok {
+				writeAPIError(w, req, http.StatusUnauthorized, "unauthorized", "Nicht angemeldet")
+				return
+			}
+			var in struct {
+				Comment string `json:"comment"`
+			}
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			if len([]rune(strings.TrimSpace(in.Comment))) > 500 {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Kommentar darf nicht laenger als 500 Zeichen sein")
+				return
+			}
+			out, err := quoteSvc.ResolveApprovalReworkForQuoteItem(req.Context(), quoteID, itemID, user.ID, in.Comment)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-material-search-result", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			var in struct {
+				Query      string `json:"query"`
+				MaterialID string `json:"material_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := quoteSvc.ApplySearchedMaterial(req.Context(), quoteID, itemID, in.Query, in.MaterialID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -2847,6 +3353,27 @@ func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *conf
 		})
 	})
 
+	protected.With(requirePermission("settings.manage")).Get("/settings/quote-calculation", func(w http.ResponseWriter, req *http.Request) {
+		cfg, err := quoteCalculationSvc.Get(req.Context())
+		if err != nil {
+			writeHTTPError(w, req, http.StatusNotFound, err.Error(), err)
+			return
+		}
+		writeJSON(w, http.StatusOK, cfg)
+	})
+	protected.With(requirePermission("settings.manage")).Put("/settings/quote-calculation", func(w http.ResponseWriter, req *http.Request) {
+		var in settings.QuoteCalculationSettings
+		if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+			writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+			return
+		}
+		if err := quoteCalculationSvc.Upsert(req.Context(), in); err != nil {
+			writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+
 	// Download eines Dokuments über DocumentID (GridFS ObjectID Hex)
 	protected.With(requirePermission("documents.read")).Get("/documents/{docID}", func(w http.ResponseWriter, req *http.Request) {
 		docID := chi.URLParam(req, "docID")
@@ -2997,9 +3524,15 @@ func classifyDomainError(err error) (int, string) {
 		return http.StatusInternalServerError, "internal_error"
 	case strings.Contains(msg, "erforderlich"),
 		strings.Contains(msg, "ungültig"),
+		strings.Contains(msg, "freigabeanforderungen"),
+		strings.Contains(msg, "offene nacharbeit"),
+		strings.Contains(msg, "zielmarge noch nicht"),
+		strings.Contains(msg, "keine preisentscheidung"),
 		strings.Contains(msg, "bereits vorhanden"),
+		strings.Contains(msg, "bereits aktiv"),
 		strings.Contains(msg, "darf nicht"),
 		strings.Contains(msg, "fehlt"),
+		strings.Contains(msg, "erreicht den zielpreis"),
 		strings.Contains(msg, "nicht im status"),
 		strings.Contains(msg, "nicht gebucht"),
 		strings.Contains(msg, "übersteigt"),

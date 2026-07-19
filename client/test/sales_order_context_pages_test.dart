@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nalaerp_client/api.dart';
@@ -18,11 +20,13 @@ import 'package:nalaerp_client/purchase_order_receipt_flow.dart';
 import 'package:nalaerp_client/stock_movement_payloads.dart';
 import 'package:nalaerp_client/pages/quotes_page.dart';
 import 'package:nalaerp_client/pages/sales_orders_page.dart';
+import 'package:nalaerp_client/web/browser.dart' as browser;
 
 class _FakeApiClient extends ApiClient {
   _FakeApiClient({
     this.quoteList = const [],
     this.quoteDetail,
+    this.quoteDetailErrors = const {},
     this.invoiceList = const [],
     this.invoiceDetail,
     this.salesOrderList = const [],
@@ -47,10 +51,22 @@ class _FakeApiClient extends ApiClient {
     this.materialDocuments = const [],
     this.warehouseList = const [],
     this.locationMap = const {},
+    this.quoteImportList = const [],
+    this.quoteImportUploadResult = const {},
+    this.quoteImportDetails = const {},
+    this.quoteImportItemMap = const {},
+    this.quoteImportItemDetails = const {},
+    this.quoteImportItemReviewErrors = const {},
+    this.quoteImportReviewErrors = const {},
+    this.quoteImportApplyResults = const {},
+    this.quoteImportApplyErrors = const {},
+    this.approvalReworkList = const [],
+    this.approvalRequestList = const [],
   }) : super(baseUrl: 'http://localhost:8080');
 
   final List<dynamic> quoteList;
   final Map<String, dynamic>? quoteDetail;
+  final Map<String, Object> quoteDetailErrors;
   final List<dynamic> invoiceList;
   final Map<String, dynamic>? invoiceDetail;
   final List<dynamic> salesOrderList;
@@ -75,8 +91,28 @@ class _FakeApiClient extends ApiClient {
   final List<dynamic> materialDocuments;
   final List<dynamic> warehouseList;
   final Map<String, List<dynamic>> locationMap;
+  final List<dynamic> quoteImportList;
+  final Map<String, dynamic> quoteImportUploadResult;
+  final Map<String, Map<String, dynamic>> quoteImportDetails;
+  final Map<String, List<dynamic>> quoteImportItemMap;
+  final Map<String, Map<String, Map<String, dynamic>>> quoteImportItemDetails;
+  final Map<String, Object> quoteImportItemReviewErrors;
+  final Map<String, Object> quoteImportReviewErrors;
+  final Map<String, Map<String, dynamic>> quoteImportApplyResults;
+  final Map<String, Object> quoteImportApplyErrors;
+  final List<dynamic> approvalReworkList;
+  final List<dynamic> approvalRequestList;
   final List<Map<String, dynamic>> createdStockMovements = [];
   final List<Map<String, dynamic>> updatedPurchaseOrders = [];
+  final List<Map<String, dynamic>> approvedApprovalRequests = [];
+  final List<Map<String, dynamic>> attemptedQuoteImportUploads = [];
+  final List<Map<String, dynamic>> attemptedQuoteImportItemReviews = [];
+  final List<Map<String, dynamic>> updatedQuoteImportItemReviews = [];
+  final List<String> attemptedQuoteImportReviewIds = [];
+  final List<String> reviewedQuoteImportIds = [];
+  final List<String> appliedQuoteImportIds = [];
+  final List<String> requestedQuoteIds = [];
+  int quoteImportListRequestCount = 0;
 
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
@@ -109,8 +145,12 @@ class _FakeApiClient extends ApiClient {
       }).toList();
 
   @override
-  Future<Map<String, dynamic>> getQuote(String id) async =>
-      quoteDetail ?? <String, dynamic>{'id': id};
+  Future<Map<String, dynamic>> getQuote(String id) async {
+    requestedQuoteIds.add(id);
+    final error = quoteDetailErrors[id];
+    if (error != null) throw error;
+    return quoteDetail ?? <String, dynamic>{'id': id};
+  }
 
   @override
   Future<List<dynamic>> listInvoicesOut({
@@ -358,6 +398,140 @@ class _FakeApiClient extends ApiClient {
         'sales_order': convertedSalesOrder ?? <String, dynamic>{'id': id},
         'invoice': convertedInvoice ?? <String, dynamic>{'id': 'inv-converted'},
       };
+
+  @override
+  Future<List<dynamic>> listQuoteImports({
+    String? projectId,
+    String? contactId,
+    int? limit,
+    int? offset,
+  }) async {
+    quoteImportListRequestCount += 1;
+    return quoteImportList;
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadGAEBQuoteImport(
+    String filename,
+    Uint8List bytes, {
+    required String projectId,
+    String? contactId,
+    String? contentType,
+  }) async {
+    attemptedQuoteImportUploads.add(<String, dynamic>{
+      'filename': filename,
+      'bytes': bytes.toList(),
+      'project_id': projectId,
+      'contact_id': contactId,
+      'content_type': contentType,
+    });
+    return quoteImportUploadResult;
+  }
+
+  @override
+  Future<Map<String, dynamic>> getQuoteImport(String id) async {
+    final current = quoteImportDetails[id] ?? <String, dynamic>{'id': id};
+    if (appliedQuoteImportIds.contains(id)) {
+      final result = quoteImportApplyResults[id] ?? const <String, dynamic>{};
+      return ((result['import'] as Map?) ?? current).cast<String, dynamic>();
+    }
+    if (!reviewedQuoteImportIds.contains(id)) return current;
+    return <String, dynamic>{...current, 'status': 'reviewed'};
+  }
+
+  @override
+  Future<List<dynamic>> listQuoteImportItems(String importId) async =>
+      quoteImportItemMap[importId] ?? const [];
+
+  @override
+  Future<Map<String, dynamic>> getQuoteImportItem(
+    String importId,
+    String itemId,
+  ) async =>
+      quoteImportItemDetails[importId]?[itemId] ??
+      <String, dynamic>{'id': itemId, 'import_id': importId};
+
+  @override
+  Future<Map<String, dynamic>> updateQuoteImportItemReview({
+    required String importId,
+    required String itemId,
+    required String reviewStatus,
+    String reviewNote = '',
+  }) async {
+    final payload = <String, dynamic>{
+      'import_id': importId,
+      'item_id': itemId,
+      'review_status': reviewStatus,
+      'review_note': reviewNote,
+    };
+    attemptedQuoteImportItemReviews.add(payload);
+    final error = quoteImportItemReviewErrors['$importId/$itemId'];
+    if (error != null) throw error;
+    updatedQuoteImportItemReviews.add(payload);
+    final current = quoteImportItemDetails[importId]?[itemId] ??
+        <String, dynamic>{'id': itemId, 'import_id': importId};
+    return <String, dynamic>{
+      ...current,
+      'review_status': reviewStatus,
+      'review_note': reviewNote,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> markQuoteImportReviewed(String importId) async {
+    attemptedQuoteImportReviewIds.add(importId);
+    final error = quoteImportReviewErrors[importId];
+    if (error != null) throw error;
+    reviewedQuoteImportIds.add(importId);
+    final current =
+        quoteImportDetails[importId] ?? <String, dynamic>{'id': importId};
+    return <String, dynamic>{...current, 'status': 'reviewed'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> applyQuoteImport(String importId) async {
+    appliedQuoteImportIds.add(importId);
+    final error = quoteImportApplyErrors[importId];
+    if (error != null) throw error;
+    final configured = quoteImportApplyResults[importId];
+    if (configured != null) return configured;
+    final current =
+        quoteImportDetails[importId] ?? <String, dynamic>{'id': importId};
+    return <String, dynamic>{
+      'import': <String, dynamic>{...current, 'status': 'applied'},
+      'quote': <String, dynamic>{'id': 'quote-$importId'},
+    };
+  }
+
+  @override
+  Future<List<dynamic>> listQuoteApprovalRework({
+    String? projectId,
+    String? contactId,
+    String? quoteId,
+  }) async =>
+      approvalReworkList;
+
+  @override
+  Future<List<dynamic>> listQuoteApprovalRequests({
+    String? projectId,
+    String? contactId,
+    String? quoteId,
+  }) async =>
+      approvalRequestList;
+
+  @override
+  Future<Map<String, dynamic>> approveQuoteItemApprovalRequest(
+    String quoteId,
+    String itemId, {
+    String comment = '',
+  }) async {
+    approvedApprovalRequests.add(<String, dynamic>{
+      'quote_id': quoteId,
+      'quote_item_id': itemId,
+      'comment': comment,
+    });
+    return <String, dynamic>{'status': 'approved'};
+  }
 }
 
 Future<void> _prepareLargeViewport(WidgetTester tester) async {
@@ -3401,6 +3575,1245 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('ANG-2026-0001'), findsWidgets);
     expect(find.text('Rechnungen aus Auftrag (1)'), findsOneWidget);
+  });
+
+  testWidgets(
+      'QuotesPage approval queue decision dialog shows context and forwards comment',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.approve'},
+      approvalRequestList: const [
+        {
+          'quote_id': 'q-approval-1',
+          'quote_item_id': 'qi-approval-1',
+          'approval_request_id': 'ar-1',
+          'quote_number': 'ANG-2026-0100',
+          'quote_status': 'draft',
+          'position': 2,
+          'description': 'Brandschutztuer T30',
+          'project_name': 'Projekt Nord',
+          'contact_name': 'Metallbau Kunde',
+          'reason_text': 'Zielmarge unterschritten',
+          'requested_by_name': 'Erika Pruefer',
+          'requested_at': '2026-07-18T08:30:00Z',
+          'currency': 'EUR',
+          'current_unit_price': 0,
+          'current_unit_price_snapshot': 950,
+          'cost_basis_unit_price_snapshot': 800,
+          'target_unit_price_snapshot': 1000,
+          'target_margin_percent_snapshot': 20,
+          'target_difference_snapshot': -50,
+          'current_target_status': 'below_target',
+          'current_target_difference': 0,
+          'current_target_unit_price': 1000,
+          'current_margin_percent': 20,
+        },
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(api: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-2026-0100 · Pos. 2'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Freigabe genehmigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Freigabe genehmigen'), findsOneWidget);
+    expect(find.text('Brandschutztuer T30'), findsWidgets);
+    expect(find.text('Grund: Zielmarge unterschritten'), findsWidgets);
+    expect(find.text('Aktueller Preis'), findsOneWidget);
+    expect(find.text('0.00 EUR'), findsWidgets);
+    expect(find.textContaining('Abweichung 0.00 EUR'), findsWidgets);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Kommentar'),
+      '  Kalkulation fachlich geprueft  ',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Genehmigen'));
+    await tester.pumpAndSettle();
+
+    expect(api.approvedApprovalRequests, [
+      {
+        'quote_id': 'q-approval-1',
+        'quote_item_id': 'qi-approval-1',
+        'comment': 'Kalkulation fachlich geprueft',
+      },
+    ]);
+  });
+
+  testWidgets('QuotesPage approval queue expands and collapses loaded requests',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      approvalRequestList: List.generate(
+        4,
+        (index) => <String, dynamic>{
+          'quote_id': 'q-${index + 1}',
+          'quote_item_id': 'qi-${index + 1}',
+          'approval_request_id': 'ar-${index + 1}',
+          'quote_number': 'ANG-2026-010${index + 1}',
+          'quote_status': 'draft',
+          'position': index + 1,
+          'description': 'Freigabeposition ${index + 1}',
+          'reason_text': 'Pruefung erforderlich',
+          'requested_at': '2026-07-18T08:30:00Z',
+          'currency': 'EUR',
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(api: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-2026-0101 · Pos. 1'), findsOneWidget);
+    expect(find.text('ANG-2026-0103 · Pos. 3'), findsOneWidget);
+    expect(find.text('ANG-2026-0104 · Pos. 4'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Alle anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-2026-0104 · Pos. 4'), findsOneWidget);
+    expect(find.text('Weniger anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Weniger anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-2026-0104 · Pos. 4'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+  });
+
+  testWidgets(
+      'QuotesPage approval rework queue expands and collapses loaded items',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      approvalReworkList: List.generate(
+        4,
+        (index) => <String, dynamic>{
+          'quote_id': 'q-rework-${index + 1}',
+          'quote_item_id': 'qi-rework-${index + 1}',
+          'quote_number': 'ANG-NACH-010${index + 1}',
+          'quote_status': 'draft',
+          'position': index + 1,
+          'description': 'Nacharbeitsposition ${index + 1}',
+          'reason_text': 'Kalkulation ueberarbeiten',
+          'currency': 'EUR',
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(api: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-NACH-0101 · Pos. 1'), findsOneWidget);
+    expect(find.text('ANG-NACH-0103 · Pos. 3'), findsOneWidget);
+    expect(find.text('ANG-NACH-0104 · Pos. 4'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Alle anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-NACH-0104 · Pos. 4'), findsOneWidget);
+    expect(find.text('Weniger anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Weniger anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-NACH-0104 · Pos. 4'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+  });
+
+  testWidgets('QuotesPage GAEB import requires project before file picker',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(api: api),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final importButton = find.widgetWithText(FilledButton, 'GAEB-Import');
+    expect(importButton, findsOneWidget);
+
+    await tester.tap(importButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.text(
+        'Für den GAEB-Import bitte zuerst eine Projekt-ID im Filter setzen.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('GAEB-Import wird hochgeladen...'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('QuotesPage GAEB import uploads picked file for selected project',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    var pickerCallCount = 0;
+    String? pickerAccept;
+    Future<browser.PickedFile?> pickQuoteImportFile({String? accept}) async {
+      pickerCallCount += 1;
+      pickerAccept = accept;
+      return browser.PickedFile(
+        Uint8List.fromList(const [1, 2, 3, 4]),
+        'ausschreibung-upload.x83',
+        'application/xml',
+      );
+    }
+
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportUploadResult: const {
+        'id': 'import-upload-1',
+        'source_filename': 'ausschreibung-upload.x83',
+        'status': 'uploaded',
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(
+            projectId: '  project-gaeb-upload-1  ',
+          ),
+          quoteImportFilePicker: pickQuoteImportFile,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.quoteImportListRequestCount, 1);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'GAEB-Import'));
+    await tester.pumpAndSettle();
+
+    expect(pickerCallCount, 1);
+    expect(pickerAccept, '.x83,.x84,.d83,.p83,.gaeb,.xml');
+    expect(api.attemptedQuoteImportUploads, const [
+      {
+        'filename': 'ausschreibung-upload.x83',
+        'bytes': [1, 2, 3, 4],
+        'project_id': 'project-gaeb-upload-1',
+        'contact_id': null,
+        'content_type': 'application/xml',
+      },
+    ]);
+    expect(api.quoteImportListRequestCount, 2);
+    expect(find.text('GAEB-Import wird hochgeladen...'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.text('GAEB-Datei ausschreibung-upload.x83 wurde hochgeladen'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'QuotesPage GAEB import preview expands and collapses loaded imports',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteImportList: List.generate(
+        4,
+        (index) => <String, dynamic>{
+          'id': 'import-${index + 1}',
+          'source_filename': 'ausschreibung-${index + 1}.x83',
+          'status': 'uploaded',
+          'uploaded_at': '2026-07-18T08:30:00Z',
+        },
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ausschreibung-1.x83'), findsOneWidget);
+    expect(find.text('ausschreibung-3.x83'), findsOneWidget);
+    expect(find.text('ausschreibung-4.x83'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Alle anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ausschreibung-4.x83'), findsOneWidget);
+    expect(find.text('Weniger anzeigen'), findsOneWidget);
+
+    await tester.tap(find.text('Weniger anzeigen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('ausschreibung-4.x83'), findsNothing);
+    expect(find.text('Alle anzeigen'), findsOneWidget);
+  });
+
+  testWidgets('QuotesPage GAEB import details open read-only from preview',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteImportList: const [
+        {
+          'id': 'import-detail-1',
+          'source_filename': 'vorschau-ausschreibung.x83',
+          'status': 'parsed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-detail-1': {
+          'id': 'import-detail-1',
+          'source_filename': 'detail-ausschreibung.x83',
+          'status': 'parsed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 6,
+          'accepted_count': 0,
+          'rejected_count': 0,
+          'pending_count': 6,
+        },
+      },
+      quoteImportItemMap: {
+        'import-detail-1': List.generate(
+          6,
+          (index) => <String, dynamic>{
+            'id': 'import-item-${index + 1}',
+            'position_no': '01.0${index + 1}',
+            'description': 'Gelaender Nordseite ${index + 1}',
+          },
+        ),
+      },
+      quoteImportItemDetails: const {
+        'import-detail-1': {
+          'import-item-1': {
+            'id': 'import-item-1',
+            'import_id': 'import-detail-1',
+            'position_no': '01.01',
+            'outline_no': 'Los 1',
+            'qty': 12.5,
+            'unit': 'm',
+            'is_optional': false,
+            'review_status': 'pending',
+            'parser_hint': 'Mengenansatz pruefen',
+            'review_note': '',
+            'description': 'Detail Gelaender Nordseite',
+            'linked_quote_id': '',
+          },
+        },
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('detail-ausschreibung.x83'), findsOneWidget);
+    expect(find.text('Status: parsed'), findsOneWidget);
+    expect(find.text('Projekt: project-1'), findsOneWidget);
+    expect(find.text('Positionen: 6'), findsOneWidget);
+    expect(find.text('Position 01.01'), findsOneWidget);
+    expect(find.text('Position 01.05'), findsOneWidget);
+    expect(find.text('Gelaender Nordseite 1'), findsOneWidget);
+    expect(find.text('Position 01.06'), findsNothing);
+    expect(find.text('Zur Übernahme freigeben'), findsNothing);
+    expect(find.text('Draft-Quote erzeugen'), findsNothing);
+
+    final showAllButton = find.widgetWithText(TextButton, 'Alle anzeigen');
+    await tester.ensureVisible(showAllButton);
+    await tester.tap(showAllButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Position 01.06'), findsOneWidget);
+    expect(find.text('Gelaender Nordseite 6'), findsOneWidget);
+
+    final showLessButton = find.widgetWithText(TextButton, 'Weniger anzeigen');
+    await tester.ensureVisible(showLessButton);
+    await tester.tap(showLessButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Position 01.06'), findsNothing);
+    expect(find.widgetWithText(TextButton, 'Alle anzeigen'), findsOneWidget);
+
+    final firstPosition = find.widgetWithText(ListTile, 'Position 01.01');
+    await tester.ensureVisible(firstPosition);
+    await tester.tap(firstPosition);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gliederung: Los 1'), findsOneWidget);
+    expect(find.text('Menge: 12.5'), findsOneWidget);
+    expect(find.text('Einheit: m'), findsOneWidget);
+    expect(find.text('Review-Status: pending'), findsOneWidget);
+    expect(find.text('Parser-Hinweis: Mengenansatz pruefen'), findsOneWidget);
+    expect(find.text('Detail Gelaender Nordseite'), findsOneWidget);
+    expect(find.text('Review setzen'), findsNothing);
+    expect(find.text('Quote öffnen'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Gliederung: Los 1'), findsNothing);
+    expect(find.text('detail-ausschreibung.x83'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('QuotesPage GAEB import item review forwards normalized decision',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-review-1',
+          'source_filename': 'review-ausschreibung.x83',
+          'status': 'uploaded',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-review-1': {
+          'id': 'import-review-1',
+          'source_filename': 'review-ausschreibung.x83',
+          'status': 'uploaded',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 0,
+          'rejected_count': 0,
+          'pending_count': 1,
+        },
+      },
+      quoteImportItemMap: const {
+        'import-review-1': [
+          {
+            'id': 'import-review-item-1',
+            'position_no': '02.01',
+            'description': 'Reviewposition',
+          },
+        ],
+      },
+      quoteImportItemDetails: const {
+        'import-review-1': {
+          'import-review-item-1': {
+            'id': 'import-review-item-1',
+            'import_id': 'import-review-1',
+            'position_no': '02.01',
+            'outline_no': 'Los Review',
+            'qty': 3,
+            'unit': 'Stk',
+            'is_optional': false,
+            'review_status': 'pending',
+            'review_note': '',
+            'description': 'Reviewposition Detail',
+            'linked_quote_id': '',
+          },
+        },
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Position 02.01'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Review setzen'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Review-Entscheidung'), findsOneWidget);
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('accepted').last);
+    await tester.pumpAndSettle();
+
+    final noteField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Review-Notiz',
+    );
+    await tester.enterText(noteField, '  Fachlich geprueft  ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
+    await tester.pumpAndSettle();
+
+    expect(api.updatedQuoteImportItemReviews, const [
+      {
+        'import_id': 'import-review-1',
+        'item_id': 'import-review-item-1',
+        'review_status': 'accepted',
+        'review_note': 'Fachlich geprueft',
+      },
+    ]);
+    expect(find.text('Review-Status: accepted'), findsOneWidget);
+    expect(find.text('Review-Notiz: Fachlich geprueft'), findsOneWidget);
+    expect(find.text('Review-Entscheidung wurde gespeichert'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets(
+      'QuotesPage GAEB import item review keeps pending detail on failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-review-error-1',
+          'source_filename': 'review-fehler-ausschreibung.x83',
+          'status': 'parsed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-review-error-1': {
+          'id': 'import-review-error-1',
+          'source_filename': 'review-fehler-ausschreibung.x83',
+          'status': 'parsed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 0,
+          'rejected_count': 0,
+          'pending_count': 1,
+        },
+      },
+      quoteImportItemMap: const {
+        'import-review-error-1': [
+          {
+            'id': 'import-review-error-item-1',
+            'position_no': '02.02',
+            'description': 'Reviewposition mit Konflikt',
+          },
+        ],
+      },
+      quoteImportItemDetails: const {
+        'import-review-error-1': {
+          'import-review-error-item-1': {
+            'id': 'import-review-error-item-1',
+            'import_id': 'import-review-error-1',
+            'position_no': '02.02',
+            'outline_no': 'Los Reviewfehler',
+            'qty': 2,
+            'unit': 'Stk',
+            'is_optional': false,
+            'review_status': 'pending',
+            'review_note': '',
+            'description': 'Reviewposition mit Konflikt Detail',
+            'linked_quote_id': '',
+          },
+        },
+      },
+      quoteImportItemReviewErrors: const {
+        'import-review-error-1/import-review-error-item-1': ApiException(
+          statusCode: 409,
+          code: 'quote_import_item_review_conflict',
+          message: 'Review-Konflikt fuer diese Importposition',
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ListTile, 'Position 02.02'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Review setzen'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('accepted').last);
+    await tester.pumpAndSettle();
+    final noteField = find.byWidgetPredicate(
+      (widget) =>
+          widget is TextField && widget.decoration?.labelText == 'Review-Notiz',
+    );
+    await tester.enterText(noteField, '  Fachlich geprueft  ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Speichern'));
+    await tester.pumpAndSettle();
+
+    expect(api.attemptedQuoteImportItemReviews, const [
+      {
+        'import_id': 'import-review-error-1',
+        'item_id': 'import-review-error-item-1',
+        'review_status': 'accepted',
+        'review_note': 'Fachlich geprueft',
+      },
+    ]);
+    expect(api.updatedQuoteImportItemReviews, isEmpty);
+    expect(find.byType(AlertDialog), findsNWidgets(2));
+    expect(find.text('Review-Status: pending'), findsOneWidget);
+    expect(find.text('Review setzen'), findsOneWidget);
+    expect(
+      find.text('Review-Konflikt fuer diese Importposition'),
+      findsOneWidget,
+    );
+    expect(find.text('Review-Entscheidung'), findsNothing);
+    expect(find.text('Review-Status: accepted'), findsNothing);
+    expect(find.text('Review-Notiz: Fachlich geprueft'), findsNothing);
+    expect(find.text('Review-Entscheidung wurde gespeichert'), findsNothing);
+  });
+
+  testWidgets('QuotesPage GAEB import review enables draft quote action',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-review-run-1',
+          'source_filename': 'freigabe-ausschreibung.x83',
+          'status': 'parsed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-review-run-1': {
+          'id': 'import-review-run-1',
+          'source_filename': 'freigabe-ausschreibung.x83',
+          'status': 'parsed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 1,
+          'rejected_count': 0,
+          'pending_count': 0,
+        },
+      },
+      quoteImportItemMap: const {'import-review-run-1': []},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: parsed'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.reviewedQuoteImportIds, const ['import-review-run-1']);
+    expect(find.text('Status: reviewed'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+      findsNothing,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsOneWidget,
+    );
+    expect(find.text('Importlauf wurde freigegeben'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets(
+      'QuotesPage GAEB import review keeps parsed state with pending item on failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-review-failure-1',
+          'source_filename': 'freigabe-fehler-ausschreibung.x83',
+          'status': 'parsed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-review-failure-1': {
+          'id': 'import-review-failure-1',
+          'source_filename': 'freigabe-fehler-ausschreibung.x83',
+          'status': 'parsed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 0,
+          'rejected_count': 0,
+          'pending_count': 1,
+        },
+      },
+      quoteImportItemMap: const {'import-review-failure-1': []},
+      quoteImportReviewErrors: const {
+        'import-review-failure-1': ApiException(
+          statusCode: 409,
+          code: 'pending_quote_import_items',
+          message: 'Importlauf enthält noch offene Positionen',
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: parsed'), findsOneWidget);
+    expect(
+      find.text('Review-Summary: 0 übernommen, 0 abgelehnt, 1 offen'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      api.attemptedQuoteImportReviewIds,
+      const ['import-review-failure-1'],
+    );
+    expect(api.reviewedQuoteImportIds, isEmpty);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('freigabe-fehler-ausschreibung.x83'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Importlauf wird zur Übernahme freigegeben...'),
+      findsNothing,
+    );
+    expect(find.text('Status: parsed'), findsOneWidget);
+    expect(
+      find.text('Review-Summary: 0 übernommen, 0 abgelehnt, 1 offen'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Zur Übernahme freigeben'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsNothing,
+    );
+    expect(
+      find.text('Importlauf enthält noch offene Positionen'),
+      findsOneWidget,
+    );
+    expect(find.text('Importlauf wurde freigegeben'), findsNothing);
+    expect(find.text('Status: reviewed'), findsNothing);
+  });
+
+  testWidgets('QuotesPage GAEB import apply exposes created draft quote',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-apply-1',
+          'source_filename': 'apply-ausschreibung.x83',
+          'status': 'reviewed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-apply-1': {
+          'id': 'import-apply-1',
+          'source_filename': 'apply-ausschreibung.x83',
+          'status': 'reviewed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 1,
+          'rejected_count': 0,
+          'pending_count': 0,
+        },
+      },
+      quoteImportItemMap: const {'import-apply-1': []},
+      quoteImportApplyResults: const {
+        'import-apply-1': {
+          'import': {
+            'id': 'import-apply-1',
+            'source_filename': 'apply-ausschreibung.x83',
+            'status': 'applied',
+            'source_kind': 'gaeb_xml',
+            'project_id': 'project-1',
+            'item_count': 1,
+            'accepted_count': 1,
+            'rejected_count': 0,
+            'pending_count': 0,
+            'created_quote_id': 'quote-gaeb-1',
+          },
+          'quote': {
+            'id': 'quote-gaeb-1',
+            'number': 'ANG-GAEB-0001',
+            'status': 'draft',
+            'project_id': 'project-1',
+          },
+        },
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: reviewed'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.appliedQuoteImportIds, const ['import-apply-1']);
+    expect(find.text('Status: applied'), findsOneWidget);
+    expect(find.text('Erzeugte Quote: quote-gaeb-1'), findsOneWidget);
+    expect(
+      find.text('Die Quote wurde erzeugt und kann jetzt geöffnet werden.'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsNothing,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsOneWidget,
+    );
+    expect(
+      find.text(
+        'Draft-Quote ANG-GAEB-0001 wurde aus dem Importlauf erzeugt',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(TextButton, 'Schließen'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets('QuotesPage GAEB import apply keeps reviewed state on failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportList: const [
+        {
+          'id': 'import-apply-failure-1',
+          'source_filename': 'apply-fehler-ausschreibung.x83',
+          'status': 'reviewed',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-apply-failure-1': {
+          'id': 'import-apply-failure-1',
+          'source_filename': 'apply-fehler-ausschreibung.x83',
+          'status': 'reviewed',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 1,
+          'rejected_count': 0,
+          'pending_count': 0,
+        },
+      },
+      quoteImportItemMap: const {'import-apply-failure-1': []},
+      quoteImportApplyErrors: const {
+        'import-apply-failure-1': ApiException(
+          statusCode: 409,
+          code: 'invalid_quote_import_status',
+          message: 'Importlauf kann aktuell nicht angewendet werden',
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: reviewed'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsNothing,
+    );
+
+    await tester.tap(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.appliedQuoteImportIds, const ['import-apply-failure-1']);
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('apply-fehler-ausschreibung.x83'),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Status: reviewed'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Draft-Quote erzeugen'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Draft-Quote aus Importlauf wird erzeugt...'),
+      findsNothing,
+    );
+    expect(
+      find.text('Importlauf kann aktuell nicht angewendet werden'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('Erzeugte Quote:'), findsNothing);
+    expect(
+      find.text('Die Quote wurde erzeugt und kann jetzt geöffnet werden.'),
+      findsNothing,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsNothing,
+    );
+    expect(
+      find.text('Draft-Quote wurde aus dem Importlauf erzeugt'),
+      findsNothing,
+    );
+  });
+
+  testWidgets('QuotesPage GAEB created quote navigation opens selected draft',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteList: const [
+        {
+          'id': 'quote-gaeb-open-1',
+          'number': 'ANG-GAEB-OPEN-0001',
+          'contact_name': 'GAEB Navigationskunde',
+          'project_id': 'project-1',
+          'status': 'draft',
+          'gross_amount': 1190.0,
+          'currency': 'EUR',
+        },
+      ],
+      quoteDetail: const {
+        'id': 'quote-gaeb-open-1',
+        'number': 'ANG-GAEB-OPEN-0001',
+        'contact_id': 'contact-gaeb-open-1',
+        'contact_name': 'GAEB Navigationskunde',
+        'project_id': 'project-1',
+        'project_name': 'GAEB Navigationsprojekt',
+        'status': 'draft',
+        'quote_date': '2026-07-19',
+        'valid_until': '2026-08-18',
+        'note': '',
+        'net_amount': 1000.0,
+        'tax_amount': 190.0,
+        'gross_amount': 1190.0,
+        'currency': 'EUR',
+        'items': [],
+      },
+      quoteImportList: const [
+        {
+          'id': 'import-open-1',
+          'source_filename': 'navigation-ausschreibung.x83',
+          'status': 'applied',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-open-1': {
+          'id': 'import-open-1',
+          'source_filename': 'navigation-ausschreibung.x83',
+          'status': 'applied',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 1,
+          'rejected_count': 0,
+          'pending_count': 0,
+          'created_quote_id': 'quote-gaeb-open-1',
+        },
+      },
+      quoteImportItemMap: const {'import-open-1': []},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: applied'), findsOneWidget);
+    expect(find.text('Erzeugte Quote: quote-gaeb-open-1'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Quote öffnen'));
+    await tester.pumpAndSettle();
+
+    expect(api.requestedQuoteIds, const [
+      'quote-gaeb-open-1',
+      'quote-gaeb-open-1',
+    ]);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('ANG-GAEB-OPEN-0001'), findsWidgets);
+    expect(find.text('Status: draft'), findsOneWidget);
+    expect(find.text('Kunde: GAEB Navigationskunde'), findsOneWidget);
+    expect(find.text('Projekt: GAEB Navigationsprojekt'), findsOneWidget);
+    expect(find.text('Erzeugte Quote wurde geöffnet'), findsOneWidget);
+  });
+
+  testWidgets(
+      'QuotesPage GAEB created quote navigation keeps selection on load failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteList: const [
+        {
+          'id': 'quote-existing-1',
+          'number': 'ANG-BESTEHEND-0001',
+          'contact_name': 'Bestehender Kunde',
+          'project_id': 'project-1',
+          'status': 'draft',
+          'gross_amount': 595.0,
+          'currency': 'EUR',
+        },
+      ],
+      quoteDetail: const {
+        'id': 'quote-existing-1',
+        'number': 'ANG-BESTEHEND-0001',
+        'contact_id': 'contact-existing-1',
+        'contact_name': 'Bestehender Kunde',
+        'project_id': 'project-1',
+        'project_name': 'Bestehendes Projekt',
+        'status': 'draft',
+        'quote_date': '2026-07-19',
+        'valid_until': '2026-08-18',
+        'note': '',
+        'net_amount': 500.0,
+        'tax_amount': 95.0,
+        'gross_amount': 595.0,
+        'currency': 'EUR',
+        'items': [],
+      },
+      quoteDetailErrors: const {
+        'quote-missing-1': ApiException(
+          statusCode: 404,
+          code: 'quote_not_found',
+          message: 'Erzeugte Quote ist nicht mehr verfügbar',
+        ),
+      },
+      quoteImportList: const [
+        {
+          'id': 'import-open-failure-1',
+          'source_filename': 'navigation-fehler-ausschreibung.x83',
+          'status': 'applied',
+        },
+      ],
+      quoteImportDetails: const {
+        'import-open-failure-1': {
+          'id': 'import-open-failure-1',
+          'source_filename': 'navigation-fehler-ausschreibung.x83',
+          'status': 'applied',
+          'source_kind': 'gaeb_xml',
+          'project_id': 'project-1',
+          'item_count': 1,
+          'accepted_count': 1,
+          'rejected_count': 0,
+          'pending_count': 0,
+          'created_quote_id': 'quote-missing-1',
+        },
+      },
+      quoteImportItemMap: const {'import-open-failure-1': []},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialContext:
+              const CommercialListContext.detail('quote-existing-1'),
+          initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('ANG-BESTEHEND-0001'), findsWidgets);
+    expect(find.text('Kunde: Bestehender Kunde'), findsOneWidget);
+    expect(find.text('Projekt: Bestehendes Projekt'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Status: applied'), findsOneWidget);
+    expect(find.text('Erzeugte Quote: quote-missing-1'), findsOneWidget);
+    expect(
+      find.widgetWithText(FilledButton, 'Quote öffnen'),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Quote öffnen'));
+    await tester.pumpAndSettle();
+
+    expect(api.requestedQuoteIds, const [
+      'quote-existing-1',
+      'quote-missing-1',
+    ]);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('ANG-BESTEHEND-0001'), findsWidgets);
+    expect(find.text('Status: draft'), findsOneWidget);
+    expect(find.text('Kunde: Bestehender Kunde'), findsOneWidget);
+    expect(find.text('Projekt: Bestehendes Projekt'), findsOneWidget);
+    expect(
+        find.text('Erzeugte Quote ist nicht mehr verfügbar'), findsOneWidget);
+    expect(find.text('Erzeugte Quote wurde geöffnet'), findsNothing);
   });
 
   testWidgets('InvoicesPage stays stable on smaller viewport', (tester) async {

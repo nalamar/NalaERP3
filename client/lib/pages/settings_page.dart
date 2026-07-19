@@ -42,6 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final brandingAccentColorCtrl = TextEditingController(text: '#6B7280');
   final brandingHeaderCtrl = TextEditingController();
   final brandingFooterCtrl = TextEditingController();
+  final quoteTargetMarginCtrl = TextEditingController(text: '20.00');
   List<Map<String, dynamic>> _branches = [];
   bool _branchesLoading = false;
   final poPatternCtrl = TextEditingController(text: 'PO-{YYYY}-{NNNN}');
@@ -144,6 +145,7 @@ class _SettingsPageState extends State<SettingsPage> {
       await _loadBranches();
       await _loadLocalizationSettings();
       await _loadBrandingSettings();
+      await _loadQuoteCalculationSettings();
       await _loadNumberingPattern(
         'purchase_order',
         poPatternCtrl,
@@ -307,6 +309,31 @@ class _SettingsPageState extends State<SettingsPage> {
         'document_footer_text': brandingFooterCtrl.text,
       });
       _showSettingsSuccess('Branding gespeichert');
+    } catch (e) {
+      _showSettingsError(e);
+    }
+  }
+
+  Future<void> _loadQuoteCalculationSettings() async {
+    try {
+      final p = await widget.api.getQuoteCalculationSettings();
+      quoteTargetMarginCtrl.text =
+          (p['target_margin_percent'] ?? '20.00').toString();
+    } catch (_) {
+      // ignore for now
+    }
+  }
+
+  Future<void> _saveQuoteCalculationSettings() async {
+    try {
+      final targetMargin = double.tryParse(
+              quoteTargetMarginCtrl.text.trim().replaceAll(',', '.')) ??
+          20.0;
+      await widget.api.updateQuoteCalculationSettings({
+        'target_margin_percent': targetMargin,
+      });
+      await _loadQuoteCalculationSettings();
+      _showSettingsSuccess('Angebotskalkulation gespeichert');
     } catch (e) {
       _showSettingsError(e);
     }
@@ -1336,6 +1363,59 @@ class _SettingsPageState extends State<SettingsPage> {
                 initiallyExpanded: false,
                 childrenPadding: const EdgeInsets.only(bottom: 8),
                 children: _buildNumberingCards(),
+              ),
+              const SizedBox(height: 12),
+              ExpansionTile(
+                title: _buildSectionTitle('Angebotskalkulation'),
+                initiallyExpanded: false,
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 220,
+                                child: TextField(
+                                  controller: quoteTargetMarginCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Zielmarge %',
+                                    suffixText: '%',
+                                  ),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    'Diese Zielmarge wird vom read-only Zielmargenanker in Angebotspositionen verwendet.',
+                                    style:
+                                        Theme.of(context).textTheme.bodyMedium,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          _buildSectionSaveAction(
+                            onPressed: _saveQuoteCalculationSettings,
+                            icon: const Icon(Icons.calculate_outlined),
+                            label: const Text('Kalkulation speichern'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               ExpansionTile(

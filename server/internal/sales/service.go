@@ -77,6 +77,10 @@ type Service struct {
 	num *settings.NumberingService
 }
 
+type quoteApprovalReworkQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
 type ConvertToInvoiceInput struct {
 	RevenueAccount string                      `json:"revenue_account"`
 	InvoiceDate    time.Time                   `json:"invoice_date"`
@@ -159,6 +163,13 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 	if linkedSalesOrderID.Valid {
 		return nil, errors.New("Angebot wurde bereits in einen Auftrag überführt")
 	}
+	hasOpenApprovalRework, err := quoteHasOpenApprovalRework(ctx, tx, quoteID)
+	if err != nil {
+		return nil, err
+	}
+	if hasOpenApprovalRework {
+		return nil, errors.New("Angebot enthaelt abgelehnte Freigabeentscheidungen; Nacharbeit vor Versand, Annahme oder Folgebeleg erforderlich")
+	}
 
 	rows, err := tx.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, quoteID)
 	if err != nil {
@@ -220,6 +231,29 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 		return nil, err
 	}
 	return s.Get(ctx, orderID)
+}
+
+func quoteHasOpenApprovalRework(ctx context.Context, q quoteApprovalReworkQuerier, quoteID uuid.UUID) (bool, error) {
+	var hasOpenRework bool
+	if err := q.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM quote_items qi
+			JOIN LATERAL (
+				SELECT qar.status
+				FROM quote_item_approval_requests qar
+				WHERE qar.quote_item_id = qi.id
+				  AND qar.status IN ('approved', 'rejected', 'rework_resolved')
+				ORDER BY qar.decided_at DESC NULLS LAST, qar.updated_at DESC
+				LIMIT 1
+			) latest ON true
+			WHERE qi.quote_id = $1
+			  AND latest.status = 'rejected'
+		)
+	`, quoteID).Scan(&hasOpenRework); err != nil {
+		return false, err
+	}
+	return hasOpenRework, nil
 }
 
 func (s *Service) Get(ctx context.Context, id uuid.UUID) (*SalesOrder, error) {
