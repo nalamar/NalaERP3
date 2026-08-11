@@ -31,17 +31,17 @@
     - [x] 0.1.3.2 Tests für `EmployeeService` (CRUD inkl. Negativfall ungültiges Patch) — done
     - [x] 0.1.3.3 Tests für `LeaveService` inkl. Negativfall (überlappende Urlaubsanträge — aktuell ungeprüft) — done
 - [ ] 0.2 Mandantenfähigkeit nachrüsten (Entscheidung Blocker-Frage 1: Breaking-Change-Migration) — wip
-  - [ ] 0.2.1 Datenmodell erweitern — wip
+  - [x] 0.2.1 Datenmodell erweitern — done (Migrationen 054-060, alle gegen frische DB verifiziert; NOT-NULL-Verschärfung und number_sequences-PK-Umstellung bewusst auf nach Task 0.2.2 verschoben)
     - [x] 0.2.1.1 ADR: Scoping-Strategie festlegen (company_id vs. branch_id, welche Tabellen betroffen, Migrationsreihenfolge) — done, siehe `docs/adr/0002-mandanten-standort-scoping.md`
-    - [ ] 0.2.1.2 Migration: `company_id` (NOT NULL) + `branch_id` (NULLABLE) an den in ADR 0002 gelisteten Kern-Fachtabellen ergänzen — wip, in 6 Micro-Subtasks zerlegt (§6.3: >8 Dateien/Domänen zu groß für eine Subtask)
+    - [x] 0.2.1.2 Migration: `company_id` (NULLABLE, Expand-Contract) + `branch_id` (NULLABLE) an den in ADR 0002 gelisteten Kern-Fachtabellen ergänzt — done, alle 6 Micro-Subtasks abgeschlossen und gegen frische DB verifiziert (§6.3-Zerlegung)
       - [x] 0.2.1.2.1 CRM: `contacts` (`server/internal/migrate/migrations/054_contacts_company_branch_scope.sql`) — done, gegen frische DB verifiziert (siehe Backlog 0.14 für den Weg dahin)
       - [x] 0.2.1.2.2 Projekte: `projects` (`server/internal/migrate/migrations/055_projects_company_branch_scope.sql`) — done, gegen frische DB verifiziert
-      - [ ] 0.2.1.2.3 Angebote/Aufträge/Rechnungen: `quotes`(+items+imports+import_items), `sales_orders`(+items), `invoices_out`(+items+payments), `purchase_orders`(+items) — todo
-      - [ ] 0.2.1.2.4 Material/Lager: `materials`, `warehouses`, `locations`, `stock_movements`, `batches` — todo
-      - [ ] 0.2.1.2.5 Buchhaltung: `journal_entries`, `accounts` (nur `company_id`, kein `branch_id` laut ADR 0002) — todo
-      - [ ] 0.2.1.2.6 HR: `hr_employees`, `hr_teams`, `hr_leave_requests`, `hr_absences` — todo
-    - [ ] 0.2.1.3 `users.company_id`/`users.branch_id` ergänzen; `number_sequences`-PK auf `(company_id, entity)` erweitern (laut ADR 0002) — todo
-  - [ ] 0.2.2 Anwendungscode auf Mandanten-Scoping umstellen — blocked (wartet auf 0.2.1)
+      - [x] 0.2.1.2.3 Angebote/Aufträge/Rechnungen: `quotes`, `sales_orders`, `invoices_out`, `purchase_orders` (`server/internal/migrate/migrations/056_sales_scope.sql`) — done, gegen frische DB verifiziert. Item-/Kind-Tabellen bewusst NICHT direkt gescoped (Präzisierung in ADR 0002 — erben Scope über FK zur Kopf-Tabelle)
+      - [x] 0.2.1.2.4 Material/Lager: `materials`, `warehouses` (`server/internal/migrate/migrations/057_materials_warehouses_scope.sql`) — done, gegen frische DB verifiziert. `locations`/`batches`/`stock_movements` bewusst NICHT direkt gescoped (erben Scope über `warehouse_id`/`material_id`, siehe ADR 0002)
+      - [x] 0.2.1.2.5 Buchhaltung: `accounts`, `journal_entries`, `bank_statements` (nur `company_id`, kein `branch_id` laut ADR 0002; `journal_lines` erbt über `entry_id`) (`server/internal/migrate/migrations/058_accounting_scope.sql`) — done, gegen frische DB verifiziert
+      - [x] 0.2.1.2.6 HR: `hr_employees`, `hr_teams` (`server/internal/migrate/migrations/059_hr_scope.sql`) — done, gegen frische DB verifiziert. `hr_leave_requests`/`hr_absences` bewusst NICHT direkt gescoped (erben über `employee_id`); `hr_holidays` bewusst ausgenommen (kein Mandanten-Scoping-Bedarf, siehe ADR 0002)
+    - [x] 0.2.1.3 `users.company_id`/`users.branch_id` ergänzen; `number_sequences.company_id` ergänzen (PK-Umstellung bewusst auf nach Task 0.2.2 verschoben, siehe ADR-0002-Präzisierung) (`server/internal/migrate/migrations/060_users_numbering_scope.sql`) — done, gegen frische DB verifiziert
+  - [ ] 0.2.2 Anwendungscode auf Mandanten-Scoping umstellen — todo
     - [ ] 0.2.2.1 Repository-Queries um Scoping-Filter erweitern (alle Domänen-Packages) — todo
     - [ ] 0.2.2.2 Middleware: Mandanten-Kontext aus Auth-Session ableiten und in Request-Context legen — todo
     - [ ] 0.2.2.3 `number_sequences` pro Mandant statt global (aktuell `entity`-PK ohne Mandantenbezug, `server/internal/migrate/migrations/005_numbering.sql:1-7`) — todo
@@ -156,6 +156,32 @@
     kann bei Einzeiler-`if`-Umformatierung Verhalten unverändert lassen, aber Diff-Review ist trotzdem
     angebracht, um versehentliche semantische Änderungen auszuschließen — gofmt selbst ändert nie Semantik,
     rein zur Sorgfalt).
+- [ ] 0.20 KRITISCH: Migrationen 050/051 sind nicht sicher wiederholt ausführbar (Check-Constraint-Kollision) — todo
+  - Gefunden bei Verifikation von Subtask 0.2.1.2.3 (voller `go test ./internal/http`-Lauf gegen dieselbe
+    Postgres-Instanz über viele Testfunktionen hinweg — jede ruft `testutil.SetupIntegrationEnv` auf, die
+    `migrate.Run` erneut komplett durchlaufen lässt, siehe Backlog 0.13: kein Versions-Tracking). Muster:
+    `050_quote_item_approval_requests.sql:60-67` fügt (nur falls noch nicht vorhanden, per `pg_constraint`-
+    Check) den Constraint `chk_quote_item_approval_requests_cancelled_state` hinzu; `051_quote_item_approval_decisions.sql:23-30`
+    entfernt ihn **im selben Durchlauf sofort wieder** (falls vorhanden). Nach dem ersten `migrate.Run`-Durchlauf
+    ist der Constraint also wieder weg — beim NÄCHSTEN `migrate.Run`-Durchlauf (nächste Testfunktion, gleiche
+    DB, jetzt mit Testdaten aus vorherigen Läufen) versucht 050 ihn erneut anzulegen, was fehlschlägt, sobald
+    zwischenzeitlich Zeilen eingefügt wurden, die die ursprüngliche (durch 051 eigentlich schon abgelöste)
+    Regel verletzen: `ERROR: check constraint ... is violated by some row (SQLSTATE 23514)`.
+    **Tragweite**: bricht `migrate.Run` bei JEDEM zweiten+ Aufruf gegen dieselbe, bereits benutzte DB ab —
+    betrifft ca. 30 Testfunktionen in `quotes_integration_test.go`/`settings_integration_test.go` in einem
+    vollen `go test ./internal/http`-Lauf (nicht nur bei `-run`-gefiltertem Einzelaufruf). Nicht behoben
+    (weit außerhalb Subtask-Scope, eigenständiges Migrations-Architekturproblem). Fix: entweder 050s
+    Constraint-Definition direkt an die 051-Fassung anpassen (Constraint nicht in 050 hinzufügen und in 051
+    sofort wieder entfernen, sondern gleich korrekt in 050 definieren), oder Migrationsrunner um
+    Versions-Tracking ergänzen (Backlog 0.13), damit jede Migration nur einmal läuft.
+- [ ] 0.21 `TestMaterialsCreateListAndGetFlow` schlägt auf frischer DB fehl: "Ungültige Materialkategorie" — todo
+  - Gefunden bei Verifikation von Subtask 0.2.1.2.4. Testfixture nutzt `"kategorie":"integration"`
+    (`server/internal/http/materials_integration_test.go:25`) — auf einer wirklich leeren DB ist
+    `material_groups` leer (wird laut `039_material_groups.sql` nur aus bereits vorhandenen
+    `materials.kategorie`-Werten befüllt), daher lehnt die Validierung die unbekannte Kategorie ab.
+    Gleiches Muster wie Backlog 0.18/0.19 (Tests wurden nie gegen eine wirklich leere, ungeseedete DB
+    verifiziert). Unabhängig von `company_id`/`branch_id` bestätigt (Fehlermeldung ohne jeden Bezug dazu).
+    Nicht behoben, dokumentiert.
 - [ ] 0.13 Migrationsrunner unterstützt keine Down-Migrationen — todo
   - Gefunden bei Verifikation von Subtask 0.2.1.2.1 (`server/internal/migrate/migrate.go:17-33`). `migrate.Run`
     führt jede `.sql`-Datei im aktiven Verzeichnis alphabetisch sortiert vorwärts aus — es gibt kein

@@ -5,12 +5,28 @@
 
 ## Aktueller Pfad
 
-Subtask 0.2.1.2.2 abgeschlossen (Mandanten-/Standort-Scoping für `projects`,
-diesmal von Anfang an mit Expand-Contract, kein Nachbessern nötig). Nächste
-Subtask: **0.2.1.2.3 — Mandanten-/Standort-Scoping für Angebote/Aufträge/
-Rechnungen** (`quotes`+items+imports+import_items, `sales_orders`+items,
-`invoices_out`+items+payments, `purchase_orders`+items — größte der 6
-Micro-Subtasks, ggf. selbst weiter zu zerlegen).
+**Task 0.2.1 (Datenmodell erweitern) vollständig abgeschlossen** —
+Migrationen 054–060, alle gegen frische DB verifiziert. Nächste Subtask:
+**0.2.2.1 — Repository-Queries um Scoping-Filter erweitern** (Start von
+Task 0.2.2, betrifft alle Domänen-Packages — vermutlich weiter in
+Micro-Subtasks je Domäne zu zerlegen, ähnlich wie 0.2.1.2).
+
+## Commits (diese Session)
+
+- `a35be9a` — Phase 0 Recon, Feature 0.1 Tests, Mandanten-Scoping-ADR und
+  Migrationsfixes (18 Dateien: docs/00-recon.md, 01-gap-analysis.md,
+  adr/0001-0002, backlog.md, open-questions.md, state.md,
+  accounting/{ar,bank,journal,payments}_test.go, hr/service.go(+test),
+  sales/service_test.go, migrations 038/044-Fixes, 054/055-neu). Bewusst
+  NICHT mitcommittet: vorbestehende, nicht von dieser Session stammende
+  unversionierte Änderungen (`codex.md`, `client/lib/api.dart`,
+  `client/lib/pages/quotes_page.dart`,
+  `client/test/sales_order_context_pages_test.dart`,
+  `server/internal/http/{quotes_integration_test,v1}.go`,
+  `server/internal/quotes/{imports,imports_test,service,gaeb_xml_subset_parser,gaeb_xml_subset_parser_test}.go`,
+  `aufgabe.md`, alle `docs/gaeb_*.md`) — diese stammen aus einer früheren
+  Agent-Session (siehe `codex.md`) und wurden nie von mir gelesen/verändert;
+  ihre Committierung ist eine gesonderte Entscheidung des Nutzers.
 
 ## Letzte Änderungen (diese Session)
 
@@ -197,6 +213,76 @@ Micro-Subtasks, ggf. selbst weiter zu zerlegen).
   Datenbereinigung zwischen Läufen, Kollision bei gleichem
   Kontakt-Fixture. Dokumentiert als Backlog 0.19, nicht behoben (gleiche
   bewusste Scope-Grenze wie bei 0.16-0.18).
+- Subtask 0.2.1.2.3: `056_sales_scope.sql` neu — `company_id`/`branch_id`
+  (nullable, Expand-Contract) für `quotes`, `sales_orders`, `invoices_out`,
+  `purchase_orders`. ADR 0002 präzisiert: Item-/Kind-Tabellen bekommen
+  bewusst KEINE eigene Scoping-Spalte, sondern erben den Scope über ihren FK
+  zur Kopf-Tabelle — reduziert die Migration von potenziell 11 auf 4
+  Tabellen. Gegen frische DB verifiziert: voller `go test ./internal/http`-
+  Lauf zeigt, dass die Migrationskette bis inkl. 056 bei den ersten ~9
+  Testfunktionen fehlerfrei durchläuft (Beweis: 056 funktioniert korrekt auf
+  frischer DB). Danach kaskadierendes Scheitern von ca. 30 weiteren Tests —
+  geprüft und als **komplett unabhängig von `company_id`/`branch_id`**
+  bestätigt: Ursache ist ein eigenständiges, gravierendes Migrations-
+  Architekturproblem (`050_quote_item_approval_requests.sql` fügt einen
+  Check-Constraint hinzu, den `051_quote_item_approval_decisions.sql` im
+  selben Lauf sofort wieder entfernt — beim nächsten `migrate.Run`-Durchlauf
+  gegen dieselbe, inzwischen befüllte DB versucht 050 den Constraint erneut
+  anzulegen und scheitert an zwischenzeitlich eingefügten Testdaten). Als
+  kritischer Backlog-Punkt 0.20 dokumentiert, bewusst NICHT behoben —
+  eigenständiges Problem jenseits der Mandanten-Scoping-Arbeit, erfordert
+  eigene Entscheidung (Migrationsrunner-Redesign mit Versions-Tracking oder
+  Korrektur der 050/051-Constraint-Logik).
+- Subtask 0.2.1.2.4: `057_materials_warehouses_scope.sql` neu — nur
+  `materials` (company_id, mandantenweit) und `warehouses` (company_id +
+  branch_id, natürlicher Standort-Anker) bekommen eigene Spalten.
+  `locations`/`batches`/`stock_movements` bewusst NICHT gescoped (erben über
+  `warehouse_id`/`material_id`) — ADR 0002 entsprechend präzisiert, gleiches
+  Muster wie bei den Item-Tabellen aus 0.2.1.2.3. Gegen frische DB
+  verifiziert (`NALA_INTEGRATION=1 go test ./internal/http -run
+  TestMaterials`): Migration läuft bei allen 7 Testläufen fehlerfrei durch.
+  Ein Testfehler gefunden (`TestMaterialsCreateListAndGetFlow`: "Ungültige
+  Materialkategorie") und als unabhängig von `company_id`/`branch_id`
+  bestätigt — Testfixture nutzt eine auf leerer DB unbekannte Kategorie
+  (gleiches Muster wie 0.18/0.19). Dokumentiert als Backlog 0.21, nicht
+  behoben.
+- Subtask 0.2.1.2.5: `058_accounting_scope.sql` neu — `company_id` (kein
+  `branch_id`, laut ADR 0002 mandantenweite Konsolidierung) für `accounts`,
+  `journal_entries`, `bank_statements` (letzteres in der ursprünglichen
+  Backlog-Kurzbeschreibung nicht explizit genannt, aber laut
+  ADR-0002-Tabelle Teil derselben Buchhaltungs-Gruppe — ergänzend
+  aufgenommen). `journal_lines` bewusst NICHT gescoped (erbt über
+  `entry_id` von `journal_entries`). Gegen frische DB verifiziert
+  (`TestInvoiceOutFlowWithPDFAndPayments`, deckt Buchung + Zahlung ab):
+  PASS, Migration lief ohne Fehler.
+- Subtask 0.2.1.2.6 (letzte des Task 0.2.1.2): `059_hr_scope.sql` neu —
+  `hr_employees` und `hr_teams` bekommen jeweils eigene `company_id`/
+  `branch_id` (kein Eltern-Kind-Verhältnis zueinander, `team_id` an Employee
+  ist nullable). `hr_leave_requests`/`hr_absences` bewusst NICHT gescoped
+  (erben über verpflichtendes `employee_id`). `hr_holidays` bewusst
+  ausgenommen (Feiertagskalender, kein Mandantenbezug). Kein
+  HTTP-Integrationstest für hr vorhanden (bestätigt Recon-Befund) — Migration
+  über einen anderen, funktionierenden Integrationstest verifiziert
+  (`TestMaterialsCreateIsForbiddenForSalesRole`, zeigt vollständigen
+  fehlerfreien Migrationslauf inkl. 059). **Task 0.2.1.2 damit komplett: 6
+  Migrationen (054-059), alle gegen frische DB verifiziert, durchgängig
+  Expand-Contract (kein sofortiges NOT NULL).**
+- Subtask 0.2.1.3 (letzte des Task 0.2.1): `060_users_numbering_scope.sql`
+  neu. `users` bekommt eigene `company_id`/`branch_id` (Expand-Contract).
+  `number_sequences` bekommt NUR die `company_id`-Spalte + Backfill + Index
+  — die geplante PK-Umstellung auf `(company_id, entity)` wurde bewusst NICHT
+  in dieser Migration umgesetzt: ein zusammengesetzter Primärschlüssel würde
+  `company_id` sofort `NOT NULL` erzwingen (Postgres-Regel für PK-Spalten),
+  was der Expand-Contract-Linie widerspricht, und `settings.NumberingService`
+  filtert aktuell ausschließlich nach `entity` — eine sofortige PK-Änderung
+  wäre technisch unauffällig (nur ein Mandant existiert bisher), aber eine
+  stille Falle für später. ADR 0002 entsprechend präzisiert: PK-Umstellung
+  folgt in einer eigenen Migration NACH Task 0.2.2. Gegen frische DB
+  verifiziert (`TestAuthLoginAndMeFlow`: PASS, bestätigt dass die neuen
+  `users`-Spalten den Login-Flow nicht brechen; `TestPurchaseOrdersCreate
+  ReturnsStructuredValidationError`: PASS). **Task 0.2.1 (Datenmodell
+  erweitern) damit komplett: 7 Migrationen (054-060) diese Session, alle
+  gegen frische DB verifiziert.**
 
 ## Offene Punkte
 

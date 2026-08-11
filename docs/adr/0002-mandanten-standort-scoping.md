@@ -65,18 +65,42 @@ abbildbar, da jeder Datensatz zwingend einem Standort zugeordnet sein müsste.
 ### Betroffene Tabellen (Ergänzung `company_id NOT NULL`, `branch_id
 NULLABLE`, beide mit Index)
 
+**Präzisierung (bei Umsetzung von Subtask 0.2.1.2.3 vorgenommen):** Item-/
+Kind-Tabellen (`quote_items`, `quote_imports`, `quote_import_items`,
+`sales_order_items`, `invoice_out_items`, `invoice_out_payments`,
+`purchase_order_items`) bekommen **keine eigene** `company_id`/`branch_id`-
+Spalte. Sie erben den Scope über ihren Fremdschlüssel zur jeweiligen
+Kopf-Tabelle (`quote_id`, `sales_order_id`, `invoice_id`, `order_id`) — ein
+Scoping-Filter auf die Kind-Tabelle läuft über einen JOIN auf die
+Kopf-Tabelle. Begründung: redundante Scoping-Spalten auf Kind-Tabellen
+müssten bei jedem Schreibzugriff synchron zur Kopf-Tabelle gehalten werden,
+ohne einen Abfragevorteil zu bieten, der den JOIN nicht auch leisten würde
+— nur `warehouses`/`locations`/`stock_movements`/`batches` und
+`hr_*`-Tabellen bekommen weiterhin eigene Spalten, da sie keine so klare
+1:n-Kopf/Positions-Beziehung haben (z. B. kann eine `location` unabhängig
+von einer einzelnen Bewegung existieren).
+
 | Tabelle | company_id | branch_id | Begründung |
 |---|---|---|---|
 | `contacts` | ja | ja | Kunde/Lieferant kann standortspezifisch gepflegt sein |
 | `projects` | ja | ja | Projekt gehört zu einer abwickelnden Niederlassung |
-| `quotes`, `quote_items`, `quote_imports`, `quote_import_items` | ja | ja (über `quotes`) | Angebot gehört zu Mandant + ausstellendem Standort |
-| `sales_orders`, `sales_order_items` | ja | ja (über `sales_orders`) | Analog Angebote |
-| `invoices_out`, `invoice_out_items`, `invoice_out_payments` | ja | ja (über `invoices_out`) | GoBD-relevant, muss Standort-Nummernkreis zuordenbar sein |
-| `purchase_orders`, `purchase_order_items` | ja | ja (über `purchase_orders`) | Bestellung kann standortspezifisch sein |
+| `quotes` | ja | ja | Angebot gehört zu Mandant + ausstellendem Standort |
+| `quote_items`, `quote_imports`, `quote_import_items` | nein (über `quotes`) | nein (über `quotes`) | siehe Präzisierung oben |
+| `sales_orders` | ja | ja | Auftrag gehört zu Mandant + Standort |
+| `sales_order_items` | nein (über `sales_orders`) | nein (über `sales_orders`) | siehe Präzisierung oben |
+| `invoices_out` | ja | ja | GoBD-relevant, muss Standort-Nummernkreis zuordenbar sein |
+| `invoice_out_items`, `invoice_out_payments` | nein (über `invoices_out`) | nein (über `invoices_out`) | siehe Präzisierung oben |
+| `purchase_orders` | ja | ja | Bestellung kann standortspezifisch sein |
+| `purchase_order_items` | nein (über `purchase_orders`) | nein (über `purchase_orders`) | siehe Präzisierung oben |
 | `materials` | ja | nein (mandantenweit) | Artikelstamm i. d. R. mandantenweit gepflegt, nicht je Standort dupliziert |
-| `warehouses`, `locations`, `stock_movements`, `batches` | ja | ja | Lager ist typischerweise physisch an einen Standort gebunden |
+| `warehouses` | ja | ja | Ein Lager IST die physische Standort-Einheit — natürlicher Ankerpunkt für Standort-Scoping |
+| `locations` | nein (über `warehouses`) | nein (über `warehouses`) | Lagerplatz gehört zu genau einem Lager (`warehouse_id`), siehe Präzisierung oben |
+| `batches` | nein (über `materials`) | — (kein Standortbezug im Schema) | Charge hat nur `material_id`, keinen eigenen Lagerbezug — erbt `company_id` von `materials` |
+| `stock_movements` | nein (über `warehouses`) | nein (über `warehouses`) | Bewegung hat bereits `warehouse_id` — natürlicher Scope-Anker, keine eigene Spalte nötig |
 | `bank_statements`, `journal_entries`, `journal_lines`, `accounts` | ja | nein (mandantenweit) | Buchhaltung i. d. R. auf Mandantenebene konsolidiert (ein Kontenrahmen je Mandant, nicht je Standort) |
-| `hr_employees`, `hr_teams`, `hr_leave_requests`, `hr_absences` | ja | ja | Mitarbeiter ist einem Standort zugeordnet |
+| `hr_employees` | ja | ja | Mitarbeiter ist einem Standort zugeordnet |
+| `hr_teams` | ja | ja | Team ist organisatorisch einem Standort zuordenbar; kein Kind von `hr_employees` (`team_id` an Employee ist optional/nullable, umgekehrte Beziehung) |
+| `hr_leave_requests`, `hr_absences` | nein (über `hr_employees`) | nein (über `hr_employees`) | `employee_id NOT NULL`, siehe Präzisierung oben |
 
 Nicht gescoped (bewusst global): `tax_codes` (gesetzlich fixe Steuersätze,
 mandantenübergreifend gültig), `pdf_templates` (folgt eigenem
@@ -94,13 +118,26 @@ eingeschränkt).
 
 ### `number_sequences`
 
-Primärschlüssel wird von `entity` (text) auf `(company_id, entity)`
-erweitert. **Bewusst ohne `branch_id`** in dieser ADR: Nummernkreise gelten
-zunächst je Mandant, nicht je Standort — vermeidet Überdesign, solange kein
-konkreter fachlicher Bedarf für standortspezifische Nummernkreise
-dokumentiert ist. Falls das später gebraucht wird, ist es eine additive
-Folgemigration (weitere Spalte + zusammengesetzter Schlüssel), keine
-Neukonzeption.
+Primärschlüssel wird perspektivisch von `entity` (text) auf
+`(company_id, entity)` erweitert. **Bewusst ohne `branch_id`** in dieser
+ADR: Nummernkreise gelten zunächst je Mandant, nicht je Standort — vermeidet
+Überdesign, solange kein konkreter fachlicher Bedarf für standortspezifische
+Nummernkreise dokumentiert ist.
+
+**Präzisierung (bei Umsetzung von Subtask 0.2.1.3 vorgenommen):** Der
+`PRIMARY KEY` selbst wird NICHT in derselben Migration wie die neue Spalte
+umgestellt — ein zusammengesetzter Primärschlüssel würde `company_id` NOT
+NULL erzwingen (Primärschlüsselspalten dürfen in Postgres nicht NULL sein),
+was der Expand-Contract-Linie dieser ADR widerspricht. Zusätzlich lesen/
+schreiben `settings.NumberingService.Get`/`UpdatePattern`/`Next`
+(`server/internal/settings/numbering.go`) ausschließlich nach `WHERE
+entity=$1`, ohne `company_id` — eine sofortige PK-Umstellung würde diese
+Eindeutigkeitsannahme nicht sofort brechen (aktuell existiert nur ein
+Mandant), aber stillschweigend eine Falle für später legen. Reihenfolge
+daher: `company_id` NULLABLE + Backfill + unterstützender Index jetzt
+(0.2.1.3); `NumberingService` auf `company_id`-Filterung umstellen in Task
+0.2.2; PK-Umstellung auf `(company_id, entity)` und `SET NOT NULL` in einer
+eigenen, späteren Migration, sobald 0.2.2 abgeschlossen ist.
 
 ### Migrationsreihenfolge (für Subtask 0.2.1.2/0.2.1.3, hier nur grob
 skizziert — Detailmigrationen folgen als eigene Subtasks)
