@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS quote_imports (
     id UUID PRIMARY KEY,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    contact_id UUID NULL REFERENCES contacts(id) ON DELETE SET NULL,
+    contact_id TEXT NULL REFERENCES contacts(id) ON DELETE SET NULL,
     source_kind TEXT NOT NULL,
     source_filename TEXT NOT NULL,
     source_document_id TEXT NOT NULL,

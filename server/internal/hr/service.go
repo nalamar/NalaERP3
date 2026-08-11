@@ -95,9 +95,6 @@ func (s *EmployeeService) Create(ctx context.Context, e Employee) (*Employee, er
 		return nil, err
 	}
 	e.ID = id
-	if e.Active == false {
-		e.Active = false
-	}
 	return &e, nil
 }
 
