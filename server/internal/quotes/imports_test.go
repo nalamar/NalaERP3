@@ -42,7 +42,7 @@ func createUploadedGAEBImportForProcessingTest(t *testing.T, ctx context.Context
 	if _, err := env.PG.Exec(ctx, "INSERT INTO contacts (id, typ, rolle, status, name, email, phone, waehrung) VALUES ($1,'org','customer','active',$2,$3,$4,'EUR')", contactID, "GAEB Verarbeitung Kunde GmbH", "gaeb-processing@example.com", "+49 211 555555"); err != nil {
 		t.Fatalf("seed contact: %v", err)
 	}
-	if _, err := env.PG.Exec(ctx, "INSERT INTO projects (id, name, kunde_id, status, company_id) VALUES ($1,$2,$3,'angebot',$4)", projectID, "GAEB Verarbeitung Projekt", contactID, testGAEBImportCompanyID); err != nil {
+	if _, err := env.PG.Exec(ctx, "INSERT INTO projects (id, nummer, name, kunde_id, status, company_id) VALUES ($1,$2,$3,$4,'angebot',$5)", projectID, "PRJ-GAEB-PROCESSING-0001", "GAEB Verarbeitung Projekt", contactID, testGAEBImportCompanyID); err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
 	svc := NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB).WithGAEBImportParser(parser)
@@ -134,9 +134,9 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 		t.Fatalf("seed contact: %v", err)
 	}
 	_, err = env.PG.Exec(ctx, `
-		INSERT INTO projects (id, name, kunde_id, status, company_id)
-		VALUES ($1,$2,$3,'angebot',$4)
-	`, projectID, "GAEB Import Projekt", contactID, testGAEBImportCompanyID)
+		INSERT INTO projects (id, nummer, name, kunde_id, status, company_id)
+		VALUES ($1,$2,$3,$4,'angebot',$5)
+	`, projectID, "PRJ-GAEB-IMPORT-0001", "GAEB Import Projekt", contactID, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("seed project: %v", err)
 	}

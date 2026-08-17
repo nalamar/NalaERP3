@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"nalaerp3/internal/auth"
 	"nalaerp3/internal/quotes"
 	"nalaerp3/internal/settings"
 	"nalaerp3/internal/testutil"
@@ -1984,6 +1985,79 @@ func TestQuoteStatusBlocksOpenApprovalRework(t *testing.T) {
 	}
 }
 
+func TestQuoteUpdateRejectsNonDraftStatusWithValidationError(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-quote-nondraft-update@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-quote-nondraft-update@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Nicht-Entwurf Update Kunde GmbH",
+		"email":    "quote-nondraft-update@example.com",
+		"telefon":  "+49 211 444444",
+		"waehrung": "EUR",
+	})
+
+	quoteID, _ := seedHTTPApprovalDecisionQuote(t, env, customerID, "ANG-HTTP-NONDRAFT-UPDATE", 100, 80)
+
+	acceptedRec := updateHTTPQuoteStatus(t, handler, accessToken, quoteID, "accepted")
+	if acceptedRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for accepted status transition, got %d with body %s", acceptedRec.Code, acceptedRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPatch, "/api/v1/quotes/"+quoteID.String(), bytes.NewReader([]byte(`{}`)))
+	updateReq.Header.Set("Authorization", "Bearer "+accessToken)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for updating a non-draft quote, got %d with body %s", updateRec.Code, updateRec.Body.String())
+	}
+	if !strings.Contains(updateRec.Body.String(), "nur Entwürfe sind bearbeitbar") {
+		t.Fatalf("expected draft-only validation message, got body %s", updateRec.Body.String())
+	}
+}
+
+func TestQuoteCreateRejectsUnknownTaxCode(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-quote-unknown-tax@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-quote-unknown-tax@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Unbekannter Steuercode Kunde GmbH",
+		"email":    "quote-unknown-tax@example.com",
+		"telefon":  "+49 211 666666",
+		"waehrung": "EUR",
+	})
+
+	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"contact_id":"`+customerID+`",
+		"currency":"EUR",
+		"items":[
+			{"description":"Ungueltiges Steuerkennzeichen","qty":1,"unit":"Stk","unit_price":100,"tax_code":"XX99"}
+		]
+	}`)))
+	createQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createQuoteReq.Header.Set("Content-Type", "application/json")
+	createQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createQuoteRec, createQuoteReq)
+	if createQuoteRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unknown tax code, got %d with body %s", createQuoteRec.Code, createQuoteRec.Body.String())
+	}
+	if !strings.Contains(createQuoteRec.Body.String(), "unbekanntes oder inaktives Steuerkennzeichen") {
+		t.Fatalf("expected unknown tax code validation message, got body %s", createQuoteRec.Body.String())
+	}
+}
+
 func TestQuoteConvertToInvoiceBlocksOpenApprovalRework(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
 	testutil.SeedAuthUser(t, env, "integration-approval-invoice-admin@example.com", "Secret123!", "admin")
@@ -3422,7 +3496,7 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 
 	createMaterialReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
 		"nummer":"MAT-GAEB-CAND-0001",
-		"bezeichnung":"Aluminium Profil 70mm",
+		"bezeichnung":"Aluminium Profil 70mm Kandidatenpruefung",
 		"einheit":"m"
 	}`)))
 	createMaterialReq.Header.Set("Authorization", "Bearer "+accessToken)
@@ -3500,7 +3574,7 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 		{
 			PositionNo:  "01.001",
 			OutlineNo:   "01",
-			Description: "Aluminium Profil 70mm",
+			Description: "Aluminium Profil 70mm Kandidatenpruefung",
 			Qty:         4,
 			Unit:        "m",
 			SortOrder:   1,
@@ -3537,7 +3611,7 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 	}
 	if item.MaterialCandidates[0].MaterialID != createdMaterial.ID ||
 		item.MaterialCandidates[0].MaterialNo != "MAT-GAEB-CAND-0001" ||
-		item.MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm" {
+		item.MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm Kandidatenpruefung" {
 		t.Fatalf("unexpected material candidate payload: %+v", item.MaterialCandidates[0])
 	}
 
@@ -3568,8 +3642,162 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 	if len(fetched.Items[0].MaterialCandidates) != 1 ||
 		fetched.Items[0].MaterialCandidates[0].MaterialID != createdMaterial.ID ||
 		fetched.Items[0].MaterialCandidates[0].MaterialNo != "MAT-GAEB-CAND-0001" ||
-		fetched.Items[0].MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm" {
+		fetched.Items[0].MaterialCandidates[0].MaterialLabel != "Aluminium Profil 70mm Kandidatenpruefung" {
 		t.Fatalf("unexpected fetched material candidates: %+v", fetched.Items[0].MaterialCandidates)
+	}
+}
+
+// TestQuoteGAEBImportMaterialCandidatesAreScopedToCompany deckt Backlog 0.43
+// ab: listMaterialCandidatesForQuoteItem (server/internal/quotes/service.go)
+// jointe materials bisher ausschliesslich ueber Bezeichnung/Nummer, OHNE
+// company_id-Einschraenkung - ein Material einer FREMDEN Company mit
+// zufaellig identischer Bezeichnung wurde als Kandidat vorgeschlagen. Dieser
+// Test legt echte, unterschiedliche company_profiles/users an (per Direkt-SQL,
+// da es aktuell keinen Weg gibt, einen zweiten Mandanten über die
+// Anwendung selbst anzulegen, siehe Backlog 0.32) und prueft, dass ein
+// Material der FREMDEN Company NICHT als Kandidat erscheint.
+func TestQuoteGAEBImportMaterialCandidatesAreScopedToCompany(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	testutil.SeedAuthUser(t, env, "integration-gaeb-candidates-scope@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO company_profiles (id, name) VALUES ('itest-other-company-gaeb-candidates', 'Andere Firma GAEB Kandidaten')
+		ON CONFLICT (id) DO NOTHING
+	`); err != nil {
+		t.Fatalf("seed other company: %v", err)
+	}
+	passwordHash, err := auth.HashPassword("Secret123!")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	const otherCompanyUserID = "itest-other-company-gaeb-candidates-user"
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO users (id, email, username, password_hash, first_name, last_name, display_name, locale, timezone, is_active, is_locked, company_id)
+		VALUES ($1,$2,$2,$3,'Andere','Firma','Andere Firma','de-DE','Europe/Berlin',true,false,'itest-other-company-gaeb-candidates')
+		ON CONFLICT (email) DO UPDATE SET company_id=EXCLUDED.company_id
+	`, otherCompanyUserID, "integration-other-company-gaeb-candidates-user@example.com", passwordHash); err != nil {
+		t.Fatalf("seed other-company user: %v", err)
+	}
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO user_roles (user_id, role_id)
+		SELECT $1, r.id FROM roles r WHERE r.code = 'admin'
+		ON CONFLICT DO NOTHING
+	`, otherCompanyUserID); err != nil {
+		t.Fatalf("seed other-company user role: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	ownerToken := loginIntegrationUser(t, handler, "integration-gaeb-candidates-scope@example.com", "Secret123!")
+	otherToken := loginIntegrationUser(t, handler, "integration-other-company-gaeb-candidates-user@example.com", "Secret123!")
+
+	// Fremdmandant legt ein Material mit einer Bezeichnung an, die exakt der
+	// spaeter im eigenen Mandanten importierten Positionsbeschreibung entspricht.
+	createIntegrationMaterial(t, handler, otherToken, map[string]any{
+		"nummer":      "MAT-FOREIGN-CAND-0001",
+		"bezeichnung": "Fremdmandant Kandidat 55mm",
+		"einheit":     "m",
+	})
+
+	customerID := createIntegrationContact(t, handler, ownerToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "GAEB Kandidaten Scope Kunde GmbH",
+		"email":    "gaeb-candidates-scope@example.com",
+		"telefon":  "+49 211 999994",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"GAEB Kandidaten Scope Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+ownerToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+	var createdProject struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &createdProject); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	if err := writer.WriteField("project_id", createdProject.ID); err != nil {
+		t.Fatalf("write project_id field: %v", err)
+	}
+	if err := writer.WriteField("contact_id", customerID); err != nil {
+		t.Fatalf("write contact_id field: %v", err)
+	}
+	fileWriter, err := writer.CreateFormFile("file", "import-scope.x83")
+	if err != nil {
+		t.Fatalf("create multipart file: %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("dummy-gaeb-content")); err != nil {
+		t.Fatalf("write multipart content: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close multipart writer: %v", err)
+	}
+
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", body)
+	uploadReq.Header.Set("Authorization", "Bearer "+ownerToken)
+	uploadReq.Header.Set("Content-Type", writer.FormDataContentType())
+	uploadRec := httptest.NewRecorder()
+	handler.ServeHTTP(uploadRec, uploadReq)
+	if uploadRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for gaeb import upload, got %d with body %s", uploadRec.Code, uploadRec.Body.String())
+	}
+	var createdImport struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(uploadRec.Body.Bytes(), &createdImport); err != nil {
+		t.Fatalf("decode upload response: %v", err)
+	}
+
+	quoteSvc := quotes.NewService(env.PG, settings.NewNumberingService(env.PG)).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
+		{
+			PositionNo:  "01.001",
+			OutlineNo:   "01",
+			Description: "Fremdmandant Kandidat 55mm",
+			Qty:         1,
+			Unit:        "m",
+			SortOrder:   1,
+		},
+	}, "default"); err != nil {
+		t.Fatalf("save import parse result: %v", err)
+	}
+
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
+	if err != nil || len(items) != 1 {
+		t.Fatalf("expected one import item, got %d err=%v", len(items), err)
+	}
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen", "default"); err != nil {
+		t.Fatalf("accept import item: %v", err)
+	}
+	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID, "default"); err != nil {
+		t.Fatalf("mark import reviewed: %v", err)
+	}
+
+	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID, "default")
+	if err != nil {
+		t.Fatalf("apply import: %v", err)
+	}
+	if applied.Quote == nil || len(applied.Quote.Items) != 1 {
+		t.Fatalf("unexpected applied quote payload: %+v", applied)
+	}
+
+	item := applied.Quote.Items[0]
+	if len(item.MaterialCandidates) != 0 {
+		t.Fatalf("expected zero material candidates from a foreign company, got %+v", item.MaterialCandidates)
 	}
 }
 
@@ -5266,7 +5494,7 @@ func TestQuotePriceSourcePriorityEndpointReturnsPrioritizedVisibleSources(t *tes
 	if len(blockedUpdateReload.Items) != 1 {
 		t.Fatalf("expected one quote item after blocked approval update, got %+v", blockedUpdateReload.Items)
 	}
-	if blockedUpdateReload.Items[0].Description != "Preisquellen Position" {
+	if blockedUpdateReload.Items[0].Description != "Preispriorisierung Position" {
 		t.Fatalf("expected quote item to remain unchanged after blocked approval update, got %+v", blockedUpdateReload.Items[0])
 	}
 	if blockedUpdateReload.Items[0].ActiveApprovalRequest == nil ||

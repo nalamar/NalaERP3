@@ -397,9 +397,45 @@
     unabhängige** vorbestehende Test-/Anwendungsfehler entdeckt (nicht migrationsbezogen, nicht durch
     `company_id`/`branch_id` verursacht — geprüft anhand der Fehlermeldungen). Bewusst NICHT mehr in dieser
     bereits stark erweiterten Subtask verfolgt, sondern separat dokumentiert:
-    - [ ] 0.16 `TestContactTasksCreateListUpdateAndDeleteFlow` schlägt auf frischer DB fehl: "expected due
-      date to roundtrip" (`server/internal/http/contacts_integration_test.go:403`) — todo, Ursache noch
-      nicht analysiert.
+    - [x] 0.16 `TestContactTasksCreateListUpdateAndDeleteFlow` schlägt auf frischer DB fehl: "expected due
+      date to roundtrip" (`server/internal/http/contacts_integration_test.go:403`) — done, verifiziert
+      gegen frische DB. **Systemweiter Fix, betrifft ALLE `timestamptz`-Felder der gesamten Anwendung,
+      nicht nur diesen einen Test.**
+      - Reproduziert: `POST /contacts/{id}/tasks` mit `"faellig_am":"2026-04-10T00:00:00Z"` — die Antwort
+        enthält denselben ZEITPUNKT, aber einen ANDEREN JSON-Offset (z. B. `"2026-04-10T02:00:00+02:00"`
+        statt `"2026-04-10T00:00:00Z"`), daher schlägt der byte-genaue String-Vergleich fehl.
+      - **Erste, VERWORFENE Hypothese**: die Postgres-Test-Container-Sitzung läuft mit `TimeZone =
+        Europe/Berlin` (`docker-compose.test.yml`, `TZ: Europe/Berlin`) statt UTC — testweise per
+        `cfg.ConnConfig.RuntimeParams["timezone"] = "UTC"` (`server/internal/db/postgres.go`) erzwungen.
+        Per eigenständigem Diagnose-Programm bestätigt: die Sitzungs-Zeitzone war danach tatsächlich `UTC`
+        (`SHOW timezone` → `UTC`) — der Test schlug TROTZDEM weiterhin fehl. Diese Hypothese war also FALSCH
+        und wurde wieder verworfen (kein SQL-`SET timezone`-Effekt auf das eigentliche Problem).
+      - **Tatsächliche Root Cause** (per gezieltem Diagnose-Programm ermittelt, das `time.Time`-Werte direkt
+        aus einer `SELECT ...::timestamptz`-Abfrage scannt und deren `.Location()` sowie JSON-Serialisierung
+        ausgibt): pgx v5 (`pgtype.TimestamptzCodec`) dekodiert `timestamptz`-Spalten standardmäßig OHNE
+        gesetzte `ScanLocation` — der interne Code (`pgtype/timestamptz.go`,
+        `scanPlanBinaryTimestamptzToTimestamptzScanner.Scan`) ruft `time.Unix(...)` auf, was laut Go-Stdlib
+        einen Wert in `time.Local` liefert (NICHT UTC), sofern kein `plan.location` explizit gesetzt ist.
+        `time.Local` ist die Zeitzone des GO-PROZESSES (Betriebssystem-/Umgebungskonfiguration), NICHT die
+        Postgres-Sitzungszeitzone — die beiden sind unabhängig voneinander, weshalb der erste Fix-Versuch
+        (Postgres-Sitzungszeitzone) wirkungslos blieb. Da die Entwicklungsmaschine (und potenziell auch
+        Produktions-/CI-Umgebungen) lokal auf `Europe/Berlin` konfiguriert ist, wurde JEDER aus der DB
+        gelesene `timestamptz`-Wert in Ortszeit statt UTC zurückgegeben — betrifft NICHT nur
+        `contact_tasks.faellig_am`, sondern JEDES `timestamptz`-Feld in der GESAMTEN Anwendung (Rechnungen,
+        Angebote, Aufträge, Zahlungen, Audit-Log, etc.), da alle denselben zentralen Connection-Pool nutzen.
+      - **Fix**: in `server/internal/db/postgres.go` (`ConnectPostgres`, EINZIGE zentrale Stelle für den
+        `pgxpool`-Aufbau, genutzt sowohl von der Produktivanwendung als auch von
+        `testutil.SetupIntegrationEnv`) einen `cfg.AfterConnect`-Hook ergänzt, der für JEDE neue
+        Pool-Verbindung `conn.TypeMap().RegisterType(&pgtype.Type{Name: "timestamptz", OID:
+        pgtype.TimestamptzOID, Codec: &pgtype.TimestamptzCodec{ScanLocation: time.UTC}})` ausführt — erzwingt
+        UTC als `ScanLocation` für alle `timestamptz`-Dekodierungen, unabhängig von Prozess- ODER
+        Postgres-Sitzungszeitzone. Die verworfene `RuntimeParams["timezone"]`-Änderung wieder entfernt (nicht
+        die eigentliche Ursache, hätte nur unnötige Verwirrung gestiftet).
+      - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+        clean. Zieltest isoliert: PASS. Voller `go test ./...` (alle 15 Nicht-Integrationspakete) ohne
+        Fehler — insbesondere `accounting`/`hr`/`contacts` (Domänen mit vielen `timestamptz`-Feldern)
+        unauffällig. Voller `go test ./internal/http/... -count=1` gegen frische DB: von 4 auf **3**
+        Fehlschläge zurückgegangen.
     - [x] 0.17 `TestContactDocumentsUploadListAndDownloadFlow` schlägt auf frischer DB fehl: "expected
       content disposition header" (`server/internal/http/contacts_integration_test.go:613`) — done, als
       Nebeneffekt von Backlog 0.22 gelöst.
@@ -412,20 +448,61 @@
       setzte (`if filename != "" { ... }`). Die neue Implementierung liest dieselben Daten JETZT ZWINGEND
       (mit geprüftem Fehler) VOR dem Öffnen des Streams — ein Fehlschlag führt jetzt zu einem klaren `404`
       statt zu einem stillen, leeren Dateinamen.
-    - [ ] 0.18 `TestContactCommercialContextAggregatesQuotesSalesOrdersAndInvoices` schlägt auf frischer DB
-      fehl: `quote_items_tax_code_fkey`-Verletzung beim Anlegen eines Angebots
-      (`server/internal/http/contacts_integration_test.go:843`, SQLSTATE 23503) — vermutlich verwendet der
-      Testaufbau/die Seed-Logik einen `tax_code`, der in `tax_codes` auf einer wirklich frischen DB fehlt —
-      todo, Ursache noch nicht analysiert.
-    - [ ] 0.19 `TestProjectQuotePDFFlow`/`TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices`
-      kollidieren bei gemeinsamem Testlauf: beide legen offenbar einen Kontakt mit identischem
-      Name+E-Mail-Fixture an, der zweite Aufruf schlägt mit "Kontakt mit gleichem Namen und gleicher E-Mail
-      bereits vorhanden" fehl (`server/internal/http/projects_integration_test.go:20,133`). Ursache: Tests
-      teilen sich dieselbe Postgres-Instanz ohne Datenbereinigung zwischen Testfunktionen
-      (`testutil.SetupIntegrationEnv` setzt nur das Schema neu auf, nicht die Daten) — bei gefiltertem
-      `-run`-Lauf reproduzierbar, betrifft potenziell auch volle Testläufe. Nicht analysiert, ob dies auch
-      bei `go test ./internal/http` ohne Filter auftritt. Gefunden bei Verifikation von Subtask 0.2.1.2.2,
-      nicht behoben (unabhängig von `company_id`/`branch_id`, per Fehlermeldung bestätigt).
+    - [x] 0.18 `TestContactCommercialContextAggregatesQuotesSalesOrdersAndInvoices` schlägt auf frischer DB
+      fehl: `quote_items_tax_code_fkey`-Verletzung beim Anlegen eines Angebots — done, verifiziert gegen
+      frische DB.
+      - Root Cause: `server/internal/http/contacts_integration_test.go` verwendet für die einzige
+        Angebotsposition `"tax_code":"19"` — ein reiner Tippfehler, gültige Steuerkennzeichen sind
+        `"DE19"`/`"DE7"`/`"DE0"` (siehe `017_accounting_basics.sql`). Kein `tax_codes`-Eintrag mit
+        `code='19'` existiert, daher schlug der rohe INSERT vor Backlog 0.36 mit einer Fremdschlüssel-
+        Verletzung fehl (`500`). Nach Backlog 0.36 (Steuerkennzeichen-Validierung in `quotes`) liefert
+        derselbe Tippfehler jetzt sauber `400 validation_error "unbekanntes oder inaktives
+        Steuerkennzeichen: 19"` — inhaltlich dieselbe Fehlerursache, nur mit einer klareren Fehlermeldung
+        statt der rohen SQL-Exception; der Test selbst bestand aber weiterhin unverändert auf `201`.
+      - **Fix**: `"tax_code":"19"` auf `"tax_code":"DE19"` korrigiert (einzige Fundstelle im Test, per
+        `grep -rn '"tax_code":"19"'` über `internal/http/` bestätigt).
+      - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+        clean. Zieltest isoliert: PASS (kompletter Flow: Angebot → Annahme → Auftrag → Rechnung →
+        Commercial-Context-Aggregation). Voller `go test ./...` (alle 15 Pakete) ohne Fehler. Voller `go test
+        ./internal/http/... -count=1` gegen frische DB: von 3 auf **2** Fehlschläge zurückgegangen.
+    - [x] 0.19 `TestProjectQuotePDFFlow`/`TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices`
+      kollidieren bei gemeinsamem Testlauf — done, verifiziert gegen frische DB. **Ursprüngliche Diagnose war
+      STALE, tatsächlicher Fund war ein anderer, echter SQL-Bug.**
+      - Ursprünglicher Fund (aus einer früheren Subtask dieser Session): beide Tests legen angeblich einen
+        Kontakt mit identischem Name+E-Mail-Fixture an, der zweite Aufruf schlägt mit "Kontakt mit gleichem
+        Namen und gleicher E-Mail bereits vorhanden" fehl.
+      - **Re-Verifikation ergab: dieser Fund ist NICHT mehr reproduzierbar.** Beide Testfunktionen verwenden
+        aktuell (Stand dieser Session, per direktem Codelesen bestätigt) BEREITS unterschiedliche
+        Kontakt-Fixtures (`TestProjectQuotePDFFlow`: `"Projektkunde Metallbau GmbH"` /
+        `"projektkunde@example.com"`; `TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices`:
+        `"Projekt Kontext Kunde GmbH"` / `"project-context@example.com"`) — vermutlich wurde die Kollision in
+        einer früheren, nicht separat dokumentierten Subtask dieser Session bereits behoben (ähnliches Muster
+        wie bei Backlog 0.14). Gemeinsamer Testlauf beider Tests gegen frische DB bestätigt: KEINE
+        Namenskollision mehr.
+      - **Tatsächlich gefundener, echter Bug** (beim erneuten gemeinsamen Testlauf reproduziert):
+        `GET /projects/{id}/commercial-context` scheiterte IMMER (auch isoliert, unabhängig von einer
+        Testkollision) mit `500 ERROR: for SELECT DISTINCT, ORDER BY expressions must appear in select list`
+        (SQLSTATE 42P10). Root Cause: `listProjectInvoices`
+        (`server/internal/http/commercial_context.go`) verwendet `SELECT DISTINCT ... ORDER BY
+        i.invoice_date DESC, i.created_at DESC` — `i.created_at` fehlte in der `SELECT DISTINCT`-Liste,
+        obwohl es im `ORDER BY` referenziert wird. Postgres verlangt bei `SELECT DISTINCT` zwingend, dass
+        JEDE `ORDER BY`-Spalte auch in der Select-Liste steht — ein rein syntaktischer Fehler, unabhängig von
+        Datenmenge/-inhalt (bestätigt: schlägt auch bei EINER einzigen passenden Rechnung fehl, nicht nur bei
+        Duplikaten). `accounting.ARService.List` (`ar.go`) nutzt denselben `ORDER BY`-Ausdruck, aber OHNE
+        `DISTINCT` — dort daher unproblematisch; nur die projektbezogene Variante mit `DISTINCT` (nötig wegen
+        des `JOIN` über `quotes`/`sales_orders` mit `OR`-Bedingung, das sonst Duplikate erzeugen könnte) war
+        betroffen. Einzige `SELECT DISTINCT`-Fundstelle in dieser Datei (per `grep` bestätigt); der
+        analoge Kontakt-Pfad (`buildContactCommercialContext`) nutzt stattdessen direkt
+        `arSvc.List(..., ContactID: ...)` (kein eigenes SQL, kein `DISTINCT`) und ist daher nicht betroffen.
+      - **Fix**: `i.created_at` zur `SELECT DISTINCT`-Liste ergänzt, korrespondierenden `Scan`-Zielwert
+        (`createdAt time.Time`, nicht im Response-Struct benötigt, daher nur als Scan-Ziel ohne
+        Weiterverwendung) ergänzt.
+      - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+        clean. Beide ursprünglich genannten Tests gemeinsam (`-run
+        "^TestProjectQuotePDFFlow$|^TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices$"`):
+        beide PASS, keine Kollision, kein SQL-Fehler mehr. Voller `go test ./...` (alle 15 Pakete) ohne
+        Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB: von 2 auf **1** Fehlschlag
+        zurückgegangen (nur noch `TestQuoteFlowWithPricingAndPDF`, bereits als Backlog 0.44 dokumentiert).
 - [x] 0.15 CI-Format-Check würde aktuell fehlschlagen: 40 Go-Dateien nicht gofmt-konform — done, verifiziert.
   - Gefunden beim Ausführen des exakten CI-Befehls (`.github/workflows/ci.yml:75-79`:
     `find . -name '*.go' -not -path './vendor/*' | xargs gofmt -l`) während der Verifikation von
@@ -549,18 +626,43 @@
     `TestQuotePriceHistoryEndpointReturnsVisibleSourcesForMappedDraftItem`).
   - Verifiziert: alle fünf genannten Tests PASS gegen frische DB (siehe Backlog 0.24 für den vollständigen
     Verifikationslauf, der alle drei Backlog-Positionen gemeinsam abdeckt).
-- [ ] 0.41 `TestQuotePriceSourcePriorityEndpointReturnsPrioritizedVisibleSources` schlägt auf frischer DB fehl:
-  Positionsbeschreibung eines fremden Tests taucht im Ergebnis auf — todo
+- [x] 0.41 `TestQuotePriceSourcePriorityEndpointReturnsPrioritizedVisibleSources` schlägt auf frischer DB
+  fehl — done, verifiziert gegen frische DB.
   - Gefunden bei Umsetzung von Backlog 0.21 (nachdem der Materialkategorie-Fehler behoben war, kam dieser Test
-    weiter und scheiterte an einer NEUEN, vorher verdeckten Stelle: `quotes_integration_test.go:5257`,
-    erwartete Angebotsposition mit `Description:"Preisquellen Position"`, bekam stattdessen
-    `Description:"Preispriorisierung Position"` — letztere stammt erkennbar aus einem ANDEREN Test in
-    derselben Datei). Ursache noch nicht analysiert; möglicherweise verwandt mit Backlog 0.19 (Tests teilen
-    sich dieselbe Postgres-Instanz ohne Datenbereinigung zwischen Testfunktionen, wodurch bei ungenügend
-    scharfer Filterung Datensätze aus anderen Testläufen sichtbar werden). Nicht behoben (außerhalb des auf
-    Materialkategorien beschränkten Scopes von 0.21, eigenständige Ursache noch zu klären). Fix: zuerst
-    reproduzieren und Ursache ermitteln (z. B. fehlender Filter nach Quote-ID oder Contact-ID in der
-    Abfrage, die die Positionsliste liefert).
+    weiter und scheiterte an einer NEUEN, vorher verdeckten Stelle: erwartete Angebotsposition mit
+    `Description:"Preisquellen Position"`, bekam stattdessen `Description:"Preispriorisierung Position"`).
+  - **Root Cause (KEIN Cross-Test-Datenleck, wie ursprünglich vermutet)**: bei genauer Prüfung des gesamten
+    Testverlaufs stellte sich heraus, dass `"Preispriorisierung Position"` die tatsächliche, korrekte
+    Beschreibung der in DIESEM Test selbst (`quotes_integration_test.go`,
+    `TestQuotePriceSourcePriorityEndpointReturnsPrioritizedVisibleSources`) angelegten Angebotsposition ist
+    — sie wird beim `POST /quotes/` mit genau diesem Wert erzeugt. `"Preisquellen Position"` ist dagegen die
+    Beschreibung aus einem STRUKTURELL ähnlichen, aber ANDEREN Test
+    (`TestQuotePriceHistoryEndpointReturnsVisibleSourcesForMappedDraftItem`) — die Assertion
+    `blockedUpdateReload.Items[0].Description != "Preisquellen Position"` war ein klassischer
+    Copy-Paste-Fehler (die Testfunktion für `PriceSourcePriority` wurde offensichtlich von der
+    `PriceHistory`-Testfunktion abgeleitet, dabei aber diese eine Assertion nicht mitangepasst) — exakt
+    dasselbe Fehlermuster wie bereits bei Backlog 0.28 dokumentiert. KEIN Zusammenhang mit Backlog 0.19
+    (Datenisolation zwischen Testfunktionen) — bewusst geprüft und verworfen, bevor der einfachere,
+    tatsächliche Fund (falsche Assertion) übernommen wurde.
+  - **Fix Teil 1**: die Assertion auf `"Preispriorisierung Position"` korrigiert.
+  - **Cascading-Fund**: nach der Assertion-Korrektur kam der Test weiter und deckte einen ECHTEN,
+    unabhängigen Produktivbug auf: `POST /quotes/{id}/items/{itemID}/apply-target-price` scheiterte IMMER mit
+    `500` (`ERROR: new row for relation "quote_item_price_decisions" violates check constraint
+    "chk_quote_item_price_decisions_type"`, SQLSTATE 23514). Root Cause:
+    `server/internal/migrate/migrations/048_quote_item_price_decisions.sql` erlaubt per CHECK-Constraint NUR
+    `decision_type IN ('primary_source_applied')` — aber `insertTargetPriceAppliedDecisionTx`
+    (`server/internal/quotes/service.go`, aufgerufen von `ApplyTargetUnitPriceForQuoteItem`) fügt seit jeher
+    `decision_type='target_price_applied'` ein. Die Migration wurde offensichtlich nie aktualisiert, als die
+    Zielpreis-Funktionalität hinzukam — der Endpunkt war seit seiner Einführung komplett unbenutzbar.
+  - **Fix Teil 2**: neue Migration `066_quote_item_price_decisions_target_price_type.sql` (Constraint droppen
+    und mit `decision_type IN ('primary_source_applied', 'target_price_applied')` neu anlegen). Per `grep`
+    bestätigt: dies sind die einzigen zwei im Code tatsächlich verwendeten `decision_type`-Literale, keine
+    weiteren fehlenden Werte.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Migration `066` wendet sich sauber an. Test isoliert: PASS, komplett durchgelaufen (inkl.
+    `apply-target-price` jetzt `200` statt `500`). Voller `go test ./...` (Nicht-Integrationspakete) ohne
+    Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB: von 6 auf **5** Fehlschläge
+    zurückgegangen.
 - [x] 0.22 `GET /api/v1/documents/{docID}` prüft keine Mandantenzugehörigkeit — done, verifiziert gegen
   frische DB.
   - Gefunden bei Subtask 0.2.2.1.2.2.5. Der generische Download-Endpunkt (`server/internal/http/v1.go`,
@@ -628,21 +730,30 @@
     "TestGAEBImportProcessEndpoint|TestProjectQuotePDFFlow"`. Vollständiger `go test ./internal/http/...
     -count=1`: von 24 auf 23 Fehlschläge zurückgegangen. Voller `go test ./...` (Nicht-Integrationspakete)
     ohne Fehler.
-- [ ] 0.42 `projects`-Testfixtures in `internal/quotes` legen Projekte per Direkt-SQL ohne Pflichtfeld
-  `nummer` an — todo
+- [x] 0.42 `projects`-Testfixtures in `internal/quotes` legen Projekte per Direkt-SQL ohne Pflichtfeld
+  `nummer` an — done, verifiziert gegen frische DB.
   - Gefunden bei Umsetzung von Backlog 0.23 (nachdem der `telefon`-Tippfehler behoben war, kamen vier Tests
     weiter und scheiterten an einer NEUEN, vorher verdeckten Stelle). `projects.nummer TEXT NOT NULL`
-    (`server/internal/migrate/migrations/007_projects.sql:4`, kein Default) — die Test-Helper
-    `createUploadedGAEBImportForProcessingTest` (`server/internal/quotes/imports_test.go:37-47`, genutzt von
+    (`server/internal/migrate/migrations/007_projects.sql`, kein Default) — die Test-Helper
+    `createUploadedGAEBImportForProcessingTest` (`server/internal/quotes/imports_test.go`, genutzt von
     `TestProcessGAEBImportStoresParserResult`, `TestProcessGAEBImportMarksParserFailure`,
     `TestProcessGAEBImportRequiresConfiguredParserWithoutMutation`) sowie eine weitere, separate Stelle
-    (`internal/quotes/imports_test.go:129-132`, genutzt von
-    `TestQuoteImportParseResultStoresItemsAndUpdatesStatus`) legen Projekte per rohem
+    (genutzt von `TestQuoteImportParseResultStoresItemsAndUpdatesStatus`) legten Projekte per rohem
     `INSERT INTO projects (id, name, kunde_id, status, company_id) VALUES (...)` an, OHNE `nummer`
     anzugeben — `ERROR: null value in column "nummer" of relation "projects" violates not-null constraint
-    (SQLSTATE 23502)`. Betrifft alle vier genannten Tests identisch. Nicht behoben (außerhalb des auf den
-    `telefon`-Tippfehler beschränkten Scopes von 0.23). Fix: `nummer` in den betroffenen `INSERT`-Statements
-    ergänzen (beliebiger eindeutiger Platzhalterwert genügt, da `nummer` hier nicht fachlich geprüft wird).
+    (SQLSTATE 23502)`. Betraf alle vier genannten Tests identisch.
+  - **Fix**: `nummer` mit eindeutigem Platzhalterwert in beiden betroffenen `INSERT`-Statements ergänzt
+    (`"PRJ-GAEB-PROCESSING-0001"` bzw. `"PRJ-GAEB-IMPORT-0001"`) — `nummer` wird in diesen Tests fachlich
+    nicht geprüft, ein Platzhalter genügt (analog zum bereits identischen Fix in Backlog 0.31 für
+    `TestGAEBImportProcessEndpoint`). Per `grep -rn "INSERT INTO projects" internal/quotes/` bestätigt: dies
+    sind die einzigen zwei betroffenen Fundstellen im gesamten `quotes`-Paket, keine weiteren übersehen.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Alle vier betroffenen Tests (`TestProcessGAEBImportStoresParserResult`,
+    `TestProcessGAEBImportMarksParserFailure`, `TestProcessGAEBImportRequiresConfiguredParserWithoutMutation`,
+    `TestQuoteImportParseResultStoresItemsAndUpdatesStatus`) isoliert: alle PASS. Voller `go test ./...`
+    (Nicht-Integrationspakete, alle 15 Pakete) ohne Fehler. Voller `go test ./internal/http/... -count=1`
+    gegen frische DB: weiterhin 5 Fehlschläge (unverändert, da die betroffenen Tests im `internal/quotes`-Paket
+    liegen, nicht in `internal/http` — kein Regress).
 - [x] 0.24 `DELETE /sales-orders/{id}/items/{itemID}` liefert 500 statt 400 beim Löschen der letzten Position —
   done, zusammen mit 0.29 und 0.40 in einem Zug behoben (identischer Fix-Mechanismus).
   - Gefunden bei Verifikation von Subtask 0.2.2.1.2.3.1 (`TestQuoteFlowWithPricingAndPDF`, gegen frische DB
@@ -864,7 +975,10 @@
     ohne Fehler. Voller `go test ./internal/http/... -count=1`: von 12 auf 11 Fehlschläge zurückgegangen (kein
     Regress bei den übrigen 11 Aufrufstellen von `NewRouterWithDeps`, da deren Default-Parser-Verhalten
     unverändert blieb).
-- [ ] 0.32 Kein Anwendungscode-Pfad legt einen Kontenrahmen (`accounts`) für einen NEUEN Mandanten an — todo
+- [x] 0.32 Kein Anwendungscode-Pfad legt einen Kontenrahmen (`accounts`) für einen NEUEN Mandanten an — done,
+  verifiziert gegen frische DB. **Scope bei erneuter Prüfung deutlich größer als ursprünglich dokumentiert
+  (siehe Updates unten) — vom bewusst zurückgestellten Fund zum vollständig umgesetzten
+  Mandanten-Onboarding-Feature.**
   - Gefunden bei Verifikation von Subtask 0.2.2.1.5 (`server/internal/settings/accounting.go`,
     `AccountingService.ListAccounts`, jetzt nach `company_id` gefiltert). Migration 058 hat allen
     bestehenden `accounts`-Zeilen `company_id='default'` zugewiesen (Backfill), aber es gibt in der
@@ -873,152 +987,507 @@
     würde `ListAccounts` daher eine leere Liste liefern, ohne dass es einen Weg gibt, ihm einen
     Kontenrahmen zuzuweisen. `AccountingService` ist zusätzlich aktuell GAR NICHT an einen HTTP-Handler
     angebunden (`grep -rn "AccountingService" internal/http/` liefert keinen Treffer) — kein akutes
-    Sicherheitsproblem, aber ein Funktionslücke, die bei Mandanten-Onboarding relevant wird. Unabhängig
-    vom eigentlichen Scoping (das selbst korrekt ist). Nicht behoben (außerhalb Subtask-Scope, würde ein
-    Mandanten-Onboarding-Konzept voraussetzen). Fix: entweder Kontenrahmen-Vorlage beim Anlegen eines neuen
-    `company_profiles`-Eintrags automatisch kopieren, oder einen expliziten
-    "Kontenrahmen aus Vorlage übernehmen"-Endpunkt ergänzen.
-- [ ] 0.33 `quotes`-Domäne: Draft-/Versions-Schreibschutz liefert 500 statt 400 (16 Fundstellen) — todo
+    Sicherheitsproblem, aber ein Funktionslücke, die bei Mandanten-Onboarding relevant wird.
+  - **Update (erneute Prüfung beim Versuch, 0.32 als normalen Bugfix-Subtask umzusetzen)**: der ursprüngliche
+    Fund unterschätzte den tatsächlichen Umfang. `server/internal/settings/company.go` (`CompanyService`,
+    zuständig für `company_profiles`) hat AUSNAHMSLOS JEDE Methode fest auf `id='default'` bzw.
+    `company_id='default'` verdrahtet (`Get`, `Upsert` — INSERT-Statement hat `'default'` als Literal statt
+    Parameter, Zeile 99 —, `ListBranches`, `ensureBranchCodeUnique`, u. a.). Es gibt also nicht nur keinen
+    "Kontenrahmen kopieren"-Schritt — es gibt in der GESAMTEN Anwendung AKTUELL KEINEN Weg, überhaupt eine
+    ZWEITE `company_profiles`-Zeile (also einen zweiten Mandanten) anzulegen. Die Mandantenfähigkeit aus
+    Backlog 0.2 (Epic 0.2.1/0.2.2) hat ausschließlich das DATENMODELL (company_id-Spalten) und den
+    LESE-/SCHREIB-Scoping-Filter (Requests werden nach der Company des angemeldeten Users gefiltert) fertig
+    gestellt — ein tatsächlicher "neuen Mandanten anlegen"-Vorgang (der Reihe nach: `company_profiles`-Zeile
+    mit neuer ID, Kontenrahmen-Kopie, Nummernkreis-Seeding, erster Benutzer/Berechtigung für den neuen
+    Mandanten) existiert nirgends im Code.
+  - **Einschätzung**: dies ist kein isolierbarer Bugfix mehr, sondern ein eigenständiges Feature
+    ("Mandanten-Onboarding") auf Epic-Ebene, mit eigenen Produktentscheidungen (z. B.: darf ein Admin
+    self-service einen neuen Mandanten anlegen, oder ist das ein Migrations-/Ops-Vorgang? Welche Daten werden
+    beim Anlegen kopiert — nur Kontenrahmen, oder auch Nummernkreise/PDF-Vorlagen/Standardeinstellungen?) —
+    passt nicht in den Rahmen eines einzelnen Epic-0-Qualitäts-Subtasks (aufgabe.md-Regel: Subtasks >8
+    Dateien/>400 Zeilen brauchen Dekomposition; hier zusätzlich echte Produktentscheidungen offen, kein reiner
+    Implementierungsfall). Nicht behoben, absichtlich NICHT als kleiner Fix "durchgemogelt" (z. B. ein
+    isolierter `CopyChartOfAccounts(companyID)`-Helper ohne echten Aufrufer wäre nur Attrappen-Code ohne
+    Nutzen, da `company_profiles` weiterhin keine zweite Zeile bekommen könnte). Bleibt offen, bis der Nutzer
+    entscheidet, ob/wie ein Mandanten-Onboarding-Feature eingeplant wird — kein Blocker für die übrige
+    Epic-0-Abarbeitung, da produktiv aktuell ohnehin nur ein Mandant (`default`) existiert.
+  - **Nutzerentscheidung (nach Abschluss der gesamten Epic-0-Fundliste)**: Nutzer bestätigt, das
+    Mandanten-Onboarding-Feature jetzt umzusetzen (statt es auf später zu verschieben, um spätere
+    Nacharbeiten in anderen Epics zu vermeiden). Offene Produktfrage geklärt per `AskUserQuestion`: EIN
+    neuer HTTP-Endpoint, gesperrt über die bestehende `admin.superuser`-Berechtigung (aus Backlog 0.5.3),
+    NICHT ein separates CLI-/Ops-Tool — Self-Service für Plattform-Betreiber/bestehende Superuser, fügt sich
+    ins bestehende Berechtigungsmodell ein.
+  - **Subtask 0.32.1 (Voraussetzung) abgeschlossen, verifiziert gegen frische DB**: `CompanyService`
+    (`server/internal/settings/company.go`, zuständig für `company_profiles`/`company_branches`) hatte
+    AUSNAHMSLOS jede Methode (`Get`, `Upsert`, `ListBranches`, `CreateBranch`, `UpdateBranch`, `DeleteBranch`,
+    `getBranch`, `ensureBranchCodeUnique`) fest auf `id='default'`/`company_id='default'` verdrahtet —
+    sobald ein zweiter Mandant existiert hätte, wäre dessen Admin versehentlich auf die Firmendaten/
+    Niederlassungen des ERSTEN Mandanten zugegriffen (Lese-/Schreibkollision, potenziell sogar
+    Cross-Tenant-Löschung, da `getBranch`/`DeleteBranch` vorher GAR KEINEN Ownership-Check hatten — ähnliche
+    Schwere wie das bereits behobene Backlog 0.22). Alle 8 Methoden um einen `companyID string`-Parameter
+    erweitert, jede Query entsprechend scope-eingeschränkt; die 6 HTTP-Handler in `v1.go`
+    (`GET/PUT /settings/company/`, `GET/POST /settings/company/branches`,
+    `PATCH/DELETE /settings/company/branches/{branchID}`) reichen jetzt `companyIDFromContext(...)` durch.
+    Neuer Cross-Tenant-Test `TestCompanyProfileAndBranchesAreScopedToCompany`
+    (`server/internal/http/settings_integration_test.go`, per Direkt-SQL zweiter `company_profiles`-Eintrag
+    + Nutzer, analog zum etablierten Muster aus Backlog 0.22/0.43) beweist: zwei Mandanten sehen/ändern nur
+    ihre je eigenen Firmendaten/Niederlassungen, ein Cross-Tenant-Löschversuch liefert `404`. `branding.go`/
+    `localization.go`/`quote_calculation.go` bewusst NICHT angefasst — deren zugrundeliegende Tabellen
+    (`company_branding_settings`, `company_localization_settings`, `quote_calculation_settings`) haben
+    laut Schema GAR KEINE `company_id`-Spalte, sind also echte globale Singleton-Einstellungen (kein
+    Scoping-Bug, `id='default'` ist dort nur ein fixer Zeilen-Bezeichner wie bei einer Config-Tabelle).
+    Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` clean. Neuer Test isoliert: PASS. Voller
+    `go test ./...` (alle 15 Pakete) ohne Fehler. Voller `go test ./internal/http/... -count=1` gegen frische
+    DB: weiterhin **0** Fehlschläge (kein Regress).
+  - **Subtask 0.32.2a (KRITISCHER Blocker für die "Kontenrahmen kopieren"-Anforderung) gefunden UND
+    behoben, verifiziert gegen frische DB**: beim Entwurf des Onboarding-Endpunkts festgestellt, dass
+    `accounts.code` bisher der GLOBALE Primärschlüssel der Tabelle war (`code text PRIMARY KEY`, NICHT
+    `(company_id, code)`) — obwohl Migration 058 bereits eine `company_id`-Spalte ergänzt hatte, blieb der
+    PK unangetastet. Damit war "Kontenrahmen-Vorlage kopieren" strukturell UNMÖGLICH: ein zweiter Mandant
+    hätte niemals dieselben Standard-Kontonummern (`1000`, `1200`, `8000`, ...) wie `default` bekommen können
+    — der allererste Kopierversuch wäre an einer PK-Kollision gescheitert. Zusätzlich referenzierten
+    `journal_lines.account_code` und `invoice_out_items.account_code` diesen globalen PK direkt als
+    Fremdschlüssel. Dem Nutzer explizit vorgelegt (`AskUserQuestion`, da echte Architekturentscheidung mit
+    Migrationsrisiko): **Entscheidung — Schema richtig fixen** (nicht die Alternative, das Konten-Seeding im
+    Onboarding vorerst auszulassen).
+  - **Fix (neue Migration `067_accounts_company_scoped_pk.sql`)**: `journal_lines`/`invoice_out_items` um
+    eine eigene `company_id`-Spalte ergänzt (vorher nur indirekt über die Kopftabelle `journal_entries`/
+    `invoices_out` bekannt), per `JOIN` aus der jeweiligen Kopftabelle deterministisch zurückwirkend befüllt,
+    danach `NOT NULL` erzwungen. `accounts.company_id` ebenfalls `NOT NULL` erzwungen (seit Migration 058
+    bereits für alle Zeilen auf `'default'` befüllt, daher gefahrlos). Alte, auf `accounts(code)` allein
+    referenzierende Fremdschlüssel (`journal_lines_account_code_fkey`, `invoice_out_items_account_code_fkey`,
+    `accounts_parent_code_fkey`) VOR dem PK-Umbau entfernt (Postgres verbietet sonst das Droppen einer PK mit
+    abhängigen FKs), alten Einzelspalten-PK gedroppt, neuen zusammengesetzten PK `(company_id, code)`
+    angelegt, alle drei Fremdschlüssel als zusammengesetzte FKs auf `(company_id, code)` neu angelegt
+    (`accounts.parent_code` ist aktuell in JEDER Zeile `NULL` — kein Anwendungscode setzt es je —, daher
+    gefahrlos auf eine zusammengesetzte Selbstreferenz umstellbar).
+  - **Zwei Go-Anpassungen als direkte Folge**: `accounting/ar.go` (`createTx`) und `accounting/journal.go`
+    (`create`) fügen `company_id` jetzt beim `INSERT INTO invoice_out_items`/`INSERT INTO journal_lines` mit
+    ein (beide hatten `companyID` bereits im Scope, minimal-invasive Ergänzung). **Cascading-Sicherheitsfund
+    beim Verifizieren**: `loadTaxCodes` (`accounting/ar.go`) jointe `accounts` bisher OHNE
+    `company_id`-Filter (`LEFT JOIN accounts a ON a.tax_code = tc.code AND a.type = 'liability' AND
+    a.is_active`) — sobald ein zweiter Mandant EIGENE Konten mit demselben `tax_code` hätte (jetzt durch den
+    PK-Fix erstmals möglich), hätte diese Funktion mandantenübergreifend das FALSCHE
+    Umsatzsteuer-Verbindlichkeitskonto zurückliefern oder Ergebnisse durcheinanderbringen können — exakt
+    dasselbe Fehlermuster wie das bereits behobene Backlog 0.43, hier aber noch nicht sichtbar, weil es bisher
+    nur EINEN Mandanten mit eindeutigen Codes gab. `loadTaxCodes` um einen `companyID`-Parameter erweitert,
+    JOIN um `AND a.company_id = $1` ergänzt, alle 3 Aufrufstellen angepasst (`companyID` war überall bereits
+    im Scope). Per `grep` bestätigt: dies ist die einzige verbleibende ungescopte `accounts`-Abfrage im
+    gesamten Code (`settings/accounting.go` `ListAccounts` war bereits korrekt gescoped, `quotes`/`sales`
+    lesen nur aus dem globalen `tax_codes`, nie direkt aus `accounts`).
+  - **End-to-End-Beweis** (nicht nur Schema-Inspektion): per Direkt-SQL zwei Mandanten mit JEWEILS einem
+    Konto `code='1400'` angelegt — beide Zeilen koexistieren jetzt nachweislich fehlerfrei
+    (`company_id='default'` und `company_id='itest-second-tenant'`, gleicher `code`, keine Kollision).
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Migration `067` wendet sich sauber an (auch unter `-p 8`-Parallelität mehrerer Pakete, Advisory-
+    Lock aus Backlog 0.13 greift weiterhin korrekt). Voller `go test ./...` (alle 15 Pakete) ohne Fehler.
+    Voller `go test ./internal/http/... -count=1` gegen frische DB: weiterhin **0** Fehlschläge (kein
+    Regress trotz PK-Umbaus auf einer von mehreren Kern-Domänen genutzten Tabelle).
+  - **Subtask 0.32.2b (Onboarding-Endpunkt selbst) abgeschlossen, verifiziert gegen frische DB.** Neue
+    Route `POST /api/v1/platform/tenants/`, gesperrt über `requirePermission(adminSuperuserPermission)` —
+    bewusst NICHT über eine tenant-scoped Permission, da das Anlegen eines NEUEN Mandanten grundsätzlich
+    Plattform-Ebene ist (ein regulärer Admin des eigenen Mandanten darf keine Geschwister-Mandanten
+    erzeugen können). Neue Datei `server/internal/http/tenant_onboarding.go`:
+    `createTenant(ctx, pg, in)` legt ATOMAR (eine gemeinsame `pgx.Tx`, `defer tx.Rollback` als
+    Sicherheitsnetz) an:
+    1. `company_profiles`-Zeile (ID entweder explizit im Request oder per `slugifyTenantID(name)` aus dem
+       Firmennamen abgeleitet — Kleinbuchstaben, Ziffern, einzelne Bindestriche).
+    2. Kopie ALLER aktuellen `'default'`-Konten (`INSERT INTO accounts (...) SELECT ..., $1 FROM accounts
+       WHERE company_id='default'`) — jetzt möglich dank des PK-Fixes aus Subtask 0.32.2a.
+    3. Ersten Admin-Benutzer (`auth.HashPassword` fürs Passwort, dieselbe Spaltenliste wie
+       `auth.Repository.CreateUser`, aber direkt in der gemeinsamen Transaktion statt über den
+       Pool-gebundenen `auth`-Service, um echte Atomarität zu gewährleisten — kein "Mandant ohne
+       Admin"-Zombie-Zustand bei einem Fehler in einem späteren Schritt).
+    4. Zuweisung der (globalen, bereits existierenden) `admin`-Rolle über `user_roles`.
+    Uniqueness-Prüfungen (Mandanten-ID, Admin-E-Mail) laufen INNERHALB derselben Transaktion, um
+    TOCTOU-Lücken zu vermeiden. `tax_codes`/`number_sequences`/`roles`/`permissions` bewusst NICHT geseedet
+    (global bzw. self-initialisierend, siehe Vorab-Analyse oben).
+  - **Neue `classifyDomainError`-Substrings** ergänzt für die beiden neuen, spezifischen Fehlermeldungen
+    (`"existiert bereits"`, `"abgeleitet werden"` — beide vorher kollisionsfrei per `grep` geprüft); alle
+    übrigen neuen Fehlermeldungen (`"Firmenname erforderlich"`, `"...E-Mail-Adresse...erforderlich"`,
+    `"Benutzer mit dieser E-Mail-Adresse bereits vorhanden"`, `"passwort erforderlich"` aus
+    `auth.HashPassword`) trafen bereits bestehende Muster (`"erforderlich"`/`"bereits vorhanden"`).
+  - **Neuer End-to-End-Test** `TestPlatformTenantsCreateOnboardsNewTenant`
+    (`server/internal/http/tenant_onboarding_integration_test.go`) deckt den KOMPLETTEN Onboarding-Flow ab:
+    `403` ohne `admin.superuser` (Rolle `procurement`), `201` für die eigentliche Anlage, danach LOGIN als
+    der neue Mandanten-Admin (beweist: der neue Nutzer ist sofort einsatzfähig), `GET
+    /settings/company/` zeigt das EIGENE Firmenprofil (nicht `default`s), direkte SQL-Prüfung bestätigt:
+    die Anzahl kopierter Konten entspricht exakt der `'default'`-Anzahl, UND Kontonummer `1400` existiert
+    jetzt nachweislich unabhängig für BEIDE Mandanten ohne Kollision (der ursprüngliche 0.32.2a-Blocker ist
+    damit im echten Produktivpfad bewiesen behoben, nicht nur per Direkt-SQL-Diagnose). Zusätzlich: `400`
+    bei doppelter Mandanten-ID, `400` bei doppelter Admin-E-Mail.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Neuer Test isoliert: PASS (alle Teilschritte grün). Voller `go test ./...` (alle 15
+    Nicht-Integrationspakete) ohne Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB:
+    weiterhin **0** Fehlschläge — Backlog 0.32 ist damit vollständig umgesetzt, VOM ursprünglich bewusst
+    zurückgestellten Fund bis zum funktionierenden, end-to-end verifizierten Mandanten-Onboarding-Feature.
+- [x] 0.33 `quotes`-Domäne: Draft-/Versions-Schreibschutz liefert 500 statt 400 (16+ Fundstellen) — done,
+  verifiziert gegen frische DB.
   - Gefunden bei Recherche zu Subtask 0.3.2 (Festschreibungs-Mechanismus), beim Prüfen, welche Domänen
     bereits einen Schreibschutz für nicht mehr im Entwurf befindliche Belege haben. `server/internal/quotes/service.go`
-    enthält an 16 Stellen (`grep -n "nur Entwürfe sind bearbeitbar\|Historische Angebotsversionen sind
-    schreibgeschützt"`, u. a. Zeilen 802-805, 3424-3427 in `Update`) exakt dieselben zwei
-    `errors.New(...)`-Meldungen ("nur Entwürfe sind bearbeitbar" bzw. "Historische Angebotsversionen sind
-    schreibgeschützt") — der eigentliche GoBD-relevante Schreibschutz für versendete/akzeptierte bzw.
-    historische (durch `Revise` ersetzte) Angebote GREIFT dabei korrekt. Beide Meldungen matchen aber KEIN
-    Substring-Muster in `classifyDomainError` (`server/internal/http/v1.go:3723-3747` — geprüft: weder
-    "erforderlich" noch "nicht im status" noch ein anderes vorhandenes Muster passt auf "bearbeitbar" oder
-    "schreibgeschützt"), fallen daher auf den `default`-Zweig zurück und liefern `500 internal_error` statt
-    `400 validation_error`. Alle 16 Fundstellen bereits vor dieser Session vorhanden (per `git show HEAD`
-    bestätigt, nicht in dieser Subtask eingeführt). Gleiches Muster wie Backlog 0.24/0.29. Nicht behoben
-    (außerhalb Subtask-Scope, gehört in die `quotes`-Domäne, nicht in die für 0.3.2 tatsächlich bearbeitete
-    `purchasing`-Domäne). Fix: `classifyDomainError` um `"bearbeitbar"` und `"schreibgeschützt"` (oder
-    präzisere Substrings) ergänzen.
-- [ ] 0.34 KRITISCH: `quotes.Service.Revise` scheitert mit "conn busy" bei JEDEM Angebot mit Positionen — todo
+    enthält an vielen Stellen (per `grep -c`: 15× "nur Entwürfe sind bearbeitbar", 16× "Historische
+    Angebotsversionen sind schreibgeschützt" — mehr als die ursprünglich geschätzten 16, da beide Meldungen
+    jeweils einzeln gezählt in praktisch jeder schreibenden `quotes`-Methode vorkommen) exakt dieselben zwei
+    `errors.New(...)`-Meldungen — der eigentliche GoBD-relevante Schreibschutz für versendete/akzeptierte bzw.
+    historische (durch `Revise` ersetzte) Angebote GREIFT dabei korrekt. Beide Meldungen matchten aber KEIN
+    Substring-Muster in `classifyDomainError`, fielen daher auf den `default`-Zweig zurück und lieferten
+    `500 internal_error` statt `400 validation_error`.
+  - **Fix**: `classifyDomainError` (`server/internal/http/v1.go`) um `"nur entwürfe sind bearbeitbar"` und
+    `"schreibgeschützt"` im `validation_error`(400)-Zweig ergänzt. Vor dem Ergänzen geprüft, dass
+    `"schreibgeschützt"` im gesamten Nicht-Test-Code AUSSCHLIESSLICH in `quotes/service.go` mit dieser einen
+    Bedeutung vorkommt (kein Kollisionsrisiko mit einer anderen Domäne, die denselben Substring für einen
+    ANDEREN HTTP-Status bräuchte).
+  - **Test ergänzt** (keine bestehende Testabdeckung für diesen Pfad vorhanden — der naheliegende Kandidat
+    `TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource` erreicht die Assertion aktuell nicht, weil er
+    vorher an Backlog 0.34 ("conn busy" in `Revise`) scheitert): neue
+    `TestQuoteUpdateRejectsNonDraftStatusWithValidationError`
+    (`server/internal/http/quotes_integration_test.go`, direkt nach
+    `TestQuoteStatusBlocksOpenApprovalRework`) — erzeugt einen Entwurf, setzt ihn per
+    `POST /quotes/{id}/status` direkt auf `accepted` (Draft→Accepted ist ohne offene Freigabe-Nacharbeit ein
+    gültiger Direktübergang, siehe `UpdateStatus`), versucht danach `PATCH /quotes/{id}` und erwartet `400
+    validation_error` mit der Meldung "nur Entwürfe sind bearbeitbar" (der `supersededByQuoteID`-Zweig bleibt
+    wegen 0.34 weiterhin nur indirekt/durch `TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource`
+    abgedeckt, sobald 0.34 behoben ist).
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Neuer Test isoliert PASS (Log bestätigt: `PATCH .../quotes/{id}` auf einem `accepted`-Angebot
+    liefert jetzt `400 validation_error "nur Entwürfe sind bearbeitbar"` statt `500`). Voller `go test ./...`
+    (Nicht-Integrationspakete) ohne Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB:
+    weiterhin 11 Fehlschläge (unverändert — dieser Fund hatte keine vorher bereits fehlschlagende
+    Testabdeckung, daher kein direkter Rückgang der Fehlerzahl, aber neue, dauerhafte Testabdeckung für den
+    zuvor komplett ungetesteten Pfad).
+- [x] 0.34 KRITISCH: `quotes.Service.Revise` scheitert mit "conn busy" bei JEDEM Angebot mit Positionen —
+  done, verifiziert gegen frische DB.
   - Gefunden bei Verifikation von Subtask 0.3.3.2 (gegen frische, verifiziert leere DB reproduziert,
     `TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource`, sowohl MIT als auch OHNE meine neue
     `auditlog`-Anbindung identisch reproduziert — also nachweislich unabhängig davon). `server/internal/quotes/service.go:3340`
-    (`rows, err := tx.Query(ctx, "SELECT position, description, ... FROM quote_items WHERE quote_id=$1 ...")`,
-    per `git show HEAD` bestätigt identisch bereits im letzten Commit vorhanden, nicht von dieser Session
-    verursacht) öffnet eine `Rows`-Iteration über die Quell-Positionen; INNERHALB der `for rows.Next()`-Schleife
-    wird pro Position `tx.Exec(ctx, "INSERT INTO quote_items ...")` auf DERSELBEN Transaktion/Connection
-    ausgeführt, bevor die äußere `rows`-Iteration abgeschlossen ist — ein klassischer pgx-v5-Fehler (eine
+    (`rows, err := tx.Query(ctx, "SELECT position, description, ... FROM quote_items WHERE quote_id=$1 ...")`)
+    öffnete eine `Rows`-Iteration über die Quell-Positionen; INNERHALB der `for rows.Next()`-Schleife
+    wurde pro Position `tx.Exec(ctx, "INSERT INTO quote_items ...")` auf DERSELBEN Transaktion/Connection
+    ausgeführt, bevor die äußere `rows`-Iteration abgeschlossen war — ein klassischer pgx-v5-Fehler (eine
     Connection kann laut pgx-Protokoll kein zweites Statement ausführen, während ein vorheriges `Query`-Ergebnis
     noch nicht vollständig gelesen/geschlossen ist). Ergebnis: `ERROR: conn busy`, `POST /api/v1/quotes/{id}/revise`
-    liefert `500` für JEDES Angebot mit mindestens einer Position — da `quotes.Create` mindestens eine Position
-    zwingend voraussetzt (`"keine Positionen"`-Guard), ist `/revise` de facto für JEDES real angelegte Angebot
-    nicht nutzbar. Nicht behoben (außerhalb Subtask-Scope — Subtask 0.3.3.2 war die Anbindung an das
-    Änderungsprotokoll, nicht ein Bugfix an der Kopierlogik selbst; zudem als eigenständiges, in sich
-    geschlossenes Problem klar von 0.3.3.2 abgrenzbar). Fix: die Positionen zuerst vollständig in einen
-    Go-Slice einlesen (`rows.Next()`-Schleife OHNE `tx.Exec(...)` darin, analog zum bereits korrekten Muster
-    in `Book`/`Storno` in `accounting/ar.go`, die Items erst vollständig lesen und danach in einer zweiten
-    Schleife schreiben), danach in einer separaten Schleife die `INSERT`-Statements ausführen.
-- [ ] 0.35 KRITISCH: `sales.Service.ConvertToInvoice` scheitert immer mit Postgres-Fehler "FOR UPDATE cannot be applied to the nullable side of an outer join" — todo
+    lieferte `500` für JEDES Angebot mit mindestens einer Position — da `quotes.Create` mindestens eine Position
+    zwingend voraussetzt, war `/revise` de facto für JEDES real angelegte Angebot nicht nutzbar.
+  - **Fix**: in `server/internal/quotes/service.go` (`Revise`) die Positionen zuerst vollständig in einen
+    Go-Slice (`sourceItems []sourceQuoteItem`) eingelesen (`rows.Next()`-Schleife OHNE `tx.Exec(...)` darin,
+    `rows.Close()` direkt danach, VOR dem zweiten Durchlauf), danach in einer separaten Schleife über den
+    Slice die `INSERT`-Statements ausgeführt — analog zum bereits korrekten Muster in `Book`/`Storno` in
+    `accounting/ar.go`.
+  - **Cascading-Fund beim Verifizieren mit dem vollständigen `TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource`**:
+    nach dem "conn busy"-Fix kam `Revise` erstmals durch und der Test erreichte die nachfolgenden
+    Schreibschutz-Assertions auf der historischen (superseded) Quelle — dort schlug
+    `POST /convert-to-invoice` mit `500` statt dem erwarteten `400` fehl. Root Cause: dasselbe
+    `classifyDomainError`-Musterproblem wie 0.33, aber mit ANDEREN Meldungen, die dort noch nicht abgedeckt
+    waren. Per `grep -rn "überführt"` systematisch ALLE Fundstellen dieser Meldungsfamilie im Nicht-Test-Code
+    geprüft (9 Treffer, ausschließlich `quotes/service.go`
+    `ConvertToInvoice`/`sales/service.go CreateFromQuote`/`ConvertToInvoice`, u. a. **die exakt gleiche
+    Meldung `"Historische Angebotsversionen können nicht in Folgebelege überführt werden"` ist wortgleich in
+    BEIDEN Domänen dupliziert** — analoges Duplizierungsmuster wie das bereits in Backlog 0.36
+    dokumentierte, dort für Steuerkennzeichen-Fallbacks): "Historische Angebotsversionen können nicht in
+    Folgebelege überführt werden", "Angebot wurde bereits in eine Rechnung überführt", "Angebot wurde
+    bereits in einen Auftrag überführt", "nur versendete oder angenommene Angebote können in Rechnungen
+    überführt werden", "nur angenommene Angebote können in Aufträge überführt werden", "nur offene oder
+    freigegebene Aufträge können in Rechnungen überführt werden" — alle 9 Treffer sind Validierungsfehler
+    (sollten 400 sein), keiner sollte 500 bleiben. `classifyDomainError`
+    (`server/internal/http/v1.go`) um `"überführt"` (deckt alle 9 Treffer ab) und zusätzlich
+    `"kann nicht manuell umgestellt werden"` (für "Angebot mit Folgebeleg kann nicht manuell umgestellt
+    werden", dieselbe Meldungsfamilie, separat geprüft: einzige Fundstelle im Code) ergänzt.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. `TestQuoteReviseEndpointClonesQuoteAndGuardsSupersededSource` isoliert: PASS, alle Teilschritte
+    grün (Revise 201, erneutes Revise 400, PATCH/Status auf superseded 400, convert-to-invoice auf
+    superseded 400, Annahme der revidierten Quote 200, convert-to-sales-order auf superseded 400). Voller
+    `go test ./...` (Nicht-Integrationspakete) ohne Fehler. Voller `go test ./internal/http/... -count=1`
+    gegen frische DB: von 11 auf 10 Fehlschläge zurückgegangen.
+- [x] 0.35 KRITISCH: `sales.Service.ConvertToInvoice` scheitert immer mit Postgres-Fehler "FOR UPDATE cannot
+  be applied to the nullable side of an outer join" — done, verifiziert gegen frische DB.
   - Gefunden bei Verifikation von Subtask 0.3.3.3 (gegen frische, verifiziert leere DB reproduziert,
     `TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged`, neu für diese Subtask geschrieben).
-    `server/internal/sales/service.go:714-724` (`loadForInvoiceTx`, per `git show HEAD` bestätigt identisch
-    bereits im letzten Commit vorhanden — Zeile 719 dort, nicht von dieser Session verursacht) führt
+    `server/internal/sales/service.go` (`loadForInvoiceTx`) führte
     `SELECT ... FROM sales_orders so LEFT JOIN projects p ON ... LEFT JOIN contacts c ON ... WHERE so.id=$1
     ... FOR UPDATE` aus. Postgres verbietet `FOR UPDATE` auf einer Query mit `LEFT JOIN`, sobald keine
     Zeilensperrung auf die nullable Seite des Joins eingeschränkt wird (`ERROR: FOR UPDATE cannot be applied
     to the nullable side of an outer join`, SQLSTATE 0A000) — jeder Aufruf von `ConvertToInvoice` (und damit
-    `POST /api/v1/sales-orders/{id}/convert-to-invoice`) scheitert daher IMMER mit `500`, unabhängig von
-    Status/Daten. Damit ist die Umwandlung von Aufträgen in Rechnungen über diesen Pfad aktuell komplett
-    unbenutzbar (analog schwerwiegend zu Backlog 0.34). Die neue `entity_change_log`-Anbindung aus Subtask
-    0.3.3.3 für `ConvertToInvoice` konnte deshalb NICHT end-to-end über HTTP verifiziert werden (Code-Pfad
-    aber strukturell identisch zum erfolgreich verifizierten `UpdateStatus`). Nicht behoben (außerhalb
-    Subtask-Scope — 0.3.3.3 war die Anbindung ans Änderungsprotokoll, nicht ein Bugfix an der
-    Sperrabfrage). Fix: `FOR UPDATE OF so` ergänzen, um die Zeilensperre explizit auf `sales_orders`
+    `POST /api/v1/sales-orders/{id}/convert-to-invoice`) scheiterte daher IMMER mit `500`, unabhängig von
+    Status/Daten — die Umwandlung von Aufträgen in Rechnungen war über diesen Pfad komplett unbenutzbar
+    (analog schwerwiegend zu Backlog 0.34).
+  - **Fix**: `FOR UPDATE` zu `FOR UPDATE OF so` geändert, um die Zeilensperre explizit auf `sales_orders`
     einzuschränken (analog zum bereits korrekten Muster `FOR UPDATE OF quote_imports` in
     `server/internal/quotes/imports.go`, das genau dieses Problem in einer früheren Subtask dieser Session
-    schon einmal gelöst hat).
-- [ ] 0.36 Steuerkennzeichen-Fallback-Bug (Backlog 0.7) ist dupliziert in `quotes`/`sales`, dort NICHT
-  gegen Stammdaten abgesichert — todo
+    schon einmal gelöst hat). Vor dem Fix geprüft: `grep -n "FOR UPDATE" internal/sales/service.go` zeigt 5
+    Treffer, nur der eine (`loadForInvoiceTx`) hat einen `JOIN`, die übrigen 4 sind Single-Table-Queries ohne
+    Join und daher nicht betroffen. Ebenso `internal/quotes/service.go` stichprobenartig geprüft (viele
+    `FOR UPDATE`-Treffer, alle Single-Table `FROM quotes`/`FROM quote_items`, kein zusätzlicher Fund).
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. `TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged` isoliert: PASS (Log bestätigt:
+    `POST .../convert-to-invoice` liefert jetzt `201` statt `500`). Voller `go test ./...`
+    (Nicht-Integrationspakete) ohne Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB:
+    von 10 auf **8** Fehlschläge zurückgegangen — neben dem eigentlichen Test verschwand auch
+    `TestCommercialWorkflowEndpointListsOpenFollowActions` aus der Fehlerliste (nutzte denselben blockierten
+    `convert-to-invoice`-Pfad für eine Teilrechnung, ohne eigenen Backlog-Eintrag — durch denselben Fix
+    mitbehoben).
+- [x] 0.36 Steuerkennzeichen-Fallback-Bug (Backlog 0.7) ist dupliziert in `quotes`/`sales`, dort NICHT
+  gegen Stammdaten abgesichert — done, verifiziert gegen frische DB.
   - Gefunden bei Umsetzung von Backlog 0.7 (`accounting/ar.go`). Beim Fixen dort per `grep -rn "taxRate("`
-    entdeckt: `internal/quotes/service.go` (eigene `taxRate`-Funktion, Zeile ~3548, Aufrufstellen u.a.
-    Zeilen 436, 456, 1133, 1238, 3507, 3528, 3543) und `internal/sales/service.go` (eigene `taxRate`-Funktion,
-    Zeile ~870, Aufrufstellen u.a. Zeilen 205, 232, 483, 556, 900) enthalten JEWEILS eine eigene, unabhängige
-    Kopie desselben hartcodierten `DE19`/`DE7`-Switches mit demselben stillen 0%-Fallback für unbekannte Codes
-    — exakt das in 0.7 für `accounting` behobene Muster, hier aber noch nicht. Keine gemeinsame Quelle
-    zwischen den drei Paketen (`accounting`/`quotes`/`sales` haben je ihre eigene `taxRate`-Funktion, kein
-    Shared-Package). Nicht behoben (außerhalb des auf `accounting/ar.go` beschränkten Scopes von Backlog 0.7,
-    eigener, größerer Fund: zwei weitere Domänen, mehr Aufrufstellen als in `ar.go`, potenziell auch andere
-    Fallback-Konten). Fix: entweder denselben `loadTaxCodes`-Ansatz in `quotes`/`sales` wiederholen, oder
-    (sauberer, vermeidet Drittfachcode) `taxCodeInfo`/`loadTaxCodes`/`taxRate` in ein gemeinsames Package
-    (z.B. `internal/settings` oder ein neues `internal/tax`) verschieben und von allen drei Domänen
-    referenzieren lassen — letzteres wäre ein größerer Schnitt (Modul-Umbau), erste Bewertung bei
-    Bearbeitung nötig.
-- [ ] 0.37 `BankService` (Bankabgleich/-matching) ist an KEINEN HTTP-Handler angebunden — todo
+    entdeckt: `internal/quotes/service.go` und `internal/sales/service.go` enthielten JEWEILS eine eigene,
+    unabhängige Kopie desselben hartcodierten `DE19`/`DE7`-Switches mit demselben stillen 0%-Fallback für
+    unbekannte Codes — exakt das in 0.7 für `accounting` behobene Muster, hier aber noch nicht.
+  - **Update (Verifikation von Backlog 0.34)**: das Duplizierungsmuster wurde bei anderer Gelegenheit erneut
+    bestätigt — die Fehlermeldung `"Historische Angebotsversionen können nicht in Folgebelege überführt
+    werden"` ist WORTGLEICH in `quotes/service.go` (`ConvertToInvoice`) UND `sales/service.go`
+    (`CreateFromQuote`) dupliziert.
+  - **Design-Entscheidung**: von den beiden im Fund vorgeschlagenen Optionen wurde bewusst "denselben
+    `loadTaxCodes`-Ansatz in `quotes`/`sales` wiederholen" gewählt statt der saubereren, aber deutlich
+    größeren Alternative (`taxCodeInfo`/`loadTaxCodes`/`taxRate` in ein gemeinsames Package wie `internal/tax`
+    verschieben und `accounting`/`quotes`/`sales` darauf umstellen) — letzteres hätte zusätzlich
+    `accounting/ar.go` und dessen bereits grün laufende Tests angefasst, ohne dass das für DIESEN Fund
+    notwendig war. Bewusst als möglicher separater, größerer Folge-Refactor dokumentiert, falls gewünscht.
+  - **Fix**: in `internal/quotes/service.go` und `internal/sales/service.go` jeweils unabhängig (analog zu
+    `accounting/ar.go` aus Backlog 0.7) ein `taxCodeInfo{Rate float64}`-Typ, eine `loadTaxCodesTx(ctx, tx)
+    (map[string]taxCodeInfo, error)`-Funktion (liest `tax_codes WHERE is_active`) sowie eine neue
+    `taxRate(codes map[string]taxCodeInfo, code string) (float64, error)`-Signatur ergänzt (leerer Code = 0%,
+    kein Fehler; unbekannter/inaktiver Code = Fehler statt stillem 0%-Fallback). `quotes.calcTotals` von
+    `(items) (net, tax float64)` auf `(codes, items) (net, tax float64, err error)` umgestellt. Alle
+    Aufrufstellen angepasst: `quotes/service.go` — `createQuoteTx`, `ApplyPrimaryPriceSourceForQuoteItem`,
+    `ApplyTargetUnitPriceForQuoteItem`, `Update` (je `codes, err := loadTaxCodesTx(ctx, tx)` einmal pro
+    Transaktion geladen, danach durchgereicht); `sales/service.go` — `CreateFromQuote`, `CreateItem`,
+    `UpdateItem`, `recalculateTotalsTx` (dieselbe Struktur, `tx` war in allen Fällen bereits im Scope
+    vorhanden, keine Signaturänderung an exportierten Methoden nötig).
+  - **Bestehenden Unit-Test korrigiert**: `sales/service_test.go`
+    (`TestSalesOrderTaxRateKnownAndUnknownCodes`) testete bisher explizit das ALTE, jetzt korrigierte
+    Verhalten (`"XX"` → erwartete `0.0` statt eines Fehlers) — umgeschrieben auf die neue Fehler-Semantik,
+    analog zu `accounting/ar_test.go` (`TestTaxRateKnownAndUnknownCodes`). Neue, bisher fehlende
+    Tests `quotes/service_test.go` ergänzt: `TestQuoteTaxRateKnownAndUnknownCodes`,
+    `TestQuoteCalcTotalsSumsNetAndTax`, `TestQuoteCalcTotalsRejectsUnknownTaxCode` (quotes hatte bisher GAR
+    KEINE Tests für `taxRate`/`calcTotals`).
+  - **Cascading-Fund**: beim Verifizieren per HTTP festgestellt, dass die neue Fehlermeldung
+    `"unbekanntes oder inaktives Steuerkennzeichen: %s"` (dasselbe Muster wie 0.7 in `accounting/ar.go`, JETZT
+    ERSTMALS über HTTP erreichbar in `quotes`, da `quotes` bisher gar keine Tax-Code-Validierung hatte) KEIN
+    Substring-Muster in `classifyDomainError` traf und auf `500` fiel — betrifft rückwirkend AUCH
+    `accounting` (Backlog 0.7 hatte die Service-Logik korrigiert, aber nie die HTTP-Status-Zuordnung
+    verifiziert, da kein Test dort einen unbekannten Code über HTTP auslöst). `classifyDomainError`
+    (`server/internal/http/v1.go`) um `"unbekanntes oder inaktives steuerkennzeichen"` sowie (gleiche
+    Meldungsfamilie, `taxAccountFor` in `accounting/ar.go`) `"kein umsatzsteuer-konto"` ergänzt.
+  - **Neuer HTTP-Test**: `TestQuoteCreateRejectsUnknownTaxCode`
+    (`server/internal/http/quotes_integration_test.go`) — `POST /quotes/` mit `tax_code:"XX99"` erwartet
+    jetzt `400 validation_error` mit der neuen Meldung (vorher: stille 0%-Behandlung, kein Fehler, `201`).
+    Für `sales` existierte bereits ein äquivalenter Test
+    (`"tax_code":"XX99"` in `quotes_integration_test.go`, `POST /sales-orders/{id}/items`) — bei genauerer
+    Prüfung festgestellt, dass dieser NICHT über den hier geänderten `taxRate`-Pfad läuft, sondern über eine
+    separate, bereits bestehende `isSupportedTaxCode`/`validateItemInput`-Whitelist-Prüfung in
+    `sales/service.go` (`CreateItem`/`UpdateItem`), die unbekannte Codes schon VOR `taxRate` abfängt — mein
+    Fix greift dort zusätzlich als Sicherheitsnetz für Pfade OHNE diese Whitelist-Prüfung (`CreateFromQuote`,
+    `recalculateTotalsTx`, z. B. bei per GAEB-Import oder Direkt-SQL eingespielten Tax-Codes).
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. `go test ./internal/quotes/... ./internal/sales/... ./internal/accounting/... -count=1`: alle
+    PASS (inkl. neuer und korrigierter Unit-Tests). `TestQuoteCreateRejectsUnknownTaxCode` isoliert: PASS.
+    Voller `go test ./...` (Nicht-Integrationspakete) ohne Fehler. Voller `go test
+    ./internal/http/... -count=1` gegen frische DB: weiterhin **8** Fehlschläge (unverändert — keiner der 8
+    verbleibenden Fälle hing mit Steuerkennzeichen zusammen, aber kein Regress, und neue dauerhafte
+    Testabdeckung für einen zuvor unvalidierten, silent-fehlerhaften Pfad).
+- [x] 0.37 `BankService` (Bankabgleich/-matching) ist an KEINEN HTTP-Handler angebunden — done, verifiziert
+  gegen frische DB.
   - Gefunden bei Umsetzung von Backlog 0.9. `grep -rln "NewBankService"` über das gesamte `server/`-Modul
-    zeigt nur `server/internal/accounting/bank.go` selbst — nirgendwo in `internal/http/v1.go` (oder
-    anderswo) wird `accounting.NewBankService(...)` aufgerufen bzw. eine Route dafür registriert. Damit ist
+    zeigte nur `server/internal/accounting/bank.go` selbst — nirgendwo in `internal/http/v1.go` (oder
+    anderswo) wurde `accounting.NewBankService(...)` aufgerufen bzw. eine Route dafür registriert. Damit war
     das komplette, ansonsten fertig implementierte Bankabgleich-Feature (Kontoauszug-Import `Ingest()`,
-    manuelles/automatisches Matching `Match()`, Betrags-Heuristik, Referenz-Erkennung) über die API AKTUELL
-    UNERREICHBAR — kein Client kann Kontoauszüge importieren oder abgleichen. Nicht behoben (außerhalb des auf
-    Tests beschränkten Scopes von 0.9, eigener, nicht-trivialer Fund: braucht mindestens Routen für
-    Ingest/List/Match sowie eine Entscheidung zur Berechtigungs-Modellierung, z.B. neue Permissions
-    `bank.read`/`bank.write`). Fix: `BankService` in `v1.go` konstruieren (analog zu `paymentSvc`/`arSvc`) und
-    `POST /bank-statements`, `GET /bank-statements`, `POST /bank-statements/{id}/match` (oder ähnlich)
-    ergänzen.
-- [ ] 0.38 `accounting.ARService.createTx` verletzt Fremdschlüssel bei leerem `TaxCode` (leere Position ohne
-  Steuerkennzeichen) — todo
+    manuelles/automatisches Matching `Match()`, Betrags-Heuristik, Referenz-Erkennung) über die API
+    UNERREICHBAR.
+  - **Fix**: `bankSvc := accounting.NewBankService(pg, paymentSvc)` in `server/internal/http/v1.go` ergänzt
+    (analog zu `arSvc`/`paymentSvc`). Neue Routengruppe `protected.Route("/bank-statements", ...)` zwischen
+    `/invoices-out` und `/sales-orders` ergänzt:
+    - `GET /bank-statements/` (Permission `bank.read`) → `bankSvc.List(...)`, unterstützt `?limit=`.
+    - `POST /bank-statements/` (Permission `bank.write`) → `bankSvc.Ingest(...)`, dekodiert direkt in
+      `accounting.BankStatementInput`.
+    - `POST /bank-statements/{id}/match` (Permission `bank.write`) → `bankSvc.Match(...)`, optionaler Body
+      `{"invoice_id": "..."}` (leer = automatische Betrags-/Referenz-Heuristik).
+  - Neue Migration `065_bank_permissions.sql` (Permissions `bank.read`/`bank.write`, zugewiesen an
+    `role-finance` und `role-admin`, exakt analog zum bestehenden Muster in
+    `030_accounting_permissions.sql`).
+  - **Cascading-Fund beim HTTP-Verifizieren**: die Fehlermeldung `"Statement bereits gematcht"`
+    (`accounting/bank.go`, `Match`) traf kein Substring-Muster in `classifyDomainError` und fiel auf `500`
+    statt `400`. Substring `"bereits gematcht"` ergänzt (einzige Fundstelle, geprüft, kollisionsfrei).
+  - **Neuer HTTP-Test** `TestBankStatementsIngestListAndMatchFlow`
+    (`server/internal/http/accounting_integration_test.go`) deckt den kompletten neuen Flow end-to-end ab:
+    403 ohne `bank.write` (Rolle `procurement`), 201 Ingest, 200 List (enthält den eingespielten Kontoauszug),
+    200 Match mit explizitem `invoice_id` (inkl. Zahlungsanwendung — Rechnung wechselt zu Status `paid` mit
+    korrektem `paid_amount`), 400 bei erneutem Match desselben, bereits gematchten Kontoauszugs.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Migration `065` wendet sich sauber an (Log bestätigt). Bestehende `TestBank*`-Tests aus Backlog 0.9
+    (`internal/accounting/bank_integration_test.go`) weiterhin alle PASS (Service-Ebene unverändert, nur neu
+    verdrahtet). Neuer HTTP-Test isoliert: PASS. Voller `go test ./...` (Nicht-Integrationspakete) ohne
+    Fehler. Voller `go test ./internal/http/... -count=1` gegen frische DB: weiterhin **8** Fehlschläge
+    (unverändert, kein Regress — keiner der 8 Fälle hing mit Bankabgleich zusammen).
+- [x] 0.38 `accounting.ARService.createTx` verletzt Fremdschlüssel bei leerem `TaxCode` (leere Position ohne
+  Steuerkennzeichen) — done, verifiziert gegen frische DB.
   - Gefunden bei Umsetzung von Backlog 0.9 (beim Versuch, eine Testrechnung mit einer steuerfreien Position
     anzulegen — schlug mit `ERROR: insert or update on table "invoice_out_items" violates foreign key
     constraint "invoice_out_items_tax_code_fkey"` fehl). `createTx()` (`server/internal/accounting/ar.go`)
-    übergibt `it.TaxCode` (ein Go-`string`, keinen `*string`) direkt als Parameter für die nullable Spalte
-    `invoice_out_items.tax_code text REFERENCES tax_codes(code)`. Bei `TaxCode: ""` wird die LEERE
-    ZEICHENKETTE eingefügt statt SQL NULL — verletzt den Fremdschlüssel, da kein `tax_codes`-Eintrag mit
-    `code=''` existiert. Betrifft JEDE reale Rechnungsposition ohne Steuerkennzeichen (z.B. durchlaufende
+    übergab `it.TaxCode` (ein Go-`string`, keinen `*string`) direkt als Parameter für die nullable Spalte
+    `invoice_out_items.tax_code text REFERENCES tax_codes(code)`. Bei `TaxCode: ""` wurde die LEERE
+    ZEICHENKETTE eingefügt statt SQL NULL — verletzte den Fremdschlüssel, da kein `tax_codes`-Eintrag mit
+    `code=''` existiert. Betraf JEDE reale Rechnungsposition ohne Steuerkennzeichen (z.B. durchlaufende
     Posten/Skonto), obwohl `calcTotals`/`buildJournal`/`taxRate` (seit Backlog 0.7) einen leeren Code bewusst
-    als gültigen "steuerfrei"-Fall behandeln — der DB-Layer widerspricht dem eigentlichen fachlichen Verhalten
-    der darüberliegenden Funktionen. Nicht behoben (außerhalb des auf `bank.go` beschränkten Scopes von 0.9,
-    liegt in `ar.go`, das zuletzt in Backlog 0.7 bearbeitet wurde). Fix: leeren `TaxCode`/`AccountCode` beim
-    Insert auf SQL NULL abbilden (z.B. `nullIfEmpty(it.TaxCode)`-Hilfsfunktion, wie sie an anderer Stelle im
-    Repo bereits existiert, z.B. `quotes/service.go`).
-- [ ] 0.39 `TestMaterialGroupDeleteRejectsTrimmedLegacyReferences` schlägt auf frischer DB fehl: Testfixture
-  referenziert nicht existierende Spalte `materials.updated_at` — todo
+    als gültigen "steuerfrei"-Fall behandeln — der DB-Layer widersprach dem eigentlichen fachlichen Verhalten
+    der darüberliegenden Funktionen.
+  - **Fix**: `nullIfEmpty(v string) any`-Hilfsfunktion in `accounting/ar.go` ergänzt (identisches Muster wie
+    bereits in `quotes`/`sales`/`projects`), in `createTx()` beim `INSERT INTO invoice_out_items` für
+    `tax_code` verwendet (`nullIfEmpty(it.TaxCode)` statt `it.TaxCode`).
+  - **Wichtige Korrektur der ursprünglichen Fund-Beschreibung**: der Fund schlug vor, AUCH `AccountCode`
+    per `nullIfEmpty` auf NULL abzubilden — bei genauerer Prüfung des Schemas
+    (`server/internal/migrate/migrations/018_journal_and_ar.sql`) stellte sich heraus, dass
+    `invoice_out_items.account_code` als `text NOT NULL REFERENCES accounts(code)` deklariert ist, also NICHT
+    nullable ist. `nullIfEmpty` darauf anzuwenden hätte lediglich einen SQL-NOT-NULL-Fehler statt des
+    FK-Fehlers erzeugt — kein echter Fix. Stattdessen: ein leerer `AccountCode` ist ein ECHTER
+    Validierungsfehler (Pflichtfeld) und wird jetzt VOR dem Insert mit einer sauberen, dem bestehenden
+    "contact_id fehlt"-Muster folgenden Meldung `errors.New("account_code fehlt")` abgefangen — liefert
+    jetzt `400 validation_error` statt einer rohen Postgres-Fehlermeldung.
+  - **Neuer Test** `TestInvoiceOutCreateAcceptsEmptyTaxCodeAndRejectsEmptyAccountCode`
+    (`server/internal/http/accounting_integration_test.go`) deckt beide Fälle ab: `400` mit
+    `"account_code fehlt"` bei leerem `account_code`; `201` bei einer Rechnung mit zwei Positionen (eine mit
+    leerem `tax_code` + gültigem `account_code`, eine mit `DE19`) — verifiziert `net_amount`/`tax_amount`/
+    `gross_amount` sowie dass das leere `tax_code` im Response korrekt als `""` erhalten bleibt.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Neuer Test isoliert: PASS. Voller `go test ./...` (Nicht-Integrationspakete) ohne Fehler. Voller
+    `go test ./internal/http/... -count=1` gegen frische DB: von 8 auf **7** Fehlschläge zurückgegangen —
+    neben dem Zieltest verschwand auch `TestQuoteConvertToInvoiceBlocksOpenApprovalRework` aus der
+    Fehlerliste (nutzte denselben FK-Bug bei einer steuerfreien Position, kein eigener Backlog-Eintrag —
+    durch denselben Fix mitbehoben).
+- [x] 0.39 `TestMaterialGroupDeleteRejectsTrimmedLegacyReferences` schlägt auf frischer DB fehl: Testfixture
+  referenziert nicht existierende Spalte `materials.updated_at` — done, verifiziert gegen frische DB.
   - Gefunden bei Vollverifikation von Backlog 0.13 (voller `go test ./internal/http`-Lauf gegen frische DB,
     erstmals ohne die Backlog-0.20-Kaskade sichtbar — dieser Test kam vorher nie so weit, seine eigene Logik
-    tatsächlich auszuführen). `server/internal/http/settings_integration_test.go:762` (Stand dieser Session)
-    seedet ein Material per Direkt-SQL mit `ON CONFLICT (id) DO UPDATE SET kategorie = EXCLUDED.kategorie,
-    updated_at = now()` — die Spalte `materials.updated_at` existiert laut Schema aber nicht
-    (`\d materials` in Postgres bestätigt: keine `updated_at`-Spalte). Per `git show HEAD` bestätigt: exakt
-    dieselbe SQL-Zeile war bereits im letzten Commit vorhanden, also nachweislich vorbestehend und nicht durch
-    die Migrations-Versionierung aus Backlog 0.13 verursacht — nur vorher durch die 0.20-Kaskade nie
-    reproduzierbar zum eigentlichen Fehler durchgedrungen. Isoliert reproduziert (`-run
-    "^TestMaterialGroupDeleteRejectsTrimmedLegacyReferences$"` gegen eine eigene frische DB, unabhängig von
-    jeder anderen Testfunktion). Nicht behoben (außerhalb des auf den Migrationsrunner beschränkten Scopes von
-    0.13). Fix: entweder `updated_at`-Spalte in `materials` ergänzen (falls fachlich gewünscht), oder die
-    `updated_at = now()`-Klausel aus dem Test-Fixture-SQL entfernen.
-- [ ] 0.43 KRITISCH: `listMaterialCandidatesForQuoteItem` (GAEB-Import-Materialkandidaten) ist NICHT nach
-  `company_id` gescoped — Materialien FREMDER Mandanten werden als Kandidaten vorgeschlagen — todo
+    tatsächlich auszuführen). `server/internal/http/settings_integration_test.go` seedete ein Material per
+    Direkt-SQL mit `ON CONFLICT (id) DO UPDATE SET kategorie = EXCLUDED.kategorie, updated_at = now()` — die
+    Spalte `materials.updated_at` existiert laut Schema
+    (`server/internal/migrate/migrations/001_init.sql`, keine spätere Migration fügt sie hinzu — per `grep`
+    bestätigt) gar nicht (`materials` hat nur `angelegt_am`, kein `updated_at`).
+  - **Fix-Entscheidung**: von den beiden im Fund genannten Optionen wurde "die `updated_at = now()`-Klausel
+    aus dem Test-Fixture-SQL entfernen" gewählt (nicht die Alternative, eine echte `updated_at`-Spalte in
+    `materials` zu ergänzen) — geprüft, dass NIRGENDS im Anwendungscode `materials.updated_at` gelesen oder
+    erwartet wird; die Klausel war ein reines Kopier-Artefakt (vermutlich aus dem strukturell ähnlichen
+    `material_groups`-Upsert direkt darüber übernommen, das TATSÄCHLICH ein `updated_at`
+    hat — `039_material_groups.sql`). Eine neue Spalte einzuführen, nur damit ein Test-Fixture kompiliert,
+    wäre unbegründete Schema-Erweiterung ohne fachlichen Bedarf.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Test isoliert: PASS. Voller `go test ./...` (Nicht-Integrationspakete) ohne Fehler. Voller `go
+    test ./internal/http/... -count=1` gegen frische DB: von 7 auf **6** Fehlschläge zurückgegangen.
+- [x] 0.43 KRITISCH: `listMaterialCandidatesForQuoteItem` (GAEB-Import-Materialkandidaten) war NICHT nach
+  `company_id` gescoped — Materialien FREMDER Mandanten wurden als Kandidaten vorgeschlagen — done, verifiziert
+  gegen frische DB.
   - Gefunden bei Verifikation von Backlog 0.30 (nachdem der dortige Nil-Pointer-Panic behoben war, kam
     `TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates` erstmals bis zur eigentlichen Fachassertion
-    durch und schlug DORT neu fehl — vorher durch den Panic maskiert, gegen frische, verifiziert leere DB
-    reproduziert). Der Test erwartet genau einen Material-Kandidaten (aus der eigenen Company), bekommt aber
-    zwei: `{MaterialNo:MAT-GAEB-0001 ...}` (eigene Company) UND
-    `{MaterialNo:MAT-GAEB-CAND-0001 ...}` (aus einer VÖLLIG ANDEREN, in einer anderen Testfunktion
-    (`TestQuoteUpdateAllowsManualMaterialMappingOnItems`, eigener Login/eigene Company) angelegten Company,
-    per `git show HEAD` bestätigt bereits vorbestehend, von mir nicht angefasst) — beide Materialien tragen
-    zufällig dieselbe Bezeichnung `"Aluminium Profil 70mm"`.
-  - Root Cause (`server/internal/quotes/service.go`, Funktion `listMaterialCandidatesForQuoteItem`, aktuell
-    um Zeile 2968): das SQL-Statement joint `materials m` ausschließlich über
+    durch und schlug DORT neu fehl — vorher durch den Panic maskiert). Der Test erwartete genau einen
+    Material-Kandidaten, bekam aber zwei: `MAT-GAEB-0001` (aus `TestQuoteUpdateAllowsManualMaterialMappingOnItems`)
+    UND `MAT-GAEB-CAND-0001` (aus diesem Test selbst) — beide Materialien trugen zufällig dieselbe Bezeichnung
+    `"Aluminium Profil 70mm"`.
+  - Root Cause (`server/internal/quotes/service.go`, Funktion `listMaterialCandidatesForQuoteItem`): das
+    SQL-Statement jointe `materials m` ausschließlich über
     `LOWER(m.bezeichnung) = LOWER(BTRIM(qii.description)) OR LOWER(m.nummer) = LOWER(BTRIM(qii.description))`
-    — OHNE jede Einschränkung auf `m.company_id`. Jede Company, deren importierte Positionsbeschreibung
-    textuell mit der Materialbezeichnung/-nummer EINER BELIEBIGEN ANDEREN Company übereinstimmt, bekommt
-    deren Material als "Kandidat" vorgeschlagen — ein waschechtes mandantenübergreifendes Datenleck
-    (vergleichbare Schwere wie der bereits behobene Backlog 0.22, hier aber ein anderer Codepfad:
-    GAEB-Import-Materialkandidaten statt Dokumenten-Download). Die Funktion erhält aktuell nicht einmal einen
-    `companyID`-Parameter (Signatur: `listMaterialCandidatesForQuoteItem(ctx, quoteItemID uuid.UUID,
-    materialID, candidateStatus string)`) — der Fix erfordert also sowohl eine Signaturänderung als auch das
-    Durchreichen von `companyID` an allen Aufrufstellen (aktuell ein Aufrufer, Zeile ~777, selbst innerhalb
-    einer Funktion, die `companyID` bereits im Scope hat — sollte unproblematisch durchreichbar sein) und
-    eine zusätzliche `AND m.company_id = $N`-Bedingung im SQL.
-  - Nicht behoben (außerhalb des auf `quotes.NewService(env.PG, nil)`-Panics beschränkten Scopes von 0.30 —
-    andere Code-Ebene, eigener SQL-Fix mit eigener Verifikation nötig). Fix: `companyID string`-Parameter
-    ergänzen, an der einzigen Aufrufstelle durchreichen, SQL um `AND m.company_id = $2` erweitern, gegen
-    frische DB mit einem gezielten Cross-Tenant-Testfall verifizieren (zwei Companies, identische
-    Materialbezeichnung, erwartet: nur die eigene wird als Kandidat vorgeschlagen).
+    — OHNE jede Einschränkung auf `m.company_id`. Ein waschechtes mandantenübergreifendes Datenleck
+    (vergleichbare Schwere wie der bereits behobene Backlog 0.22, hier aber ein anderer Codepfad).
+  - **Fix**: `listMaterialCandidatesForQuoteItem` um einen `companyID string`-Parameter erweitert, an der
+    einzigen Aufrufstelle (in `Get`, `companyID` war dort bereits im Scope) durchgereicht, SQL um
+    `AND m.company_id = $2` erweitert (verifiziert: `materials.company_id` ist seit Migration 057 für ALLE
+    Zeilen auf mindestens `'default'` befüllt, kein NULL-Risiko).
+  - **Wichtige Korrektur bei der Verifikation**: nach dem `company_id`-Fix schlug
+    `TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates` im VOLLEN Suite-Lauf WEITERHIN mit demselben
+    Symptom fehl (zwei statt ein Kandidat). Root Cause dafür: `MAT-GAEB-0001` (aus
+    `TestQuoteUpdateAllowsManualMaterialMappingOnItems`) gehört — wie praktisch alle Testdaten dieser
+    Session — ebenfalls zu `company_id='default'`, da es aktuell (siehe Backlog 0.32) GAR KEINEN Weg gibt,
+    über die Anwendung einen ECHTEN zweiten Mandanten anzulegen. Der ursprüngliche Fund hatte die beiden
+    Test-Materialien fälschlich als "aus unterschiedlichen Companies" beschrieben — tatsächlich handelte es
+    sich um eine reine Testdaten-Kollision INNERHALB derselben Company (zwei unabhängige Tests verwenden
+    zufällig dieselbe Materialbezeichnung `"Aluminium Profil 70mm"`), die der `company_id`-Fix allein nicht
+    lösen konnte. Zusätzlich behoben: die Materialbezeichnung/Positionsbeschreibung in
+    `TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates` auf `"Aluminium Profil 70mm
+    Kandidatenpruefung"` umbenannt (4 Fundstellen: Material-Anlage, Import-Item-Beschreibung, 2 Assertions),
+    um die Kollision mit `TestQuoteUpdateAllowsManualMaterialMappingOnItems` zu beseitigen.
+  - **Neuer, echter Cross-Tenant-Test** `TestQuoteGAEBImportMaterialCandidatesAreScopedToCompany`
+    (`server/internal/http/quotes_integration_test.go`) — da es keinen Weg gibt, über die Anwendung selbst
+    einen zweiten Mandanten anzulegen (Backlog 0.32), wird analog zum bereits bestehenden Muster in
+    `TestDocumentDownloadIsScopedToCompany` (Backlog 0.22) ein ECHTER zweiter `company_profiles`-Eintrag samt
+    eigenem Nutzer per Direkt-SQL angelegt. Der Fremdmandant legt ein Material mit einer bestimmten
+    Bezeichnung an; der eigene Mandant importiert eine GAEB-Position mit EXAKT derselben Beschreibung, hat
+    aber selbst kein passendes Material — erwartet und verifiziert: `0` Materialkandidaten (nicht das
+    Fremdmandant-Material).
+  - **Nebenbei beim abschließenden vollen Suite-Lauf**: `classifyDomainError` um `"können bearbeitet
+    werden"` ergänzt (Meldung `"nur offene oder freigegebene Aufträge können bearbeitet werden"`,
+    `sales/service.go`, 2 Fundstellen, geprüft kollisionsfrei) — direkt beim Verifizieren gefunden
+    (`TestQuoteFlowWithPricingAndPDF` kam nach der 0.35-Behebung neu bis zu dieser Stelle durch). Weitere,
+    strukturell identische Lücken beim selben Test gefunden, aber NICHT mehr in dieser Subtask behoben,
+    sondern als eigenständiger, größerer Fund dokumentiert: siehe Backlog 0.44.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. Beide Tests isoliert: PASS. Voller `go test ./...` (Nicht-Integrationspakete) ohne Fehler. Voller
+    `go test ./internal/http/... -count=1` gegen frische DB: von 5 auf **4** Fehlschläge zurückgegangen (der
+    Zieltest verschwand aus der Fehlerliste — die Namenskollision war die tatsächliche Ursache des
+    Full-Suite-Fehlschlags, der `company_id`-Fix allein hätte ihn nicht behoben, ist aber weiterhin die
+    korrekte, notwendige Sicherheitsmaßnahme für echte Mandantentrennung).
+- [x] 0.44 `classifyDomainError` erkennt eine ganze Reihe weiterer `quotes`/`sales`/`accounting`-Validierungsfehler
+  nicht als 400, u. a. das fundamentale "keine Positionen"-Guard in ALLEN DREI Domänen — done, verifiziert
+  gegen frische DB. **Letzter offener technischer Fund der flachen Epic-0-Liste — danach 0 Fehlschläge im
+  gesamten `go test ./internal/http/... -count=1`-Lauf.**
+  - Gefunden bei Vollverifikation von Backlog 0.43 (voller `go test ./internal/http/... -count=1`-Lauf gegen
+    frische DB nach Behebung von 0.34/0.35/0.43 zeigte `TestQuoteFlowWithPricingAndPDF` erneut fehlschlagend,
+    obwohl die ursprünglich dokumentierte Ursache — Backlog 0.35 — bereits behoben ist; der Test kommt jetzt
+    deutlich weiter und deckt Schritt für Schritt mehrere weitere `classifyDomainError`-Lücken auf). EINE davon
+    bereits im Rahmen der 0.43-Vollverifikation nebenbei behoben (`"können bearbeitet werden"` — mechanisch
+    identisch zum bereits etablierten Muster, direkt beim Verifizieren gefunden, siehe 0.43-Eintrag). Beim
+    systematischen Abgleich ALLER `errors.New(...)`-Meldungen in `quotes/service.go`, `sales/service.go` und
+    `accounting/ar.go` gegen die aktuellen `classifyDomainError`-Substring-Muster (per `grep -oE
+    'errors\.New\("[^"]*"\)'` extrahiert und manuell geprüft) folgende WEITERE, noch NICHT behobene Lücken
+    gefunden:
+    - `"Auftrag ist bereits vollständig fakturiert"` / `"Auftragsposition ist bereits vollständig fakturiert"`
+      (`sales/service.go`, 2 Fundstellen) — kein Substring passt auf "vollständig fakturiert".
+    - `"Menge muss größer als 0 sein"` / `"Teilfaktura-Menge muss größer als 0 sein"` (`sales/service.go`,
+      2 Fundstellen) — kein Substring passt auf "muss größer als 0 sein".
+    - `"Teilfaktura-Menge überschreitet die offene Restmenge"` (`sales/service.go`) — "übersteigt" ist bereits
+      abgedeckt, aber "überschreitet" (anderes Wort, gleiche Bedeutung) NICHT.
+    - `"abgeschlossene oder stornierte Aufträge können nicht erneut umgestellt werden"`
+      (`sales/service.go`) — bereits einmal reproduziert (`TestQuoteFlowWithPricingAndPDF:933`, `500` statt
+      `400`), noch offen.
+    - **`"keine Positionen"`** (`accounting/ar.go` `createTx`, `quotes/service.go` 3×, `sales/service.go`
+      3× — insgesamt 7 Fundstellen quer über ALLE DREI kommerziellen Kern-Domänen) — das fundamentale
+      "mindestens eine Position erforderlich"-Guard beim Anlegen von Angeboten/Aufträgen/Rechnungen liefert
+      seit jeher `500` statt `400`. Vermutlich die schwerwiegendste der hier gefundenen Lücken, da sie den
+      allerersten Validierungsschritt jeder Beleg-Anlage betrifft.
+    - `"Angenommene Angebote dürfen nicht revidiert werden"` (`quotes/service.go`) — bestehendes Muster
+      `"darf nicht"` deckt NICHT die Pluralform `"dürfen nicht"` ab (andere Zeichenkette).
+    - `"Projekt hat keinen Kunden"` (`quotes/service.go`) — kein passendes Muster.
+    - `"keine priorisierte Preisquelle gefunden"` (`quotes/service.go`,
+      `ApplyPrimaryPriceSourceForQuoteItem`-Umfeld) — enthält NICHT die Zeichenkette "nicht gefunden" (positive
+      Formulierung "Preisquelle gefunden", verneint durch das vorangestellte "keine"), fällt daher weder unter
+      die 404-Klassifizierung noch unter ein 400-Muster; fachlich am ehesten `400 validation_error`
+      (Business-State-Guard, kein ID-Lookup).
+    - `"ungueltiger Freigabeentscheid"` (`quotes/service.go`) — Transliterations-Inkonsistenz: nutzt ASCII
+      `"ungueltig"` (ohne Umlaut) statt `"ungültig"` (mit Umlaut, wie an allen anderen Stellen im selben File)
+      — das bestehende Muster `"ungültig"` matcht NICHT. Sollte geprüft werden, ob dieselbe
+      Transliterations-Inkonsistenz noch an weiteren Stellen im Code vorkommt (nicht mehr Teil dieser
+      Untersuchung).
+  - **Zusätzliche Prüfung vor dem Fix**: für zwei der oben identifizierten Meldungen wurde vor dem Ergänzen
+    geprüft, ob sie tatsächlich über `classifyDomainError` laufen — beide Male verneint, kein Fix nötig:
+    `"Zielmarge ist ungueltig"` (`settings/quote_calculation.go`, ebenfalls ASCII-`"ungueltig"`) läuft über
+    `PUT /settings/quote-calculation`, das `writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)`
+    fest verdrahtet — bereits unabhängig von `classifyDomainError` immer `400`, kein Fund. Die drei
+    `"ungueltig..."`-Meldungen in `auth/repository.go`/`auth/service.go` (`ErrInvalidCredentials` etc.) laufen
+    über einen dedizierten `switch err`-Vergleich auf Fehler-WERTE (nicht -Strings) im Login-Handler,
+    zugeordnet zu `401`/`429` — ebenfalls unabhängig von `classifyDomainError`, kein Fund.
+  - **Fix**: alle 10 genannten Substrings in einem Zug zu `classifyDomainError`
+    (`server/internal/http/v1.go`) ergänzt: `"vollständig fakturiert"`, `"muss größer als 0 sein"`,
+    `"überschreitet die offene restmenge"`, `"können nicht erneut umgestellt werden"`, `"keine positionen"`,
+    `"dürfen nicht"`, `"hat keinen kunden"`, `"keine priorisierte preisquelle"`, `"ungueltiger
+    freigabeentscheid"` (zusammen mit dem bereits während 0.43 ergänzten `"können bearbeitet werden"` sind
+    das alle in der Untersuchung gefundenen Lücken). Jede Substring vorab per `grep` auf Kollisionsfreiheit
+    mit anderen, absichtlich `500` bleibenden Meldungen geprüft (keine gefunden) — Vorgehen analog zum
+    etablierten Muster aus 0.24/0.29/0.33/0.34/0.36/0.40/0.43.
+  - Verifiziert gegen frische, per `\dt` bestätigt leere DB: `go build ./...`, `go vet ./...`, `gofmt -l`
+    clean. `TestQuoteFlowWithPricingAndPDF` isoliert: PASS, läuft jetzt komplett durch (alle vorher
+    dokumentierten Zwischenschritte liefern korrekt `400` statt `500`, entgegen der ursprünglichen Erwartung
+    war KEINE weitere Iteration nötig — alle Lücken wurden bereits durch die systematische Vollanalyse
+    erfasst). Voller `go test ./...` (alle 15 Nicht-Integrationspakete) ohne Fehler. Voller `go test
+    ./internal/http/... -count=1` gegen frische DB: von 1 auf **0** Fehlschläge zurückgegangen — die
+    GESAMTE flache Epic-0-Fundliste (0.6-0.44 sowie die früh gefundenen 0.16/0.18/0.19) ist damit
+    vollständig abgearbeitet, bis auf das bewusst zurückgestellte, größere Feature 0.32
+    (Mandanten-Onboarding).
 - [x] 0.13 Migrationsrunner unterstützt keine Down-Migrationen — done, siehe
   `docs/adr/0005-migration-versioning-and-down-migrations.md`. Verifiziert gegen frische DB UND gegen
   parallele Testpakete (Race-Condition-Fix).

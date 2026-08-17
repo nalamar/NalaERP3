@@ -830,7 +830,7 @@ func TestContactCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testi
 		"contact_id":"` + createdContact.ID + `",
 		"currency":"EUR",
 		"items":[
-			{"description":"Geländer", "qty":2, "unit":"Stk", "unit_price":150, "tax_code":"19"}
+			{"description":"Geländer", "qty":2, "unit":"Stk", "unit_price":150, "tax_code":"DE19"}
 		]
 	}`)
 	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader(createQuoteBody))

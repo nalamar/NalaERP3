@@ -2,11 +2,13 @@ package apihttp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"nalaerp3/internal/auth"
 	"nalaerp3/internal/testutil"
 )
 
@@ -208,6 +210,155 @@ func TestCompanyProfileAndBranchesSettingsFlow(t *testing.T) {
 	}
 	if len(branches) != 0 {
 		t.Fatalf("expected no branches after delete, got %#v", branches)
+	}
+}
+
+// TestCompanyProfileAndBranchesAreScopedToCompany deckt einen Teil von
+// Backlog 0.32 ab: CompanyService (company_profiles/company_branches) war
+// vor diesem Fix in JEDER Methode (Get/Upsert/ListBranches/CreateBranch/
+// UpdateBranch/DeleteBranch) fest auf company_id='default' verdrahtet -
+// sobald ein zweiter Mandant existiert haette dessen Admin versehentlich
+// die Firmendaten/Niederlassungen des ERSTEN Mandanten gelesen und
+// ueberschrieben. Da es noch keinen Self-Service-Weg gibt, einen zweiten
+// Mandanten anzulegen (das wird mit dieser Subtask gerade erst gebaut),
+// wird hier - analog zum etablierten Muster aus
+// TestDocumentDownloadIsScopedToCompany (Backlog 0.22) - ein echter
+// zweiter company_profiles-Eintrag samt Nutzer per Direkt-SQL angelegt.
+func TestCompanyProfileAndBranchesAreScopedToCompany(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	testutil.SeedAuthUser(t, env, "integration-company-scope-owner@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO company_profiles (id, name) VALUES ('itest-other-company-profile', 'Andere Firma Profil')
+		ON CONFLICT (id) DO NOTHING
+	`); err != nil {
+		t.Fatalf("seed other company: %v", err)
+	}
+	passwordHash, err := auth.HashPassword("Secret123!")
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	const otherCompanyUserID = "itest-other-company-profile-user"
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO users (id, email, username, password_hash, first_name, last_name, display_name, locale, timezone, is_active, is_locked, company_id)
+		VALUES ($1,$2,$2,$3,'Andere','Firma','Andere Firma','de-DE','Europe/Berlin',true,false,'itest-other-company-profile')
+		ON CONFLICT (email) DO UPDATE SET company_id=EXCLUDED.company_id
+	`, otherCompanyUserID, "integration-other-company-profile-user@example.com", passwordHash); err != nil {
+		t.Fatalf("seed other-company user: %v", err)
+	}
+	if _, err := env.PG.Exec(ctx, `
+		INSERT INTO user_roles (user_id, role_id)
+		SELECT $1, r.id FROM roles r WHERE r.code = 'admin'
+		ON CONFLICT DO NOTHING
+	`, otherCompanyUserID); err != nil {
+		t.Fatalf("seed other-company user role: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	ownerToken := loginIntegrationUser(t, handler, "integration-company-scope-owner@example.com", "Secret123!")
+	otherToken := loginIntegrationUser(t, handler, "integration-other-company-profile-user@example.com", "Secret123!")
+
+	putProfile := func(token, name string) {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/settings/company/", bytes.NewReader([]byte(`{"name":"`+name+`"}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNoContent {
+			t.Fatalf("expected 204 for company profile update, got %d with body %s", rec.Code, rec.Body.String())
+		}
+	}
+	putProfile(ownerToken, "Firma A")
+	putProfile(otherToken, "Firma B")
+
+	getProfile := func(token string) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/settings/company/", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for company profile get, got %d with body %s", rec.Code, rec.Body.String())
+		}
+		var profile struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &profile); err != nil {
+			t.Fatalf("decode company profile: %v", err)
+		}
+		return profile.Name
+	}
+	if name := getProfile(ownerToken); name != "Firma A" {
+		t.Fatalf("expected owner profile name %q, got %q (cross-tenant overwrite)", "Firma A", name)
+	}
+	if name := getProfile(otherToken); name != "Firma B" {
+		t.Fatalf("expected other-company profile name %q, got %q (cross-tenant overwrite)", "Firma B", name)
+	}
+
+	createBranch := func(token, name string) string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/settings/company/branches", bytes.NewReader([]byte(`{"name":"`+name+`"}`)))
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("expected 201 for branch create, got %d with body %s", rec.Code, rec.Body.String())
+		}
+		var created struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+			t.Fatalf("decode branch create response: %v", err)
+		}
+		return created.ID
+	}
+	ownerBranchID := createBranch(ownerToken, "A-HQ")
+	createBranch(otherToken, "B-HQ")
+
+	listBranches := func(token string) []string {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/settings/company/branches", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200 for branch list, got %d with body %s", rec.Code, rec.Body.String())
+		}
+		var branches []struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &branches); err != nil {
+			t.Fatalf("decode branch list: %v", err)
+		}
+		names := make([]string, 0, len(branches))
+		for _, b := range branches {
+			names = append(names, b.Name)
+		}
+		return names
+	}
+	ownerBranches := listBranches(ownerToken)
+	if len(ownerBranches) != 1 || ownerBranches[0] != "A-HQ" {
+		t.Fatalf("expected owner to see only its own branch [A-HQ], got %+v", ownerBranches)
+	}
+	otherBranches := listBranches(otherToken)
+	if len(otherBranches) != 1 || otherBranches[0] != "B-HQ" {
+		t.Fatalf("expected other company to see only its own branch [B-HQ], got %+v", otherBranches)
+	}
+
+	crossDeleteReq := httptest.NewRequest(http.MethodDelete, "/api/v1/settings/company/branches/"+ownerBranchID, nil)
+	crossDeleteReq.Header.Set("Authorization", "Bearer "+otherToken)
+	crossDeleteRec := httptest.NewRecorder()
+	handler.ServeHTTP(crossDeleteRec, crossDeleteReq)
+	if crossDeleteRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for cross-tenant branch delete, got %d with body %s", crossDeleteRec.Code, crossDeleteRec.Body.String())
+	}
+
+	stillThereBranches := listBranches(ownerToken)
+	if len(stillThereBranches) != 1 || stillThereBranches[0] != "A-HQ" {
+		t.Fatalf("expected owner branch to survive cross-tenant delete attempt, got %+v", stillThereBranches)
 	}
 }
 
@@ -756,8 +907,7 @@ func TestMaterialGroupDeleteRejectsTrimmedLegacyReferences(t *testing.T) {
 			'{}'::jsonb
 		)
 		ON CONFLICT (id) DO UPDATE
-		SET kategorie = EXCLUDED.kategorie,
-			updated_at = now()
+		SET kategorie = EXCLUDED.kategorie
 	`); err != nil {
 		t.Fatalf("seed material with trimmed category reference: %v", err)
 	}

@@ -95,15 +95,37 @@ func TestQuoteHasOpenApprovalReworkPropagatesQueryError(t *testing.T) {
 }
 
 func TestSalesOrderTaxRateKnownAndUnknownCodes(t *testing.T) {
-	cases := map[string]float64{
-		"DE19": 0.19,
-		"DE7":  0.07,
-		"":     0,
-		"XX":   0,
+	codes := map[string]taxCodeInfo{
+		"DE19": {Rate: 0.19},
+		"DE7":  {Rate: 0.07},
 	}
-	for code, want := range cases {
-		if got := taxRate(code); got != want {
-			t.Errorf("taxRate(%q) = %v, want %v", code, got, want)
+	cases := []struct {
+		code    string
+		want    float64
+		wantErr bool
+	}{
+		{"DE19", 0.19, false},
+		{"DE7", 0.07, false},
+		{"", 0, false}, // kein Steuerkennzeichen = steuerfrei, kein Fehler
+		// unbekannter/inaktiver Code liefert jetzt einen Fehler statt still
+		// auf 0% zurueckzufallen (Backlog 0.36, gleiches Muster wie
+		// Backlog 0.7 in accounting/ar.go).
+		{"XX", 0, true},
+	}
+	for _, tc := range cases {
+		got, err := taxRate(codes, tc.code)
+		if tc.wantErr {
+			if err == nil {
+				t.Errorf("taxRate(%q): expected error, got nil", tc.code)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("taxRate(%q): unexpected error %v", tc.code, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("taxRate(%q) = %v, want %v", tc.code, got, tc.want)
 		}
 	}
 }

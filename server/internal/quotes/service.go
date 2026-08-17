@@ -433,7 +433,14 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
-	net, tax := calcTotals(in.Items)
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
+	net, tax, err := calcTotals(codes, in.Items)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
 	gross := net + tax
 	id := uuid.New()
 
@@ -450,10 +457,14 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
+		itemTaxRate, err := taxRate(codes, item.TaxCode)
+		if err != nil {
+			return uuid.Nil, nil, err
+		}
 		lineID := uuid.New()
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*taxRate(item.TaxCode), nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
@@ -774,7 +785,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 				item.LatestApprovalDecision.ApprovedTargetMarginPercent = &latestApprovalApprovedTargetMarginPercent.Float64
 			}
 		}
-		item.MaterialCandidates, err = s.listMaterialCandidatesForQuoteItem(ctx, quoteItemID, item.MaterialID, item.MaterialCandidateStatus)
+		item.MaterialCandidates, err = s.listMaterialCandidatesForQuoteItem(ctx, quoteItemID, item.MaterialID, item.MaterialCandidateStatus, companyID)
 		if err != nil {
 			return nil, err
 		}
@@ -1129,8 +1140,16 @@ func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quote
 		return nil, err
 	}
 
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	rate, err := taxRate(codes, taxCode)
+	if err != nil {
+		return nil, err
+	}
 	netAmount := qty * primary.UnitPrice
-	taxAmount := netAmount * taxRate(taxCode)
+	taxAmount := netAmount * rate
 	if _, err := tx.Exec(ctx, `
 		UPDATE quote_items
 		SET unit_price = $2,
@@ -1234,8 +1253,16 @@ func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID,
 
 	targetMarginPercent := s.quoteTargetMarginPercent(ctx)
 	targetUnitPrice := roundCurrency(costBasisUnitPrice * (1 + targetMarginPercent/100))
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	rate, err := taxRate(codes, taxCode)
+	if err != nil {
+		return nil, err
+	}
 	netAmount := qty * targetUnitPrice
-	taxAmount := netAmount * taxRate(taxCode)
+	taxAmount := netAmount * rate
 	if _, err := tx.Exec(ctx, `
 		UPDATE quote_items
 		SET unit_price = $2,
@@ -2965,7 +2992,7 @@ func (s *Service) PriceDecisionTransparencyForQuoteItem(ctx context.Context, quo
 	}, nil
 }
 
-func (s *Service) listMaterialCandidatesForQuoteItem(ctx context.Context, quoteItemID uuid.UUID, materialID, candidateStatus string) ([]MaterialCandidate, error) {
+func (s *Service) listMaterialCandidatesForQuoteItem(ctx context.Context, quoteItemID uuid.UUID, materialID, candidateStatus, companyID string) ([]MaterialCandidate, error) {
 	if strings.TrimSpace(materialID) != "" || candidateStatus != "available" {
 		return nil, nil
 	}
@@ -2974,13 +3001,14 @@ func (s *Service) listMaterialCandidatesForQuoteItem(ctx context.Context, quoteI
 		SELECT DISTINCT m.id, m.nummer, m.bezeichnung
 		FROM quote_import_item_links qil
 		JOIN quote_import_items qii ON qii.id = qil.quote_import_item_id
-		JOIN materials m ON LOWER(m.bezeichnung) = LOWER(BTRIM(qii.description))
-			OR LOWER(m.nummer) = LOWER(BTRIM(qii.description))
+		JOIN materials m ON (LOWER(m.bezeichnung) = LOWER(BTRIM(qii.description))
+			OR LOWER(m.nummer) = LOWER(BTRIM(qii.description)))
+			AND m.company_id = $2
 		WHERE qil.quote_item_id = $1
 		  AND BTRIM(COALESCE(qii.description, '')) <> ''
 		ORDER BY m.bezeichnung ASC, m.nummer ASC
 		LIMIT 3
-	`, quoteItemID)
+	`, quoteItemID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -3344,43 +3372,52 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
+	type sourceQuoteItem struct {
+		position           int
+		description        string
+		qty                float64
+		unit               string
+		unitPrice          float64
+		netAmount          float64
+		taxAmount          float64
+		taxCode            string
+		materialID         string
+		priceMappingStatus string
+	}
+	var sourceItems []sourceQuoteItem
 	for rows.Next() {
-		var position int
-		var description string
-		var qty float64
-		var unit string
-		var unitPrice float64
-		var netAmount float64
-		var taxAmount float64
-		var taxCode string
-		var materialID string
-		var priceMappingStatus string
-		if err := rows.Scan(&position, &description, &qty, &unit, &unitPrice, &netAmount, &taxAmount, &taxCode, &materialID, &priceMappingStatus); err != nil {
+		var item sourceQuoteItem
+		if err := rows.Scan(&item.position, &item.description, &item.qty, &item.unit, &item.unitPrice, &item.netAmount, &item.taxAmount, &item.taxCode, &item.materialID, &item.priceMappingStatus); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		sourceItems = append(sourceItems, item)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, item := range sourceItems {
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 			uuid.New(),
 			revisedQuoteID,
-			position,
-			description,
-			qty,
-			unit,
-			unitPrice,
-			netAmount,
-			taxAmount,
-			nullIfEmpty(taxCode),
-			nullIfEmpty(materialID),
-			priceMappingStatus,
+			item.position,
+			item.description,
+			item.qty,
+			item.unit,
+			item.unitPrice,
+			item.netAmount,
+			item.taxAmount,
+			nullIfEmpty(item.taxCode),
+			nullIfEmpty(item.materialID),
+			item.priceMappingStatus,
 		)
 		if err != nil {
 			return nil, err
 		}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 
 	if _, err := tx.Exec(ctx, `UPDATE quotes SET superseded_by_quote_id=$2 WHERE id=$1`, id, revisedQuoteID); err != nil {
@@ -3504,7 +3541,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 	if in.QuoteDate.IsZero() {
 		in.QuoteDate = time.Now()
 	}
-	net, tax := calcTotals(in.Items)
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	net, tax, err := calcTotals(codes, in.Items)
+	if err != nil {
+		return nil, err
+	}
 	gross := net + tax
 
 	_, err = tx.Exec(ctx, `UPDATE quotes
@@ -3522,10 +3566,14 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 		if err != nil {
 			return nil, err
 		}
+		itemTaxRate, err := taxRate(codes, item.TaxCode)
+		if err != nil {
+			return nil, err
+		}
 		lineID := uuid.New()
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*taxRate(item.TaxCode), nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
 		if err != nil {
 			return nil, err
 		}
@@ -3536,24 +3584,62 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 	return s.Get(ctx, id, companyID)
 }
 
-func calcTotals(items []QuoteItemInput) (net, tax float64) {
+// taxCodeInfo buendelt die aus den Stammdaten (tax_codes) gelesenen Angaben
+// zu einem Steuerkennzeichen (Backlog 0.36, gleiches Muster wie
+// accounting/ar.go aus Backlog 0.7).
+type taxCodeInfo struct {
+	Rate float64
+}
+
+// loadTaxCodesTx liest alle aktiven Steuerkennzeichen aus den Stammdaten.
+// Einzige Quelle der Wahrheit statt der zuvor hartcodierten DE19/DE7-
+// Sonderfaelle in taxRate (Backlog 0.36: unbekannte/inaktive Codes wurden
+// bisher STILLSCHWEIGEND als 0% behandelt statt einen Fehler zu liefern).
+func loadTaxCodesTx(ctx context.Context, tx pgx.Tx) (map[string]taxCodeInfo, error) {
+	rows, err := tx.Query(ctx, `SELECT code, rate FROM tax_codes WHERE is_active`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[string]taxCodeInfo)
+	for rows.Next() {
+		var code string
+		var rate float64
+		if err := rows.Scan(&code, &rate); err != nil {
+			return nil, err
+		}
+		out[code] = taxCodeInfo{Rate: rate}
+	}
+	return out, rows.Err()
+}
+
+// taxRate liefert den Steuersatz fuer ein Steuerkennzeichen aus den
+// Stammdaten. Ein leerer Code gilt als "kein Steuerkennzeichen" (0%, z.B.
+// Skonto-/Durchlaufposten) und ist KEIN Fehler; ein nicht-leerer, aber
+// unbekannter oder inaktiver Code liefert einen Fehler statt still auf 0%
+// zurueckzufallen.
+func taxRate(codes map[string]taxCodeInfo, code string) (float64, error) {
+	if code == "" {
+		return 0, nil
+	}
+	info, ok := codes[code]
+	if !ok {
+		return 0, fmt.Errorf("unbekanntes oder inaktives Steuerkennzeichen: %s", code)
+	}
+	return info.Rate, nil
+}
+
+func calcTotals(codes map[string]taxCodeInfo, items []QuoteItemInput) (net, tax float64, err error) {
 	for _, item := range items {
 		n := item.Qty * item.UnitPrice
 		net += n
-		tax += n * taxRate(item.TaxCode)
+		rate, err := taxRate(codes, item.TaxCode)
+		if err != nil {
+			return 0, 0, err
+		}
+		tax += n * rate
 	}
-	return
-}
-
-func taxRate(code string) float64 {
-	switch strings.ToUpper(strings.TrimSpace(code)) {
-	case "DE19":
-		return 0.19
-	case "DE7":
-		return 0.07
-	default:
-		return 0
-	}
+	return net, tax, nil
 }
 
 func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, item QuoteItemInput) (QuoteItemInput, error) {

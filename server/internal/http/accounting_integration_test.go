@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"nalaerp3/internal/testutil"
@@ -645,5 +646,254 @@ func TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged(t *testing.T) {
 		if r.ActorUserID == "" {
 			t.Fatalf("expected actor_user_id to be set on entry %+v", r)
 		}
+	}
+}
+
+// TestInvoiceOutCreateAcceptsEmptyTaxCodeAndRejectsEmptyAccountCode deckt
+// Backlog 0.38 ab: createTx() (accounting/ar.go) übergab TaxCode/AccountCode
+// bisher als rohen Go-string direkt an INSERT INTO invoice_out_items - bei
+// TaxCode:"" wurde eine leere Zeichenkette statt SQL NULL eingefügt, was
+// die Fremdschlüssel-Constraint invoice_out_items_tax_code_fkey verletzte
+// (kein tax_codes-Eintrag mit code=”), obwohl calcTotals/taxRate einen
+// leeren Code seit Backlog 0.7 bewusst als gültigen "steuerfrei"-Fall
+// behandeln. AccountCode ist dagegen NOT NULL (kann nicht auf NULL
+// abgebildet werden) - ein leerer AccountCode ist ein echter
+// Validierungsfehler und liefert jetzt eine saubere 400-Meldung statt
+// eine rohe Postgres-Fehlermeldung.
+func TestInvoiceOutCreateAcceptsEmptyTaxCodeAndRejectsEmptyAccountCode(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-invoice-empty-taxcode@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-invoice-empty-taxcode@example.com", "Secret123!")
+
+	contactID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Steuerfreie Position Kunde GmbH",
+		"email":    "invoice-empty-taxcode@example.com",
+		"telefon":  "+49 211 888888",
+		"waehrung": "EUR",
+	})
+
+	missingAccountCodeReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/", bytes.NewReader([]byte(`{
+		"contact_id":"`+contactID+`",
+		"currency":"EUR",
+		"items":[{"description":"Durchlaufender Posten","qty":1,"unit_price":25,"tax_code":"","account_code":""}]
+	}`)))
+	missingAccountCodeReq.Header.Set("Authorization", "Bearer "+accessToken)
+	missingAccountCodeReq.Header.Set("Content-Type", "application/json")
+	missingAccountCodeRec := httptest.NewRecorder()
+	handler.ServeHTTP(missingAccountCodeRec, missingAccountCodeReq)
+	if missingAccountCodeRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing account_code, got %d with body %s", missingAccountCodeRec.Code, missingAccountCodeRec.Body.String())
+	}
+	if !strings.Contains(missingAccountCodeRec.Body.String(), "account_code fehlt") {
+		t.Fatalf("expected account_code fehlt validation message, got body %s", missingAccountCodeRec.Body.String())
+	}
+
+	createInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/", bytes.NewReader([]byte(`{
+		"contact_id":"`+contactID+`",
+		"currency":"EUR",
+		"items":[
+			{"description":"Durchlaufender Posten","qty":1,"unit_price":25,"tax_code":"","account_code":"1400"},
+			{"description":"Beratungsleistung","qty":1,"unit_price":100,"tax_code":"DE19","account_code":"8000"}
+		]
+	}`)))
+	createInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createInvoiceReq.Header.Set("Content-Type", "application/json")
+	createInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(createInvoiceRec, createInvoiceReq)
+	if createInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for invoice with empty tax_code item, got %d with body %s", createInvoiceRec.Code, createInvoiceRec.Body.String())
+	}
+
+	var createdInvoice struct {
+		NetAmount   float64 `json:"net_amount"`
+		TaxAmount   float64 `json:"tax_amount"`
+		GrossAmount float64 `json:"gross_amount"`
+		Items       []struct {
+			TaxCode string `json:"tax_code"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(createInvoiceRec.Body.Bytes(), &createdInvoice); err != nil {
+		t.Fatalf("decode invoice create response: %v", err)
+	}
+	if createdInvoice.NetAmount != 125 {
+		t.Fatalf("expected net_amount 125, got %v", createdInvoice.NetAmount)
+	}
+	if createdInvoice.TaxAmount != 19 {
+		t.Fatalf("expected tax_amount 19 (only the DE19 item is taxed), got %v", createdInvoice.TaxAmount)
+	}
+	if createdInvoice.GrossAmount != 144 {
+		t.Fatalf("expected gross_amount 144, got %v", createdInvoice.GrossAmount)
+	}
+	if len(createdInvoice.Items) != 2 || createdInvoice.Items[0].TaxCode != "" {
+		t.Fatalf("expected empty tax_code preserved on the first item, got %+v", createdInvoice.Items)
+	}
+}
+
+// TestBankStatementsIngestListAndMatchFlow deckt Backlog 0.37 ab:
+// BankService (Kontoauszug-Import/-Abgleich) war an keinen HTTP-Handler
+// angebunden. Verifiziert die neuen Routen POST/GET /bank-statements und
+// POST /bank-statements/{id}/match end-to-end, inklusive der neuen
+// bank.read/bank.write-Berechtigungen.
+func TestBankStatementsIngestListAndMatchFlow(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-bank-admin@example.com", "Secret123!", "admin")
+	testutil.SeedAuthUser(t, env, "integration-bank-procurement@example.com", "Secret123!", "procurement")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-bank-admin@example.com", "Secret123!")
+	procurementToken := loginIntegrationUser(t, handler, "integration-bank-procurement@example.com", "Secret123!")
+
+	contactID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Bankabgleich Kunde GmbH",
+		"email":    "bank-match@example.com",
+		"telefon":  "+49 211 777777",
+		"waehrung": "EUR",
+	})
+
+	createInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/", bytes.NewReader([]byte(`{
+		"contact_id":"`+contactID+`",
+		"currency":"EUR",
+		"items":[{"description":"Bankabgleich Position","qty":1,"unit_price":100,"tax_code":"DE19","account_code":"8000"}]
+	}`)))
+	createInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createInvoiceReq.Header.Set("Content-Type", "application/json")
+	createInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(createInvoiceRec, createInvoiceReq)
+	if createInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for invoice create, got %d with body %s", createInvoiceRec.Code, createInvoiceRec.Body.String())
+	}
+	var createdInvoice struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createInvoiceRec.Body.Bytes(), &createdInvoice); err != nil {
+		t.Fatalf("decode invoice create response: %v", err)
+	}
+
+	bookReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+createdInvoice.ID+"/book", nil)
+	bookReq.Header.Set("Authorization", "Bearer "+accessToken)
+	bookRec := httptest.NewRecorder()
+	handler.ServeHTTP(bookRec, bookReq)
+	if bookRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invoice book, got %d with body %s", bookRec.Code, bookRec.Body.String())
+	}
+
+	forbiddenIngestReq := httptest.NewRequest(http.MethodPost, "/api/v1/bank-statements/", bytes.NewReader([]byte(`{
+		"booking_date":"2026-01-15T00:00:00Z",
+		"amount":119,
+		"currency":"EUR",
+		"counterparty":"Bankabgleich Kunde GmbH",
+		"reference":"Rechnung 119 EUR"
+	}`)))
+	forbiddenIngestReq.Header.Set("Authorization", "Bearer "+procurementToken)
+	forbiddenIngestReq.Header.Set("Content-Type", "application/json")
+	forbiddenIngestRec := httptest.NewRecorder()
+	handler.ServeHTTP(forbiddenIngestRec, forbiddenIngestReq)
+	if forbiddenIngestRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for bank ingest without bank.write, got %d with body %s", forbiddenIngestRec.Code, forbiddenIngestRec.Body.String())
+	}
+
+	ingestReq := httptest.NewRequest(http.MethodPost, "/api/v1/bank-statements/", bytes.NewReader([]byte(`{
+		"booking_date":"2026-01-15T00:00:00Z",
+		"amount":119,
+		"currency":"EUR",
+		"counterparty":"Bankabgleich Kunde GmbH",
+		"reference":"Rechnung 119 EUR"
+	}`)))
+	ingestReq.Header.Set("Authorization", "Bearer "+accessToken)
+	ingestReq.Header.Set("Content-Type", "application/json")
+	ingestRec := httptest.NewRecorder()
+	handler.ServeHTTP(ingestRec, ingestReq)
+	if ingestRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for bank statement ingest, got %d with body %s", ingestRec.Code, ingestRec.Body.String())
+	}
+	var ingested struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(ingestRec.Body.Bytes(), &ingested); err != nil {
+		t.Fatalf("decode bank statement ingest response: %v", err)
+	}
+	if ingested.ID == "" {
+		t.Fatal("expected bank statement id")
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/v1/bank-statements/", nil)
+	listReq.Header.Set("Authorization", "Bearer "+accessToken)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for bank statement list, got %d with body %s", listRec.Code, listRec.Body.String())
+	}
+	var listed []map[string]any
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listed); err != nil {
+		t.Fatalf("decode bank statement list response: %v", err)
+	}
+	found := false
+	for _, item := range listed {
+		if id, _ := item["id"].(string); id == ingested.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected ingested statement %q in list, got %+v", ingested.ID, listed)
+	}
+
+	matchReq := httptest.NewRequest(http.MethodPost, "/api/v1/bank-statements/"+ingested.ID+"/match", bytes.NewReader([]byte(`{
+		"invoice_id":"`+createdInvoice.ID+`"
+	}`)))
+	matchReq.Header.Set("Authorization", "Bearer "+accessToken)
+	matchReq.Header.Set("Content-Type", "application/json")
+	matchRec := httptest.NewRecorder()
+	handler.ServeHTTP(matchRec, matchReq)
+	if matchRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for bank statement match, got %d with body %s", matchRec.Code, matchRec.Body.String())
+	}
+	var matched struct {
+		PaymentID string `json:"payment_id"`
+	}
+	if err := json.Unmarshal(matchRec.Body.Bytes(), &matched); err != nil {
+		t.Fatalf("decode bank statement match response: %v", err)
+	}
+	if matched.PaymentID == "" {
+		t.Fatal("expected payment id from match")
+	}
+
+	getInvoiceReq := httptest.NewRequest(http.MethodGet, "/api/v1/invoices-out/"+createdInvoice.ID, nil)
+	getInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(getInvoiceRec, getInvoiceReq)
+	if getInvoiceRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invoice get after match, got %d with body %s", getInvoiceRec.Code, getInvoiceRec.Body.String())
+	}
+	var invoiceAfterMatch struct {
+		Status     string  `json:"status"`
+		PaidAmount float64 `json:"paid_amount"`
+	}
+	if err := json.Unmarshal(getInvoiceRec.Body.Bytes(), &invoiceAfterMatch); err != nil {
+		t.Fatalf("decode invoice after match response: %v", err)
+	}
+	if invoiceAfterMatch.Status != "paid" {
+		t.Fatalf("expected invoice status paid after full match, got %q", invoiceAfterMatch.Status)
+	}
+	if invoiceAfterMatch.PaidAmount != 119 {
+		t.Fatalf("expected paid_amount 119 after match, got %v", invoiceAfterMatch.PaidAmount)
+	}
+
+	rematchReq := httptest.NewRequest(http.MethodPost, "/api/v1/bank-statements/"+ingested.ID+"/match", bytes.NewReader([]byte(`{
+		"invoice_id":"`+createdInvoice.ID+`"
+	}`)))
+	rematchReq.Header.Set("Authorization", "Bearer "+accessToken)
+	rematchReq.Header.Set("Content-Type", "application/json")
+	rematchRec := httptest.NewRecorder()
+	handler.ServeHTTP(rematchRec, rematchReq)
+	if rematchRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for re-matching an already matched statement, got %d with body %s", rematchRec.Code, rematchRec.Body.String())
 	}
 }

@@ -262,7 +262,7 @@ func (s *ARService) createTx(ctx context.Context, tx pgx.Tx, in InvoiceOutInput,
 		in.InvoiceDate = time.Now()
 	}
 	id := uuid.New()
-	codes, err := loadTaxCodes(ctx, tx)
+	codes, err := loadTaxCodes(ctx, tx, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -278,14 +278,17 @@ func (s *ARService) createTx(ctx context.Context, tx pgx.Tx, in InvoiceOutInput,
 		return nil, err
 	}
 	for idx, it := range in.Items {
+		if strings.TrimSpace(it.AccountCode) == "" {
+			return nil, errors.New("account_code fehlt")
+		}
 		lineID := uuid.New()
 		rate, err := taxRate(codes, it.TaxCode)
 		if err != nil {
 			return nil, err
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO invoice_out_items (id, invoice_id, position, description, qty, unit_price, net_amount, tax_amount, tax_code, account_code, source_sales_order_item_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-			lineID, id, idx+1, it.Description, it.Qty, it.UnitPrice, it.Qty*it.UnitPrice, it.UnitPrice*it.Qty*rate, it.TaxCode, it.AccountCode, it.SourceSalesOrderItemID)
+		_, err = tx.Exec(ctx, `INSERT INTO invoice_out_items (id, invoice_id, position, description, qty, unit_price, net_amount, tax_amount, tax_code, account_code, source_sales_order_item_id, company_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			lineID, id, idx+1, it.Description, it.Qty, it.UnitPrice, it.Qty*it.UnitPrice, it.UnitPrice*it.Qty*rate, nullIfEmpty(it.TaxCode), it.AccountCode, it.SourceSalesOrderItemID, companyID)
 		if err != nil {
 			return nil, err
 		}
@@ -349,7 +352,7 @@ func (s *ARService) Book(ctx context.Context, id uuid.UUID, companyID string, ac
 	if err != nil {
 		return nil, err
 	}
-	codes, err := loadTaxCodes(ctx, tx)
+	codes, err := loadTaxCodes(ctx, tx, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +447,7 @@ func (s *ARService) Storno(ctx context.Context, id uuid.UUID, reason string, com
 	if inv.Number != nil {
 		nummer = *inv.Number
 	}
-	codes, err := loadTaxCodes(ctx, tx)
+	codes, err := loadTaxCodes(ctx, tx, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -497,13 +500,13 @@ type taxCodeInfo struct {
 // Sonderfaelle in taxRate/taxAccountFor (Backlog 0.7: unbekannte/inaktive
 // Codes wurden bisher STILLSCHWEIGEND als 0% behandelt bzw. auf das
 // DE19-Konto 1776 zurueckgefallen, statt einen Fehler zu liefern).
-func loadTaxCodes(ctx context.Context, tx pgx.Tx) (map[string]taxCodeInfo, error) {
+func loadTaxCodes(ctx context.Context, tx pgx.Tx, companyID string) (map[string]taxCodeInfo, error) {
 	rows, err := tx.Query(ctx, `
         SELECT tc.code, tc.rate, COALESCE(a.code, '')
           FROM tax_codes tc
-          LEFT JOIN accounts a ON a.tax_code = tc.code AND a.type = 'liability' AND a.is_active
+          LEFT JOIN accounts a ON a.tax_code = tc.code AND a.type = 'liability' AND a.is_active AND a.company_id = $1
          WHERE tc.is_active
-    `)
+    `, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -630,4 +633,15 @@ func calcTotals(codes map[string]taxCodeInfo, items []InvoiceItemInput) (net, ta
 		tax += n * rate
 	}
 	return net, tax, nil
+}
+
+// nullIfEmpty bildet einen leeren String auf SQL NULL ab statt auf eine
+// leere Zeichenkette (Backlog 0.38: invoice_out_items.tax_code ist
+// nullable und per Fremdschluessel an tax_codes(code) gebunden - eine
+// leere Zeichenkette verletzt die Constraint, da kein Code ” existiert).
+func nullIfEmpty(v string) any {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return v
 }

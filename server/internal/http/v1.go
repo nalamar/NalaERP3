@@ -64,6 +64,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	poSvc := purchasing.NewService(pg).WithAudit(auditSvc)
 	arSvc := accounting.NewARService(pg, numSvc, journalSvc, auditSvc)
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
+	bankSvc := accounting.NewBankService(pg, paymentSvc)
 	pdfSvc := settings.NewPDFService(pg)
 	unitSvc := settings.NewUnitService(pg)
 	materialGroupSvc := settings.NewMaterialGroupService(pg)
@@ -241,6 +242,27 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"role_codes": roleCodes})
+		})
+	})
+
+	// Backlog 0.32, Subtask 0.32.2b: Mandanten-Onboarding. Ueber
+	// admin.superuser statt einer tenant-scoped Permission gesperrt, da das
+	// Anlegen eines NEUEN Mandanten grundsaetzlich Plattform-Ebene ist -
+	// ein regulaerer Admin des eigenen Mandanten darf keine Geschwister-
+	// Mandanten erzeugen koennen.
+	protected.Route("/platform/tenants", func(r chi.Router) {
+		r.With(requirePermission(adminSuperuserPermission)).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in tenantCreateInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			out, err := createTenant(req.Context(), pg, in)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
 		})
 	})
 
@@ -1176,6 +1198,61 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			if _, err := w.Write(pdfBytes); err != nil {
 				return
 			}
+		})
+	})
+
+	protected.Route("/bank-statements", func(r chi.Router) {
+		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			limit := 0
+			if v := req.URL.Query().Get("limit"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					limit = n
+				}
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := bankSvc.List(req.Context(), limit, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("bank.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in accounting.BankStatementInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			id, err := bankSvc.Ingest(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+		})
+		r.With(requirePermission("bank.write")).Post("/{id}/match", func(w http.ResponseWriter, req *http.Request) {
+			statementID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Kontoauszug-ID")
+				return
+			}
+			var in struct {
+				InvoiceID *uuid.UUID `json:"invoice_id,omitempty"`
+			}
+			if req.ContentLength != 0 {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			paymentID, err := bankSvc.Match(req.Context(), statementID, in.InvoiceID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"payment_id": paymentID})
 		})
 	})
 
@@ -3555,7 +3632,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	// Einstellungen – Firmenprofil / Bankdaten
 	protected.With(requirePermission("settings.manage")).Route("/settings/company", func(r chi.Router) {
 		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
-			profile, err := companySvc.Get(req.Context())
+			companyID, _ := companyIDFromContext(req.Context())
+			profile, err := companySvc.Get(req.Context(), companyID)
 			if err != nil {
 				writeHTTPError(w, req, http.StatusNotFound, err.Error(), err)
 				return
@@ -3568,14 +3646,16 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
 				return
 			}
-			if err := companySvc.Upsert(req.Context(), in); err != nil {
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := companySvc.Upsert(req.Context(), in, companyID); err != nil {
 				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
 		r.Get("/branches", func(w http.ResponseWriter, req *http.Request) {
-			items, err := companySvc.ListBranches(req.Context())
+			companyID, _ := companyIDFromContext(req.Context())
+			items, err := companySvc.ListBranches(req.Context(), companyID)
 			if err != nil {
 				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
 				return
@@ -3588,7 +3668,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
 				return
 			}
-			item, err := companySvc.CreateBranch(req.Context(), in)
+			companyID, _ := companyIDFromContext(req.Context())
+			item, err := companySvc.CreateBranch(req.Context(), in, companyID)
 			if err != nil {
 				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
 				return
@@ -3602,7 +3683,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
 				return
 			}
-			item, err := companySvc.UpdateBranch(req.Context(), branchID, in)
+			companyID, _ := companyIDFromContext(req.Context())
+			item, err := companySvc.UpdateBranch(req.Context(), branchID, in, companyID)
 			if err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "nicht gefunden") {
 					writeHTTPError(w, req, http.StatusNotFound, err.Error(), err)
@@ -3615,7 +3697,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		})
 		r.Delete("/branches/{branchID}", func(w http.ResponseWriter, req *http.Request) {
 			branchID := chi.URLParam(req, "branchID")
-			if err := companySvc.DeleteBranch(req.Context(), branchID); err != nil {
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := companySvc.DeleteBranch(req.Context(), branchID, companyID); err != nil {
 				if strings.Contains(strings.ToLower(err.Error()), "nicht gefunden") {
 					writeHTTPError(w, req, http.StatusNotFound, err.Error(), err)
 					return
@@ -3869,7 +3952,26 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "kein sichtbarer suchtreffer"),
 		strings.Contains(msg, "kein sichtbarer kandidat"),
 		strings.Contains(msg, "hat kein material"),
-		strings.Contains(msg, "keine aktive freigabeanforderung"):
+		strings.Contains(msg, "keine aktive freigabeanforderung"),
+		strings.Contains(msg, "nur entwürfe sind bearbeitbar"),
+		strings.Contains(msg, "schreibgeschützt"),
+		strings.Contains(msg, "überführt"),
+		strings.Contains(msg, "kann nicht manuell umgestellt werden"),
+		strings.Contains(msg, "unbekanntes oder inaktives steuerkennzeichen"),
+		strings.Contains(msg, "kein umsatzsteuer-konto"),
+		strings.Contains(msg, "bereits gematcht"),
+		strings.Contains(msg, "können bearbeitet werden"),
+		strings.Contains(msg, "vollständig fakturiert"),
+		strings.Contains(msg, "muss größer als 0 sein"),
+		strings.Contains(msg, "überschreitet die offene restmenge"),
+		strings.Contains(msg, "können nicht erneut umgestellt werden"),
+		strings.Contains(msg, "keine positionen"),
+		strings.Contains(msg, "dürfen nicht"),
+		strings.Contains(msg, "hat keinen kunden"),
+		strings.Contains(msg, "keine priorisierte preisquelle"),
+		strings.Contains(msg, "ungueltiger freigabeentscheid"),
+		strings.Contains(msg, "existiert bereits"),
+		strings.Contains(msg, "abgeleitet werden"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

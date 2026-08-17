@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"math"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -179,7 +180,8 @@ SELECT DISTINCT
 	i.due_date,
 	i.currency,
 	i.gross_amount,
-	i.paid_amount
+	i.paid_amount,
+	i.created_at
 FROM invoices_out i
 LEFT JOIN contacts c ON c.id = i.contact_id
 LEFT JOIN quotes q ON q.id = i.source_quote_id
@@ -200,6 +202,7 @@ LIMIT $2
 		var due sql.NullTime
 		var sourceQuoteID uuid.NullUUID
 		var sourceSalesOrderID uuid.NullUUID
+		var createdAt time.Time
 		if err := rows.Scan(
 			&item.ID,
 			&number,
@@ -213,6 +216,7 @@ LIMIT $2
 			&item.Currency,
 			&item.GrossAmount,
 			&item.PaidAmount,
+			&createdAt,
 		); err != nil {
 			return nil, err
 		}

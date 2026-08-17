@@ -185,6 +185,11 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 		return nil, errors.New("Angebot enthaelt abgelehnte Freigabeentscheidungen; Nacharbeit vor Versand, Annahme oder Folgebeleg erforderlich")
 	}
 
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+
 	rows, err := tx.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, quoteID)
 	if err != nil {
 		return nil, err
@@ -202,7 +207,11 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 		items = append(items, item)
 		lineNet := item.Qty * item.UnitPrice
 		netAmount += lineNet
-		taxAmount += lineNet * taxRate(item.TaxCode)
+		rate, err := taxRate(codes, item.TaxCode)
+		if err != nil {
+			return nil, err
+		}
+		taxAmount += lineNet * rate
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -229,7 +238,11 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 	for idx, item := range items {
 		lineID := uuid.New()
 		lineNet := item.Qty * item.UnitPrice
-		lineTax := lineNet * taxRate(item.TaxCode)
+		rate, err := taxRate(codes, item.TaxCode)
+		if err != nil {
+			return nil, err
+		}
+		lineTax := lineNet * rate
 		_, err = tx.Exec(ctx, `INSERT INTO sales_order_items (id, sales_order_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
 			lineID, orderID, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, lineNet, lineTax, nullIfEmpty(item.TaxCode))
@@ -464,6 +477,14 @@ func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrd
 	var item SalesOrderItem
 	itemID := uuid.New()
 	taxCode := normalizeTaxCode(in.TaxCode)
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	rate, err := taxRate(codes, taxCode)
+	if err != nil {
+		return nil, nil, err
+	}
 	err = tx.QueryRow(ctx, `
 		INSERT INTO sales_order_items (id, sales_order_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code)
 		VALUES (
@@ -480,7 +501,7 @@ func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrd
 		strings.TrimSpace(in.Unit),
 		in.UnitPrice,
 		in.Qty*in.UnitPrice,
-		in.Qty*in.UnitPrice*taxRate(taxCode),
+		in.Qty*in.UnitPrice*rate,
 		nullIfEmpty(taxCode),
 	).Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode)
 	if err != nil {
@@ -539,6 +560,14 @@ func (s *Service) UpdateItem(ctx context.Context, orderID, itemID uuid.UUID, in 
 		return nil, nil, err
 	}
 
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return nil, nil, err
+	}
+	rate, err := taxRate(codes, taxCode)
+	if err != nil {
+		return nil, nil, err
+	}
 	var item SalesOrderItem
 	err = tx.QueryRow(ctx, `
 		UPDATE sales_order_items
@@ -553,7 +582,7 @@ func (s *Service) UpdateItem(ctx context.Context, orderID, itemID uuid.UUID, in 
 		unit,
 		unitPrice,
 		qty*unitPrice,
-		qty*unitPrice*taxRate(taxCode),
+		qty*unitPrice*rate,
 		nullIfEmpty(taxCode),
 	).Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode)
 	if err != nil {
@@ -754,7 +783,7 @@ func (s *Service) loadForInvoiceTx(ctx context.Context, tx pgx.Tx, id uuid.UUID,
 		FROM sales_orders so
 		LEFT JOIN projects p ON p.id = so.project_id
 		LEFT JOIN contacts c ON c.id = so.contact_id
-		WHERE so.id=$1 AND so.company_id=$2 FOR UPDATE`, id, companyID).Scan(
+		WHERE so.id=$1 AND so.company_id=$2 FOR UPDATE OF so`, id, companyID).Scan(
 		&order.ID, &order.Number, &order.SourceQuoteID, &linkedInvoiceOutID, &projectID, &order.ProjectName, &order.ContactID, &order.ContactName, &order.Status, &order.OrderDate, &order.Currency, &order.Note, &order.NetAmount, &order.TaxAmount, &order.GrossAmount,
 	)
 	if err != nil {
@@ -867,18 +896,57 @@ func validateStatusTransition(currentStatus, nextStatus string, hasInvoice bool)
 	return errors.New("Auftragsstatus darf nicht in den gewünschten Status wechseln")
 }
 
-func taxRate(code string) float64 {
-	switch strings.ToUpper(strings.TrimSpace(code)) {
-	case "DE19":
-		return 0.19
-	case "DE7":
-		return 0.07
-	default:
-		return 0
+// taxCodeInfo buendelt die aus den Stammdaten (tax_codes) gelesenen Angaben
+// zu einem Steuerkennzeichen (Backlog 0.36, gleiches Muster wie
+// accounting/ar.go aus Backlog 0.7).
+type taxCodeInfo struct {
+	Rate float64
+}
+
+// loadTaxCodesTx liest alle aktiven Steuerkennzeichen aus den Stammdaten.
+// Einzige Quelle der Wahrheit statt der zuvor hartcodierten DE19/DE7-
+// Sonderfaelle in taxRate (Backlog 0.36: unbekannte/inaktive Codes wurden
+// bisher STILLSCHWEIGEND als 0% behandelt statt einen Fehler zu liefern).
+func loadTaxCodesTx(ctx context.Context, tx pgx.Tx) (map[string]taxCodeInfo, error) {
+	rows, err := tx.Query(ctx, `SELECT code, rate FROM tax_codes WHERE is_active`)
+	if err != nil {
+		return nil, err
 	}
+	defer rows.Close()
+	out := make(map[string]taxCodeInfo)
+	for rows.Next() {
+		var code string
+		var rate float64
+		if err := rows.Scan(&code, &rate); err != nil {
+			return nil, err
+		}
+		out[code] = taxCodeInfo{Rate: rate}
+	}
+	return out, rows.Err()
+}
+
+// taxRate liefert den Steuersatz fuer ein Steuerkennzeichen aus den
+// Stammdaten. Ein leerer Code gilt als "kein Steuerkennzeichen" (0%, z.B.
+// Skonto-/Durchlaufposten) und ist KEIN Fehler; ein nicht-leerer, aber
+// unbekannter oder inaktiver Code liefert einen Fehler statt still auf 0%
+// zurueckzufallen.
+func taxRate(codes map[string]taxCodeInfo, code string) (float64, error) {
+	if code == "" {
+		return 0, nil
+	}
+	info, ok := codes[code]
+	if !ok {
+		return 0, fmt.Errorf("unbekanntes oder inaktives Steuerkennzeichen: %s", code)
+	}
+	return info.Rate, nil
 }
 
 func recalculateTotalsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (float64, float64, float64, error) {
+	codes, err := loadTaxCodesTx(ctx, tx)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+
 	rows, err := tx.Query(ctx, `SELECT qty, unit_price, COALESCE(tax_code,'') FROM sales_order_items WHERE sales_order_id=$1`, orderID)
 	if err != nil {
 		return 0, 0, 0, err
@@ -897,7 +965,11 @@ func recalculateTotalsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) (flo
 		}
 		lineNet := qty * unitPrice
 		netAmount += lineNet
-		taxAmount += lineNet * taxRate(taxCode)
+		rate, err := taxRate(codes, taxCode)
+		if err != nil {
+			return 0, 0, 0, err
+		}
+		taxAmount += lineNet * rate
 		count++
 	}
 	if err := rows.Err(); err != nil {

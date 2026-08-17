@@ -92,8 +92,8 @@ func (s *JournalService) create(ctx context.Context, tx pgx.Tx, in JournalEntryI
 	}
 	for i, l := range in.Lines {
 		lineID := uuid.New()
-		if _, err := tx.Exec(ctx, `INSERT INTO journal_lines (id, entry_id, account_code, debit, credit, memo) VALUES ($1,$2,$3,$4,$5,$6)`,
-			lineID, id, l.AccountCode, l.Debit, l.Credit, l.Memo); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO journal_lines (id, entry_id, account_code, debit, credit, memo, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+			lineID, id, l.AccountCode, l.Debit, l.Credit, l.Memo, companyID); err != nil {
 			return nil, err
 		}
 		_ = i
