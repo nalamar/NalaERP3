@@ -1161,6 +1161,33 @@ class _QuotesPageState extends State<QuotesPage> {
     }
   }
 
+  Future<void> _processGAEBImport(String importId) async {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          const _QuoteProgressDialog(text: 'GAEB-Import wird verarbeitet...'),
+    );
+    try {
+      await widget.api.processGAEBQuoteImport(importId);
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      await _loadQuoteImports();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GAEB-Import wurde verarbeitet')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text(_quoteErrorMessage(e,
+                fallback: 'GAEB-Import konnte nicht verarbeitet werden'))),
+      );
+    }
+  }
+
   Future<void> _openQuoteImportDetail(String importId) async {
     try {
       Map<String, dynamic> detail = await widget.api.getQuoteImport(importId);
@@ -2164,6 +2191,8 @@ class _QuotesPageState extends State<QuotesPage> {
                                 ...visibleImports.map((item) {
                                   final importId =
                                       (item['id'] ?? '').toString();
+                                  final importStatus =
+                                      (item['status'] ?? '').toString();
                                   return ListTile(
                                     dense: true,
                                     contentPadding: EdgeInsets.zero,
@@ -2173,12 +2202,25 @@ class _QuotesPageState extends State<QuotesPage> {
                                     subtitle: Text(
                                       '${(item['status'] ?? '-').toString()}  •  ${_formatDateTime(item['uploaded_at'])}',
                                     ),
-                                    trailing: TextButton(
-                                      onPressed: importId.isEmpty
-                                          ? null
-                                          : () =>
-                                              _openQuoteImportDetail(importId),
-                                      child: const Text('Details'),
+                                    trailing: Wrap(
+                                      children: [
+                                        if (canWrite &&
+                                            importStatus == 'uploaded')
+                                          TextButton(
+                                            onPressed: importId.isEmpty
+                                                ? null
+                                                : () => _processGAEBImport(
+                                                    importId),
+                                            child: const Text('Verarbeiten'),
+                                          ),
+                                        TextButton(
+                                          onPressed: importId.isEmpty
+                                              ? null
+                                              : () => _openQuoteImportDetail(
+                                                  importId),
+                                          child: const Text('Details'),
+                                        ),
+                                      ],
                                     ),
                                   );
                                 }),

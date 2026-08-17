@@ -86,12 +86,15 @@ type MaterialFilter struct {
 	Offset    int
 }
 
-func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, error) {
+func (s *Service) Create(ctx context.Context, in MaterialCreate, companyID string) (*Material, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	if strings.TrimSpace(in.Nummer) == "" || strings.TrimSpace(in.Bezeichnung) == "" {
 		return nil, errors.New("Nummer und Bezeichnung sind erforderlich")
 	}
 	var err error
-	if in.Kategorie, err = s.normalizeAndValidateCategory(ctx, in.Kategorie); err != nil {
+	if in.Kategorie, err = s.normalizeAndValidateCategory(ctx, in.Kategorie, companyID); err != nil {
 		return nil, err
 	}
 	id := uuid.NewString()
@@ -101,12 +104,12 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, err
 	var m Material
 	err = s.pg.QueryRow(ctx, `
         INSERT INTO materials (
-            id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, dichte, length_mm, width_mm, height_mm, kategorie, attributes
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)
+            id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, dichte, length_mm, width_mm, height_mm, kategorie, attributes, company_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14)
         RETURNING id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
                   COALESCE(attributes,'{}'::jsonb), COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                   COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
-    `, id, in.Nummer, in.Bezeichnung, in.Typ, in.Norm, in.Werkstoffnummer, in.Einheit, in.Dichte, in.LengthMM, in.WidthMM, in.HeightMM, in.Kategorie, toJSONB(in.Attribute)).Scan(
+    `, id, in.Nummer, in.Bezeichnung, in.Typ, in.Norm, in.Werkstoffnummer, in.Einheit, in.Dichte, in.LengthMM, in.WidthMM, in.HeightMM, in.Kategorie, toJSONB(in.Attribute), companyID).Scan(
 		&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
 		new([]byte), &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm,
 	)
@@ -131,7 +134,7 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate) (*Material, err
 	return &m, nil
 }
 
-func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate) (*Material, error) {
+func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate, companyID string) (*Material, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, errors.New("ID erforderlich")
 	}
@@ -183,7 +186,7 @@ func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate) (*Mat
 		add("height_mm", *u.HeightMM)
 	}
 	if u.Kategorie != nil {
-		category, err := s.normalizeAndValidateCategory(ctx, *u.Kategorie)
+		category, err := s.normalizeAndValidateCategory(ctx, *u.Kategorie, companyID)
 		if err != nil {
 			return nil, err
 		}
@@ -196,27 +199,27 @@ func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate) (*Mat
 		add("aktiv", *u.Aktiv)
 	}
 	if len(sets) == 0 {
-		return s.Get(ctx, id)
+		return s.Get(ctx, id, companyID)
 	}
-	args = append(args, id)
-	q := fmt.Sprintf("UPDATE materials SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+	args = append(args, id, companyID)
+	q := fmt.Sprintf("UPDATE materials SET %s WHERE id=$%d AND company_id=$%d", strings.Join(sets, ", "), idx, idx+1)
 	if _, err := s.pg.Exec(ctx, q, args...); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) DeleteSoft(ctx context.Context, id string) error {
+func (s *Service) DeleteSoft(ctx context.Context, id string, companyID string) error {
 	if strings.TrimSpace(id) == "" {
 		return errors.New("ID erforderlich")
 	}
-	if _, err := s.pg.Exec(ctx, `UPDATE materials SET aktiv=false WHERE id=$1`, id); err != nil {
+	if _, err := s.pg.Exec(ctx, `UPDATE materials SET aktiv=false WHERE id=$1 AND company_id=$2`, id, companyID); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error) {
+func (s *Service) List(ctx context.Context, f MaterialFilter, companyID string) ([]Material, error) {
 	// Defaults
 	lim := f.Limit
 	if lim <= 0 || lim > 200 {
@@ -230,9 +233,9 @@ func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
         FROM materials`)
-	var conds []string
-	var args []any
-	idx := 1
+	conds := []string{"company_id = $1"}
+	args := []any{companyID}
+	idx := 2
 	if strings.TrimSpace(f.Q) != "" {
 		conds = append(conds, fmt.Sprintf("(nummer ILIKE $%d OR bezeichnung ILIKE $%d)", idx, idx+1))
 		q := "%" + f.Q + "%"
@@ -282,15 +285,15 @@ func (s *Service) List(ctx context.Context, f MaterialFilter) ([]Material, error
 	return out, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (*Material, error) {
+func (s *Service) Get(ctx context.Context, id string, companyID string) (*Material, error) {
 	var m Material
 	var raw []byte
 	err := s.pg.QueryRow(ctx, `
         SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
-        FROM materials WHERE id=$1
-    `, id).Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
+        FROM materials WHERE id=$1 AND company_id=$2
+    `, id, companyID).Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
 		&raw, &m.Aktiv, &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -321,20 +324,23 @@ type WarehouseCreate struct {
 	Name string `json:"name"`
 }
 
-func (s *Service) CreateWarehouse(ctx context.Context, in WarehouseCreate) (*Warehouse, error) {
+func (s *Service) CreateWarehouse(ctx context.Context, in WarehouseCreate, companyID string) (*Warehouse, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	if strings.TrimSpace(in.Code) == "" {
 		return nil, errors.New("Code erforderlich")
 	}
 	id := uuid.NewString()
 	var w Warehouse
-	if err := s.pg.QueryRow(ctx, `INSERT INTO warehouses (id, code, name) VALUES ($1,$2,$3) RETURNING id, code, name`, id, in.Code, in.Name).Scan(&w.ID, &w.Code, &w.Name); err != nil {
+	if err := s.pg.QueryRow(ctx, `INSERT INTO warehouses (id, code, name, company_id) VALUES ($1,$2,$3,$4) RETURNING id, code, name`, id, in.Code, in.Name, companyID).Scan(&w.ID, &w.Code, &w.Name); err != nil {
 		return nil, err
 	}
 	return &w, nil
 }
 
-func (s *Service) ListWarehouses(ctx context.Context) ([]Warehouse, error) {
-	rows, err := s.pg.Query(ctx, `SELECT id, code, name FROM warehouses ORDER BY code ASC`)
+func (s *Service) ListWarehouses(ctx context.Context, companyID string) ([]Warehouse, error) {
+	rows, err := s.pg.Query(ctx, `SELECT id, code, name FROM warehouses WHERE company_id=$1 ORDER BY code ASC`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -361,9 +367,24 @@ type LocationCreate struct {
 	Name string `json:"name"`
 }
 
-func (s *Service) CreateLocation(ctx context.Context, warehouseID string, in LocationCreate) (*Location, error) {
+// warehouseOwnedByCompany prueft, ob das Lager warehouseID zum Mandanten
+// companyID gehoert (locations haben keine eigene company_id, siehe ADR 0002).
+func (s *Service) warehouseOwnedByCompany(ctx context.Context, warehouseID, companyID string) (bool, error) {
+	var exists bool
+	err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=$1 AND company_id=$2)`, warehouseID, companyID).Scan(&exists)
+	return exists, err
+}
+
+func (s *Service) CreateLocation(ctx context.Context, warehouseID string, in LocationCreate, companyID string) (*Location, error) {
 	if strings.TrimSpace(in.Code) == "" {
 		return nil, errors.New("Code erforderlich")
+	}
+	owned, err := s.warehouseOwnedByCompany(ctx, warehouseID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if !owned {
+		return nil, errors.New("Lager nicht gefunden")
 	}
 	id := uuid.NewString()
 	var l Location
@@ -373,7 +394,14 @@ func (s *Service) CreateLocation(ctx context.Context, warehouseID string, in Loc
 	return &l, nil
 }
 
-func (s *Service) ListLocations(ctx context.Context, warehouseID string) ([]Location, error) {
+func (s *Service) ListLocations(ctx context.Context, warehouseID string, companyID string) ([]Location, error) {
+	owned, err := s.warehouseOwnedByCompany(ctx, warehouseID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if !owned {
+		return nil, errors.New("Lager nicht gefunden")
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, warehouse_id, code, name FROM locations WHERE warehouse_id=$1 ORDER BY code ASC`, warehouseID)
 	if err != nil {
 		return nil, err
@@ -417,12 +445,15 @@ type StockRow struct {
 	Einheit     string  `json:"einheit"`
 }
 
-func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate) (*StockMovement, error) {
+func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate, companyID string) (*StockMovement, error) {
 	if in.Menge == 0 {
 		return nil, errors.New("Menge darf nicht 0 sein")
 	}
 	if strings.TrimSpace(in.MaterialID) == "" || strings.TrimSpace(in.WarehouseID) == "" {
 		return nil, errors.New("MaterialID und WarehouseID erforderlich")
+	}
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
 	}
 	id := uuid.NewString()
 	// Transaktion: ggf. Batch anlegen, Movement schreiben, Durchschnitts-EK aktualisieren
@@ -431,6 +462,20 @@ func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate) (*
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	var materialOwned, warehouseOwned bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM materials WHERE id=$1 AND company_id=$2)`, in.MaterialID, companyID).Scan(&materialOwned); err != nil {
+		return nil, err
+	}
+	if !materialOwned {
+		return nil, errors.New("Material nicht gefunden")
+	}
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM warehouses WHERE id=$1 AND company_id=$2)`, in.WarehouseID, companyID).Scan(&warehouseOwned); err != nil {
+		return nil, err
+	}
+	if !warehouseOwned {
+		return nil, errors.New("Lager nicht gefunden")
+	}
 
 	var batchID *string
 	if in.BatchCode != nil && strings.TrimSpace(*in.BatchCode) != "" {
@@ -480,7 +525,10 @@ func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate) (*
 	return &StockMovement{ID: id}, nil
 }
 
-func (s *Service) StockByMaterial(ctx context.Context, materialID string) ([]StockRow, error) {
+func (s *Service) StockByMaterial(ctx context.Context, materialID string, companyID string) ([]StockRow, error) {
+	if _, err := s.Get(ctx, materialID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT warehouse_id,
                location_id,
@@ -511,8 +559,8 @@ func (s *Service) StockByMaterial(ctx context.Context, materialID string) ([]Sto
 }
 
 // Facetten: Typen und Kategorien
-func (s *Service) ListTypes(ctx context.Context) ([]string, error) {
-	rows, err := s.pg.Query(ctx, `SELECT DISTINCT typ FROM materials WHERE TRIM(typ) <> '' ORDER BY typ ASC`)
+func (s *Service) ListTypes(ctx context.Context, companyID string) ([]string, error) {
+	rows, err := s.pg.Query(ctx, `SELECT DISTINCT typ FROM materials WHERE TRIM(typ) <> '' AND company_id=$1 ORDER BY typ ASC`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +576,7 @@ func (s *Service) ListTypes(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
+func (s *Service) ListCategories(ctx context.Context, companyID string) ([]string, error) {
 	rows, err := s.pg.Query(ctx, `
         SELECT category
         FROM (
@@ -541,6 +589,7 @@ func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
             SELECT DISTINCT TRIM(m.kategorie) AS category, 999999 AS sort_order, 1 AS source_order
             FROM materials m
             WHERE TRIM(m.kategorie) <> ''
+              AND m.company_id = $1
               AND NOT EXISTS (
                   SELECT 1
                   FROM material_groups mg
@@ -548,7 +597,7 @@ func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
                     AND mg.is_active = TRUE
               )
         ) categories
-        ORDER BY source_order ASC, sort_order ASC, category ASC`)
+        ORDER BY source_order ASC, sort_order ASC, category ASC`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -564,7 +613,7 @@ func (s *Service) ListCategories(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (s *Service) normalizeAndValidateCategory(ctx context.Context, category string) (string, error) {
+func (s *Service) normalizeAndValidateCategory(ctx context.Context, category string, companyID string) (string, error) {
 	category = strings.TrimSpace(category)
 	if category == "" {
 		return "", nil
@@ -583,8 +632,9 @@ func (s *Service) normalizeAndValidateCategory(ctx context.Context, category str
                 SELECT 1
                 FROM materials
                 WHERE TRIM(kategorie) = $1
+                  AND company_id = $2
             )
-    `, category).Scan(&allowed); err != nil {
+    `, category, companyID).Scan(&allowed); err != nil {
 		return "", err
 	}
 	if !allowed {

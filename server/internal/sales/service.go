@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"nalaerp3/internal/accounting"
+	"nalaerp3/internal/auditlog"
 	"nalaerp3/internal/settings"
 )
 
@@ -73,8 +74,18 @@ type SalesOrderFilter struct {
 }
 
 type Service struct {
-	pg  *pgxpool.Pool
-	num *settings.NumberingService
+	pg    *pgxpool.Pool
+	num   *settings.NumberingService
+	audit *auditlog.Service
+}
+
+// WithAudit aktiviert das generische Aenderungsprotokoll (Subtask 0.3.3.3)
+// fuer Statuswechsel/ConvertToInvoice. Ohne Aufruf bleibt s.audit nil und
+// die Protokollaufrufe werden uebersprungen (wichtig fuer bestehende Tests,
+// die den Service ohne WithAudit(...) konstruieren).
+func (s *Service) WithAudit(audit *auditlog.Service) *Service {
+	s.audit = audit
+	return s
 }
 
 type quoteApprovalReworkQuerier interface {
@@ -129,7 +140,10 @@ func Statuses() []string {
 	return []string{"open", "released", "invoiced", "completed", "canceled"}
 }
 
-func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*SalesOrder, error) {
+func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, companyID string) (*SalesOrder, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -197,7 +211,7 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 		return nil, errors.New("keine Positionen")
 	}
 
-	number, err := s.num.Next(ctx, "sales_order")
+	number, err := s.num.Next(ctx, "sales_order", companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -205,9 +219,9 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 	orderDate := time.Now()
 	grossAmount := netAmount + taxAmount
 
-	_, err = tx.Exec(ctx, `INSERT INTO sales_orders (id, nummer, source_quote_id, project_id, contact_id, status, order_date, currency, note, net_amount, tax_amount, gross_amount)
-		VALUES ($1,$2,$3,$4,$5,'open',$6,$7,$8,$9,$10,$11)`,
-		orderID, number, quoteID, nullIfEmpty(projectID.String), contactID, orderDate, currency, note, netAmount, taxAmount, grossAmount)
+	_, err = tx.Exec(ctx, `INSERT INTO sales_orders (id, nummer, source_quote_id, project_id, contact_id, status, order_date, currency, note, net_amount, tax_amount, gross_amount, company_id)
+		VALUES ($1,$2,$3,$4,$5,'open',$6,$7,$8,$9,$10,$11,$12)`,
+		orderID, number, quoteID, nullIfEmpty(projectID.String), contactID, orderDate, currency, note, netAmount, taxAmount, grossAmount, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -230,7 +244,7 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID) (*Sale
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, orderID)
+	return s.Get(ctx, orderID, companyID)
 }
 
 func quoteHasOpenApprovalRework(ctx context.Context, q quoteApprovalReworkQuerier, quoteID uuid.UUID) (bool, error) {
@@ -256,7 +270,7 @@ func quoteHasOpenApprovalRework(ctx context.Context, q quoteApprovalReworkQuerie
 	return hasOpenRework, nil
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (*SalesOrder, error) {
+func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*SalesOrder, error) {
 	var out SalesOrder
 	var projectID sql.NullString
 	var linkedInvoiceOutID uuid.NullUUID
@@ -264,7 +278,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*SalesOrder, error) {
 		FROM sales_orders so
 		LEFT JOIN projects p ON p.id = so.project_id
 		LEFT JOIN contacts c ON c.id = so.contact_id
-		WHERE so.id=$1`, id).Scan(
+		WHERE so.id=$1 AND so.company_id=$2`, id, companyID).Scan(
 		&out.ID, &out.Number, &out.SourceQuoteID, &linkedInvoiceOutID, &projectID, &out.ProjectName, &out.ContactID, &out.ContactName, &out.Status, &out.OrderDate, &out.Currency, &out.Note, &out.NetAmount, &out.TaxAmount, &out.GrossAmount,
 	)
 	if err != nil {
@@ -302,12 +316,12 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*SalesOrder, error) {
 	return &out, nil
 }
 
-func (s *Service) List(ctx context.Context, f SalesOrderFilter) ([]SalesOrderListItem, error) {
+func (s *Service) List(ctx context.Context, f SalesOrderFilter, companyID string) ([]SalesOrderListItem, error) {
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
-	args := make([]any, 0)
-	conds := make([]string, 0)
+	args := []any{companyID}
+	conds := []string{fmt.Sprintf("so.company_id=$%d", len(args))}
 	if strings.TrimSpace(f.Status) != "" {
 		args = append(args, f.Status)
 		conds = append(conds, fmt.Sprintf("so.status=$%d", len(args)))
@@ -373,7 +387,7 @@ func (s *Service) List(ctx context.Context, f SalesOrderFilter) ([]SalesOrderLis
 	return out, nil
 }
 
-func (s *Service) Update(ctx context.Context, id uuid.UUID, in SalesOrderUpdate) (*SalesOrder, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, in SalesOrderUpdate, companyID string) (*SalesOrder, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -381,7 +395,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in SalesOrderUpdate)
 	defer tx.Rollback(ctx)
 
 	var currentStatus string
-	err = tx.QueryRow(ctx, `SELECT status FROM sales_orders WHERE id=$1 FOR UPDATE`, id).Scan(&currentStatus)
+	err = tx.QueryRow(ctx, `SELECT status FROM sales_orders WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&currentStatus)
 	if err != nil {
 		return nil, err
 	}
@@ -429,10 +443,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in SalesOrderUpdate)
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrderItemInput) (*SalesOrderItem, *SalesOrder, error) {
+func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrderItemInput, companyID string) (*SalesOrderItem, *SalesOrder, error) {
 	if err := validateItemInput(in.Description, in.Qty, in.Unit, in.UnitPrice, in.TaxCode); err != nil {
 		return nil, nil, err
 	}
@@ -443,7 +457,7 @@ func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrd
 	}
 	defer tx.Rollback(ctx)
 
-	if err := ensureOrderEditableTx(ctx, tx, orderID); err != nil {
+	if err := ensureOrderEditableTx(ctx, tx, orderID, companyID); err != nil {
 		return nil, nil, err
 	}
 
@@ -479,21 +493,21 @@ func (s *Service) CreateItem(ctx context.Context, orderID uuid.UUID, in SalesOrd
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
-	order, err := s.Get(ctx, orderID)
+	order, err := s.Get(ctx, orderID, companyID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &item, order, nil
 }
 
-func (s *Service) UpdateItem(ctx context.Context, orderID, itemID uuid.UUID, in SalesOrderItemUpdate) (*SalesOrderItem, *SalesOrder, error) {
+func (s *Service) UpdateItem(ctx context.Context, orderID, itemID uuid.UUID, in SalesOrderItemUpdate, companyID string) (*SalesOrderItem, *SalesOrder, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := ensureOrderEditableTx(ctx, tx, orderID); err != nil {
+	if err := ensureOrderEditableTx(ctx, tx, orderID, companyID); err != nil {
 		return nil, nil, err
 	}
 	current, err := getItemTx(ctx, tx, orderID, itemID)
@@ -552,21 +566,21 @@ func (s *Service) UpdateItem(ctx context.Context, orderID, itemID uuid.UUID, in 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
-	order, err := s.Get(ctx, orderID)
+	order, err := s.Get(ctx, orderID, companyID)
 	if err != nil {
 		return nil, nil, err
 	}
 	return &item, order, nil
 }
 
-func (s *Service) DeleteItem(ctx context.Context, orderID, itemID uuid.UUID) (*SalesOrder, error) {
+func (s *Service) DeleteItem(ctx context.Context, orderID, itemID uuid.UUID, companyID string) (*SalesOrder, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	if err := ensureOrderEditableTx(ctx, tx, orderID); err != nil {
+	if err := ensureOrderEditableTx(ctx, tx, orderID, companyID); err != nil {
 		return nil, err
 	}
 	itemCount, err := countItemsTx(ctx, tx, orderID)
@@ -592,10 +606,10 @@ func (s *Service) DeleteItem(ctx context.Context, orderID, itemID uuid.UUID) (*S
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, orderID)
+	return s.Get(ctx, orderID, companyID)
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*SalesOrder, error) {
+func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string, companyID string, actorUserID string) (*SalesOrder, error) {
 	status = strings.ToLower(strings.TrimSpace(status))
 	if !isStatus(status) {
 		return nil, errors.New("ungültiger Auftragsstatus")
@@ -609,7 +623,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string)
 
 	var currentStatus string
 	var linkedInvoiceOutID uuid.NullUUID
-	err = tx.QueryRow(ctx, `SELECT status, linked_invoice_out_id FROM sales_orders WHERE id=$1 FOR UPDATE`, id).Scan(&currentStatus, &linkedInvoiceOutID)
+	err = tx.QueryRow(ctx, `SELECT status, linked_invoice_out_id FROM sales_orders WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&currentStatus, &linkedInvoiceOutID)
 	if err != nil {
 		return nil, err
 	}
@@ -619,13 +633,25 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string)
 	if _, err := tx.Exec(ctx, `UPDATE sales_orders SET status=$2 WHERE id=$1`, id, status); err != nil {
 		return nil, err
 	}
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, tx, companyID, auditlog.RecordInput{
+			EntityType:  "sales_order",
+			EntityID:    id.String(),
+			Action:      "status_geaendert",
+			ActorUserID: actorUserID,
+			Before:      map[string]any{"status": currentStatus},
+			After:       map[string]any{"status": status},
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput) (*ConvertToInvoiceResult, error) {
+func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput, companyID string, actorUserID string) (*ConvertToInvoiceResult, error) {
 	if arSvc == nil {
 		return nil, errors.New("invoice service fehlt")
 	}
@@ -635,7 +661,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	}
 	defer tx.Rollback(ctx)
 
-	order, items, err := s.loadForInvoiceTx(ctx, tx, id)
+	order, items, err := s.loadForInvoiceTx(ctx, tx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +711,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 		DueDate:     in.DueDate,
 		Currency:    order.Currency,
 		Items:       invoiceItems,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -695,10 +721,22 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if _, err := tx.Exec(ctx, `UPDATE quotes SET status='accepted', accepted_at=COALESCE(accepted_at, now()), linked_invoice_out_id=$2 WHERE id=$1`, order.SourceQuoteID, invoice.ID); err != nil {
 		return nil, err
 	}
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, tx, companyID, auditlog.RecordInput{
+			EntityType:  "sales_order",
+			EntityID:    id.String(),
+			Action:      "in_rechnung_ueberfuehrt",
+			ActorUserID: actorUserID,
+			Before:      map[string]any{"status": order.Status},
+			After:       map[string]any{"status": "invoiced", "linked_invoice_out_id": invoice.ID.String()},
+		}); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	updatedOrder, err := s.Get(ctx, id)
+	updatedOrder, err := s.Get(ctx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -708,7 +746,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	}, nil
 }
 
-func (s *Service) loadForInvoiceTx(ctx context.Context, tx pgx.Tx, id uuid.UUID) (*SalesOrder, []SalesOrderItem, error) {
+func (s *Service) loadForInvoiceTx(ctx context.Context, tx pgx.Tx, id uuid.UUID, companyID string) (*SalesOrder, []SalesOrderItem, error) {
 	var order SalesOrder
 	var projectID sql.NullString
 	var linkedInvoiceOutID uuid.NullUUID
@@ -716,7 +754,7 @@ func (s *Service) loadForInvoiceTx(ctx context.Context, tx pgx.Tx, id uuid.UUID)
 		FROM sales_orders so
 		LEFT JOIN projects p ON p.id = so.project_id
 		LEFT JOIN contacts c ON c.id = so.contact_id
-		WHERE so.id=$1 FOR UPDATE`, id).Scan(
+		WHERE so.id=$1 AND so.company_id=$2 FOR UPDATE`, id, companyID).Scan(
 		&order.ID, &order.Number, &order.SourceQuoteID, &linkedInvoiceOutID, &projectID, &order.ProjectName, &order.ContactID, &order.ContactName, &order.Status, &order.OrderDate, &order.Currency, &order.Note, &order.NetAmount, &order.TaxAmount, &order.GrossAmount,
 	)
 	if err != nil {
@@ -880,9 +918,9 @@ func refreshOrderTotalsTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) err
 	return err
 }
 
-func ensureOrderEditableTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID) error {
+func ensureOrderEditableTx(ctx context.Context, tx pgx.Tx, orderID uuid.UUID, companyID string) error {
 	var status string
-	if err := tx.QueryRow(ctx, `SELECT status FROM sales_orders WHERE id=$1 FOR UPDATE`, orderID).Scan(&status); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status FROM sales_orders WHERE id=$1 AND company_id=$2 FOR UPDATE`, orderID, companyID).Scan(&status); err != nil {
 		return err
 	}
 	if !isEditableStatus(status) {

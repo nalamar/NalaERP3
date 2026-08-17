@@ -1025,6 +1025,20 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> processGAEBQuoteImport(String importId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/quotes/imports/$importId/process'),
+        headers: headers,
+      ),
+    );
+    if (r.statusCode != 200) {
+      _throwApiException(r,
+          fallbackMessage: 'GAEB-Import konnte nicht verarbeitet werden');
+    }
+    return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
+  }
+
   Future<List<dynamic>> listSalesOrders(
       {String? q,
       String? status,

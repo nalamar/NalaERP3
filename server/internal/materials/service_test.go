@@ -5,10 +5,25 @@ import (
 	"testing"
 )
 
+func TestCreateRejectsMissingCompanyID(t *testing.T) {
+	svc := NewService(nil, nil, "")
+
+	got, err := svc.Create(context.Background(), MaterialCreate{Nummer: "M-1", Bezeichnung: "Test"}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if got != nil {
+		t.Fatalf("expected nil material, got %#v", got)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected Mandant erforderlich, got %q", err.Error())
+	}
+}
+
 func TestCreateRejectsMissingRequiredFields(t *testing.T) {
 	svc := NewService(nil, nil, "")
 
-	got, err := svc.Create(context.Background(), MaterialCreate{})
+	got, err := svc.Create(context.Background(), MaterialCreate{}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -23,7 +38,7 @@ func TestCreateRejectsMissingRequiredFields(t *testing.T) {
 func TestUpdateRejectsMissingID(t *testing.T) {
 	svc := NewService(nil, nil, "")
 
-	_, err := svc.Update(context.Background(), "", MaterialUpdate{})
+	_, err := svc.Update(context.Background(), "", MaterialUpdate{}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -36,7 +51,7 @@ func TestUpdateRejectsEmptyNummer(t *testing.T) {
 	svc := NewService(nil, nil, "")
 	empty := ""
 
-	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Nummer: &empty})
+	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Nummer: &empty}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -49,7 +64,7 @@ func TestUpdateRejectsEmptyBezeichnung(t *testing.T) {
 	svc := NewService(nil, nil, "")
 	empty := ""
 
-	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Bezeichnung: &empty})
+	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Bezeichnung: &empty}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -62,7 +77,7 @@ func TestUpdateRejectsEmptyEinheit(t *testing.T) {
 	svc := NewService(nil, nil, "")
 	empty := ""
 
-	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Einheit: &empty})
+	_, err := svc.Update(context.Background(), "mat-1", MaterialUpdate{Einheit: &empty}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -74,7 +89,7 @@ func TestUpdateRejectsEmptyEinheit(t *testing.T) {
 func TestDeleteSoftRejectsMissingID(t *testing.T) {
 	svc := NewService(nil, nil, "")
 
-	err := svc.DeleteSoft(context.Background(), "")
+	err := svc.DeleteSoft(context.Background(), "", "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}

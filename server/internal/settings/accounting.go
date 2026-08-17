@@ -30,8 +30,8 @@ type AccountingService struct{ pg *pgxpool.Pool }
 
 func NewAccountingService(pg *pgxpool.Pool) *AccountingService { return &AccountingService{pg: pg} }
 
-func (s *AccountingService) ListAccounts(ctx context.Context) ([]Account, error) {
-	rows, err := s.pg.Query(ctx, `SELECT code, name, type, parent_code, tax_code, is_active FROM accounts ORDER BY code`)
+func (s *AccountingService) ListAccounts(ctx context.Context, companyID string) ([]Account, error) {
+	rows, err := s.pg.Query(ctx, `SELECT code, name, type, parent_code, tax_code, is_active FROM accounts WHERE company_id=$1 ORDER BY code`, companyID)
 	if err != nil {
 		return nil, err
 	}

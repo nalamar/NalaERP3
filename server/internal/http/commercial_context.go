@@ -45,11 +45,12 @@ func buildContactCommercialContext(
 	quoteSvc *quotes.Service,
 	salesSvc *sales.Service,
 	arSvc *accounting.ARService,
+	companyID string,
 ) (*contactCommercialContextResponse, error) {
 	quotesList, err := quoteSvc.List(ctx, quotes.QuoteFilter{
 		ContactID: contactID,
 		Limit:     200,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +58,7 @@ func buildContactCommercialContext(
 	salesOrders, err := salesSvc.List(ctx, sales.SalesOrderFilter{
 		ContactID: contactID,
 		Limit:     200,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +66,7 @@ func buildContactCommercialContext(
 	invoices, err := arSvc.List(ctx, accounting.InvoiceFilter{
 		ContactID: contactID,
 		Limit:     200,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -106,11 +107,12 @@ func buildProjectCommercialContext(
 	pg *pgxpool.Pool,
 	quoteSvc *quotes.Service,
 	salesSvc *sales.Service,
+	companyID string,
 ) (*projectCommercialContextResponse, error) {
 	quotesList, err := quoteSvc.List(ctx, quotes.QuoteFilter{
 		ProjectID: projectID,
 		Limit:     200,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +120,7 @@ func buildProjectCommercialContext(
 	salesOrders, err := salesSvc.List(ctx, sales.SalesOrderFilter{
 		ProjectID: projectID,
 		Limit:     200,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}

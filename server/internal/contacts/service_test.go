@@ -5,10 +5,25 @@ import (
 	"testing"
 )
 
+func TestCreateRejectsMissingCompanyID(t *testing.T) {
+	svc := NewService(nil)
+
+	got, err := svc.Create(context.Background(), ContactCreate{Name: "Test GmbH"}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if got != nil {
+		t.Fatalf("expected nil contact, got %#v", got)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected Mandant erforderlich, got %q", err.Error())
+	}
+}
+
 func TestCreateRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	got, err := svc.Create(context.Background(), ContactCreate{})
+	got, err := svc.Create(context.Background(), ContactCreate{}, "co-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -26,7 +41,7 @@ func TestCreateRejectsInvalidType(t *testing.T) {
 	_, err := svc.Create(context.Background(), ContactCreate{
 		Name: "Test GmbH",
 		Typ:  "invalid",
-	})
+	}, "co-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -42,7 +57,7 @@ func TestCreateRejectsInvalidRole(t *testing.T) {
 		Name:  "Test GmbH",
 		Typ:   "org",
 		Rolle: "invalid",
-	})
+	}, "co-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -59,7 +74,7 @@ func TestCreateRejectsInvalidStatus(t *testing.T) {
 		Typ:    "org",
 		Rolle:  "customer",
 		Status: "invalid",
-	})
+	}, "co-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -72,7 +87,7 @@ func TestUpdateRejectsInvalidRole(t *testing.T) {
 	svc := NewService(nil)
 	role := "invalid"
 
-	_, err := svc.Update(context.Background(), "contact-1", ContactUpdate{Rolle: &role})
+	_, err := svc.Update(context.Background(), "contact-1", ContactUpdate{Rolle: &role}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -85,7 +100,7 @@ func TestUpdateRejectsInvalidStatus(t *testing.T) {
 	svc := NewService(nil)
 	status := "invalid"
 
-	_, err := svc.Update(context.Background(), "contact-1", ContactUpdate{Status: &status})
+	_, err := svc.Update(context.Background(), "contact-1", ContactUpdate{Status: &status}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -122,7 +137,7 @@ func TestUpdateRejectsInvalidAddressKind(t *testing.T) {
 	svc := NewService(nil)
 	kind := "invalid"
 
-	_, err := svc.UpdateAddress(context.Background(), "contact-1", "address-1", AddressUpdate{Art: &kind})
+	_, err := svc.UpdateAddress(context.Background(), "contact-1", "address-1", AddressUpdate{Art: &kind}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -134,7 +149,7 @@ func TestUpdateRejectsInvalidAddressKind(t *testing.T) {
 func TestCreatePersonRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	_, err := svc.CreatePerson(context.Background(), "contact-1", PersonCreate{})
+	_, err := svc.CreatePerson(context.Background(), "contact-1", PersonCreate{}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -149,7 +164,7 @@ func TestCreatePersonRejectsInvalidRole(t *testing.T) {
 	_, err := svc.CreatePerson(context.Background(), "contact-1", PersonCreate{
 		Vorname: "Max",
 		Rolle:   "invalid",
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -164,7 +179,7 @@ func TestCreatePersonRejectsInvalidChannel(t *testing.T) {
 	_, err := svc.CreatePerson(context.Background(), "contact-1", PersonCreate{
 		Vorname:          "Max",
 		BevorzugterKanal: "fax",
-	})
+	}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}

@@ -48,6 +48,7 @@ func buildCommercialWorkflow(
 	quoteSvc *quotes.Service,
 	salesSvc *sales.Service,
 	filter commercialWorkflowFilter,
+	companyID string,
 ) (*commercialWorkflowResponse, error) {
 	items := make([]commercialWorkflowItem, 0)
 	kind := strings.TrimSpace(filter.Kind)
@@ -58,7 +59,7 @@ func buildCommercialWorkflow(
 			ProjectID: filter.ProjectID,
 			ContactID: filter.ContactID,
 			Limit:     200,
-		})
+		}, companyID)
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +90,7 @@ func buildCommercialWorkflow(
 			ProjectID: filter.ProjectID,
 			ContactID: filter.ContactID,
 			Limit:     200,
-		})
+		}, companyID)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +122,7 @@ func buildCommercialWorkflow(
 			ProjectID: filter.ProjectID,
 			ContactID: filter.ContactID,
 			Limit:     200,
-		})
+		}, companyID)
 		if err != nil {
 			return nil, err
 		}

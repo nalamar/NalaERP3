@@ -239,7 +239,10 @@ type ContactFilter struct {
 	Offset int
 }
 
-func (s *Service) Create(ctx context.Context, in ContactCreate) (*Contact, error) {
+func (s *Service) Create(ctx context.Context, in ContactCreate, companyID string) (*Contact, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("Name erforderlich")
 	}
@@ -280,10 +283,10 @@ func (s *Service) Create(ctx context.Context, in ContactCreate) (*Contact, error
 	id := uuid.NewString()
 	var c Contact
 	err := s.pg.QueryRow(ctx, `
-        INSERT INTO contacts (id, typ, rolle, status, name, email, phone, vat_id, tax_no, waehrung, payment_terms, debtor_no, creditor_no, tax_country, tax_exempt, aktiv)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        INSERT INTO contacts (id, typ, rolle, status, name, email, phone, vat_id, tax_no, waehrung, payment_terms, debtor_no, creditor_no, tax_country, tax_exempt, aktiv, company_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         RETURNING id, typ, rolle, status, name, COALESCE(email,''), COALESCE(phone,''), COALESCE(vat_id,''), COALESCE(tax_no,''), waehrung, COALESCE(payment_terms,''), COALESCE(debtor_no,''), COALESCE(creditor_no,''), COALESCE(tax_country,'DE'), tax_exempt, aktiv, angelegt_am
-    `, id, in.Typ, in.Rolle, status, in.Name, in.Email, in.Telefon, in.UStID, in.SteuerNr, in.Waehrung, in.Zahlungsbedingungen, in.DebitorNr, in.KreditorNr, in.SteuerLand, in.Steuerbefreit, aktiv).Scan(
+    `, id, in.Typ, in.Rolle, status, in.Name, in.Email, in.Telefon, in.UStID, in.SteuerNr, in.Waehrung, in.Zahlungsbedingungen, in.DebitorNr, in.KreditorNr, in.SteuerLand, in.Steuerbefreit, aktiv, companyID).Scan(
 		&c.ID, &c.Typ, &c.Rolle, &c.Status, &c.Name, &c.Email, &c.Telefon, &c.UStID, &c.SteuerNr, &c.Waehrung, &c.Zahlungsbedingungen, &c.DebitorNr, &c.KreditorNr, &c.SteuerLand, &c.Steuerbefreit, &c.Aktiv, &c.Angelegt,
 	)
 	if err != nil {
@@ -292,9 +295,9 @@ func (s *Service) Create(ctx context.Context, in ContactCreate) (*Contact, error
 	return &c, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (*Contact, error) {
+func (s *Service) Get(ctx context.Context, id string, companyID string) (*Contact, error) {
 	var c Contact
-	err := s.pg.QueryRow(ctx, `SELECT id, typ, rolle, status, name, COALESCE(email,''), COALESCE(phone,''), COALESCE(vat_id,''), COALESCE(tax_no,''), waehrung, COALESCE(payment_terms,''), COALESCE(debtor_no,''), COALESCE(creditor_no,''), COALESCE(tax_country,'DE'), tax_exempt, aktiv, angelegt_am FROM contacts WHERE id=$1`, id).Scan(
+	err := s.pg.QueryRow(ctx, `SELECT id, typ, rolle, status, name, COALESCE(email,''), COALESCE(phone,''), COALESCE(vat_id,''), COALESCE(tax_no,''), waehrung, COALESCE(payment_terms,''), COALESCE(debtor_no,''), COALESCE(creditor_no,''), COALESCE(tax_country,'DE'), tax_exempt, aktiv, angelegt_am FROM contacts WHERE id=$1 AND company_id=$2`, id, companyID).Scan(
 		&c.ID, &c.Typ, &c.Rolle, &c.Status, &c.Name, &c.Email, &c.Telefon, &c.UStID, &c.SteuerNr, &c.Waehrung, &c.Zahlungsbedingungen, &c.DebitorNr, &c.KreditorNr, &c.SteuerLand, &c.Steuerbefreit, &c.Aktiv, &c.Angelegt,
 	)
 	if err != nil {
@@ -303,7 +306,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Contact, error) {
 	return &c, nil
 }
 
-func (s *Service) Update(ctx context.Context, id string, u ContactUpdate) (*Contact, error) {
+func (s *Service) Update(ctx context.Context, id string, u ContactUpdate, companyID string) (*Contact, error) {
 	if u.Typ != nil {
 		if !isIn(*u.Typ, Types()) {
 			return nil, errors.New("Ungültiger Typ")
@@ -321,7 +324,7 @@ func (s *Service) Update(ctx context.Context, id string, u ContactUpdate) (*Cont
 		}
 	}
 
-	current, err := s.Get(ctx, id)
+	current, err := s.Get(ctx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -403,22 +406,22 @@ func (s *Service) Update(ctx context.Context, id string, u ContactUpdate) (*Cont
 		return nil, err
 	}
 	if len(sets) == 0 {
-		return s.Get(ctx, id)
+		return s.Get(ctx, id, companyID)
 	}
-	args = append(args, id)
-	q := fmt.Sprintf("UPDATE contacts SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+	args = append(args, id, companyID)
+	q := fmt.Sprintf("UPDATE contacts SET %s WHERE id=$%d AND company_id=$%d", strings.Join(sets, ", "), idx, idx+1)
 	if _, err := s.pg.Exec(ctx, q, args...); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) DeleteSoft(ctx context.Context, id string) error {
-	_, err := s.pg.Exec(ctx, `UPDATE contacts SET aktiv=false, status='inactive' WHERE id=$1`, id)
+func (s *Service) DeleteSoft(ctx context.Context, id string, companyID string) error {
+	_, err := s.pg.Exec(ctx, `UPDATE contacts SET aktiv=false, status='inactive' WHERE id=$1 AND company_id=$2`, id, companyID)
 	return err
 }
 
-func (s *Service) List(ctx context.Context, f ContactFilter) ([]Contact, error) {
+func (s *Service) List(ctx context.Context, f ContactFilter, companyID string) ([]Contact, error) {
 	lim := f.Limit
 	if lim <= 0 || lim > 200 {
 		lim = 50
@@ -426,9 +429,9 @@ func (s *Service) List(ctx context.Context, f ContactFilter) ([]Contact, error) 
 	off := f.Offset
 	sb := strings.Builder{}
 	sb.WriteString(`SELECT id, typ, rolle, status, name, COALESCE(email,''), COALESCE(phone,''), COALESCE(vat_id,''), COALESCE(tax_no,''), waehrung, COALESCE(payment_terms,''), COALESCE(debtor_no,''), COALESCE(creditor_no,''), COALESCE(tax_country,'DE'), tax_exempt, aktiv, angelegt_am FROM contacts`)
-	var conds []string
-	var args []any
-	idx := 1
+	conds := []string{"company_id=$1"}
+	args := []any{companyID}
+	idx := 2
 	if strings.TrimSpace(f.Q) != "" {
 		conds = append(conds, fmt.Sprintf("(name ILIKE $%d OR email ILIKE $%d OR phone ILIKE $%d OR vat_id ILIKE $%d OR tax_no ILIKE $%d OR debtor_no ILIKE $%d OR creditor_no ILIKE $%d)", idx, idx+1, idx+2, idx+3, idx+4, idx+5, idx+6))
 		q := "%" + f.Q + "%"
@@ -505,7 +508,7 @@ type AddressUpdate struct {
 	Primary *bool   `json:"is_primary"`
 }
 
-func (s *Service) CreateAddress(ctx context.Context, contactID string, in AddressCreate) (*Address, error) {
+func (s *Service) CreateAddress(ctx context.Context, contactID string, in AddressCreate, companyID string) (*Address, error) {
 	if strings.TrimSpace(in.Zeile1) == "" {
 		return nil, errors.New("Zeile1 erforderlich")
 	}
@@ -515,11 +518,11 @@ func (s *Service) CreateAddress(ctx context.Context, contactID string, in Addres
 	if !isIn(in.Art, AddressKinds()) {
 		return nil, errors.New("Ungültige Adressart")
 	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	id := uuid.NewString()
 	var a Address
-	if _, err := s.pg.Exec(ctx, `SELECT 1 FROM contacts WHERE id=$1`, contactID); err != nil {
-		// pgx Exec returns commandTag even if not found; we rely on FK for existence
-	}
 	err := s.pg.QueryRow(ctx, `
         INSERT INTO contact_addresses (id, contact_id, art, zeile1, zeile2, plz, ort, land, is_primary)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -537,7 +540,10 @@ func (s *Service) CreateAddress(ctx context.Context, contactID string, in Addres
 	return &a, nil
 }
 
-func (s *Service) ListAddresses(ctx context.Context, contactID string) ([]Address, error) {
+func (s *Service) ListAddresses(ctx context.Context, contactID string, companyID string) ([]Address, error) {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, contact_id, art, zeile1, zeile2, plz, ort, land, is_primary FROM contact_addresses WHERE contact_id=$1 ORDER BY is_primary DESC, art ASC, id ASC`, contactID)
 	if err != nil {
 		return nil, err
@@ -554,7 +560,7 @@ func (s *Service) ListAddresses(ctx context.Context, contactID string) ([]Addres
 	return out, nil
 }
 
-func (s *Service) UpdateAddress(ctx context.Context, contactID, addressID string, u AddressUpdate) (*Address, error) {
+func (s *Service) UpdateAddress(ctx context.Context, contactID, addressID string, u AddressUpdate, companyID string) (*Address, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -590,6 +596,9 @@ func (s *Service) UpdateAddress(ctx context.Context, contactID, addressID string
 	if u.Primary != nil {
 		add("is_primary", *u.Primary)
 	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	if len(sets) == 0 {
 		return s.getAddress(ctx, addressID)
 	}
@@ -614,7 +623,10 @@ func (s *Service) getAddress(ctx context.Context, addressID string) (*Address, e
 	return &a, nil
 }
 
-func (s *Service) DeleteAddress(ctx context.Context, contactID, addressID string) error {
+func (s *Service) DeleteAddress(ctx context.Context, contactID, addressID string, companyID string) error {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return err
+	}
 	_, err := s.pg.Exec(ctx, `DELETE FROM contact_addresses WHERE contact_id=$1 AND id=$2`, contactID, addressID)
 	return err
 }
@@ -661,7 +673,7 @@ type PersonUpdate struct {
 	Primary          *bool   `json:"is_primary"`
 }
 
-func (s *Service) CreatePerson(ctx context.Context, contactID string, in PersonCreate) (*Person, error) {
+func (s *Service) CreatePerson(ctx context.Context, contactID string, in PersonCreate, companyID string) (*Person, error) {
 	if strings.TrimSpace(in.Nachname) == "" && strings.TrimSpace(in.Vorname) == "" {
 		return nil, errors.New("Name erforderlich")
 	}
@@ -675,6 +687,9 @@ func (s *Service) CreatePerson(ctx context.Context, contactID string, in PersonC
 	in.BevorzugterKanal = strings.TrimSpace(strings.ToLower(in.BevorzugterKanal))
 	if in.BevorzugterKanal != "" && !isIn(in.BevorzugterKanal, CommunicationChannels()) {
 		return nil, errors.New("Ungültiger Kommunikationskanal")
+	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	var p Person
@@ -694,7 +709,10 @@ func (s *Service) CreatePerson(ctx context.Context, contactID string, in PersonC
 	return &p, nil
 }
 
-func (s *Service) ListPersons(ctx context.Context, contactID string) ([]Person, error) {
+func (s *Service) ListPersons(ctx context.Context, contactID string, companyID string) ([]Person, error) {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, contact_id, anrede, vorname, nachname, position, rolle, bevorzugter_kanal, email, phone, mobile, is_primary FROM contact_persons WHERE contact_id=$1 ORDER BY is_primary DESC, nachname ASC, vorname ASC`, contactID)
 	if err != nil {
 		return nil, err
@@ -711,7 +729,7 @@ func (s *Service) ListPersons(ctx context.Context, contactID string) ([]Person, 
 	return out, nil
 }
 
-func (s *Service) UpdatePerson(ctx context.Context, contactID, personID string, u PersonUpdate) (*Person, error) {
+func (s *Service) UpdatePerson(ctx context.Context, contactID, personID string, u PersonUpdate, companyID string) (*Person, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -761,6 +779,9 @@ func (s *Service) UpdatePerson(ctx context.Context, contactID, personID string, 
 	if u.Primary != nil {
 		add("is_primary", *u.Primary)
 	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	if len(sets) == 0 {
 		return s.getPerson(ctx, personID)
 	}
@@ -785,7 +806,10 @@ func (s *Service) getPerson(ctx context.Context, personID string) (*Person, erro
 	return &p, nil
 }
 
-func (s *Service) DeletePerson(ctx context.Context, contactID, personID string) error {
+func (s *Service) DeletePerson(ctx context.Context, contactID, personID string, companyID string) error {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return err
+	}
 	_, err := s.pg.Exec(ctx, `DELETE FROM contact_persons WHERE contact_id=$1 AND id=$2`, contactID, personID)
 	return err
 }
@@ -810,9 +834,12 @@ type NoteUpdate struct {
 	Inhalt *string `json:"inhalt"`
 }
 
-func (s *Service) CreateNote(ctx context.Context, contactID string, in NoteCreate) (*Note, error) {
+func (s *Service) CreateNote(ctx context.Context, contactID string, in NoteCreate, companyID string) (*Note, error) {
 	if strings.TrimSpace(in.Titel) == "" && strings.TrimSpace(in.Inhalt) == "" {
 		return nil, errors.New("Notizinhalt erforderlich")
+	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	var n Note
@@ -829,7 +856,10 @@ func (s *Service) CreateNote(ctx context.Context, contactID string, in NoteCreat
 	return &n, nil
 }
 
-func (s *Service) ListNotes(ctx context.Context, contactID string) ([]Note, error) {
+func (s *Service) ListNotes(ctx context.Context, contactID string, companyID string) ([]Note, error) {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT id, contact_id, titel, inhalt, erstellt_am, aktualisiert_am
         FROM contact_notes
@@ -851,7 +881,7 @@ func (s *Service) ListNotes(ctx context.Context, contactID string) ([]Note, erro
 	return out, nil
 }
 
-func (s *Service) UpdateNote(ctx context.Context, contactID, noteID string, u NoteUpdate) (*Note, error) {
+func (s *Service) UpdateNote(ctx context.Context, contactID, noteID string, u NoteUpdate, companyID string) (*Note, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -865,6 +895,9 @@ func (s *Service) UpdateNote(ctx context.Context, contactID, noteID string, u No
 	}
 	if u.Inhalt != nil {
 		add("inhalt", strings.TrimSpace(*u.Inhalt))
+	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
 	}
 	if len(sets) == 0 {
 		return s.getNote(ctx, noteID)
@@ -891,7 +924,10 @@ func (s *Service) getNote(ctx context.Context, noteID string) (*Note, error) {
 	return &n, nil
 }
 
-func (s *Service) DeleteNote(ctx context.Context, contactID, noteID string) error {
+func (s *Service) DeleteNote(ctx context.Context, contactID, noteID string, companyID string) error {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return err
+	}
 	_, err := s.pg.Exec(ctx, `DELETE FROM contact_notes WHERE contact_id=$1 AND id=$2`, contactID, noteID)
 	return err
 }
@@ -946,7 +982,7 @@ func taskCompletionTimestamp(status string) *time.Time {
 	return &now
 }
 
-func (s *Service) CreateTask(ctx context.Context, contactID string, in TaskCreate) (*Task, error) {
+func (s *Service) CreateTask(ctx context.Context, contactID string, in TaskCreate, companyID string) (*Task, error) {
 	titel := strings.TrimSpace(in.Titel)
 	beschreibung := strings.TrimSpace(in.Beschreibung)
 	if titel == "" {
@@ -962,6 +998,9 @@ func (s *Service) CreateTask(ctx context.Context, contactID string, in TaskCreat
 	}
 	faelligAm, err := parseOptionalTimestamp(in.FaelligAm)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
 		return nil, err
 	}
 	id := uuid.NewString()
@@ -980,7 +1019,10 @@ func (s *Service) CreateTask(ctx context.Context, contactID string, in TaskCreat
 	return &t, nil
 }
 
-func (s *Service) ListTasks(ctx context.Context, contactID string) ([]Task, error) {
+func (s *Service) ListTasks(ctx context.Context, contactID string, companyID string) ([]Task, error) {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT id, contact_id, titel, beschreibung, status, faellig_am, erledigt_am, erstellt_am, aktualisiert_am
         FROM contact_tasks
@@ -1012,7 +1054,10 @@ func (s *Service) ListTasks(ctx context.Context, contactID string) ([]Task, erro
 	return out, nil
 }
 
-func (s *Service) UpdateTask(ctx context.Context, contactID, taskID string, u TaskUpdate) (*Task, error) {
+func (s *Service) UpdateTask(ctx context.Context, contactID, taskID string, u TaskUpdate, companyID string) (*Task, error) {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return nil, err
+	}
 	current, err := s.getTask(ctx, taskID)
 	if err != nil {
 		return nil, err
@@ -1077,7 +1122,10 @@ func (s *Service) getTask(ctx context.Context, taskID string) (*Task, error) {
 	return &t, nil
 }
 
-func (s *Service) DeleteTask(ctx context.Context, contactID, taskID string) error {
+func (s *Service) DeleteTask(ctx context.Context, contactID, taskID string, companyID string) error {
+	if _, err := s.Get(ctx, contactID, companyID); err != nil {
+		return err
+	}
 	_, err := s.pg.Exec(ctx, `DELETE FROM contact_tasks WHERE contact_id=$1 AND id=$2`, contactID, taskID)
 	return err
 }

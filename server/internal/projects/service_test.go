@@ -5,10 +5,25 @@ import (
 	"testing"
 )
 
+func TestCreateRejectsMissingCompanyID(t *testing.T) {
+	svc := NewService(nil)
+
+	project, err := svc.Create(context.Background(), ProjectCreate{Name: "Test"}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if project != nil {
+		t.Fatalf("expected nil project, got %#v", project)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected Mandant erforderlich, got %q", err.Error())
+	}
+}
+
 func TestCreateRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	project, err := svc.Create(context.Background(), ProjectCreate{})
+	project, err := svc.Create(context.Background(), ProjectCreate{}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -23,7 +38,7 @@ func TestCreateRejectsMissingName(t *testing.T) {
 func TestCreatePhaseRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	phase, err := svc.CreatePhase(context.Background(), "project-1", PhaseCreate{})
+	phase, err := svc.CreatePhase(context.Background(), "project-1", PhaseCreate{}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -39,7 +54,7 @@ func TestUpdatePhaseRejectsEmptyNummer(t *testing.T) {
 	svc := NewService(nil)
 	empty := ""
 
-	_, err := svc.UpdatePhase(context.Background(), "phase-1", PhaseUpdate{Nummer: &empty})
+	_, err := svc.UpdatePhase(context.Background(), "project-1", "phase-1", PhaseUpdate{Nummer: &empty}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -52,7 +67,7 @@ func TestUpdatePhaseRejectsEmptyName(t *testing.T) {
 	svc := NewService(nil)
 	empty := ""
 
-	_, err := svc.UpdatePhase(context.Background(), "phase-1", PhaseUpdate{Name: &empty})
+	_, err := svc.UpdatePhase(context.Background(), "project-1", "phase-1", PhaseUpdate{Name: &empty}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -64,7 +79,7 @@ func TestUpdatePhaseRejectsEmptyName(t *testing.T) {
 func TestCreateElevationRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	elevation, err := svc.CreateElevation(context.Background(), "phase-1", ElevationCreate{})
+	elevation, err := svc.CreateElevation(context.Background(), "project-1", "phase-1", ElevationCreate{}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -80,7 +95,7 @@ func TestUpdateElevationRejectsEmptyNummer(t *testing.T) {
 	svc := NewService(nil)
 	empty := ""
 
-	_, err := svc.UpdateElevation(context.Background(), "elevation-1", ElevationUpdate{Nummer: &empty})
+	_, err := svc.UpdateElevation(context.Background(), "project-1", "phase-1", "elevation-1", ElevationUpdate{Nummer: &empty}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -93,7 +108,7 @@ func TestUpdateElevationRejectsEmptyName(t *testing.T) {
 	svc := NewService(nil)
 	empty := ""
 
-	_, err := svc.UpdateElevation(context.Background(), "elevation-1", ElevationUpdate{Name: &empty})
+	_, err := svc.UpdateElevation(context.Background(), "project-1", "phase-1", "elevation-1", ElevationUpdate{Name: &empty}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -105,7 +120,7 @@ func TestUpdateElevationRejectsEmptyName(t *testing.T) {
 func TestCreateSingleElevationRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 
-	variant, err := svc.CreateSingleElevation(context.Background(), "elevation-1", SingleElevationCreate{})
+	variant, err := svc.CreateSingleElevation(context.Background(), "project-1", "elevation-1", SingleElevationCreate{}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -121,7 +136,7 @@ func TestUpdateSingleElevationRejectsEmptyName(t *testing.T) {
 	svc := NewService(nil)
 	empty := ""
 
-	_, err := svc.UpdateSingleElevation(context.Background(), "single-1", SingleElevationUpdate{Name: &empty})
+	_, err := svc.UpdateSingleElevation(context.Background(), "project-1", "elevation-1", "single-1", SingleElevationUpdate{Name: &empty}, "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -133,7 +148,7 @@ func TestUpdateSingleElevationRejectsEmptyName(t *testing.T) {
 func TestLinkVariantMaterialRejectsMissingParameters(t *testing.T) {
 	svc := NewService(nil)
 
-	err := svc.LinkVariantMaterial(context.Background(), "", "", "")
+	err := svc.LinkVariantMaterial(context.Background(), "project-1", "single-1", "", "", "", "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -145,7 +160,7 @@ func TestLinkVariantMaterialRejectsMissingParameters(t *testing.T) {
 func TestLinkVariantMaterialRejectsInvalidKind(t *testing.T) {
 	svc := NewService(nil)
 
-	err := svc.LinkVariantMaterial(context.Background(), "invalid", "item-1", "")
+	err := svc.LinkVariantMaterial(context.Background(), "project-1", "single-1", "invalid", "item-1", "", "company-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}

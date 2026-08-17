@@ -31,18 +31,20 @@ func SetupIntegrationEnv(t *testing.T) *IntegrationEnv {
 	}
 
 	cfg := &config.Config{
-		APIAddr:                 ":0",
-		PostgresDSN:             getenv("TEST_POSTGRES_DSN", "postgres://nala:secret@localhost:55432/nalaerp_test?sslmode=disable"),
-		MongoURI:                getenv("TEST_MONGO_URI", "mongodb://localhost:57017"),
-		MongoDB:                 getenv("TEST_MONGO_DB", "nalaerp_test"),
-		RedisAddr:               getenv("TEST_REDIS_ADDR", "localhost:56379"),
-		RedisPass:               getenv("TEST_REDIS_PASSWORD", ""),
-		JWTSecret:               getenv("TEST_JWT_SECRET", "integration-secret"),
-		AccessTokenTTLMinutes:   15,
-		SessionTTLHours:         12,
-		EmfPngDPI:               300,
-		EmfPngMinWidth:          600,
-		EmfPngTargetWidth:       1200,
+		APIAddr:                     ":0",
+		PostgresDSN:                 getenv("TEST_POSTGRES_DSN", "postgres://nala:secret@localhost:55432/nalaerp_test?sslmode=disable"),
+		MongoURI:                    getenv("TEST_MONGO_URI", "mongodb://localhost:57017"),
+		MongoDB:                     getenv("TEST_MONGO_DB", "nalaerp_test"),
+		RedisAddr:                   getenv("TEST_REDIS_ADDR", "localhost:56379"),
+		RedisPass:                   getenv("TEST_REDIS_PASSWORD", ""),
+		JWTSecret:                   getenv("TEST_JWT_SECRET", "integration-secret"),
+		AccessTokenTTLMinutes:       15,
+		SessionTTLHours:             12,
+		LoginRateLimitMaxAttempts:   10,
+		LoginRateLimitWindowSeconds: 60,
+		EmfPngDPI:                   300,
+		EmfPngMinWidth:              600,
+		EmfPngTargetWidth:           1200,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
@@ -103,8 +105,8 @@ func SeedAuthUser(t *testing.T, env *IntegrationEnv, email, password string, rol
 	userID := "itest-" + roleCode + "-" + email
 	_, err = env.PG.Exec(ctx, `
 		INSERT INTO users (
-			id, email, username, password_hash, first_name, last_name, display_name, locale, timezone, is_active, is_locked
-		) VALUES ($1,$2,$3,$4,'Integration','Test','Integration Test','de-DE','Europe/Berlin',true,false)
+			id, email, username, password_hash, first_name, last_name, display_name, locale, timezone, is_active, is_locked, company_id
+		) VALUES ($1,$2,$3,$4,'Integration','Test','Integration Test','de-DE','Europe/Berlin',true,false,'default')
 		ON CONFLICT (email) DO UPDATE SET
 			username=EXCLUDED.username,
 			password_hash=EXCLUDED.password_hash,
@@ -115,6 +117,7 @@ func SeedAuthUser(t *testing.T, env *IntegrationEnv, email, password string, rol
 			timezone=EXCLUDED.timezone,
 			is_active=true,
 			is_locked=false,
+			company_id=COALESCE(users.company_id,'default'),
 			updated_at=now()
 	`, userID, email, email, passwordHash)
 	if err != nil {

@@ -33,7 +33,10 @@ func NewBankService(pg *pgxpool.Pool, payments *PaymentService) *BankService {
 	return &BankService{pg: pg, payments: payments}
 }
 
-func (s *BankService) Ingest(ctx context.Context, in BankStatementInput) (uuid.UUID, error) {
+func (s *BankService) Ingest(ctx context.Context, in BankStatementInput, companyID string) (uuid.UUID, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return uuid.Nil, errors.New("Mandant erforderlich")
+	}
 	if in.Currency == "" {
 		in.Currency = "EUR"
 	}
@@ -41,7 +44,17 @@ func (s *BankService) Ingest(ctx context.Context, in BankStatementInput) (uuid.U
 		in.BookingDate = time.Now()
 	}
 	id := uuid.New()
-	var raw any = in.Raw
+	// in.Raw ist vom statischen Typ map[string]any - ein Vergleich der Form
+	// "var raw any = in.Raw; if raw == nil" greift NIE, da eine nil-Map, die
+	// in ein any-Interface verpackt wird, ein Interface mit gesetztem Typ
+	// (aber nil-Wert) ergibt, das != nil ist (klassische Go-"typed nil in
+	// interface"-Falle). Dadurch blieb raw bei jedem Ingest ohne explizites
+	// Raw-Feld eine nil-Map, die pgx als SQL NULL sendet - Verletzung von
+	// bank_statements.raw NOT NULL bei JEDEM manuell erfassten Kontoauszug
+	// (Backlog 0.9, gefunden beim Schreiben der ersten Integrationstests
+	// fuer Ingest). Fix: den Nil-Check auf die Map VOR dem Verpacken in ein
+	// Interface anwenden.
+	raw := in.Raw
 	if raw == nil {
 		raw = map[string]any{}
 	}
@@ -50,9 +63,9 @@ func (s *BankService) Ingest(ctx context.Context, in BankStatementInput) (uuid.U
 		return uuid.Nil, err
 	}
 	defer tx.Rollback(ctx)
-	_, err = tx.Exec(ctx, `INSERT INTO bank_statements (id, booking_date, value_date, amount, currency, counterparty, reference, raw)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		id, in.BookingDate, in.ValueDate, in.Amount, in.Currency, in.Counterparty, in.Reference, raw)
+	_, err = tx.Exec(ctx, `INSERT INTO bank_statements (id, booking_date, value_date, amount, currency, counterparty, reference, raw, company_id)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		id, in.BookingDate, in.ValueDate, in.Amount, in.Currency, in.Counterparty, in.Reference, raw, companyID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -64,7 +77,7 @@ func (s *BankService) Ingest(ctx context.Context, in BankStatementInput) (uuid.U
 			Method:    "bank",
 			Reference: in.Reference,
 			Date:      in.BookingDate,
-		})
+		}, companyID)
 		if err != nil {
 			return uuid.Nil, err
 		}
@@ -75,11 +88,11 @@ func (s *BankService) Ingest(ctx context.Context, in BankStatementInput) (uuid.U
 	return id, nil
 }
 
-func (s *BankService) List(ctx context.Context, limit int) ([]map[string]any, error) {
+func (s *BankService) List(ctx context.Context, limit int, companyID string) ([]map[string]any, error) {
 	if limit <= 0 {
 		limit = 100
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id, booking_date, value_date, amount, currency, counterparty, reference, raw, matched_payment_id FROM bank_statements ORDER BY booking_date DESC, created_at DESC LIMIT $1`, limit)
+	rows, err := s.pg.Query(ctx, `SELECT id, booking_date, value_date, amount, currency, counterparty, reference, raw, matched_payment_id FROM bank_statements WHERE company_id=$1 ORDER BY booking_date DESC, created_at DESC LIMIT $2`, companyID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +130,10 @@ func (s *BankService) List(ctx context.Context, limit int) ([]map[string]any, er
 }
 
 // Match tries to link a bank statement to an invoice (manual if invoiceID given, simple heuristic otherwise)
-func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceID *uuid.UUID) (uuid.UUID, error) {
+func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceID *uuid.UUID, companyID string) (uuid.UUID, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return uuid.Nil, errors.New("Mandant erforderlich")
+	}
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return uuid.Nil, err
@@ -127,7 +143,7 @@ func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceI
 	var currency string
 	var matched sql.NullString
 	var reference string
-	err = tx.QueryRow(ctx, `SELECT amount, currency, matched_payment_id, reference FROM bank_statements WHERE id=$1 FOR UPDATE`, statementID).
+	err = tx.QueryRow(ctx, `SELECT amount, currency, matched_payment_id, reference FROM bank_statements WHERE id=$1 AND company_id=$2 FOR UPDATE`, statementID, companyID).
 		Scan(&amt, &currency, &matched, &reference)
 	if err != nil {
 		return uuid.Nil, err
@@ -139,10 +155,10 @@ func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceI
 	if invoiceID != nil {
 		target = *invoiceID
 	} else {
-		if idFromRef := s.findInvoiceIDInReference(ctx, tx, reference, currency); idFromRef != uuid.Nil {
+		if idFromRef := s.findInvoiceIDInReference(ctx, tx, reference, currency, companyID); idFromRef != uuid.Nil {
 			target = idFromRef
 		} else {
-			target, err = s.findInvoiceByAmount(ctx, tx, amt, currency)
+			target, err = s.findInvoiceByAmount(ctx, tx, amt, currency, companyID)
 			if err != nil {
 				return uuid.Nil, err
 			}
@@ -155,7 +171,7 @@ func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceI
 		Method:    "bank",
 		Reference: "Match",
 		Date:      time.Now(),
-	})
+	}, companyID)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -169,8 +185,8 @@ func (s *BankService) Match(ctx context.Context, statementID uuid.UUID, invoiceI
 	return pay.ID, nil
 }
 
-func (s *BankService) findInvoiceByAmount(ctx context.Context, tx pgx.Tx, amount float64, currency string) (uuid.UUID, error) {
-	rows, err := tx.Query(ctx, `SELECT id, nummer FROM invoices_out WHERE status IN ('booked','partial') AND currency=$1 AND ABS((gross_amount - paid_amount) - $2) < 0.01`, currency, amount)
+func (s *BankService) findInvoiceByAmount(ctx context.Context, tx pgx.Tx, amount float64, currency string, companyID string) (uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT id, nummer FROM invoices_out WHERE status IN ('booked','partial') AND currency=$1 AND company_id=$2 AND ABS((gross_amount - paid_amount) - $3) < 0.01`, currency, companyID, amount)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -195,21 +211,31 @@ func (s *BankService) findInvoiceByAmount(ctx context.Context, tx pgx.Tx, amount
 }
 
 // find by invoice number in reference (simple regex)
-func (s *BankService) findInvoiceIDInReference(ctx context.Context, tx pgx.Tx, reference, currency string) uuid.UUID {
+func (s *BankService) findInvoiceIDInReference(ctx context.Context, tx pgx.Tx, reference, currency string, companyID string) uuid.UUID {
 	ref := strings.ToLower(reference)
 	if ref == "" {
 		return uuid.Nil
 	}
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile(`re[-\s]?(\d{2,4}[-/]?\d{2,6})`),
-		regexp.MustCompile(`(\d{4,10})`),
+	// Das erste Muster erkennt explizit ein "RE"-Praefix, faengt aber nur
+	// den nachfolgenden Zahlenteil ein - invoices_out.nummer enthaelt laut
+	// Nummernkreis-Pattern (017_accounting_basics.sql: 'RE-{YYYY}-{NNNN}')
+	// immer das volle "RE-"-Praefix. Ohne den Praefix beim ersten Muster
+	// wieder anzuhaengen fand diese Suche NIE eine reale Rechnung
+	// (Backlog 0.9, gefunden beim Schreiben der ersten Integrationstests
+	// fuer den Referenz-Erkennungs-Pfad).
+	patterns := []struct {
+		rx     *regexp.Regexp
+		prefix string
+	}{
+		{regexp.MustCompile(`re[-\s]?(\d{2,4}[-/]?\d{2,6})`), "RE-"},
+		{regexp.MustCompile(`(\d{4,10})`), ""},
 	}
-	for _, rx := range patterns {
-		m := rx.FindStringSubmatch(ref)
+	for _, p := range patterns {
+		m := p.rx.FindStringSubmatch(ref)
 		if len(m) > 1 {
-			num := m[1]
+			num := p.prefix + m[1]
 			var id uuid.UUID
-			err := tx.QueryRow(ctx, `SELECT id FROM invoices_out WHERE LOWER(nummer)=LOWER($1) AND currency=$2 LIMIT 1`, num, currency).Scan(&id)
+			err := tx.QueryRow(ctx, `SELECT id FROM invoices_out WHERE LOWER(nummer)=LOWER($1) AND currency=$2 AND company_id=$3 LIMIT 1`, num, currency, companyID).Scan(&id)
 			if err == nil {
 				return id
 			}

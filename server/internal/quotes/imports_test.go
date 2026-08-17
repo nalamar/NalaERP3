@@ -2,6 +2,7 @@ package quotes
 
 import (
 	"context"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,111 @@ import (
 
 	"nalaerp3/internal/testutil"
 )
+
+type fakeGAEBImportParser struct {
+	result    GAEBImportParseResult
+	err       error
+	filenames []string
+	sources   []string
+}
+
+func (p *fakeGAEBImportParser) ParseGAEB(_ context.Context, source io.Reader, filename string) (GAEBImportParseResult, error) {
+	bytes, err := io.ReadAll(source)
+	if err != nil {
+		return GAEBImportParseResult{}, err
+	}
+	p.filenames = append(p.filenames, filename)
+	p.sources = append(p.sources, string(bytes))
+	if p.err != nil {
+		return GAEBImportParseResult{}, p.err
+	}
+	return p.result, nil
+}
+
+const testGAEBImportCompanyID = "default"
+
+func createUploadedGAEBImportForProcessingTest(t *testing.T, ctx context.Context, parser GAEBImportParser) (*Service, *QuoteImport) {
+	t.Helper()
+	env := testutil.SetupIntegrationEnv(t)
+	contactID := uuid.NewString()
+	projectID := uuid.NewString()
+	if _, err := env.PG.Exec(ctx, "INSERT INTO contacts (id, typ, rolle, status, name, email, phone, waehrung) VALUES ($1,'org','customer','active',$2,$3,$4,'EUR')", contactID, "GAEB Verarbeitung Kunde GmbH", "gaeb-processing@example.com", "+49 211 555555"); err != nil {
+		t.Fatalf("seed contact: %v", err)
+	}
+	if _, err := env.PG.Exec(ctx, "INSERT INTO projects (id, name, kunde_id, status, company_id) VALUES ($1,$2,$3,'angebot',$4)", projectID, "GAEB Verarbeitung Projekt", contactID, testGAEBImportCompanyID); err != nil {
+		t.Fatalf("seed project: %v", err)
+	}
+	svc := NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB).WithGAEBImportParser(parser)
+	created, err := svc.CreateGAEBImport(ctx, QuoteImportCreateInput{
+		ProjectID: projectID,
+		ContactID: contactID,
+	}, strings.NewReader("gaeb-source-payload"), "verarbeitung.x83", testGAEBImportCompanyID)
+	if err != nil {
+		t.Fatalf("create gaeb import: %v", err)
+	}
+	return svc, created
+}
+
+func TestProcessGAEBImportStoresParserResult(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	parser := &fakeGAEBImportParser{result: GAEBImportParseResult{
+		ParserVersion:  "fake-parser-v1",
+		DetectedFormat: "x83",
+		Items: []QuoteImportItemInput{
+			{PositionNo: "01.001", Description: "Aluminiumfenster", Qty: 2, Unit: "Stk", SortOrder: 1},
+			{PositionNo: "01.002", Description: "Montage", Qty: 4, Unit: "Std", SortOrder: 2},
+		},
+	}}
+	svc, created := createUploadedGAEBImportForProcessingTest(t, ctx, parser)
+
+	processed, err := svc.ProcessGAEBImport(ctx, created.ID, testGAEBImportCompanyID)
+	if err != nil {
+		t.Fatalf("process gaeb import: %v", err)
+	}
+	if processed.Status != "parsed" || processed.ParserVersion != "fake-parser-v1" || processed.DetectedFormat != "x83" || processed.ItemCount != 2 {
+		t.Fatalf("unexpected processed import: %+v", processed)
+	}
+	if len(parser.filenames) != 1 || parser.filenames[0] != "verarbeitung.x83" || len(parser.sources) != 1 || parser.sources[0] != "gaeb-source-payload" {
+		t.Fatalf("unexpected parser calls: %+v", parser)
+	}
+}
+
+func TestProcessGAEBImportMarksParserFailure(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	parser := &fakeGAEBImportParser{err: io.ErrUnexpectedEOF}
+	svc, created := createUploadedGAEBImportForProcessingTest(t, ctx, parser)
+
+	processed, err := svc.ProcessGAEBImport(ctx, created.ID, testGAEBImportCompanyID)
+	if err != nil {
+		t.Fatalf("process failing gaeb import: %v", err)
+	}
+	if processed.Status != "failed" || processed.ParserVersion != "adapter-v1" || processed.DetectedFormat != "x83" || !strings.Contains(processed.ErrorMessage, io.ErrUnexpectedEOF.Error()) || processed.ItemCount != 0 {
+		t.Fatalf("unexpected failed import: %+v", processed)
+	}
+	if len(parser.filenames) != 1 || len(parser.sources) != 1 {
+		t.Fatalf("expected one parser call, got %+v", parser)
+	}
+}
+
+func TestProcessGAEBImportRequiresConfiguredParserWithoutMutation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	svc, created := createUploadedGAEBImportForProcessingTest(t, ctx, nil)
+
+	processed, err := svc.ProcessGAEBImport(ctx, created.ID, testGAEBImportCompanyID)
+	if err == nil || !strings.Contains(err.Error(), "GAEB-Parser nicht konfiguriert") {
+		t.Fatalf("expected missing parser error, got import=%+v err=%v", processed, err)
+	}
+	fetched, err := svc.GetImport(ctx, created.ID, testGAEBImportCompanyID)
+	if err != nil {
+		t.Fatalf("get import after guard: %v", err)
+	}
+	if fetched.Status != "uploaded" || fetched.ItemCount != 0 {
+		t.Fatalf("guard mutated import: %+v", fetched)
+	}
+}
 
 func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
@@ -21,16 +127,16 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 	projectID := uuid.NewString()
 
 	_, err := env.PG.Exec(ctx, `
-		INSERT INTO contacts (id, typ, rolle, status, name, email, telefon, waehrung)
+		INSERT INTO contacts (id, typ, rolle, status, name, email, phone, waehrung)
 		VALUES ($1,'org','customer','active',$2,$3,$4,'EUR')
 	`, contactID, "GAEB Import Kunde GmbH", "gaeb-import@example.com", "+49 211 555555")
 	if err != nil {
 		t.Fatalf("seed contact: %v", err)
 	}
 	_, err = env.PG.Exec(ctx, `
-		INSERT INTO projects (id, name, kunde_id, status)
-		VALUES ($1,$2,$3,'angebot')
-	`, projectID, "GAEB Import Projekt", contactID)
+		INSERT INTO projects (id, name, kunde_id, status, company_id)
+		VALUES ($1,$2,$3,'angebot',$4)
+	`, projectID, "GAEB Import Projekt", contactID, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("seed project: %v", err)
 	}
@@ -40,7 +146,7 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 	created, err := svc.CreateGAEBImport(ctx, QuoteImportCreateInput{
 		ProjectID: projectID,
 		ContactID: contactID,
-	}, strings.NewReader("dummy-gaeb"), "lv-test.x83")
+	}, strings.NewReader("dummy-gaeb"), "lv-test.x83", testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("create gaeb import: %v", err)
 	}
@@ -68,7 +174,7 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 			ParserHint:  "optionale-position",
 			SortOrder:   2,
 		},
-	})
+	}, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("save parse result: %v", err)
 	}
@@ -88,7 +194,7 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 		t.Fatalf("expected item_count 2 after parse result, got %d", parsed.ItemCount)
 	}
 
-	items, err := svc.ListImportItems(ctx, created.ID)
+	items, err := svc.ListImportItems(ctx, created.ID, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("list import items: %v", err)
 	}
@@ -102,7 +208,7 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 		t.Fatalf("unexpected second import item: %+v", items[1])
 	}
 
-	failed, err := svc.MarkImportFailed(ctx, created.ID, "parser-v1", "x83", "GAEB-Struktur konnte nicht vollständig gelesen werden")
+	failed, err := svc.MarkImportFailed(ctx, created.ID, "parser-v1", "x83", "GAEB-Struktur konnte nicht vollständig gelesen werden", testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("mark import failed: %v", err)
 	}
@@ -116,7 +222,7 @@ func TestQuoteImportParseResultStoresItemsAndUpdatesStatus(t *testing.T) {
 		t.Fatalf("expected item_count 0 after failed transition, got %d", failed.ItemCount)
 	}
 
-	itemsAfterFailed, err := svc.ListImportItems(ctx, created.ID)
+	itemsAfterFailed, err := svc.ListImportItems(ctx, created.ID, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("list import items after failed transition: %v", err)
 	}

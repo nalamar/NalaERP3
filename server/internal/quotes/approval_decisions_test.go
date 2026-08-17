@@ -28,7 +28,7 @@ func TestApprovalRequestDecisionsMutateOnlyRequest(t *testing.T) {
 
 	contactID := uuid.NewString()
 	if _, err := env.PG.Exec(ctx, `
-		INSERT INTO contacts (id, typ, rolle, status, name, email, telefon, waehrung)
+		INSERT INTO contacts (id, typ, rolle, status, name, email, phone, waehrung)
 		VALUES ($1, 'org', 'customer', 'active', 'Approval Kunde GmbH', 'approval@example.com', '+49 211 1000', 'EUR')
 	`, contactID); err != nil {
 		t.Fatalf("seed contact: %v", err)
@@ -36,8 +36,10 @@ func TestApprovalRequestDecisionsMutateOnlyRequest(t *testing.T) {
 
 	svc := NewService(env.PG, nil)
 
+	const companyID = "default"
+
 	approvedQuoteID, approvedItemID := seedApprovalQuote(t, ctx, env, contactID, "ANG-APPROVE-TEST", 50, 60)
-	requested, err := svc.RequestApprovalForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "Zielmarge pruefen")
+	requested, err := svc.RequestApprovalForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "Zielmarge pruefen", companyID)
 	if err != nil {
 		t.Fatalf("request approval: %v", err)
 	}
@@ -45,7 +47,7 @@ func TestApprovalRequestDecisionsMutateOnlyRequest(t *testing.T) {
 		t.Fatalf("expected requested status, got %+v", requested)
 	}
 
-	approved, err := svc.ApproveApprovalRequestForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "wirtschaftlich freigegeben")
+	approved, err := svc.ApproveApprovalRequestForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "wirtschaftlich freigegeben", companyID)
 	if err != nil {
 		t.Fatalf("approve approval request: %v", err)
 	}
@@ -62,17 +64,17 @@ func TestApprovalRequestDecisionsMutateOnlyRequest(t *testing.T) {
 		t.Fatalf("expected approved target margin snapshot, got %+v", approved)
 	}
 
-	if _, err := svc.RejectApprovalRequestForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "zu spaet"); err == nil || !strings.Contains(err.Error(), "Keine aktive Freigabeanforderung vorhanden") {
+	if _, err := svc.RejectApprovalRequestForQuoteItem(ctx, approvedQuoteID, approvedItemID, deciderID, "zu spaet", companyID); err == nil || !strings.Contains(err.Error(), "Keine aktive Freigabeanforderung vorhanden") {
 		t.Fatalf("expected duplicate decision to fail with no active request, got %v", err)
 	}
 
 	assertQuoteCommercialsUnchanged(t, ctx, env, approvedQuoteID, approvedItemID, 50, 50)
 
 	rejectedQuoteID, rejectedItemID := seedApprovalQuote(t, ctx, env, contactID, "ANG-REJECT-TEST", 50, 60)
-	if _, err := svc.RequestApprovalForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, "Zielmarge pruefen"); err != nil {
+	if _, err := svc.RequestApprovalForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, "Zielmarge pruefen", companyID); err != nil {
 		t.Fatalf("request approval for rejection: %v", err)
 	}
-	rejected, err := svc.RejectApprovalRequestForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, "Preis nacharbeiten")
+	rejected, err := svc.RejectApprovalRequestForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, "Preis nacharbeiten", companyID)
 	if err != nil {
 		t.Fatalf("reject approval request: %v", err)
 	}
@@ -83,7 +85,7 @@ func TestApprovalRequestDecisionsMutateOnlyRequest(t *testing.T) {
 		t.Fatalf("rejection must not carry approved snapshots: %+v", rejected)
 	}
 
-	if _, err := svc.ApproveApprovalRequestForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, strings.Repeat("x", 501)); err == nil || !strings.Contains(err.Error(), "Kommentar darf nicht laenger als 500 Zeichen sein") {
+	if _, err := svc.ApproveApprovalRequestForQuoteItem(ctx, rejectedQuoteID, rejectedItemID, deciderID, strings.Repeat("x", 501), companyID); err == nil || !strings.Contains(err.Error(), "Kommentar darf nicht laenger als 500 Zeichen sein") {
 		t.Fatalf("expected long decision comment to fail, got %v", err)
 	}
 
@@ -97,8 +99,8 @@ func seedApprovalQuote(t *testing.T, ctx context.Context, env *testutil.Integrat
 	itemID := uuid.New()
 	decisionID := uuid.New()
 	if _, err := env.PG.Exec(ctx, `
-		INSERT INTO quotes (id, nummer, root_quote_id, revision_no, contact_id, status, quote_date, currency, net_amount, tax_amount, gross_amount)
-		VALUES ($1, $2, $1, 1, $3, 'draft', CURRENT_DATE, 'EUR', $4, 0, $4)
+		INSERT INTO quotes (id, nummer, root_quote_id, revision_no, contact_id, status, quote_date, currency, net_amount, tax_amount, gross_amount, company_id)
+		VALUES ($1, $2, $1, 1, $3, 'draft', CURRENT_DATE, 'EUR', $4, 0, $4, 'default')
 	`, quoteID, number, contactID, unitPrice); err != nil {
 		t.Fatalf("seed quote: %v", err)
 	}

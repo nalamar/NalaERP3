@@ -1,9 +1,25 @@
 package settings
 
 import (
+	"context"
 	"testing"
 	"time"
 )
+
+func TestNextRejectsMissingCompanyID(t *testing.T) {
+	svc := NewNumberingService(nil)
+
+	got, err := svc.Next(context.Background(), "quote", "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if got != "" {
+		t.Fatalf("expected empty formatted number, got %q", got)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected 'Mandant erforderlich', got %q", err.Error())
+	}
+}
 
 func TestPadAddsLeadingZeros(t *testing.T) {
 	if got := pad(7, 4); got != "0007" {

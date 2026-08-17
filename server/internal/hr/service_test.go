@@ -11,9 +11,24 @@ import (
 // EmployeeService.List/Get/ListTeams greifen ohne jede Vorab-Validierung
 // sofort auf Postgres zu und sind daher ohne DB nicht testbar (kein Mock im
 // Repo, siehe docs/adr/0001-baseline.md). Create() validiert Vor-/Nachname
-// vor dem DB-Zugriff, Update() liefert bei leerem oder ausschliesslich aus
-// unbekannten Feldern bestehendem Patch ein no-op OHNE Postgres anzufassen -
+// vor dem DB-Zugriff, Update() validiert einen leeren Patch (no-op) sowie
+// unbekannte Patch-Keys (Fehler, Backlog 0.10) OHNE Postgres anzufassen -
 // beides ist damit ueber die echten Einstiegspunkte mit nil-Pool testbar.
+
+func TestEmployeeCreateRejectsMissingCompanyID(t *testing.T) {
+	s := NewEmployeeService(nil)
+
+	e, err := s.Create(context.Background(), Employee{FirstName: "Max", LastName: "Muster"}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if e != nil {
+		t.Fatalf("expected nil employee, got %#v", e)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected 'Mandant erforderlich', got %q", err.Error())
+	}
+}
 
 func TestCreateRejectsMissingNames(t *testing.T) {
 	cases := []struct {
@@ -28,7 +43,7 @@ func TestCreateRejectsMissingNames(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			s := NewEmployeeService(nil)
 
-			e, err := s.Create(context.Background(), tc.input)
+			e, err := s.Create(context.Background(), tc.input, "default")
 			if err == nil {
 				t.Fatal("expected validation error, got nil")
 			}
@@ -45,43 +60,75 @@ func TestCreateRejectsMissingNames(t *testing.T) {
 func TestUpdateWithEmptyPatchIsNoOp(t *testing.T) {
 	s := NewEmployeeService(nil)
 
-	if err := s.Update(context.Background(), uuid.New(), map[string]any{}); err != nil {
+	if err := s.Update(context.Background(), uuid.New(), map[string]any{}, "default"); err != nil {
 		t.Fatalf("expected nil error for empty patch, got %v", err)
 	}
-	if err := s.Update(context.Background(), uuid.New(), nil); err != nil {
+	if err := s.Update(context.Background(), uuid.New(), nil, "default"); err != nil {
 		t.Fatalf("expected nil error for nil patch, got %v", err)
 	}
 }
 
-// Update() ignoriert unbekannte Patch-Keys still, statt einen Fehler
-// zurueckzugeben (server/internal/hr/service.go:128-146: nur first_name,
-// last_name, email, phone, role, location, cost_center, active, team_id
-// werden in die SET-Klausel uebernommen; alles andere faellt durch den
-// switch und wird verworfen). Ein Patch, der ausschliesslich unbekannte Keys
-// enthaelt, fuehrt dadurch zu einem stillen No-Op statt zu einem Fehler -
-// z.B. bei einem Tippfehler wie "activ" statt "active" wuerde der Aufruf
-// erfolgreich zurueckkehren, ohne irgendetwas zu aendern. Siehe
-// docs/backlog.md 0.10 fuer die daraus abgeleitete Backlog-Position.
-func TestUpdateWithOnlyUnknownKeysIsSilentNoOp(t *testing.T) {
+// Update() lehnt unbekannte Patch-Keys jetzt mit einem Fehler ab, statt sie
+// still zu ignorieren (Backlog 0.10 - vorher fiel z.B. ein Tippfehler wie
+// "activ" statt "active" stillschweigend durch und der Aufruf kehrte ohne
+// Fehler zurueck, obwohl nichts geaendert wurde). Beide Faelle sind mit
+// nil-Pool testbar, da die Validierung VOR jedem DB-Zugriff passiert.
+func TestUpdateRejectsUnknownKeys(t *testing.T) {
 	s := NewEmployeeService(nil)
 
 	err := s.Update(context.Background(), uuid.New(), map[string]any{
 		"activ":            true, // Tippfehler statt "active"
 		"unbekanntes_feld": "x",
-	})
-	if err != nil {
-		t.Fatalf("expected silent no-op (nil error) for unknown-only patch, got %v", err)
+	}, "default")
+	if err == nil {
+		t.Fatal("expected error for unknown patch keys, got nil")
 	}
 }
 
-// LeaveService.Create() validiert employee_id und start/end VOR dem
-// DB-Zugriff (server/internal/hr/service.go:170-179) - beides mit nil-Pool
-// testbar. Alles danach (Tage-Berechnung, INSERT) laeuft ungeprueft bis zum
-// echten s.pg.Exec durch und ist daher NICHT mit nil-Pool aufrufbar, ohne zu
-// panicen (gleiches Muster wie der vorbestehende Bug in
-// server/internal/purchasing, siehe docs/backlog.md 0.6) - deshalb wird der
-// unten dokumentierte Tage-Berechnungsfehler separat ueber die reine
-// Zeitarithmetik nachgewiesen statt ueber Create() selbst.
+// Ein gemischter Patch mit EINEM bekannten und EINEM unbekannten Key wird
+// ebenfalls komplett abgelehnt (alles-oder-nichts) - kein teilweises
+// Anwenden nur der bekannten Felder.
+func TestUpdateRejectsPatchWithAnySingleUnknownKey(t *testing.T) {
+	s := NewEmployeeService(nil)
+
+	err := s.Update(context.Background(), uuid.New(), map[string]any{
+		"first_name": "Max",
+		"activ":      true,
+	}, "default")
+	if err == nil {
+		t.Fatal("expected error for patch containing an unknown key, got nil")
+	}
+}
+
+// LeaveService.Create() validiert employee_id, start/end sowie (seit
+// Backlog 0.11) EndDate>=StartDate VOR dem DB-Zugriff
+// (server/internal/hr/service.go:172-184) - alles davon mit nil-Pool
+// testbar. Alles danach (employeeOwned-Lookup, Tage-Berechnung, INSERT)
+// laeuft bis zum echten s.pg.Exec durch und ist daher NICHT mit nil-Pool
+// aufrufbar, ohne zu panicen (gleiches Muster wie der vorbestehende Bug in
+// server/internal/purchasing, siehe docs/backlog.md 0.6) - der Normalfall
+// (gueltige Daten, korrekte Tage-Berechnung) wird deshalb per
+// Integrationstest gegen echtes Postgres nachgewiesen, siehe
+// service_scoping_integration_test.go.
+
+func TestLeaveCreateRejectsMissingCompanyID(t *testing.T) {
+	s := NewLeaveService(nil)
+
+	lr, err := s.Create(context.Background(), LeaveRequest{
+		EmployeeID: uuid.New(),
+		StartDate:  time.Now(),
+		EndDate:    time.Now().Add(24 * time.Hour),
+	}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if lr != nil {
+		t.Fatalf("expected nil leave request, got %#v", lr)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected 'Mandant erforderlich', got %q", err.Error())
+	}
+}
 
 func TestLeaveCreateRejectsMissingEmployeeID(t *testing.T) {
 	s := NewLeaveService(nil)
@@ -89,7 +136,7 @@ func TestLeaveCreateRejectsMissingEmployeeID(t *testing.T) {
 	lr, err := s.Create(context.Background(), LeaveRequest{
 		StartDate: time.Now(),
 		EndDate:   time.Now().Add(24 * time.Hour),
-	})
+	}, "default")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -120,7 +167,7 @@ func TestLeaveCreateRejectsMissingStartOrEndDate(t *testing.T) {
 				EmployeeID: uuid.New(),
 				StartDate:  tc.start,
 				EndDate:    tc.end,
-			})
+			}, "default")
 			if err == nil {
 				t.Fatal("expected validation error, got nil")
 			}
@@ -134,22 +181,25 @@ func TestLeaveCreateRejectsMissingStartOrEndDate(t *testing.T) {
 	}
 }
 
-// TestLeaveCreateDaysFormulaCanProduceNonPositiveDaysForInvertedDateRange
-// belegt einen bei dieser Subtask gefundenen Mangel: Create() prueft nicht,
-// ob EndDate nach StartDate liegt (server/internal/hr/service.go:177-182).
-// Bei vertauschten Daten berechnet dieselbe Formel wie in Create() einen
-// Days-Wert <= 0, der ungeprueft in die DB geschrieben wuerde. Der Test ruft
-// bewusst NICHT Create() selbst auf (das wuerde ohne echten DB-Zugriff mit
-// nil-Pool panicen, siehe Kommentar oben), sondern reproduziert exakt die
-// Formel aus service.go, um den Fund nachvollziehbar zu belegen. Siehe
-// docs/backlog.md 0.11.
-func TestLeaveCreateDaysFormulaCanProduceNonPositiveDaysForInvertedDateRange(t *testing.T) {
-	start := time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC) // vor start
+// TestLeaveCreateRejectsEndDateBeforeStartDate belegt die in Backlog 0.11
+// ergaenzte Validierung: Create() prueft jetzt VOR jedem DB-Zugriff, ob
+// EndDate vor StartDate liegt, und lehnt vertauschte Daten explizit ab -
+// vorher berechnete dieselbe Formel bei vertauschten Daten einen Days-Wert
+// <= 0, der ungeprueft in die DB geschrieben worden waere. Da die neue
+// Pruefung VOR dem employeeOwned-DB-Zugriff passiert, ist sie jetzt (anders
+// als vorher) direkt ueber Create() mit nil-Pool testbar.
+func TestLeaveCreateRejectsEndDateBeforeStartDate(t *testing.T) {
+	s := NewLeaveService(nil)
 
-	days := end.Sub(start).Hours()/24 + 1
-
-	if days > 0 {
-		t.Fatalf("Fund widerlegt: days=%v ist positiv trotz vertauschter Daten - docs/backlog.md 0.11 pruefen", days)
+	_, err := s.Create(context.Background(), LeaveRequest{
+		EmployeeID: uuid.New(),
+		StartDate:  time.Date(2026, 8, 20, 0, 0, 0, 0, time.UTC),
+		EndDate:    time.Date(2026, 8, 18, 0, 0, 0, 0, time.UTC), // vor StartDate
+	}, "default")
+	if err == nil {
+		t.Fatal("expected error for end date before start date, got nil")
+	}
+	if err.Error() != "Enddatum darf nicht vor Startdatum liegen" {
+		t.Fatalf("expected 'Enddatum darf nicht vor Startdatum liegen', got %q", err.Error())
 	}
 }

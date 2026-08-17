@@ -15,6 +15,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
+	"nalaerp3/internal/auditlog"
 )
 
 type QuoteImport struct {
@@ -83,6 +84,16 @@ type QuoteImportCreateInput struct {
 	ContactID string
 }
 
+type GAEBImportParseResult struct {
+	ParserVersion  string
+	DetectedFormat string
+	Items          []QuoteImportItemInput
+}
+
+type GAEBImportParser interface {
+	ParseGAEB(ctx context.Context, source io.Reader, filename string) (GAEBImportParseResult, error)
+}
+
 type QuoteImportFilter struct {
 	ProjectID string
 	ContactID string
@@ -111,7 +122,22 @@ func (s *Service) WithMongo(mg *mongo.Client, mongoDB string) *Service {
 	return s
 }
 
-func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInput, r io.Reader, filename string) (*QuoteImport, error) {
+func (s *Service) WithGAEBImportParser(parser GAEBImportParser) *Service {
+	s.gaebImportParser = parser
+	return s
+}
+
+// WithAudit aktiviert das generische Aenderungsprotokoll (Subtask 0.3.3.2)
+// fuer Accept/Revise/Freigabe-Entscheidungen. Ohne Aufruf bleibt s.audit
+// nil und die entsprechenden Protokollaufrufe werden uebersprungen -
+// wichtig fuer die vielen bestehenden Tests, die NewService(...) ohne
+// WithAudit(...) konstruieren.
+func (s *Service) WithAudit(audit *auditlog.Service) *Service {
+	s.audit = audit
+	return s
+}
+
+func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInput, r io.Reader, filename string, companyID string) (*QuoteImport, error) {
 	if s.pg == nil {
 		return nil, errors.New("Postgres nicht konfiguriert")
 	}
@@ -133,7 +159,7 @@ func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInpu
 	}
 
 	var projectExists bool
-	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1)`, in.ProjectID).Scan(&projectExists); err != nil {
+	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND company_id=$2)`, in.ProjectID, companyID).Scan(&projectExists); err != nil {
 		return nil, err
 	}
 	if !projectExists {
@@ -188,38 +214,36 @@ func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInpu
 	if err != nil {
 		return nil, err
 	}
-	return s.GetImport(ctx, id)
+	return s.GetImport(ctx, id, companyID)
 }
 
-func (s *Service) ListImports(ctx context.Context, f QuoteImportFilter) ([]QuoteImport, error) {
+func (s *Service) ListImports(ctx context.Context, f QuoteImportFilter, companyID string) ([]QuoteImport, error) {
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
-	args := make([]any, 0, 4)
-	conds := make([]string, 0, 2)
+	args := []any{companyID}
+	conds := []string{"p.company_id=$1"}
 	if strings.TrimSpace(f.ProjectID) != "" {
 		args = append(args, strings.TrimSpace(f.ProjectID))
-		conds = append(conds, fmt.Sprintf("project_id::text=$%d", len(args)))
+		conds = append(conds, fmt.Sprintf("quote_imports.project_id::text=$%d", len(args)))
 	}
 	if strings.TrimSpace(f.ContactID) != "" {
 		args = append(args, strings.TrimSpace(f.ContactID))
-		conds = append(conds, fmt.Sprintf("contact_id::text=$%d", len(args)))
+		conds = append(conds, fmt.Sprintf("quote_imports.contact_id::text=$%d", len(args)))
 	}
-	where := ""
-	if len(conds) > 0 {
-		where = " WHERE " + strings.Join(conds, " AND ")
-	}
+	where := " WHERE " + strings.Join(conds, " AND ")
 	args = append(args, f.Limit, f.Offset)
 	rows, err := s.pg.Query(ctx, `
-		SELECT id::text, project_id::text, COALESCE(contact_id::text,''), source_kind, source_filename,
-		       source_document_id, status, parser_version, detected_format, error_message,
-		       COALESCE(created_quote_id::text,''),
+		SELECT quote_imports.id::text, quote_imports.project_id::text, COALESCE(quote_imports.contact_id::text,''), quote_imports.source_kind, quote_imports.source_filename,
+		       quote_imports.source_document_id, quote_imports.status, quote_imports.parser_version, quote_imports.detected_format, quote_imports.error_message,
+		       COALESCE(quote_imports.created_quote_id::text,''),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='accepted'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='rejected'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='pending'), 0),
-		       uploaded_at, updated_at
-		FROM quote_imports`+where+`
+		       quote_imports.uploaded_at, quote_imports.updated_at
+		FROM quote_imports
+		JOIN projects p ON p.id = quote_imports.project_id`+where+`
 		ORDER BY uploaded_at DESC
 		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args)), args...)
 	if err != nil {
@@ -256,7 +280,7 @@ func (s *Service) ListImports(ctx context.Context, f QuoteImportFilter) ([]Quote
 	return out, rows.Err()
 }
 
-func (s *Service) GetImport(ctx context.Context, id string) (*QuoteImport, error) {
+func (s *Service) GetImport(ctx context.Context, id string, companyID string) (*QuoteImport, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
 		return nil, errors.New("id erforderlich")
@@ -267,17 +291,18 @@ func (s *Service) GetImport(ctx context.Context, id string) (*QuoteImport, error
 
 	var item QuoteImport
 	err := s.pg.QueryRow(ctx, `
-		SELECT id::text, project_id::text, COALESCE(contact_id::text,''), source_kind, source_filename,
-		       source_document_id, status, parser_version, detected_format, error_message,
-		       COALESCE(created_quote_id::text,''),
+		SELECT quote_imports.id::text, quote_imports.project_id::text, COALESCE(quote_imports.contact_id::text,''), quote_imports.source_kind, quote_imports.source_filename,
+		       quote_imports.source_document_id, quote_imports.status, quote_imports.parser_version, quote_imports.detected_format, quote_imports.error_message,
+		       COALESCE(quote_imports.created_quote_id::text,''),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='accepted'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='rejected'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='pending'), 0),
-		       uploaded_at, updated_at
+		       quote_imports.uploaded_at, quote_imports.updated_at
 		FROM quote_imports
-		WHERE id=$1
-	`, id).Scan(
+		JOIN projects p ON p.id = quote_imports.project_id
+		WHERE quote_imports.id=$1 AND p.company_id=$2
+	`, id, companyID).Scan(
 		&item.ID,
 		&item.ProjectID,
 		&item.ContactID,
@@ -302,7 +327,7 @@ func (s *Service) GetImport(ctx context.Context, id string) (*QuoteImport, error
 	return &item, nil
 }
 
-func (s *Service) ListImportItems(ctx context.Context, importID string) ([]QuoteImportItem, error) {
+func (s *Service) ListImportItems(ctx context.Context, importID string, companyID string) ([]QuoteImportItem, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -310,7 +335,7 @@ func (s *Service) ListImportItems(ctx context.Context, importID string) ([]Quote
 	if _, err := uuid.Parse(importID); err != nil {
 		return nil, errors.New("ungültige import_id")
 	}
-	if _, err := s.GetImport(ctx, importID); err != nil {
+	if _, err := s.GetImport(ctx, importID, companyID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("Importlauf nicht gefunden")
 		}
@@ -359,7 +384,7 @@ func (s *Service) ListImportItems(ctx context.Context, importID string) ([]Quote
 	return out, rows.Err()
 }
 
-func (s *Service) GetImportItem(ctx context.Context, importID, itemID string) (*QuoteImportItem, error) {
+func (s *Service) GetImportItem(ctx context.Context, importID, itemID string, companyID string) (*QuoteImportItem, error) {
 	importID = strings.TrimSpace(importID)
 	itemID = strings.TrimSpace(itemID)
 	if importID == "" {
@@ -374,7 +399,7 @@ func (s *Service) GetImportItem(ctx context.Context, importID, itemID string) (*
 	if _, err := uuid.Parse(itemID); err != nil {
 		return nil, errors.New("ungültige item_id")
 	}
-	if _, err := s.GetImport(ctx, importID); err != nil {
+	if _, err := s.GetImport(ctx, importID, companyID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("Importlauf nicht gefunden")
 		}
@@ -416,7 +441,7 @@ func (s *Service) GetImportItem(ctx context.Context, importID, itemID string) (*
 	return &item, nil
 }
 
-func (s *Service) UpdateImportItemReview(ctx context.Context, importID, itemID, reviewStatus, reviewNote string) (*QuoteImportItem, error) {
+func (s *Service) UpdateImportItemReview(ctx context.Context, importID, itemID, reviewStatus, reviewNote string, companyID string) (*QuoteImportItem, error) {
 	importID = strings.TrimSpace(importID)
 	itemID = strings.TrimSpace(itemID)
 	reviewStatus = strings.ToLower(strings.TrimSpace(reviewStatus))
@@ -439,10 +464,11 @@ func (s *Service) UpdateImportItemReview(ctx context.Context, importID, itemID, 
 
 	var importStatus string
 	err := s.pg.QueryRow(ctx, `
-		SELECT status
+		SELECT quote_imports.status
 		FROM quote_imports
-		WHERE id=$1 AND source_kind='gaeb'
-	`, importID).Scan(&importStatus)
+		JOIN projects p ON p.id = quote_imports.project_id
+		WHERE quote_imports.id=$1 AND quote_imports.source_kind='gaeb' AND p.company_id=$2
+	`, importID, companyID).Scan(&importStatus)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("Importlauf nicht gefunden")
@@ -465,10 +491,10 @@ func (s *Service) UpdateImportItemReview(ctx context.Context, importID, itemID, 
 	if tag.RowsAffected() == 0 {
 		return nil, errors.New("Importposition nicht gefunden")
 	}
-	return s.GetImportItem(ctx, importID, itemID)
+	return s.GetImportItem(ctx, importID, itemID, companyID)
 }
 
-func (s *Service) MarkImportReviewed(ctx context.Context, importID string) (*QuoteImport, error) {
+func (s *Service) MarkImportReviewed(ctx context.Context, importID string, companyID string) (*QuoteImport, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -479,10 +505,11 @@ func (s *Service) MarkImportReviewed(ctx context.Context, importID string) (*Quo
 
 	var status string
 	err := s.pg.QueryRow(ctx, `
-		SELECT status
+		SELECT quote_imports.status
 		FROM quote_imports
-		WHERE id=$1 AND source_kind='gaeb'
-	`, importID).Scan(&status)
+		JOIN projects p ON p.id = quote_imports.project_id
+		WHERE quote_imports.id=$1 AND quote_imports.source_kind='gaeb' AND p.company_id=$2
+	`, importID, companyID).Scan(&status)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("Importlauf nicht gefunden")
@@ -525,10 +552,10 @@ func (s *Service) MarkImportReviewed(ctx context.Context, importID string) (*Quo
 	`, importID); err != nil {
 		return nil, err
 	}
-	return s.GetImport(ctx, importID)
+	return s.GetImport(ctx, importID, companyID)
 }
 
-func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string) (*QuoteImportApplyResult, error) {
+func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, companyID string) (*QuoteImportApplyResult, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -545,11 +572,12 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string) 
 
 	var imp QuoteImport
 	err = tx.QueryRow(ctx, `
-		SELECT id::text, project_id::text, COALESCE(contact_id::text,''), status, COALESCE(created_quote_id::text,'')
+		SELECT quote_imports.id::text, quote_imports.project_id::text, COALESCE(quote_imports.contact_id::text,''), quote_imports.status, COALESCE(quote_imports.created_quote_id::text,'')
 		FROM quote_imports
-		WHERE id=$1 AND source_kind='gaeb'
-		FOR UPDATE
-	`, importID).Scan(&imp.ID, &imp.ProjectID, &imp.ContactID, &imp.Status, &imp.CreatedQuoteID)
+		JOIN projects p ON p.id = quote_imports.project_id
+		WHERE quote_imports.id=$1 AND quote_imports.source_kind='gaeb' AND p.company_id=$2
+		FOR UPDATE OF quote_imports
+	`, importID, companyID).Scan(&imp.ID, &imp.ProjectID, &imp.ContactID, &imp.Status, &imp.CreatedQuoteID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("Importlauf nicht gefunden")
@@ -616,7 +644,7 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string) 
 		Currency:  "EUR",
 		Note:      note,
 		Items:     quoteItems,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -653,11 +681,11 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string) 
 		return nil, err
 	}
 
-	updatedImport, err := s.GetImport(ctx, importID)
+	updatedImport, err := s.GetImport(ctx, importID, companyID)
 	if err != nil {
 		return nil, err
 	}
-	createdQuote, err := s.Get(ctx, createdQuoteID)
+	createdQuote, err := s.Get(ctx, createdQuoteID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +695,7 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string) 
 	}, nil
 }
 
-func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVersion, detectedFormat string, items []QuoteImportItemInput) (*QuoteImport, error) {
+func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVersion, detectedFormat string, items []QuoteImportItemInput, companyID string) (*QuoteImport, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -686,7 +714,13 @@ func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVer
 	defer tx.Rollback(ctx)
 
 	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM quote_imports WHERE id=$1 AND source_kind='gaeb')`, importID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM quote_imports
+			JOIN projects p ON p.id = quote_imports.project_id
+			WHERE quote_imports.id=$1 AND quote_imports.source_kind='gaeb' AND p.company_id=$2
+		)
+	`, importID, companyID).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
@@ -746,10 +780,10 @@ func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVer
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.GetImport(ctx, importID)
+	return s.GetImport(ctx, importID, companyID)
 }
 
-func (s *Service) MarkImportFailed(ctx context.Context, importID, parserVersion, detectedFormat, errorMessage string) (*QuoteImport, error) {
+func (s *Service) MarkImportFailed(ctx context.Context, importID, parserVersion, detectedFormat, errorMessage string, companyID string) (*QuoteImport, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -769,7 +803,13 @@ func (s *Service) MarkImportFailed(ctx context.Context, importID, parserVersion,
 	defer tx.Rollback(ctx)
 
 	var exists bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM quote_imports WHERE id=$1 AND source_kind='gaeb')`, importID).Scan(&exists); err != nil {
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM quote_imports
+			JOIN projects p ON p.id = quote_imports.project_id
+			WHERE quote_imports.id=$1 AND quote_imports.source_kind='gaeb' AND p.company_id=$2
+		)
+	`, importID, companyID).Scan(&exists); err != nil {
 		return nil, err
 	}
 	if !exists {
@@ -794,7 +834,51 @@ func (s *Service) MarkImportFailed(ctx context.Context, importID, parserVersion,
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.GetImport(ctx, importID)
+	return s.GetImport(ctx, importID, companyID)
+}
+
+func (s *Service) ProcessGAEBImport(ctx context.Context, importID string, companyID string) (*QuoteImport, error) {
+	if s.gaebImportParser == nil {
+		return nil, errors.New("GAEB-Parser nicht konfiguriert")
+	}
+	if s.mg == nil || strings.TrimSpace(s.mongoDB) == "" {
+		return nil, errors.New("MongoDB nicht konfiguriert")
+	}
+
+	imp, err := s.GetImport(ctx, importID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if imp.SourceKind != "gaeb" {
+		return nil, errors.New("Nur GAEB-Importläufe können verarbeitet werden")
+	}
+	if imp.Status != "uploaded" {
+		return nil, errors.New("Nur hochgeladene Importläufe können verarbeitet werden")
+	}
+
+	sourceID, err := primitive.ObjectIDFromHex(strings.TrimSpace(imp.SourceDocumentID))
+	if err != nil {
+		return nil, errors.New("Ungültige Quelldokument-ID")
+	}
+	bucket, err := gridfs.NewBucket(s.mg.Database(s.mongoDB))
+	if err != nil {
+		return nil, err
+	}
+	stream, err := bucket.OpenDownloadStream(sourceID)
+	if err != nil {
+		return s.MarkImportFailed(ctx, imp.ID, "adapter-v1", detectedGAEBImportFormat(imp.SourceFilename), err.Error(), companyID)
+	}
+	defer stream.Close()
+
+	result, err := s.gaebImportParser.ParseGAEB(ctx, stream, imp.SourceFilename)
+	if err != nil {
+		return s.MarkImportFailed(ctx, imp.ID, "adapter-v1", detectedGAEBImportFormat(imp.SourceFilename), err.Error(), companyID)
+	}
+	return s.SaveImportParseResult(ctx, imp.ID, result.ParserVersion, result.DetectedFormat, result.Items, companyID)
+}
+
+func detectedGAEBImportFormat(filename string) string {
+	return strings.TrimPrefix(strings.ToLower(filepath.Ext(strings.TrimSpace(filename))), ".")
 }
 
 func isAllowedGAEBImportFilename(filename string) bool {

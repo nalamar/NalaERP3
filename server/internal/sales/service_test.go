@@ -9,16 +9,32 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// CreateFromQuote() selbst begint sofort eine echte DB-Transaktion
-// (s.pg.Begin) und ist daher ohne Postgres nicht direkt unit-testbar (siehe
-// docs/adr/0001-baseline.md, kein DB-Mock im Repo). Testbar ohne DB sind: die
-// von CreateFromQuote verwendete reine Steuersatz-Funktion sowie
-// quoteHasOpenApprovalRework - die zentrale fachliche Sperre "Angebote mit
-// offener Freigabe-Nacharbeit duerfen nicht in einen Auftrag ueberfuehrt
+// CreateFromQuote() begint fuer alles ausser der Mandantenpruefung sofort
+// eine echte DB-Transaktion (s.pg.Begin) und ist daher ohne Postgres nicht
+// direkt unit-testbar (siehe docs/adr/0001-baseline.md, kein DB-Mock im
+// Repo). Testbar ohne DB sind: der companyID-Pflichtcheck (steht bewusst vor
+// s.pg.Begin), die von CreateFromQuote verwendete reine Steuersatz-Funktion
+// sowie quoteHasOpenApprovalRework - die zentrale fachliche Sperre "Angebote
+// mit offener Freigabe-Nacharbeit duerfen nicht in einen Auftrag ueberfuehrt
 // werden" (server/internal/sales/service.go:166-172). Letztere nutzt bewusst
 // die schmale Schnittstelle quoteApprovalReworkQuerier (nur QueryRow) statt
 // pgx.Tx, wodurch sie sich mit einem einfachen Fake statt einer echten
 // Transaktion pruefen laesst.
+
+func TestCreateFromQuoteRejectsMissingCompanyID(t *testing.T) {
+	s := &Service{}
+
+	order, err := s.CreateFromQuote(context.Background(), uuid.New(), "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if order != nil {
+		t.Fatalf("expected nil order, got %#v", order)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected Mandant erforderlich, got %q", err.Error())
+	}
+}
 
 type fakeScanRow struct {
 	val bool
@@ -99,7 +115,7 @@ func TestSalesOrderTaxRateKnownAndUnknownCodes(t *testing.T) {
 func TestUpdateStatusRejectsUnknownStatus(t *testing.T) {
 	s := &Service{}
 
-	order, err := s.UpdateStatus(context.Background(), uuid.New(), "nicht-existent")
+	order, err := s.UpdateStatus(context.Background(), uuid.New(), "nicht-existent", "company-1", "user-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -184,7 +200,7 @@ func TestValidateStatusTransitionTerminalStatesUseDedicatedMessage(t *testing.T)
 func TestConvertToInvoiceRequiresARService(t *testing.T) {
 	s := &Service{}
 
-	result, err := s.ConvertToInvoice(context.Background(), uuid.New(), nil, ConvertToInvoiceInput{})
+	result, err := s.ConvertToInvoice(context.Background(), uuid.New(), nil, ConvertToInvoiceInput{}, "company-1", "user-1")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}

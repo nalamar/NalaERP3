@@ -53,6 +53,9 @@ class _FakeApiClient extends ApiClient {
     this.locationMap = const {},
     this.quoteImportList = const [],
     this.quoteImportUploadResult = const {},
+    this.quoteImportUploadErrors = const {},
+    this.quoteImportProcessResults = const {},
+    this.quoteImportProcessErrors = const {},
     this.quoteImportDetails = const {},
     this.quoteImportItemMap = const {},
     this.quoteImportItemDetails = const {},
@@ -93,6 +96,9 @@ class _FakeApiClient extends ApiClient {
   final Map<String, List<dynamic>> locationMap;
   final List<dynamic> quoteImportList;
   final Map<String, dynamic> quoteImportUploadResult;
+  final Map<String, Object> quoteImportUploadErrors;
+  final Map<String, Map<String, dynamic>> quoteImportProcessResults;
+  final Map<String, Object> quoteImportProcessErrors;
   final Map<String, Map<String, dynamic>> quoteImportDetails;
   final Map<String, List<dynamic>> quoteImportItemMap;
   final Map<String, Map<String, Map<String, dynamic>>> quoteImportItemDetails;
@@ -111,6 +117,7 @@ class _FakeApiClient extends ApiClient {
   final List<String> attemptedQuoteImportReviewIds = [];
   final List<String> reviewedQuoteImportIds = [];
   final List<String> appliedQuoteImportIds = [];
+  final List<String> processedQuoteImportIds = [];
   final List<String> requestedQuoteIds = [];
   int quoteImportListRequestCount = 0;
 
@@ -425,7 +432,18 @@ class _FakeApiClient extends ApiClient {
       'contact_id': contactId,
       'content_type': contentType,
     });
+    final error = quoteImportUploadErrors[filename];
+    if (error != null) throw error;
     return quoteImportUploadResult;
+  }
+
+  @override
+  Future<Map<String, dynamic>> processGAEBQuoteImport(String importId) async {
+    processedQuoteImportIds.add(importId);
+    final error = quoteImportProcessErrors[importId];
+    if (error != null) throw error;
+    return quoteImportProcessResults[importId] ??
+        <String, dynamic>{'id': importId, 'status': 'parsed'};
   }
 
   @override
@@ -3774,6 +3792,56 @@ void main() {
     expect(find.byType(AlertDialog), findsNothing);
   });
 
+  testWidgets(
+      'QuotesPage GAEB import returns without upload when file picker is cancelled',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    var pickerCallCount = 0;
+    String? pickerAccept;
+    Future<browser.PickedFile?> cancelQuoteImportFilePicker({
+      String? accept,
+    }) async {
+      pickerCallCount += 1;
+      pickerAccept = accept;
+      return null;
+    }
+
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(
+            projectId: 'project-gaeb-picker-cancel-1',
+          ),
+          quoteImportFilePicker: cancelQuoteImportFilePicker,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.quoteImportListRequestCount, 1);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'GAEB-Import'));
+    await tester.pumpAndSettle();
+
+    expect(pickerCallCount, 1);
+    expect(pickerAccept, '.x83,.x84,.d83,.p83,.gaeb,.xml');
+    expect(
+      find.widgetWithText(FilledButton, 'GAEB-Import'),
+      findsOneWidget,
+    );
+    expect(api.attemptedQuoteImportUploads, isEmpty);
+    expect(api.quoteImportListRequestCount, 1);
+    expect(find.text('GAEB-Import wird hochgeladen...'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
   testWidgets('QuotesPage GAEB import uploads picked file for selected project',
       (tester) async {
     await _prepareLargeViewport(tester);
@@ -3834,6 +3902,148 @@ void main() {
     expect(
       find.text('GAEB-Datei ausschreibung-upload.x83 wurde hochgeladen'),
       findsOneWidget,
+    );
+  });
+
+  testWidgets(
+      'QuotesPage GAEB import closes progress and keeps list on upload failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    Future<browser.PickedFile?> pickQuoteImportFile({String? accept}) async {
+      return browser.PickedFile(
+        Uint8List.fromList(const [5, 6, 7]),
+        'ausschreibung-upload-fehler.x83',
+        'application/xml',
+      );
+    }
+
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportUploadErrors: const {
+        'ausschreibung-upload-fehler.x83': ApiException(
+          statusCode: 422,
+          code: 'invalid_gaeb_file',
+          message: 'GAEB-Datei konnte nicht verarbeitet werden',
+        ),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(
+            projectId: 'project-gaeb-upload-error-1',
+          ),
+          quoteImportFilePicker: pickQuoteImportFile,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.quoteImportListRequestCount, 1);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'GAEB-Import'));
+    await tester.pumpAndSettle();
+
+    expect(api.attemptedQuoteImportUploads, const [
+      {
+        'filename': 'ausschreibung-upload-fehler.x83',
+        'bytes': [5, 6, 7],
+        'project_id': 'project-gaeb-upload-error-1',
+        'contact_id': null,
+        'content_type': 'application/xml',
+      },
+    ]);
+    expect(api.quoteImportListRequestCount, 1);
+    expect(
+      find.text('GAEB-Datei konnte nicht verarbeitet werden'),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'GAEB-Import'),
+      findsOneWidget,
+    );
+    expect(find.text('GAEB-Import wird hochgeladen...'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.text(
+        'GAEB-Datei ausschreibung-upload-fehler.x83 wurde hochgeladen',
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('QuotesPage GAEB import falls back on technical upload failure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    Future<browser.PickedFile?> pickQuoteImportFile({String? accept}) async {
+      return browser.PickedFile(
+        Uint8List.fromList(const [8, 9, 10]),
+        'ausschreibung-upload-technisch.x83',
+        'application/xml',
+      );
+    }
+
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteImportUploadErrors: {
+        'ausschreibung-upload-technisch.x83':
+            StateError('Upload-Transport nicht verfuegbar'),
+      },
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(splashFactory: NoSplash.splashFactory),
+        home: QuotesPage(
+          api: api,
+          initialFilters: const CommercialFilterContext(
+            projectId: 'project-gaeb-upload-technical-error-1',
+          ),
+          quoteImportFilePicker: pickQuoteImportFile,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(api.quoteImportListRequestCount, 1);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'GAEB-Import'));
+    await tester.pumpAndSettle();
+
+    expect(api.attemptedQuoteImportUploads, const [
+      {
+        'filename': 'ausschreibung-upload-technisch.x83',
+        'bytes': [8, 9, 10],
+        'project_id': 'project-gaeb-upload-technical-error-1',
+        'contact_id': null,
+        'content_type': 'application/xml',
+      },
+    ]);
+    expect(api.quoteImportListRequestCount, 1);
+    expect(
+      find.text(
+        'GAEB-Upload fehlgeschlagen: Bad state: Upload-Transport nicht verfuegbar',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.widgetWithText(FilledButton, 'GAEB-Import'),
+      findsOneWidget,
+    );
+    expect(find.text('GAEB-Import wird hochgeladen...'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(
+      find.text(
+        'GAEB-Datei ausschreibung-upload-technisch.x83 wurde hochgeladen',
+      ),
+      findsNothing,
+    );
+    expect(
+      find.text('GAEB-Datei konnte nicht verarbeitet werden'),
+      findsNothing,
     );
   });
 

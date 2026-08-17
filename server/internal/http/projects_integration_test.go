@@ -185,6 +185,19 @@ func TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testi
 		t.Fatalf("decode direct quote create response: %v", err)
 	}
 
+	// convert-to-invoice erlaubt nur Angebote im Status "sent"/"accepted"
+	// (server/internal/quotes/service.go) - ein frisch angelegtes Angebot
+	// steht auf "draft" und muss den Status-Übergang erst durchlaufen
+	// (Backlog 0.25).
+	sendDirectQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+directQuote.ID+"/status", bytes.NewReader([]byte(`{"status":"sent"}`)))
+	sendDirectQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	sendDirectQuoteReq.Header.Set("Content-Type", "application/json")
+	sendDirectQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(sendDirectQuoteRec, sendDirectQuoteReq)
+	if sendDirectQuoteRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for direct quote status transition to sent, got %d with body %s", sendDirectQuoteRec.Code, sendDirectQuoteRec.Body.String())
+	}
+
 	convertDirectQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+directQuote.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
 		"invoice_date":"2026-04-02T00:00:00Z",
 		"due_date":"2026-04-16T00:00:00Z",

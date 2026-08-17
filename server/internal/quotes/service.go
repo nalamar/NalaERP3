@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.mongodb.org/mongo-driver/mongo"
 	"nalaerp3/internal/accounting"
+	"nalaerp3/internal/auditlog"
 	"nalaerp3/internal/projects"
 	"nalaerp3/internal/settings"
 )
@@ -365,10 +366,12 @@ type QuoteFilter struct {
 }
 
 type Service struct {
-	pg      *pgxpool.Pool
-	num     *settings.NumberingService
-	mg      *mongo.Client
-	mongoDB string
+	pg               *pgxpool.Pool
+	num              *settings.NumberingService
+	mg               *mongo.Client
+	mongoDB          string
+	gaebImportParser GAEBImportParser
+	audit            *auditlog.Service
 }
 
 type quoteApprovalReworkQuerier interface {
@@ -379,24 +382,27 @@ func NewService(pg *pgxpool.Pool, num *settings.NumberingService) *Service {
 	return &Service{pg: pg, num: num}
 }
 
-func (s *Service) Create(ctx context.Context, in QuoteInput) (*Quote, error) {
+func (s *Service) Create(ctx context.Context, in QuoteInput, companyID string) (*Quote, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
 
-	id, _, err := s.createQuoteTx(ctx, tx, in)
+	id, _, err := s.createQuoteTx(ctx, tx, in, companyID)
 	if err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput) (uuid.UUID, []uuid.UUID, error) {
+func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, companyID string) (uuid.UUID, []uuid.UUID, error) {
 	if strings.TrimSpace(in.ContactID) == "" && strings.TrimSpace(in.ProjectID) == "" {
 		return uuid.Nil, nil, errors.New("contact_id oder project_id erforderlich")
 	}
@@ -423,7 +429,7 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput) (
 	if in.QuoteDate.IsZero() {
 		in.QuoteDate = time.Now()
 	}
-	number, err := s.num.Next(ctx, "quote")
+	number, err := s.num.Next(ctx, "quote", companyID)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
@@ -431,9 +437,9 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput) (
 	gross := net + tax
 	id := uuid.New()
 
-	_, err = tx.Exec(ctx, `INSERT INTO quotes (id, nummer, root_quote_id, revision_no, project_id, contact_id, status, quote_date, valid_until, currency, note, net_amount, tax_amount, gross_amount)
-		VALUES ($1,$2,$1,1,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11)`,
-		id, number, nullIfEmpty(in.ProjectID), in.ContactID, in.QuoteDate, in.ValidUntil, in.Currency, in.Note, net, tax, gross)
+	_, err = tx.Exec(ctx, `INSERT INTO quotes (id, nummer, root_quote_id, revision_no, project_id, contact_id, status, quote_date, valid_until, currency, note, net_amount, tax_amount, gross_amount, company_id)
+		VALUES ($1,$2,$1,1,$3,$4,'draft',$5,$6,$7,$8,$9,$10,$11,$12)`,
+		id, number, nullIfEmpty(in.ProjectID), in.ContactID, in.QuoteDate, in.ValidUntil, in.Currency, in.Note, net, tax, gross, companyID)
 	if err != nil {
 		return uuid.Nil, nil, err
 	}
@@ -456,7 +462,7 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput) (
 	return id, itemIDs, nil
 }
 
-func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Quote, error) {
+func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quote, error) {
 	var out Quote
 	var projectID sql.NullString
 	var rootQuoteID uuid.UUID
@@ -469,7 +475,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Quote, error) {
 		FROM quotes q
 		LEFT JOIN projects p ON p.id = q.project_id
 		LEFT JOIN contacts c ON c.id = q.contact_id
-		WHERE q.id=$1`, id).Scan(
+		WHERE q.id=$1 AND q.company_id=$2`, id, companyID).Scan(
 		&out.ID, &out.Number, &rootQuoteID, &out.RevisionNo, &supersededByQuoteID, &projectID, &out.ProjectName, &out.ContactID, &out.ContactName, &out.Status, &acceptedAt, &linkedInvoiceOutID, &linkedSalesOrderID, &out.QuoteDate, &validUntil, &out.Currency, &out.Note, &out.NetAmount, &out.TaxAmount, &out.GrossAmount,
 	)
 	if err != nil {
@@ -777,7 +783,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID) (*Quote, error) {
 	return &out, nil
 }
 
-func (s *Service) ApplyMaterialCandidate(ctx context.Context, quoteID, itemID uuid.UUID, materialID string) (*Quote, error) {
+func (s *Service) ApplyMaterialCandidate(ctx context.Context, quoteID, itemID uuid.UUID, materialID string, companyID string) (*Quote, error) {
 	materialID = strings.TrimSpace(materialID)
 	if materialID == "" {
 		return nil, errors.New("material_id fehlt")
@@ -791,7 +797,7 @@ func (s *Service) ApplyMaterialCandidate(ctx context.Context, quoteID, itemID uu
 
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
-	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -840,10 +846,10 @@ func (s *Service) ApplyMaterialCandidate(ctx context.Context, quoteID, itemID uu
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, quoteID)
+	return s.Get(ctx, quoteID, companyID)
 }
 
-func (s *Service) SearchMaterialsForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, query string) ([]MaterialCandidate, error) {
+func (s *Service) SearchMaterialsForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, query string, companyID string) ([]MaterialCandidate, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, errors.New("Suchbegriff fehlt")
@@ -861,7 +867,8 @@ func (s *Service) SearchMaterialsForQuoteItem(ctx context.Context, quoteID, item
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
@@ -906,7 +913,7 @@ func (s *Service) SearchMaterialsForQuoteItem(ctx context.Context, quoteID, item
 	return results, rows.Err()
 }
 
-func (s *Service) ApplySearchedMaterial(ctx context.Context, quoteID, itemID uuid.UUID, query, materialID string) (*Quote, error) {
+func (s *Service) ApplySearchedMaterial(ctx context.Context, quoteID, itemID uuid.UUID, query, materialID string, companyID string) (*Quote, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, errors.New("Suchbegriff fehlt")
@@ -924,7 +931,7 @@ func (s *Service) ApplySearchedMaterial(ctx context.Context, quoteID, itemID uui
 
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
-	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -972,10 +979,10 @@ func (s *Service) ApplySearchedMaterial(ctx context.Context, quoteID, itemID uui
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, quoteID)
+	return s.Get(ctx, quoteID, companyID)
 }
 
-func (s *Service) SuggestPriceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*PriceSuggestion, error) {
+func (s *Service) SuggestPriceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*PriceSuggestion, error) {
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
 	var currentMaterialID string
@@ -988,7 +995,8 @@ func (s *Service) SuggestPriceForQuoteItem(ctx context.Context, quoteID, itemID 
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
@@ -1023,7 +1031,7 @@ func (s *Service) SuggestPriceForQuoteItem(ctx context.Context, quoteID, itemID 
 	return &suggestion, nil
 }
 
-func (s *Service) ApplyPriceSuggestionForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*Quote, error) {
+func (s *Service) ApplyPriceSuggestionForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*Quote, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -1032,7 +1040,7 @@ func (s *Service) ApplyPriceSuggestionForQuoteItem(ctx context.Context, quoteID,
 
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
-	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1072,10 +1080,10 @@ func (s *Service) ApplyPriceSuggestionForQuoteItem(ctx context.Context, quoteID,
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, quoteID)
+	return s.Get(ctx, quoteID, companyID)
 }
 
-func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*Quote, error) {
+func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*Quote, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -1084,7 +1092,7 @@ func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quote
 
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
-	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1158,10 +1166,10 @@ func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quote
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, quoteID)
+	return s.Get(ctx, quoteID, companyID)
 }
 
-func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*Quote, error) {
+func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*Quote, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -1174,9 +1182,9 @@ func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID,
 	if err := tx.QueryRow(ctx, `
 		SELECT status, superseded_by_quote_id, COALESCE(NULLIF(BTRIM(currency), ''), 'EUR')
 		FROM quotes
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 		FOR UPDATE
-	`, quoteID).Scan(&currentStatus, &supersededByQuoteID, &quoteCurrency); err != nil {
+	`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID, &quoteCurrency); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1267,10 +1275,10 @@ func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID,
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, quoteID)
+	return s.Get(ctx, quoteID, companyID)
 }
 
-func (s *Service) RequestApprovalForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, requestedBy, comment string) (*QuoteItemApprovalRequest, error) {
+func (s *Service) RequestApprovalForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, requestedBy, comment string, companyID string) (*QuoteItemApprovalRequest, error) {
 	reasonText := strings.TrimSpace(comment)
 	if len([]rune(reasonText)) > 500 {
 		return nil, errors.New("Kommentar darf nicht laenger als 500 Zeichen sein")
@@ -1287,9 +1295,9 @@ func (s *Service) RequestApprovalForQuoteItem(ctx context.Context, quoteID, item
 	if err := tx.QueryRow(ctx, `
 		SELECT status, superseded_by_quote_id
 		FROM quotes
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 		FOR UPDATE
-	`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1437,7 +1445,7 @@ func (s *Service) RequestApprovalForQuoteItem(ctx context.Context, quoteID, item
 	return out, nil
 }
 
-func (s *Service) CancelApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, cancelledBy string) (*QuoteItemApprovalRequest, error) {
+func (s *Service) CancelApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, cancelledBy string, companyID string) (*QuoteItemApprovalRequest, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -1449,9 +1457,9 @@ func (s *Service) CancelApprovalRequestForQuoteItem(ctx context.Context, quoteID
 	if err := tx.QueryRow(ctx, `
 		SELECT status, superseded_by_quote_id
 		FROM quotes
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 		FOR UPDATE
-	`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1528,15 +1536,15 @@ func (s *Service) CancelApprovalRequestForQuoteItem(ctx context.Context, quoteID
 	return out, nil
 }
 
-func (s *Service) ApproveApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment string) (*QuoteItemApprovalRequest, error) {
-	return s.decideApprovalRequestForQuoteItem(ctx, quoteID, itemID, decidedBy, comment, "approved")
+func (s *Service) ApproveApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment string, companyID string) (*QuoteItemApprovalRequest, error) {
+	return s.decideApprovalRequestForQuoteItem(ctx, quoteID, itemID, decidedBy, comment, "approved", companyID)
 }
 
-func (s *Service) RejectApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment string) (*QuoteItemApprovalRequest, error) {
-	return s.decideApprovalRequestForQuoteItem(ctx, quoteID, itemID, decidedBy, comment, "rejected")
+func (s *Service) RejectApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment string, companyID string) (*QuoteItemApprovalRequest, error) {
+	return s.decideApprovalRequestForQuoteItem(ctx, quoteID, itemID, decidedBy, comment, "rejected", companyID)
 }
 
-func (s *Service) ResolveApprovalReworkForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, resolvedBy, comment string) (*QuoteItemApprovalRequest, error) {
+func (s *Service) ResolveApprovalReworkForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, resolvedBy, comment string, companyID string) (*QuoteItemApprovalRequest, error) {
 	comment = strings.TrimSpace(comment)
 	if len([]rune(comment)) > 500 {
 		return nil, errors.New("Kommentar darf nicht laenger als 500 Zeichen sein")
@@ -1553,9 +1561,9 @@ func (s *Service) ResolveApprovalReworkForQuoteItem(ctx context.Context, quoteID
 	if err := tx.QueryRow(ctx, `
 		SELECT status, superseded_by_quote_id
 		FROM quotes
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 		FOR UPDATE
-	`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -1727,7 +1735,7 @@ func (s *Service) ResolveApprovalReworkForQuoteItem(ctx context.Context, quoteID
 	return out, nil
 }
 
-func (s *Service) ListApprovalRequestsForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) ([]QuoteItemApprovalRequest, error) {
+func (s *Service) ListApprovalRequestsForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) ([]QuoteItemApprovalRequest, error) {
 	var itemExists bool
 	if err := s.pg.QueryRow(ctx, `
 		SELECT EXISTS (
@@ -1736,8 +1744,9 @@ func (s *Service) ListApprovalRequestsForQuoteItem(ctx context.Context, quoteID,
 			JOIN quote_items qi ON qi.quote_id = q.id
 			WHERE q.id = $1
 			  AND qi.id = $2
+			  AND q.company_id = $3
 		)
-	`, quoteID, itemID).Scan(&itemExists); err != nil {
+	`, quoteID, itemID, companyID).Scan(&itemExists); err != nil {
 		return nil, err
 	}
 	if !itemExists {
@@ -1806,9 +1815,10 @@ func (s *Service) ListApprovalRequestsForQuoteItem(ctx context.Context, quoteID,
 	return out, rows.Err()
 }
 
-func (s *Service) ListApprovalReworkQueue(ctx context.Context, filter QuoteApprovalReworkQueueFilter) ([]QuoteApprovalReworkQueueItem, error) {
-	args := make([]any, 0)
+func (s *Service) ListApprovalReworkQueue(ctx context.Context, filter QuoteApprovalReworkQueueFilter, companyID string) ([]QuoteApprovalReworkQueueItem, error) {
+	args := []any{companyID}
 	conds := []string{
+		fmt.Sprintf("q.company_id = $%d", len(args)),
 		"q.superseded_by_quote_id IS NULL",
 		"latest_approval.status = 'rejected'",
 	}
@@ -1984,9 +1994,10 @@ func (s *Service) ListApprovalReworkQueue(ctx context.Context, filter QuoteAppro
 	return out, nil
 }
 
-func (s *Service) ListApprovalRequestQueue(ctx context.Context, filter QuoteApprovalRequestQueueFilter) ([]QuoteApprovalRequestQueueItem, error) {
-	args := make([]any, 0)
+func (s *Service) ListApprovalRequestQueue(ctx context.Context, filter QuoteApprovalRequestQueueFilter, companyID string) ([]QuoteApprovalRequestQueueItem, error) {
+	args := []any{companyID}
 	conds := []string{
+		fmt.Sprintf("q.company_id = $%d", len(args)),
 		"q.superseded_by_quote_id IS NULL",
 		"qar.status = 'requested'",
 	}
@@ -2138,7 +2149,7 @@ func (s *Service) ListApprovalRequestQueue(ctx context.Context, filter QuoteAppr
 	return out, nil
 }
 
-func (s *Service) decideApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment, decisionStatus string) (*QuoteItemApprovalRequest, error) {
+func (s *Service) decideApprovalRequestForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, decidedBy, comment, decisionStatus string, companyID string) (*QuoteItemApprovalRequest, error) {
 	comment = strings.TrimSpace(comment)
 	if len([]rune(comment)) > 500 {
 		return nil, errors.New("Kommentar darf nicht laenger als 500 Zeichen sein")
@@ -2158,9 +2169,9 @@ func (s *Service) decideApprovalRequestForQuoteItem(ctx context.Context, quoteID
 	if err := tx.QueryRow(ctx, `
 		SELECT status, superseded_by_quote_id
 		FROM quotes
-		WHERE id = $1
+		WHERE id = $1 AND company_id = $2
 		FOR UPDATE
-	`, quoteID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
+	`, quoteID, companyID).Scan(&currentStatus, &supersededByQuoteID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -2232,6 +2243,20 @@ func (s *Service) decideApprovalRequestForQuoteItem(ctx context.Context, quoteID
 			return nil, errors.New("Keine aktive Freigabeanforderung vorhanden")
 		}
 		return nil, err
+	}
+
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, tx, companyID, auditlog.RecordInput{
+			EntityType:  "quote",
+			EntityID:    quoteID.String(),
+			Action:      "freigabe_" + decisionStatus,
+			ActorUserID: decidedBy,
+			Before:      map[string]any{"item_id": itemID.String(), "status": "requested"},
+			After:       map[string]any{"item_id": itemID.String(), "status": decisionStatus},
+			Note:        comment,
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -2398,7 +2423,7 @@ func scanApprovalRequest(row pgx.Row) (*QuoteItemApprovalRequest, error) {
 	return &out, nil
 }
 
-func (s *Service) PriceHistoryForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) ([]PriceHistoryEntry, error) {
+func (s *Service) PriceHistoryForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) ([]PriceHistoryEntry, error) {
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
 	var currentMaterialID string
@@ -2411,7 +2436,8 @@ func (s *Service) PriceHistoryForQuoteItem(ctx context.Context, quoteID, itemID 
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentStatus, &supersededByQuoteID, &currentMaterialID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
@@ -2474,7 +2500,7 @@ func (s *Service) PriceHistoryForQuoteItem(ctx context.Context, quoteID, itemID 
 	return entries, nil
 }
 
-func (s *Service) PriceDecisionHistoryForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) ([]PriceDecisionHistoryEntry, error) {
+func (s *Service) PriceDecisionHistoryForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) ([]PriceDecisionHistoryEntry, error) {
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
 	err := s.pg.QueryRow(ctx, `
@@ -2485,7 +2511,8 @@ func (s *Service) PriceDecisionHistoryForQuoteItem(ctx context.Context, quoteID,
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentStatus, &supersededByQuoteID)
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentStatus, &supersededByQuoteID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
@@ -2544,7 +2571,7 @@ func (s *Service) PriceDecisionHistoryForQuoteItem(ctx context.Context, quoteID,
 	return entries, rows.Err()
 }
 
-func (s *Service) MarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*QuoteItemMarginAnchor, error) {
+func (s *Service) MarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*QuoteItemMarginAnchor, error) {
 	var currentStatus string
 	var supersededByQuoteID uuid.NullUUID
 	var currentUnitPrice float64
@@ -2559,7 +2586,8 @@ func (s *Service) MarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID 
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentStatus, &supersededByQuoteID, &currentUnitPrice, &quoteCurrency)
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentStatus, &supersededByQuoteID, &currentUnitPrice, &quoteCurrency)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
@@ -2627,8 +2655,8 @@ func (s *Service) MarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID 
 	return &anchor, nil
 }
 
-func (s *Service) ApprovalHintForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*QuoteItemApprovalHint, error) {
-	marginAnchor, err := s.MarginAnchorForQuoteItem(ctx, quoteID, itemID)
+func (s *Service) ApprovalHintForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*QuoteItemApprovalHint, error) {
+	marginAnchor, err := s.MarginAnchorForQuoteItem(ctx, quoteID, itemID, companyID)
 	if err != nil {
 		if err.Error() == "keine Preisentscheidung fuer diese Position vorhanden" {
 			return &QuoteItemApprovalHint{
@@ -2662,10 +2690,10 @@ func (s *Service) ApprovalHintForQuoteItem(ctx context.Context, quoteID, itemID 
 	}, nil
 }
 
-func (s *Service) TargetMarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*QuoteItemTargetMarginAnchor, error) {
+func (s *Service) TargetMarginAnchorForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*QuoteItemTargetMarginAnchor, error) {
 	targetMarginPercent := s.quoteTargetMarginPercent(ctx)
 
-	marginAnchor, err := s.MarginAnchorForQuoteItem(ctx, quoteID, itemID)
+	marginAnchor, err := s.MarginAnchorForQuoteItem(ctx, quoteID, itemID, companyID)
 	if err != nil {
 		if err.Error() == "keine Preisentscheidung fuer diese Position vorhanden" {
 			return &QuoteItemTargetMarginAnchor{
@@ -2794,8 +2822,8 @@ func primaryPriceSourceForMaterialTx(ctx context.Context, tx pgx.Tx, materialID 
 	return avgEntry, nil
 }
 
-func (s *Service) PriceSourcePriorityForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) ([]PriceSourcePriorityEntry, error) {
-	history, err := s.PriceHistoryForQuoteItem(ctx, quoteID, itemID)
+func (s *Service) PriceSourcePriorityForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) ([]PriceSourcePriorityEntry, error) {
+	history, err := s.PriceHistoryForQuoteItem(ctx, quoteID, itemID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -2838,8 +2866,8 @@ func (s *Service) PriceSourcePriorityForQuoteItem(ctx context.Context, quoteID, 
 	return prioritized, nil
 }
 
-func (s *Service) PriceEvaluationForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*PriceEvaluation, error) {
-	priority, err := s.PriceSourcePriorityForQuoteItem(ctx, quoteID, itemID)
+func (s *Service) PriceEvaluationForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*PriceEvaluation, error) {
+	priority, err := s.PriceSourcePriorityForQuoteItem(ctx, quoteID, itemID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -2865,7 +2893,8 @@ func (s *Service) PriceEvaluationForQuoteItem(ctx context.Context, quoteID, item
 		JOIN quote_items qi ON qi.quote_id = q.id
 		WHERE q.id = $1
 		  AND qi.id = $2
-	`, quoteID, itemID).Scan(&currentUnitPrice, &quoteCurrency); err != nil {
+		  AND q.company_id = $3
+	`, quoteID, itemID, companyID).Scan(&currentUnitPrice, &quoteCurrency); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Angebotsposition nicht gefunden")
 		}
@@ -2909,8 +2938,8 @@ func (s *Service) PriceEvaluationForQuoteItem(ctx context.Context, quoteID, item
 	}, nil
 }
 
-func (s *Service) PriceDecisionTransparencyForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID) (*PriceDecisionTransparency, error) {
-	evaluation, err := s.PriceEvaluationForQuoteItem(ctx, quoteID, itemID)
+func (s *Service) PriceDecisionTransparencyForQuoteItem(ctx context.Context, quoteID, itemID uuid.UUID, companyID string) (*PriceDecisionTransparency, error) {
+	evaluation, err := s.PriceEvaluationForQuoteItem(ctx, quoteID, itemID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -2968,12 +2997,12 @@ func (s *Service) listMaterialCandidatesForQuoteItem(ctx context.Context, quoteI
 	return candidates, rows.Err()
 }
 
-func (s *Service) List(ctx context.Context, f QuoteFilter) ([]QuoteListItem, error) {
+func (s *Service) List(ctx context.Context, f QuoteFilter, companyID string) ([]QuoteListItem, error) {
 	if f.Limit <= 0 {
 		f.Limit = 50
 	}
-	args := make([]any, 0)
-	conds := make([]string, 0)
+	args := []any{companyID}
+	conds := []string{fmt.Sprintf("q.company_id=$%d", len(args))}
 	if strings.TrimSpace(f.Status) != "" {
 		args = append(args, f.Status)
 		conds = append(conds, fmt.Sprintf("q.status=$%d", len(args)))
@@ -3041,7 +3070,7 @@ func (s *Service) List(ctx context.Context, f QuoteFilter) ([]QuoteListItem, err
 	return out, nil
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string) (*Quote, error) {
+func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string, companyID string) (*Quote, error) {
 	status = strings.ToLower(strings.TrimSpace(status))
 	switch status {
 	case "draft", "sent", "accepted", "rejected":
@@ -3052,7 +3081,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string)
 	var supersededByQuoteID uuid.NullUUID
 	var linkedInvoiceOutID uuid.NullUUID
 	var linkedSalesOrderID uuid.NullUUID
-	if err := s.pg.QueryRow(ctx, `SELECT status, superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1`, id).Scan(&currentStatus, &supersededByQuoteID, &linkedInvoiceOutID, &linkedSalesOrderID); err != nil {
+	if err := s.pg.QueryRow(ctx, `SELECT status, superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1 AND company_id=$2`, id, companyID).Scan(&currentStatus, &supersededByQuoteID, &linkedInvoiceOutID, &linkedSalesOrderID); err != nil {
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -3079,7 +3108,7 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string)
 			return nil, err
 		}
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
 func quoteHasOpenApprovalRework(ctx context.Context, q quoteApprovalReworkQuerier, quoteID uuid.UUID) (bool, error) {
@@ -3105,7 +3134,7 @@ func quoteHasOpenApprovalRework(ctx context.Context, q quoteApprovalReworkQuerie
 	return hasOpenRework, nil
 }
 
-func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput) (*ConvertToInvoiceResult, error) {
+func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput, companyID string) (*ConvertToInvoiceResult, error) {
 	if arSvc == nil {
 		return nil, errors.New("invoice service fehlt")
 	}
@@ -3121,7 +3150,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	var supersededByQuoteID uuid.NullUUID
 	var linkedInvoiceOutID uuid.NullUUID
 	var linkedSalesOrderID uuid.NullUUID
-	err = tx.QueryRow(ctx, `SELECT status, contact_id, currency, superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1 FOR UPDATE`, id).Scan(&status, &contactID, &currency, &supersededByQuoteID, &linkedInvoiceOutID, &linkedSalesOrderID)
+	err = tx.QueryRow(ctx, `SELECT status, contact_id, currency, superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&status, &contactID, &currency, &supersededByQuoteID, &linkedInvoiceOutID, &linkedSalesOrderID)
 	if err != nil {
 		return nil, err
 	}
@@ -3188,7 +3217,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 		DueDate:     in.DueDate,
 		Currency:    currency,
 		Items:       items,
-	})
+	}, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -3198,7 +3227,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	quote, err := s.Get(ctx, id)
+	quote, err := s.Get(ctx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -3208,7 +3237,7 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	}, nil
 }
 
-func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, error) {
+func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, actorUserID string) (*ReviseResult, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -3224,8 +3253,8 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, erro
 	var validUntil sql.NullTime
 	err = tx.QueryRow(ctx, `SELECT id, nummer, root_quote_id, revision_no, superseded_by_quote_id, project_id::text, contact_id, status, quote_date, valid_until, currency, COALESCE(note,''), net_amount, tax_amount, gross_amount, linked_invoice_out_id, linked_sales_order_id
 		FROM quotes
-		WHERE id=$1
-		FOR UPDATE`, id).Scan(
+		WHERE id=$1 AND company_id=$2
+		FOR UPDATE`, id, companyID).Scan(
 		&source.ID,
 		&source.Number,
 		&rootQuoteID,
@@ -3287,8 +3316,8 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, erro
 	}
 
 	revisedQuoteID := uuid.New()
-	_, err = tx.Exec(ctx, `INSERT INTO quotes (id, nummer, root_quote_id, revision_no, project_id, contact_id, status, quote_date, valid_until, currency, note, net_amount, tax_amount, gross_amount)
-		VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12,$13)`,
+	_, err = tx.Exec(ctx, `INSERT INTO quotes (id, nummer, root_quote_id, revision_no, project_id, contact_id, status, quote_date, valid_until, currency, note, net_amount, tax_amount, gross_amount, company_id)
+		VALUES ($1,$2,$3,$4,$5,$6,'draft',$7,$8,$9,$10,$11,$12,$13,$14)`,
 		revisedQuoteID,
 		source.Number,
 		rootQuoteID,
@@ -3302,6 +3331,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, erro
 		source.NetAmount,
 		source.TaxAmount,
 		source.GrossAmount,
+		companyID,
 	)
 	if err != nil {
 		return nil, err
@@ -3357,15 +3387,28 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, erro
 		return nil, err
 	}
 
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, tx, companyID, auditlog.RecordInput{
+			EntityType:  "quote",
+			EntityID:    id.String(),
+			Action:      "revidiert",
+			ActorUserID: actorUserID,
+			Before:      map[string]any{"status": source.Status, "revision_no": source.RevisionNo},
+			After:       map[string]any{"superseded_by_quote_id": revisedQuoteID.String(), "next_revision_no": nextRevisionNo},
+		}); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 
-	sourceQuote, err := s.Get(ctx, id)
+	sourceQuote, err := s.Get(ctx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
-	revisedQuote, err := s.Get(ctx, revisedQuoteID)
+	revisedQuote, err := s.Get(ctx, revisedQuoteID, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -3375,23 +3418,34 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID) (*ReviseResult, erro
 	}, nil
 }
 
-func (s *Service) Accept(ctx context.Context, id uuid.UUID, projectSvc *projects.Service, in AcceptInput) (*AcceptResult, error) {
-	quote, err := s.UpdateStatus(ctx, id, "accepted")
+func (s *Service) Accept(ctx context.Context, id uuid.UUID, projectSvc *projects.Service, in AcceptInput, companyID string, actorUserID string) (*AcceptResult, error) {
+	quote, err := s.UpdateStatus(ctx, id, "accepted", companyID)
 	if err != nil {
 		return nil, err
 	}
 	result := &AcceptResult{Quote: quote}
 	if projectSvc != nil && strings.TrimSpace(in.ProjectStatus) != "" && strings.TrimSpace(quote.ProjectID) != "" {
-		project, err := projectSvc.UpdateStatus(ctx, quote.ProjectID, strings.TrimSpace(in.ProjectStatus))
+		project, err := projectSvc.UpdateStatus(ctx, quote.ProjectID, strings.TrimSpace(in.ProjectStatus), companyID)
 		if err != nil {
 			return nil, err
 		}
 		result.Project = project
 	}
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, nil, companyID, auditlog.RecordInput{
+			EntityType:  "quote",
+			EntityID:    id.String(),
+			Action:      "angenommen",
+			ActorUserID: actorUserID,
+			After:       map[string]any{"status": "accepted"},
+		}); err != nil {
+			return nil, err
+		}
+	}
 	return result, nil
 }
 
-func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput) (*Quote, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, companyID string) (*Quote, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -3402,7 +3456,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput) (*Quo
 	var currentProjectID sql.NullString
 	var currentContactID string
 	var supersededByQuoteID uuid.NullUUID
-	err = tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id, project_id::text, contact_id FROM quotes WHERE id=$1 FOR UPDATE`, id).Scan(&currentStatus, &supersededByQuoteID, &currentProjectID, &currentContactID)
+	err = tx.QueryRow(ctx, `SELECT status, superseded_by_quote_id, project_id::text, contact_id FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&currentStatus, &supersededByQuoteID, &currentProjectID, &currentContactID)
 	if err != nil {
 		return nil, err
 	}
@@ -3479,7 +3533,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput) (*Quo
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
 func calcTotals(items []QuoteItemInput) (net, tax float64) {

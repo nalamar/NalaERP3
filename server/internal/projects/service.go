@@ -63,20 +63,23 @@ type ProjectFilter struct {
 	Offset int
 }
 
-func (s *Service) UpdateStatus(ctx context.Context, id, status string) (*Project, error) {
+func (s *Service) UpdateStatus(ctx context.Context, id, status, companyID string) (*Project, error) {
 	if strings.TrimSpace(id) == "" {
 		return nil, errors.New("Projekt-ID erforderlich")
 	}
 	if strings.TrimSpace(status) == "" {
 		return nil, errors.New("Status erforderlich")
 	}
-	if _, err := s.pg.Exec(ctx, `UPDATE projects SET status=$2 WHERE id=$1`, id, strings.TrimSpace(status)); err != nil {
+	if _, err := s.pg.Exec(ctx, `UPDATE projects SET status=$2 WHERE id=$1 AND company_id=$3`, id, strings.TrimSpace(status), companyID); err != nil {
 		return nil, err
 	}
-	return s.Get(ctx, id)
+	return s.Get(ctx, id, companyID)
 }
 
-func (s *Service) Create(ctx context.Context, in ProjectCreate) (*Project, error) {
+func (s *Service) Create(ctx context.Context, in ProjectCreate, companyID string) (*Project, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("Name erforderlich")
 	}
@@ -86,7 +89,7 @@ func (s *Service) Create(ctx context.Context, in ProjectCreate) (*Project, error
 	if strings.TrimSpace(in.Nummer) == "" {
 		// use configured numbering for projects
 		numSvc := settings.NewNumberingService(s.pg)
-		if n, err := numSvc.Next(ctx, "project"); err == nil {
+		if n, err := numSvc.Next(ctx, "project", companyID); err == nil {
 			in.Nummer = n
 		} else {
 			in.Nummer = uuid.NewString()
@@ -95,19 +98,19 @@ func (s *Service) Create(ctx context.Context, in ProjectCreate) (*Project, error
 	id := uuid.NewString()
 	var p Project
 	err := s.pg.QueryRow(ctx, `
-        INSERT INTO projects (id, nummer, name, kunde_id, status)
-        VALUES ($1,$2,$3,$4,$5)
+        INSERT INTO projects (id, nummer, name, kunde_id, status, company_id)
+        VALUES ($1,$2,$3,$4,$5,$6)
         RETURNING id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am
-    `, id, in.Nummer, in.Name, nullIfEmpty(in.KundeID), in.Status).Scan(&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt)
+    `, id, in.Nummer, in.Name, nullIfEmpty(in.KundeID), in.Status, companyID).Scan(&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt)
 	if err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (s *Service) Get(ctx context.Context, id string) (*Project, error) {
+func (s *Service) Get(ctx context.Context, id string, companyID string) (*Project, error) {
 	var p Project
-	err := s.pg.QueryRow(ctx, `SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am FROM projects WHERE id=$1`, id).Scan(
+	err := s.pg.QueryRow(ctx, `SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am FROM projects WHERE id=$1 AND company_id=$2`, id, companyID).Scan(
 		&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt,
 	)
 	if err != nil {
@@ -116,15 +119,15 @@ func (s *Service) Get(ctx context.Context, id string) (*Project, error) {
 	return &p, nil
 }
 
-func (s *Service) BuildQuoteSnapshot(ctx context.Context, id string) (*QuoteSnapshot, error) {
+func (s *Service) BuildQuoteSnapshot(ctx context.Context, id string, companyID string) (*QuoteSnapshot, error) {
 	var snap QuoteSnapshot
 	err := s.pg.QueryRow(ctx, `
         SELECT p.id, p.nummer, p.name, COALESCE(p.kunde_id,''), p.status, p.angelegt_am,
-               COALESCE(c.name,''), COALESCE(c.email,''), COALESCE(c.telefon,'')
+               COALESCE(c.name,''), COALESCE(c.email,''), COALESCE(c.phone,'')
         FROM projects p
         LEFT JOIN contacts c ON c.id = p.kunde_id
-        WHERE p.id = $1
-    `, id).Scan(
+        WHERE p.id = $1 AND p.company_id = $2
+    `, id, companyID).Scan(
 		&snap.Project.ID,
 		&snap.Project.Nummer,
 		&snap.Project.Name,
@@ -185,7 +188,7 @@ func (s *Service) BuildQuoteSnapshot(ctx context.Context, id string) (*QuoteSnap
 	return &snap, nil
 }
 
-func (s *Service) List(ctx context.Context, f ProjectFilter) ([]Project, error) {
+func (s *Service) List(ctx context.Context, f ProjectFilter, companyID string) ([]Project, error) {
 	lim := f.Limit
 	if lim <= 0 || lim > 200 {
 		lim = 50
@@ -193,9 +196,9 @@ func (s *Service) List(ctx context.Context, f ProjectFilter) ([]Project, error) 
 	off := f.Offset
 	sb := strings.Builder{}
 	sb.WriteString(`SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am FROM projects`)
-	var conds []string
-	var args []any
-	idx := 1
+	conds := []string{"company_id=$1"}
+	args := []any{companyID}
+	idx := 2
 	if strings.TrimSpace(f.Q) != "" {
 		conds = append(conds, fmt.Sprintf("(nummer ILIKE $%d OR name ILIKE $%d)", idx, idx+1))
 		q := "%" + f.Q + "%"
@@ -264,7 +267,10 @@ type ImportChange struct {
 	CreatedAt   time.Time      `json:"created_at"`
 }
 
-func (s *Service) ListImports(ctx context.Context, projectID string) ([]ImportRun, error) {
+func (s *Service) ListImports(ctx context.Context, projectID string, companyID string) ([]ImportRun, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, project_id, COALESCE(source,''), imported_at, created_phases, updated_phases, created_elevations, updated_elevations, created_variants, updated_variants, deleted_variants, materials_replaced_variants FROM project_imports WHERE project_id=$1 ORDER BY imported_at DESC`, projectID)
 	if err != nil {
 		return nil, err
@@ -281,7 +287,23 @@ func (s *Service) ListImports(ctx context.Context, projectID string) ([]ImportRu
 	return out, nil
 }
 
-func (s *Service) ListImportChanges(ctx context.Context, importID string) ([]ImportChange, error) {
+// importOwnedByProject prueft, dass der Import-Lauf existiert und zum
+// angegebenen, mandantenscharf aufgeloesten Projekt gehoert.
+func (s *Service) importOwnedByProject(ctx context.Context, projectID, importID string, companyID string) error {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return err
+	}
+	var dummy string
+	if err := s.pg.QueryRow(ctx, `SELECT id FROM project_imports WHERE id=$1 AND project_id=$2`, importID, projectID).Scan(&dummy); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) ListImportChanges(ctx context.Context, projectID, importID string, companyID string) ([]ImportChange, error) {
+	if err := s.importOwnedByProject(ctx, projectID, importID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, import_id, kind, action, COALESCE(internal_id::text,''), COALESCE(external_ref,''), COALESCE(message,''), COALESCE(before_data,'{}'::jsonb), COALESCE(after_data,'{}'::jsonb), created_at FROM project_import_changes WHERE import_id=$1 ORDER BY created_at ASC, id ASC`, importID)
 	if err != nil {
 		return nil, err
@@ -301,7 +323,10 @@ func (s *Service) ListImportChanges(ctx context.Context, importID string) ([]Imp
 	return out, nil
 }
 
-func (s *Service) ListImportChangesFiltered(ctx context.Context, importID, kind, action string) ([]ImportChange, error) {
+func (s *Service) ListImportChangesFiltered(ctx context.Context, projectID, importID, kind, action string, companyID string) ([]ImportChange, error) {
+	if err := s.importOwnedByProject(ctx, projectID, importID, companyID); err != nil {
+		return nil, err
+	}
 	q := `SELECT id, import_id, kind, action, COALESCE(internal_id::text,''), COALESCE(external_ref,''), COALESCE(message,''), COALESCE(before_data,'{}'::jsonb), COALESCE(after_data,'{}'::jsonb), created_at FROM project_import_changes WHERE import_id=$1`
 	args := []any{importID}
 	if strings.TrimSpace(kind) != "" {
@@ -338,7 +363,10 @@ func (s *Service) ListImportChangesFiltered(ctx context.Context, importID, kind,
 }
 
 // UndoImport reverts a given import run based on recorded before_data/after_data.
-func (s *Service) UndoImport(ctx context.Context, importID string) error {
+func (s *Service) UndoImport(ctx context.Context, projectID, importID string, companyID string) error {
+	if err := s.importOwnedByProject(ctx, projectID, importID, companyID); err != nil {
+		return err
+	}
 	// Load changes in reverse order
 	rows, err := s.pg.Query(ctx, `SELECT kind, action, COALESCE(internal_id::text,''), COALESCE(before_data,'{}'::jsonb) FROM project_import_changes WHERE import_id=$1 ORDER BY created_at DESC, id DESC`, importID)
 	if err != nil {
@@ -433,8 +461,8 @@ func (s *Service) UndoImport(ctx context.Context, importID string) error {
 }
 
 // ExportImportChangesCSV renders CSV for a given import run.
-func (s *Service) ExportImportChangesCSV(ctx context.Context, importID string) (string, error) {
-	changes, err := s.ListImportChanges(ctx, importID)
+func (s *Service) ExportImportChangesCSV(ctx context.Context, projectID, importID string, companyID string) (string, error) {
+	changes, err := s.ListImportChanges(ctx, projectID, importID, companyID)
 	if err != nil {
 		return "", err
 	}
@@ -471,12 +499,15 @@ type PhaseUpdate struct {
 	SortOrder    *int    `json:"sort_order"`
 }
 
-func (s *Service) CreatePhase(ctx context.Context, projectID string, in PhaseCreate) (*Phase, error) {
+func (s *Service) CreatePhase(ctx context.Context, projectID string, in PhaseCreate, companyID string) (*Phase, error) {
 	if strings.TrimSpace(in.Nummer) == "" {
 		in.Nummer = "1"
 	}
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("Name erforderlich")
+	}
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	var p Phase
@@ -492,7 +523,10 @@ func (s *Service) CreatePhase(ctx context.Context, projectID string, in PhaseCre
 	}
 	return &p, nil
 }
-func (s *Service) ListPhases(ctx context.Context, projectID string) ([]Phase, error) {
+func (s *Service) ListPhases(ctx context.Context, projectID string, companyID string) ([]Phase, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, project_id, nummer, name, COALESCE(beschreibung,''), sort_order, angelegt_am FROM project_phases WHERE project_id=$1 ORDER BY sort_order ASC, nummer ASC`, projectID)
 	if err != nil {
 		return nil, err
@@ -508,16 +542,19 @@ func (s *Service) ListPhases(ctx context.Context, projectID string) ([]Phase, er
 	}
 	return out, nil
 }
-func (s *Service) GetPhase(ctx context.Context, id string) (*Phase, error) {
+func (s *Service) GetPhase(ctx context.Context, projectID, id string, companyID string) (*Phase, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
 	var p Phase
-	if err := s.pg.QueryRow(ctx, `SELECT id, project_id, nummer, name, COALESCE(beschreibung,''), sort_order, angelegt_am FROM project_phases WHERE id=$1`, id).Scan(
+	if err := s.pg.QueryRow(ctx, `SELECT id, project_id, nummer, name, COALESCE(beschreibung,''), sort_order, angelegt_am FROM project_phases WHERE id=$1 AND project_id=$2`, id, projectID).Scan(
 		&p.ID, &p.ProjectID, &p.Nummer, &p.Name, &p.Beschreibung, &p.SortOrder, &p.Angelegt,
 	); err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
-func (s *Service) UpdatePhase(ctx context.Context, id string, u PhaseUpdate) (*Phase, error) {
+func (s *Service) UpdatePhase(ctx context.Context, projectID, id string, u PhaseUpdate, companyID string) (*Phase, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -544,18 +581,24 @@ func (s *Service) UpdatePhase(ctx context.Context, id string, u PhaseUpdate) (*P
 	if u.SortOrder != nil {
 		add("sort_order", *u.SortOrder)
 	}
-	if len(sets) == 0 {
-		return s.GetPhase(ctx, id)
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
 	}
-	args = append(args, id)
-	q := fmt.Sprintf("UPDATE project_phases SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+	if len(sets) == 0 {
+		return s.GetPhase(ctx, projectID, id, companyID)
+	}
+	args = append(args, id, projectID)
+	q := fmt.Sprintf("UPDATE project_phases SET %s WHERE id=$%d AND project_id=$%d", strings.Join(sets, ", "), idx, idx+1)
 	if _, err := s.pg.Exec(ctx, q, args...); err != nil {
 		return nil, err
 	}
-	return s.GetPhase(ctx, id)
+	return s.GetPhase(ctx, projectID, id, companyID)
 }
-func (s *Service) DeletePhase(ctx context.Context, id string) error {
-	if _, err := s.pg.Exec(ctx, `DELETE FROM project_phases WHERE id=$1`, id); err != nil {
+func (s *Service) DeletePhase(ctx context.Context, projectID, id string, companyID string) error {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return err
+	}
+	if _, err := s.pg.Exec(ctx, `DELETE FROM project_phases WHERE id=$1 AND project_id=$2`, id, projectID); err != nil {
 		return err
 	}
 	return nil
@@ -598,7 +641,7 @@ type ElevationUpdate struct {
 	Oberflaeche  *string  `json:"oberflaeche"`
 }
 
-func (s *Service) CreateElevation(ctx context.Context, phaseID string, in ElevationCreate) (*Elevation, error) {
+func (s *Service) CreateElevation(ctx context.Context, projectID, phaseID string, in ElevationCreate, companyID string) (*Elevation, error) {
 	if strings.TrimSpace(in.Nummer) == "" {
 		in.Nummer = "1"
 	}
@@ -607,6 +650,9 @@ func (s *Service) CreateElevation(ctx context.Context, phaseID string, in Elevat
 	}
 	if in.Menge == 0 {
 		in.Menge = 1
+	}
+	if _, err := s.GetPhase(ctx, projectID, phaseID, companyID); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	var e Elevation
@@ -622,7 +668,10 @@ func (s *Service) CreateElevation(ctx context.Context, phaseID string, in Elevat
 	}
 	return &e, nil
 }
-func (s *Service) ListElevations(ctx context.Context, phaseID string) ([]Elevation, error) {
+func (s *Service) ListElevations(ctx context.Context, projectID, phaseID string, companyID string) ([]Elevation, error) {
+	if _, err := s.GetPhase(ctx, projectID, phaseID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, phase_id, nummer, name, COALESCE(beschreibung,''), menge, width_mm, height_mm, COALESCE(external_guid,''), COALESCE(serie,''), COALESCE(oberflaeche,''), COALESCE(picture1_relpath,''), angelegt_am FROM project_elevations WHERE phase_id=$1 ORDER BY nummer ASC`, phaseID)
 	if err != nil {
 		return nil, err
@@ -638,16 +687,19 @@ func (s *Service) ListElevations(ctx context.Context, phaseID string) ([]Elevati
 	}
 	return out, nil
 }
-func (s *Service) GetElevation(ctx context.Context, id string) (*Elevation, error) {
+func (s *Service) GetElevation(ctx context.Context, projectID, phaseID, id string, companyID string) (*Elevation, error) {
+	if _, err := s.GetPhase(ctx, projectID, phaseID, companyID); err != nil {
+		return nil, err
+	}
 	var e Elevation
-	if err := s.pg.QueryRow(ctx, `SELECT id, phase_id, nummer, name, COALESCE(beschreibung,''), menge, width_mm, height_mm, COALESCE(external_guid,''), COALESCE(serie,''), COALESCE(oberflaeche,''), COALESCE(picture1_relpath,''), angelegt_am FROM project_elevations WHERE id=$1`, id).Scan(
+	if err := s.pg.QueryRow(ctx, `SELECT id, phase_id, nummer, name, COALESCE(beschreibung,''), menge, width_mm, height_mm, COALESCE(external_guid,''), COALESCE(serie,''), COALESCE(oberflaeche,''), COALESCE(picture1_relpath,''), angelegt_am FROM project_elevations WHERE id=$1 AND phase_id=$2`, id, phaseID).Scan(
 		&e.ID, &e.PhaseID, &e.Nummer, &e.Name, &e.Beschreibung, &e.Menge, &e.WidthMM, &e.HeightMM, &e.ExternalGUID, &e.Serie, &e.Oberflaeche, &e.Picture1Rel, &e.Angelegt,
 	); err != nil {
 		return nil, err
 	}
 	return &e, nil
 }
-func (s *Service) UpdateElevation(ctx context.Context, id string, u ElevationUpdate) (*Elevation, error) {
+func (s *Service) UpdateElevation(ctx context.Context, projectID, phaseID, id string, u ElevationUpdate, companyID string) (*Elevation, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -689,18 +741,24 @@ func (s *Service) UpdateElevation(ctx context.Context, id string, u ElevationUpd
 	if u.Oberflaeche != nil {
 		add("oberflaeche", nullIfEmpty(*u.Oberflaeche))
 	}
-	if len(sets) == 0 {
-		return s.GetElevation(ctx, id)
+	if _, err := s.GetPhase(ctx, projectID, phaseID, companyID); err != nil {
+		return nil, err
 	}
-	args = append(args, id)
-	q := fmt.Sprintf("UPDATE project_elevations SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+	if len(sets) == 0 {
+		return s.GetElevation(ctx, projectID, phaseID, id, companyID)
+	}
+	args = append(args, id, phaseID)
+	q := fmt.Sprintf("UPDATE project_elevations SET %s WHERE id=$%d AND phase_id=$%d", strings.Join(sets, ", "), idx, idx+1)
 	if _, err := s.pg.Exec(ctx, q, args...); err != nil {
 		return nil, err
 	}
-	return s.GetElevation(ctx, id)
+	return s.GetElevation(ctx, projectID, phaseID, id, companyID)
 }
-func (s *Service) DeleteElevation(ctx context.Context, id string) error {
-	if _, err := s.pg.Exec(ctx, `DELETE FROM project_elevations WHERE id=$1`, id); err != nil {
+func (s *Service) DeleteElevation(ctx context.Context, projectID, phaseID, id string, companyID string) error {
+	if _, err := s.GetPhase(ctx, projectID, phaseID, companyID); err != nil {
+		return err
+	}
+	if _, err := s.pg.Exec(ctx, `DELETE FROM project_elevations WHERE id=$1 AND phase_id=$2`, id, phaseID); err != nil {
 		return err
 	}
 	return nil
@@ -732,12 +790,37 @@ type SingleElevationUpdate struct {
 	ExternalGUID *string  `json:"external_guid"`
 }
 
-func (s *Service) CreateSingleElevation(ctx context.Context, elevationID string, in SingleElevationCreate) (*SingleElevation, error) {
+// elevationOwnedByProject prueft, dass die Elevation existiert und (ueber ihre
+// Phase) zum angegebenen, mandantenscharf aufgeloesten Projekt gehoert. Wird
+// von den SingleElevation-Funktionen genutzt, deren Routen keine phaseID
+// fuehren (`/projects/{id}/elevations/{elevID}/single-elevations`).
+func (s *Service) elevationOwnedByProject(ctx context.Context, projectID, elevationID string, companyID string) (*Elevation, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
+	var e Elevation
+	if err := s.pg.QueryRow(ctx, `
+        SELECT el.id, el.phase_id, el.nummer, el.name, COALESCE(el.beschreibung,''), el.menge, el.width_mm, el.height_mm, COALESCE(el.external_guid,''), COALESCE(el.serie,''), COALESCE(el.oberflaeche,''), COALESCE(el.picture1_relpath,''), el.angelegt_am
+        FROM project_elevations el
+        JOIN project_phases ph ON ph.id = el.phase_id
+        WHERE el.id=$1 AND ph.project_id=$2
+    `, elevationID, projectID).Scan(
+		&e.ID, &e.PhaseID, &e.Nummer, &e.Name, &e.Beschreibung, &e.Menge, &e.WidthMM, &e.HeightMM, &e.ExternalGUID, &e.Serie, &e.Oberflaeche, &e.Picture1Rel, &e.Angelegt,
+	); err != nil {
+		return nil, err
+	}
+	return &e, nil
+}
+
+func (s *Service) CreateSingleElevation(ctx context.Context, projectID, elevationID string, in SingleElevationCreate, companyID string) (*SingleElevation, error) {
 	if strings.TrimSpace(in.Name) == "" {
 		return nil, errors.New("Name erforderlich")
 	}
 	if in.Menge == 0 {
 		in.Menge = 1
+	}
+	if _, err := s.elevationOwnedByProject(ctx, projectID, elevationID, companyID); err != nil {
+		return nil, err
 	}
 	id := uuid.NewString()
 	var se SingleElevation
@@ -757,7 +840,10 @@ func (s *Service) CreateSingleElevation(ctx context.Context, elevationID string,
 	}
 	return &se, nil
 }
-func (s *Service) ListSingleElevations(ctx context.Context, elevationID string) ([]SingleElevation, error) {
+func (s *Service) ListSingleElevations(ctx context.Context, projectID, elevationID string, companyID string) ([]SingleElevation, error) {
+	if _, err := s.elevationOwnedByProject(ctx, projectID, elevationID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, elevation_id, name, COALESCE(beschreibung,''), menge, selected, COALESCE(external_guid,''), angelegt_am FROM project_single_elevations WHERE elevation_id=$1 ORDER BY name ASC`, elevationID)
 	if err != nil {
 		return nil, err
@@ -773,16 +859,19 @@ func (s *Service) ListSingleElevations(ctx context.Context, elevationID string) 
 	}
 	return out, nil
 }
-func (s *Service) GetSingleElevation(ctx context.Context, id string) (*SingleElevation, error) {
+func (s *Service) GetSingleElevation(ctx context.Context, projectID, elevationID, id string, companyID string) (*SingleElevation, error) {
+	if _, err := s.elevationOwnedByProject(ctx, projectID, elevationID, companyID); err != nil {
+		return nil, err
+	}
 	var se SingleElevation
-	if err := s.pg.QueryRow(ctx, `SELECT id, elevation_id, name, COALESCE(beschreibung,''), menge, selected, COALESCE(external_guid,''), angelegt_am FROM project_single_elevations WHERE id=$1`, id).Scan(
+	if err := s.pg.QueryRow(ctx, `SELECT id, elevation_id, name, COALESCE(beschreibung,''), menge, selected, COALESCE(external_guid,''), angelegt_am FROM project_single_elevations WHERE id=$1 AND elevation_id=$2`, id, elevationID).Scan(
 		&se.ID, &se.ElevationID, &se.Name, &se.Beschreibung, &se.Menge, &se.Selected, &se.ExternalGUID, &se.Angelegt,
 	); err != nil {
 		return nil, err
 	}
 	return &se, nil
 }
-func (s *Service) UpdateSingleElevation(ctx context.Context, id string, u SingleElevationUpdate) (*SingleElevation, error) {
+func (s *Service) UpdateSingleElevation(ctx context.Context, projectID, elevationID, id string, u SingleElevationUpdate, companyID string) (*SingleElevation, error) {
 	sets := make([]string, 0)
 	args := make([]any, 0)
 	idx := 1
@@ -809,19 +898,25 @@ func (s *Service) UpdateSingleElevation(ctx context.Context, id string, u Single
 	if u.ExternalGUID != nil {
 		add("external_guid", nullIfEmpty(*u.ExternalGUID))
 	}
-	if len(sets) == 0 {
-		return s.GetSingleElevation(ctx, id)
+	if _, err := s.elevationOwnedByProject(ctx, projectID, elevationID, companyID); err != nil {
+		return nil, err
 	}
-	args = append(args, id)
-	q := fmt.Sprintf("UPDATE project_single_elevations SET %s WHERE id=$%d", strings.Join(sets, ", "), idx)
+	if len(sets) == 0 {
+		return s.GetSingleElevation(ctx, projectID, elevationID, id, companyID)
+	}
+	args = append(args, id, elevationID)
+	q := fmt.Sprintf("UPDATE project_single_elevations SET %s WHERE id=$%d AND elevation_id=$%d", strings.Join(sets, ", "), idx, idx+1)
 	if _, err := s.pg.Exec(ctx, q, args...); err != nil {
 		return nil, err
 	}
 	// Optional: Exklusivität von Selected erzwingen – hier weggelassen, da keine Selected-Policy
-	return s.GetSingleElevation(ctx, id)
+	return s.GetSingleElevation(ctx, projectID, elevationID, id, companyID)
 }
-func (s *Service) DeleteSingleElevation(ctx context.Context, id string) error {
-	if _, err := s.pg.Exec(ctx, `DELETE FROM project_single_elevations WHERE id=$1`, id); err != nil {
+func (s *Service) DeleteSingleElevation(ctx context.Context, projectID, elevationID, id string, companyID string) error {
+	if _, err := s.elevationOwnedByProject(ctx, projectID, elevationID, companyID); err != nil {
+		return err
+	}
+	if _, err := s.pg.Exec(ctx, `DELETE FROM project_single_elevations WHERE id=$1 AND elevation_id=$2`, id, elevationID); err != nil {
 		return err
 	}
 	return nil
@@ -870,7 +965,34 @@ type SingleGlass struct {
 	MaterialBez     string   `json:"material_bezeichnung"`
 }
 
-func (s *Service) ListProfilesBySingle(ctx context.Context, singleID string) ([]SingleProfile, error) {
+// singleElevationOwnedByProject prueft, dass die Ausfuehrungsvariante existiert
+// und (ueber Elevation und Phase) zum angegebenen, mandantenscharf
+// aufgeloesten Projekt gehoert. Wird von den Materiallisten-Funktionen
+// genutzt, deren Routen weder phaseID noch elevationID fuehren
+// (`/projects/{id}/single-elevations/{sid}/materials...`).
+func (s *Service) singleElevationOwnedByProject(ctx context.Context, projectID, singleElevationID string, companyID string) (*SingleElevation, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
+	var se SingleElevation
+	if err := s.pg.QueryRow(ctx, `
+        SELECT se.id, se.elevation_id, se.name, COALESCE(se.beschreibung,''), se.menge, se.selected, COALESCE(se.external_guid,''), se.angelegt_am
+        FROM project_single_elevations se
+        JOIN project_elevations el ON el.id = se.elevation_id
+        JOIN project_phases ph ON ph.id = el.phase_id
+        WHERE se.id=$1 AND ph.project_id=$2
+    `, singleElevationID, projectID).Scan(
+		&se.ID, &se.ElevationID, &se.Name, &se.Beschreibung, &se.Menge, &se.Selected, &se.ExternalGUID, &se.Angelegt,
+	); err != nil {
+		return nil, err
+	}
+	return &se, nil
+}
+
+func (s *Service) ListProfilesBySingle(ctx context.Context, projectID, singleID string, companyID string) ([]SingleProfile, error) {
+	if _, err := s.singleElevationOwnedByProject(ctx, projectID, singleID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT p.id, p.single_elevation_id,
                COALESCE(p.supplier_code,''), COALESCE(p.article_code,''), COALESCE(p.description,''),
@@ -895,7 +1017,10 @@ func (s *Service) ListProfilesBySingle(ctx context.Context, singleID string) ([]
 	return out, nil
 }
 
-func (s *Service) ListArticlesBySingle(ctx context.Context, singleID string) ([]SingleArticle, error) {
+func (s *Service) ListArticlesBySingle(ctx context.Context, projectID, singleID string, companyID string) ([]SingleArticle, error) {
+	if _, err := s.singleElevationOwnedByProject(ctx, projectID, singleID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT a.id, a.single_elevation_id,
                COALESCE(a.supplier_code,''), COALESCE(a.article_code,''), COALESCE(a.description,''),
@@ -920,7 +1045,10 @@ func (s *Service) ListArticlesBySingle(ctx context.Context, singleID string) ([]
 	return out, nil
 }
 
-func (s *Service) ListGlassBySingle(ctx context.Context, singleID string) ([]SingleGlass, error) {
+func (s *Service) ListGlassBySingle(ctx context.Context, projectID, singleID string, companyID string) ([]SingleGlass, error) {
+	if _, err := s.singleElevationOwnedByProject(ctx, projectID, singleID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `
         SELECT g.id, g.single_elevation_id,
                COALESCE(g.configuration,''), COALESCE(g.description,''),
@@ -947,9 +1075,23 @@ func (s *Service) ListGlassBySingle(ctx context.Context, singleID string) ([]Sin
 }
 
 // Link zwischen importiertem Varianten-Item und Stammmaterial setzen
-func (s *Service) LinkVariantMaterial(ctx context.Context, kind, itemID, materialID string) error {
+func (s *Service) LinkVariantMaterial(ctx context.Context, projectID, singleID, kind, itemID, materialID string, companyID string) error {
 	if strings.TrimSpace(itemID) == "" || strings.TrimSpace(kind) == "" {
 		return errors.New("Ungültige Parameter")
+	}
+	var q string
+	switch strings.ToLower(kind) {
+	case "profiles":
+		q = `UPDATE single_elevation_profiles SET material_id=$1 WHERE id=$2 AND single_elevation_id=$3`
+	case "articles":
+		q = `UPDATE single_elevation_articles SET material_id=$1 WHERE id=$2 AND single_elevation_id=$3`
+	case "glass":
+		q = `UPDATE single_elevation_glass SET material_id=$1 WHERE id=$2 AND single_elevation_id=$3`
+	default:
+		return errors.New("Ungültiger Typ")
+	}
+	if _, err := s.singleElevationOwnedByProject(ctx, projectID, singleID, companyID); err != nil {
+		return err
 	}
 	isUnlink := strings.TrimSpace(materialID) == ""
 	if !isUnlink {
@@ -958,31 +1100,23 @@ func (s *Service) LinkVariantMaterial(ctx context.Context, kind, itemID, materia
 			return errors.New("Material nicht gefunden")
 		}
 	}
-	var q string
-	switch strings.ToLower(kind) {
-	case "profiles":
-		q = `UPDATE single_elevation_profiles SET material_id=$1 WHERE id=$2`
-	case "articles":
-		q = `UPDATE single_elevation_articles SET material_id=$1 WHERE id=$2`
-	case "glass":
-		q = `UPDATE single_elevation_glass SET material_id=$1 WHERE id=$2`
-	default:
-		return errors.New("Ungültiger Typ")
-	}
 	var arg any
 	if isUnlink {
 		arg = nil
 	} else {
 		arg = materialID
 	}
-	if _, err := s.pg.Exec(ctx, q, arg, itemID); err != nil {
+	if _, err := s.pg.Exec(ctx, q, arg, itemID, singleID); err != nil {
 		return err
 	}
 	return nil
 }
 
 // ----- Project Assets Mapping (relativer Pfad -> GridFS-ID)
-func (s *Service) UpsertProjectAsset(ctx context.Context, projectID, relPath, gridfsID, filename, contentType string, length int64) error {
+func (s *Service) UpsertProjectAsset(ctx context.Context, projectID, relPath, gridfsID, filename, contentType string, length int64, companyID string) error {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return err
+	}
 	_, err := s.pg.Exec(ctx, `
         INSERT INTO project_assets (id, project_id, rel_path, gridfs_id, filename, content_type, length)
         VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -990,7 +1124,10 @@ func (s *Service) UpsertProjectAsset(ctx context.Context, projectID, relPath, gr
     `, uuid.NewString(), projectID, relPath, gridfsID, filename, contentType, length)
 	return err
 }
-func (s *Service) GetProjectAsset(ctx context.Context, projectID, relPath string) (gridfsID, filename, contentType string, length int64, err error) {
+func (s *Service) GetProjectAsset(ctx context.Context, projectID, relPath string, companyID string) (gridfsID, filename, contentType string, length int64, err error) {
+	if _, err = s.Get(ctx, projectID, companyID); err != nil {
+		return
+	}
 	err = s.pg.QueryRow(ctx, `SELECT gridfs_id, filename, content_type, COALESCE(length,0) FROM project_assets WHERE project_id=$1 AND rel_path=$2`, projectID, relPath).Scan(&gridfsID, &filename, &contentType, &length)
 	return
 }
@@ -1003,7 +1140,10 @@ type ProjectAsset struct {
 	UploadedAt  time.Time `json:"uploaded_at"`
 }
 
-func (s *Service) ListProjectAssets(ctx context.Context, projectID string) ([]ProjectAsset, error) {
+func (s *Service) ListProjectAssets(ctx context.Context, projectID string, companyID string) ([]ProjectAsset, error) {
+	if _, err := s.Get(ctx, projectID, companyID); err != nil {
+		return nil, err
+	}
 	rows, err := s.pg.Query(ctx, `SELECT rel_path, content_type, COALESCE(length,0), uploaded_at FROM project_assets WHERE project_id=$1 ORDER BY rel_path ASC`, projectID)
 	if err != nil {
 		return nil, err

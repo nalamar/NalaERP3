@@ -855,3 +855,65 @@ func TestQuoteTextBlocksSettingsFlow(t *testing.T) {
 		t.Fatalf("expected empty quote text block list after delete, got %d", len(items))
 	}
 }
+
+func TestNumberingSettingsFlowIsScopedToOwnCompany(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-settings-numbering@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-settings-numbering@example.com", "Secret123!")
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/numbering/quote", nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for numbering get, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	previewReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/numbering/quote/preview", nil)
+	previewReq.Header.Set("Authorization", "Bearer "+accessToken)
+	previewRec := httptest.NewRecorder()
+	handler.ServeHTTP(previewRec, previewReq)
+	if previewRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for numbering preview, got %d with body %s", previewRec.Code, previewRec.Body.String())
+	}
+
+	updateReq := httptest.NewRequest(http.MethodPut, "/api/v1/settings/numbering/quote", bytes.NewReader([]byte(`{"pattern":"ANG-{YYYY}-{NNNN}"}`)))
+	updateReq.Header.Set("Authorization", "Bearer "+accessToken)
+	updateReq.Header.Set("Content-Type", "application/json")
+	updateRec := httptest.NewRecorder()
+	handler.ServeHTTP(updateRec, updateReq)
+	if updateRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for numbering update, got %d with body %s", updateRec.Code, updateRec.Body.String())
+	}
+
+	getAfterReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/numbering/quote", nil)
+	getAfterReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getAfterRec := httptest.NewRecorder()
+	handler.ServeHTTP(getAfterRec, getAfterReq)
+	if getAfterRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for numbering get after update, got %d with body %s", getAfterRec.Code, getAfterRec.Body.String())
+	}
+	var cfg struct {
+		Entity  string `json:"entity"`
+		Pattern string `json:"pattern"`
+	}
+	if err := json.Unmarshal(getAfterRec.Body.Bytes(), &cfg); err != nil {
+		t.Fatalf("decode numbering config: %v", err)
+	}
+	if cfg.Pattern != "ANG-{YYYY}-{NNNN}" {
+		t.Fatalf("expected updated pattern to persist, got %+v", cfg)
+	}
+
+	// Ein Nummernkreis, den es fuer diesen Mandanten nicht gibt (bzw. der
+	// einem anderen Mandanten gehoert), muss 404 liefern statt Daten eines
+	// fremden Mandanten preiszugeben.
+	unknownReq := httptest.NewRequest(http.MethodGet, "/api/v1/settings/numbering/nicht-existent", nil)
+	unknownReq.Header.Set("Authorization", "Bearer "+accessToken)
+	unknownRec := httptest.NewRecorder()
+	handler.ServeHTTP(unknownRec, unknownReq)
+	if unknownRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown numbering entity, got %d with body %s", unknownRec.Code, unknownRec.Body.String())
+	}
+}

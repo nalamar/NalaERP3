@@ -17,6 +17,23 @@ func TestMaterialsCreateListAndGetFlow(t *testing.T) {
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-materials@example.com", "Secret123!")
 
+	// material_groups wird nur aus bereits vorhandenen materials.kategorie-
+	// Werten rueckwirkend befuellt (039_material_groups.sql) - auf einer
+	// wirklich leeren DB ist die Tabelle daher leer, und
+	// normalizeAndValidateCategory() lehnt jede Kategorie ab, die weder in
+	// material_groups noch bereits in materials vorkommt. Der reale,
+	// vorgesehene Weg fuer eine NEUE Kategorie ist, sie zuerst ueber die
+	// Materialgruppen-Verwaltung anzulegen (Backlog 0.21).
+	createGroupBody := []byte(`{"code":"integration","name":"Integration","is_active":true}`)
+	createGroupReq := httptest.NewRequest(http.MethodPost, "/api/v1/settings/material-groups/", bytes.NewReader(createGroupBody))
+	createGroupReq.Header.Set("Content-Type", "application/json")
+	createGroupReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createGroupRec := httptest.NewRecorder()
+	handler.ServeHTTP(createGroupRec, createGroupReq)
+	if createGroupRec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for material group create, got %d with body %s", createGroupRec.Code, createGroupRec.Body.String())
+	}
+
 	createBody := []byte(`{
 		"nummer":"MAT-IT-0001",
 		"bezeichnung":"Integrationsprofil",
@@ -304,7 +321,7 @@ func TestMaterialsUpdateAllowsExistingLegacyCategory(t *testing.T) {
 
 	if _, err := env.PG.Exec(t.Context(), `
         INSERT INTO materials (
-            id, nummer, bezeichnung, typ, einheit, dichte, kategorie, attributes
+            id, nummer, bezeichnung, typ, einheit, dichte, kategorie, attributes, company_id
         ) VALUES (
             'mat-legacy-category-itest',
             'MAT-LEGACY-0001',
@@ -313,7 +330,8 @@ func TestMaterialsUpdateAllowsExistingLegacyCategory(t *testing.T) {
             'Stk',
             2.7,
             'legacy-existing',
-            '{}'::jsonb
+            '{}'::jsonb,
+            'default'
         )
         ON CONFLICT (id) DO UPDATE
         SET nummer = EXCLUDED.nummer,
@@ -322,7 +340,8 @@ func TestMaterialsUpdateAllowsExistingLegacyCategory(t *testing.T) {
             einheit = EXCLUDED.einheit,
             dichte = EXCLUDED.dichte,
             kategorie = EXCLUDED.kategorie,
-            attributes = EXCLUDED.attributes
+            attributes = EXCLUDED.attributes,
+            company_id = EXCLUDED.company_id
     `); err != nil {
 		t.Fatalf("seed legacy material: %v", err)
 	}

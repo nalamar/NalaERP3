@@ -20,7 +20,7 @@ import (
 func TestFindInvoiceIDInReferenceReturnsNilForEmptyReference(t *testing.T) {
 	s := &BankService{}
 
-	got := s.findInvoiceIDInReference(context.Background(), nil, "", "EUR")
+	got := s.findInvoiceIDInReference(context.Background(), nil, "", "EUR", "default")
 	if got != uuid.Nil {
 		t.Fatalf("expected uuid.Nil, got %v", got)
 	}
@@ -35,7 +35,7 @@ func TestFindInvoiceIDInReferenceReturnsNilWhenNoPatternMatches(t *testing.T) {
 	for _, ref := range cases {
 		s := &BankService{}
 
-		got := s.findInvoiceIDInReference(context.Background(), nil, ref, "EUR")
+		got := s.findInvoiceIDInReference(context.Background(), nil, ref, "EUR", "default")
 		if got != uuid.Nil {
 			t.Errorf("reference=%q: expected uuid.Nil (kein Zahlenmuster), got %v", ref, got)
 		}

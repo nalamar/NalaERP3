@@ -18,11 +18,11 @@ type dependencyHealth struct {
 }
 
 type healthResponse struct {
-	Status       string                      `json:"status"`
-	Zeit         string                      `json:"zeit"`
-	RequestID    string                      `json:"request_id,omitempty"`
-	CorrelationID string                     `json:"correlation_id,omitempty"`
-	Checks       map[string]dependencyHealth `json:"checks,omitempty"`
+	Status        string                      `json:"status"`
+	Zeit          string                      `json:"zeit"`
+	RequestID     string                      `json:"request_id,omitempty"`
+	CorrelationID string                      `json:"correlation_id,omitempty"`
+	Checks        map[string]dependencyHealth `json:"checks,omitempty"`
 }
 
 func writeSimpleHealth(w http.ResponseWriter, r *http.Request, status string, code int) {

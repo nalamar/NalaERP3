@@ -3,6 +3,7 @@ package accounting
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -38,15 +39,18 @@ func NewPaymentService(pg *pgxpool.Pool, journal *JournalService) *PaymentServic
 	return &PaymentService{pg: pg, journal: journal}
 }
 
-func (s *PaymentService) Apply(ctx context.Context, in PaymentInput) (*Payment, error) {
-	return s.apply(ctx, nil, in)
+func (s *PaymentService) Apply(ctx context.Context, in PaymentInput, companyID string) (*Payment, error) {
+	return s.apply(ctx, nil, in, companyID)
 }
 
 // apply allows reusing an existing transaction when provided.
-func (s *PaymentService) apply(ctx context.Context, tx pgx.Tx, in PaymentInput) (*Payment, error) {
+func (s *PaymentService) apply(ctx context.Context, tx pgx.Tx, in PaymentInput, companyID string) (*Payment, error) {
 	var err error
 	if in.Amount <= 0 {
 		return nil, errors.New("Betrag muss > 0 sein")
+	}
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
 	}
 	if in.Currency == "" {
 		in.Currency = "EUR"
@@ -70,7 +74,7 @@ func (s *PaymentService) apply(ctx context.Context, tx pgx.Tx, in PaymentInput) 
 	var status string
 	var currency string
 	var gross, paid float64
-	err = tx.QueryRow(ctx, `SELECT status, currency, gross_amount, paid_amount FROM invoices_out WHERE id=$1 FOR UPDATE`, in.InvoiceID).Scan(&status, &currency, &gross, &paid)
+	err = tx.QueryRow(ctx, `SELECT status, currency, gross_amount, paid_amount FROM invoices_out WHERE id=$1 AND company_id=$2 FOR UPDATE`, in.InvoiceID, companyID).Scan(&status, &currency, &gross, &paid)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +88,7 @@ func (s *PaymentService) apply(ctx context.Context, tx pgx.Tx, in PaymentInput) 
 	if in.Amount > open+0.0001 {
 		return nil, errors.New("Zahlung übersteigt offenen Betrag")
 	}
-	entry, err := s.journal.CreateTx(ctx, tx, paymentJournal(in, in.InvoiceID))
+	entry, err := s.journal.CreateTx(ctx, tx, paymentJournal(in, in.InvoiceID), companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +124,14 @@ func (s *PaymentService) apply(ctx context.Context, tx pgx.Tx, in PaymentInput) 
 	}, nil
 }
 
-func (s *PaymentService) List(ctx context.Context, invoiceID uuid.UUID) ([]Payment, error) {
+func (s *PaymentService) List(ctx context.Context, invoiceID uuid.UUID, companyID string) ([]Payment, error) {
+	var owned bool
+	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM invoices_out WHERE id=$1 AND company_id=$2)`, invoiceID, companyID).Scan(&owned); err != nil {
+		return nil, err
+	}
+	if !owned {
+		return nil, errors.New("Rechnung nicht gefunden")
+	}
 	rows, err := s.pg.Query(ctx, `SELECT id, invoice_id, amount, currency, method, reference, paid_at FROM invoice_out_payments WHERE invoice_id=$1 ORDER BY paid_at DESC`, invoiceID)
 	if err != nil {
 		return nil, err

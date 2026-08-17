@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -13,8 +14,93 @@ import (
 
 	"github.com/google/uuid"
 	"nalaerp3/internal/quotes"
+	"nalaerp3/internal/settings"
 	"nalaerp3/internal/testutil"
 )
+
+type gaebProcessParser struct {
+	calls int
+}
+
+func (p *gaebProcessParser) ParseGAEB(_ context.Context, source io.Reader, _ string) (quotes.GAEBImportParseResult, error) {
+	if _, err := io.ReadAll(source); err != nil {
+		return quotes.GAEBImportParseResult{}, err
+	}
+	p.calls++
+	return quotes.GAEBImportParseResult{
+		ParserVersion:  "http-parser-v1",
+		DetectedFormat: "x83",
+		Items: []quotes.QuoteImportItemInput{
+			{PositionNo: "01.001", Description: "Fenster", Qty: 1, Unit: "Stk", SortOrder: 1},
+		},
+	}, nil
+}
+
+func TestGAEBImportProcessEndpoint(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "gaeb-process-admin@example.com", "Secret123!", "admin")
+	testutil.SeedAuthUser(t, env, "gaeb-process-procurement@example.com", "Secret123!", "procurement")
+	parser := &gaebProcessParser{}
+	handler := NewRouterWithDepsAndOptions(env.PG, env.Mongo, env.Redis, env.Cfg, V1RouterOptions{GAEBImportParser: parser})
+	adminToken := loginIntegrationUser(t, handler, "gaeb-process-admin@example.com", "Secret123!")
+	procurementToken := loginIntegrationUser(t, handler, "gaeb-process-procurement@example.com", "Secret123!")
+	contactID, projectID := uuid.NewString(), uuid.NewString()
+	if _, err := env.PG.Exec(context.Background(), "INSERT INTO contacts (id, typ, rolle, status, name, email, phone, waehrung) VALUES ($1,'org','customer','active',$2,$3,$4,'EUR')", contactID, "GAEB Prozess Kunde", "gaeb-process@example.com", "+49 211 555555"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.PG.Exec(context.Background(), "INSERT INTO projects (id, nummer, name, kunde_id, status, company_id) VALUES ($1,$2,$3,$4,'angebot','default')", projectID, "PRJ-GAEB-PROCESS-0001", "GAEB Prozess Projekt", contactID); err != nil {
+		t.Fatal(err)
+	}
+	svc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	create := func(t *testing.T) *quotes.QuoteImport {
+		t.Helper()
+		imp, err := svc.CreateGAEBImport(context.Background(), quotes.QuoteImportCreateInput{ProjectID: projectID, ContactID: contactID}, strings.NewReader("source"), "process.x83", "default")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return imp
+	}
+	call := func(h http.Handler, token, id string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/"+id+"/process", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	success := create(t)
+	if rec := call(handler, adminToken, success.ID); rec.Code != http.StatusOK {
+		t.Fatalf("success: %d %s", rec.Code, rec.Body.String())
+	}
+	if parser.calls != 1 {
+		t.Fatalf("parser calls: %d", parser.calls)
+	}
+	if rec := call(handler, adminToken, success.ID); rec.Code != http.StatusConflict || parser.calls != 1 {
+		t.Fatalf("conflict: %d calls=%d", rec.Code, parser.calls)
+	}
+	if rec := call(handler, procurementToken, create(t).ID); rec.Code != http.StatusForbidden || parser.calls != 1 {
+		t.Fatalf("forbidden: %d calls=%d", rec.Code, parser.calls)
+	}
+	defaultImport, err := svc.CreateGAEBImport(context.Background(), quotes.QuoteImportCreateInput{ProjectID: projectID, ContactID: contactID}, strings.NewReader("<gaeb><item position_no=\"01.001\" qty=\"1\" unit=\"Stk\"><description>Fenster</description></item></gaeb>"), "default.xml", "default")
+	if err != nil {
+		t.Fatalf("create default XML import: %v", err)
+	}
+	if rec := call(NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg), adminToken, defaultImport.ID); rec.Code != http.StatusOK {
+		t.Fatalf("default parser: %d %s", rec.Code, rec.Body.String())
+	}
+	defaultParsed, err := svc.GetImport(context.Background(), defaultImport.ID, "default")
+	if err != nil || defaultParsed.Status != "parsed" || defaultParsed.ParserVersion != "gaeb-xml-subset-v1" || defaultParsed.ItemCount != 1 {
+		t.Fatalf("default parser result: %+v err=%v", defaultParsed, err)
+	}
+	noParser := create(t)
+	noParserHandler := NewRouterWithDepsAndOptions(env.PG, env.Mongo, env.Redis, env.Cfg, V1RouterOptions{})
+	if rec := call(noParserHandler, adminToken, noParser.ID); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("missing parser: %d %s", rec.Code, rec.Body.String())
+	}
+	after, err := svc.GetImport(context.Background(), noParser.ID, "default")
+	if err != nil || after.Status != "uploaded" {
+		t.Fatalf("no-parser import: %+v err=%v", after, err)
+	}
+}
 
 func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
@@ -1196,7 +1282,10 @@ func TestQuoteApprovalDecisionEndpointsRequireApprovePermission(t *testing.T) {
 	if approvedBadge.Status != "approved" || approvedBadge.DecidedBy != adminID || approvedBadge.DecidedByName != "Integration Test" || approvedBadge.DecidedAt == "" || approvedBadge.DecisionComment != "wirtschaftlich freigegeben" {
 		t.Fatalf("unexpected approved latest approval decision badge: %+v", approvedBadge)
 	}
-	if approvedBadge.ReasonCode != "below_target_margin" || approvedBadge.ReasonText != "Zielmarge pruefen" {
+	// unitPrice=50 < costBasis=60 => reasonCode "negative_margin" (siehe
+	// Backlog 0.28, gleiches Muster wie bei
+	// TestQuoteApprovalRequestQueueEndpointListsOnlyActiveRequests).
+	if approvedBadge.ReasonCode != "negative_margin" || approvedBadge.ReasonText != "Zielmarge pruefen" {
 		t.Fatalf("unexpected approved latest approval decision reason: %+v", approvedBadge)
 	}
 	if approvedBadge.ApprovedUnitPriceSnapshot == nil || approvedBadge.ApprovedTargetMarginPercent == nil {
@@ -1530,7 +1619,10 @@ func TestQuoteApprovalReworkQueueEndpointListsOnlyOpenLatestRejections(t *testin
 	if item.ApprovalRequestID == "" || item.DecidedAt == "" || item.DecidedByName != "Integration Test" {
 		t.Fatalf("expected decision metadata in queue item, got %+v", item)
 	}
-	if item.ReasonCode != "below_target_margin" || item.ReasonText != "Zielmarge pruefen" || item.DecisionComment != "Preis nacharbeiten" {
+	// unitPrice=50 < costBasis=60 => reasonCode "negative_margin" (siehe
+	// Backlog 0.28, gleiches Muster wie bei
+	// TestQuoteApprovalRequestQueueEndpointListsOnlyActiveRequests).
+	if item.ReasonCode != "negative_margin" || item.ReasonText != "Zielmarge pruefen" || item.DecisionComment != "Preis nacharbeiten" {
 		t.Fatalf("unexpected rejection details in queue item: %+v", item)
 	}
 	if item.CurrentUnitPrice != 50 || item.CurrentUnitPriceSnapshot != 50 || item.CostBasisUnitPriceSnapshot != 60 || item.TargetMarginPercentSnapshot != 20 {
@@ -1729,7 +1821,13 @@ func TestQuoteApprovalRequestQueueEndpointListsOnlyActiveRequests(t *testing.T) 
 	if item.ApprovalRequestID == "" || item.RequestedBy == "" || item.RequestedAt == "" || item.RequestedByName != "Integration Test" {
 		t.Fatalf("expected request metadata in queue item, got %+v", item)
 	}
-	if item.ReasonCode != "below_target_margin" || item.ReasonText != "Zielmarge pruefen" {
+	// unitPrice=50 < costBasis=60 => absoluteMargin=-10 < 0 => reasonCode
+	// "negative_margin" (server/internal/quotes/service.go); "below_target_margin"
+	// wuerde unitPrice zwischen costBasis und Zielpreis voraussetzen, was
+	// bereits durch die uebrigen Assertions unten (TargetDifferenceSnapshot,
+	// MarginPercentSnapshot, CurrentTargetStatus="below_cost") widerlegt wird
+	// (Backlog 0.28).
+	if item.ReasonCode != "negative_margin" || item.ReasonText != "Zielmarge pruefen" {
 		t.Fatalf("unexpected request details in queue item: %+v", item)
 	}
 	if item.CurrentUnitPrice != 50 || item.CurrentUnitPriceSnapshot != 50 || item.CostBasisUnitPriceSnapshot != 60 || item.TargetMarginPercentSnapshot != 20 {
@@ -2500,18 +2598,18 @@ func TestQuoteGAEBImportListAndDetailExposeReviewSummaryCounts(t *testing.T) {
 			Unit:        "m",
 			SortOrder:   3,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
 
-	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil || len(items) != 3 {
 		t.Fatalf("expected 3 import items, got %d err=%v", len(items), err)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen", "default"); err != nil {
 		t.Fatalf("accept import item: %v", err)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen", "default"); err != nil {
 		t.Fatalf("reject import item: %v", err)
 	}
 
@@ -2659,7 +2757,7 @@ func TestQuoteGAEBImportItemReadEndpointsExposeParsedItems(t *testing.T) {
 			ParserHint:  "optionale-position",
 			SortOrder:   2,
 		},
-	})
+	}, "default")
 	if err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
@@ -2816,11 +2914,11 @@ func TestQuoteGAEBImportItemReviewEndpointUpdatesReviewFields(t *testing.T) {
 			Unit:        "Stk",
 			SortOrder:   1,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
 
-	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil || len(items) != 1 {
 		t.Fatalf("expected one import item, got %d err=%v", len(items), err)
 	}
@@ -3025,7 +3123,7 @@ func TestQuoteGAEBImportReviewEndpointRejectsPendingItems(t *testing.T) {
 			Unit:        "Stk",
 			SortOrder:   1,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
 
@@ -3131,18 +3229,18 @@ func TestQuoteGAEBImportApplyCreatesDraftQuoteFromAcceptedItems(t *testing.T) {
 			Unit:        "Std",
 			SortOrder:   2,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
 
-	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil || len(items) != 2 {
 		t.Fatalf("expected two import items, got %d err=%v", len(items), err)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen", "default"); err != nil {
 		t.Fatalf("accept import item: %v", err)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[1].ID, "rejected", "Nicht übernehmen", "default"); err != nil {
 		t.Fatalf("reject import item: %v", err)
 	}
 
@@ -3397,7 +3495,7 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 		t.Fatalf("decode upload response: %v", err)
 	}
 
-	quoteSvc := quotes.NewService(env.PG, nil).WithMongo(env.Mongo, env.Cfg.MongoDB)
+	quoteSvc := quotes.NewService(env.PG, settings.NewNumberingService(env.PG)).WithMongo(env.Mongo, env.Cfg.MongoDB)
 	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "parser-v1", "x83", []quotes.QuoteImportItemInput{
 		{
 			PositionNo:  "01.001",
@@ -3407,22 +3505,22 @@ func TestQuoteGAEBImportApplyExposesReadOnlyMaterialCandidates(t *testing.T) {
 			Unit:        "m",
 			SortOrder:   1,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save import parse result: %v", err)
 	}
 
-	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	items, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil || len(items) != 1 {
 		t.Fatalf("expected one import item, got %d err=%v", len(items), err)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, items[0].ID, "accepted", "Übernehmen", "default"); err != nil {
 		t.Fatalf("accept import item: %v", err)
 	}
-	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID); err != nil {
+	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID, "default"); err != nil {
 		t.Fatalf("mark import reviewed: %v", err)
 	}
 
-	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID)
+	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil {
 		t.Fatalf("apply import: %v", err)
 	}
@@ -3573,7 +3671,7 @@ func TestQuoteApplyVisibleMaterialCandidateSetsManualMapping(t *testing.T) {
 		t.Fatalf("close multipart writer: %v", err)
 	}
 
-	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports", uploadBody)
+	uploadReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/imports/gaeb", uploadBody)
 	uploadReq.Header.Set("Authorization", "Bearer "+accessToken)
 	uploadReq.Header.Set("Content-Type", uploadWriter.FormDataContentType())
 	uploadRec := httptest.NewRecorder()
@@ -3589,7 +3687,7 @@ func TestQuoteApplyVisibleMaterialCandidateSetsManualMapping(t *testing.T) {
 		t.Fatalf("decode import upload response: %v", err)
 	}
 
-	quoteSvc := quotes.NewService(env.PG, nil)
+	quoteSvc := quotes.NewService(env.PG, settings.NewNumberingService(env.PG))
 	if _, err := quoteSvc.SaveImportParseResult(uploadReq.Context(), createdImport.ID, "itest-parser", "GAEB-X83", []quotes.QuoteImportItemInput{
 		{
 			PositionNo:  "01",
@@ -3598,24 +3696,24 @@ func TestQuoteApplyVisibleMaterialCandidateSetsManualMapping(t *testing.T) {
 			Unit:        "Stk",
 			SortOrder:   1,
 		},
-	}); err != nil {
+	}, "default"); err != nil {
 		t.Fatalf("save parse result: %v", err)
 	}
-	importItems, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID)
+	importItems, err := quoteSvc.ListImportItems(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil {
 		t.Fatalf("list import items: %v", err)
 	}
 	if len(importItems) != 1 {
 		t.Fatalf("expected one import item, got %+v", importItems)
 	}
-	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, importItems[0].ID, "accepted", "Passender Kandidat sichtbar"); err != nil {
+	if _, err := quoteSvc.UpdateImportItemReview(uploadReq.Context(), createdImport.ID, importItems[0].ID, "accepted", "Passender Kandidat sichtbar", "default"); err != nil {
 		t.Fatalf("accept import item: %v", err)
 	}
-	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID); err != nil {
+	if _, err := quoteSvc.MarkImportReviewed(uploadReq.Context(), createdImport.ID, "default"); err != nil {
 		t.Fatalf("mark import reviewed: %v", err)
 	}
 
-	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID)
+	applied, err := quoteSvc.ApplyImportToDraftQuote(uploadReq.Context(), createdImport.ID, "default")
 	if err != nil {
 		t.Fatalf("apply import: %v", err)
 	}
@@ -3691,6 +3789,7 @@ func TestQuoteMaterialSearchEndpointSupportsOpenDraftItemSearch(t *testing.T) {
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-material-search@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -3850,6 +3949,7 @@ func TestQuoteMaterialSearchApplyEndpointSupportsVisibleSearchResultApply(t *tes
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-material-search-apply@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -3998,6 +4098,7 @@ func TestQuotePriceSuggestionEndpointSupportsMappedDraftItem(t *testing.T) {
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-price-suggestion@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -4151,6 +4252,7 @@ func TestQuoteApplyPriceSuggestionEndpointSupportsMappedDraftItem(t *testing.T) 
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-price-apply@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -4301,6 +4403,7 @@ func TestQuotePriceHistoryEndpointReturnsVisibleSourcesForMappedDraftItem(t *tes
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-price-history@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -4482,6 +4585,7 @@ func TestQuotePriceSourcePriorityEndpointReturnsPrioritizedVisibleSources(t *tes
 
 	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
 	accessToken := loginIntegrationUser(t, handler, "integration-price-source-priority@example.com", "Secret123!")
+	ensureIntegrationMaterialGroup(t, handler, accessToken, "profile")
 
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
 		"typ":      "org",
@@ -6225,8 +6329,8 @@ func seedHTTPApprovalDecisionQuote(t *testing.T, env *testutil.IntegrationEnv, c
 	itemID := uuid.New()
 	decisionID := uuid.New()
 	if _, err := env.PG.Exec(ctx, `
-		INSERT INTO quotes (id, nummer, root_quote_id, revision_no, contact_id, status, quote_date, currency, net_amount, tax_amount, gross_amount)
-		VALUES ($1, $2, $1, 1, $3, 'draft', CURRENT_DATE, 'EUR', $4, 0, $4)
+		INSERT INTO quotes (id, nummer, root_quote_id, revision_no, contact_id, status, quote_date, currency, net_amount, tax_amount, gross_amount, company_id)
+		VALUES ($1, $2, $1, 1, $3, 'draft', CURRENT_DATE, 'EUR', $4, 0, $4, 'default')
 	`, quoteID, number, contactID, unitPrice); err != nil {
 		t.Fatalf("seed approval decision quote: %v", err)
 	}

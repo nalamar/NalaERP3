@@ -4,106 +4,116 @@ import (
 	"encoding/json"
 	"net/http"
 
-    "github.com/go-chi/chi/v5"
-    "github.com/go-chi/chi/v5/middleware"
-    "github.com/jackc/pgx/v5/pgxpool"
-    "github.com/redis/go-redis/v9"
-    "go.mongodb.org/mongo-driver/mongo"
-    "nalaerp3/internal/version"
-    "nalaerp3/internal/config"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+	"go.mongodb.org/mongo-driver/mongo"
+	"nalaerp3/internal/config"
+	"nalaerp3/internal/quotes"
+	"nalaerp3/internal/version"
 )
 
 // corsMiddleware allows cross-origin requests (dev: client on :3000)
 func corsMiddleware(next http.Handler) http.Handler {
-    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Access-Control-Allow-Origin", "*")
-        w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-        // Echo requested headers if present to satisfy preflight for custom headers (e.g., X-Filename)
-        if acrh := r.Header.Get("Access-Control-Request-Headers"); acrh != "" {
-            w.Header().Set("Access-Control-Allow-Headers", acrh)
-        } else {
-            w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Accept-Language, X-Filename")
-        }
-        w.Header().Set("Access-Control-Max-Age", "600")
-        if r.Method == http.MethodOptions {
-            w.WriteHeader(http.StatusNoContent)
-            return
-        }
-        next.ServeHTTP(w, r)
-    })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
+		// Echo requested headers if present to satisfy preflight for custom headers (e.g., X-Filename)
+		if acrh := r.Header.Get("Access-Control-Request-Headers"); acrh != "" {
+			w.Header().Set("Access-Control-Allow-Headers", acrh)
+		} else {
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Accept-Language, X-Filename")
+		}
+		w.Header().Set("Access-Control-Max-Age", "600")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // NewRouter stellt den HTTP-Router bereit.
 func NewRouter() http.Handler {
-    r := chi.NewRouter()
+	r := chi.NewRouter()
 
-    r.Use(middleware.RequestID)
-    r.Use(middleware.RealIP)
-    r.Use(requestContextMiddleware)
-    r.Use(requestLoggerMiddleware)
-    r.Use(panicRecoveryMiddleware)
-    r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
-    r.Use(corsMiddleware)
-    r.Use(func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-            w.Header().Set("Content-Language", "de-DE")
-            next.ServeHTTP(w, req)
-        })
-    })
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(requestContextMiddleware)
+	r.Use(requestLoggerMiddleware)
+	r.Use(panicRecoveryMiddleware)
+	r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
+	r.Use(corsMiddleware)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Language", "de-DE")
+			next.ServeHTTP(w, req)
+		})
+	})
 
-    r.Get("/livez", liveHandler())
-    r.Get("/healthz", liveHandler())
+	r.Get("/livez", liveHandler())
+	r.Get("/healthz", liveHandler())
 
-    r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        _ = json.NewEncoder(w).Encode(map[string]any{
-            "version":   version.Version,
-            "commit":    version.Commit,
-            "build_time": version.BuildTime,
-        })
-    })
+	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"version":    version.Version,
+			"commit":     version.Commit,
+			"build_time": version.BuildTime,
+		})
+	})
 
-    // API v1 Namespace
-    r.Route("/api/v1", func(r chi.Router) {
-        // Material-Routen folgen hier (MVP)
-        r.Get("/materials", func(w http.ResponseWriter, r *http.Request) {
-            w.Header().Set("Content-Type", "application/json; charset=utf-8")
-            w.WriteHeader(http.StatusOK)
-            _ = json.NewEncoder(w).Encode([]any{})
-        })
-    })
+	// API v1 Namespace
+	r.Route("/api/v1", func(r chi.Router) {
+		// Material-Routen folgen hier (MVP)
+		r.Get("/materials", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]any{})
+		})
+	})
 
-    return r
+	return r
 }
 
 // NewRouterWithDeps stellt den Router mit DB-Abhängigkeiten bereit.
 func NewRouterWithDeps(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
-    r := chi.NewRouter()
+	return NewRouterWithDepsAndOptions(pg, mg, rd, cfg, V1RouterOptions{
+		GAEBImportParser: quotes.GAEBXMLSubsetParser{},
+	})
+}
 
-    r.Use(middleware.RequestID)
-    r.Use(middleware.RealIP)
-    r.Use(requestContextMiddleware)
-    r.Use(requestLoggerMiddleware)
-    r.Use(panicRecoveryMiddleware)
-    r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
-    r.Use(corsMiddleware)
-    r.Use(func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-            w.Header().Set("Content-Language", "de-DE")
-            next.ServeHTTP(w, req)
-        })
-    })
+// NewRouterWithDepsAndOptions verhält sich wie NewRouterWithDeps, erlaubt aber
+// zusätzlich das Überschreiben von V1RouterOptions (z. B. für einen
+// Test-Double des GAEBImportParser) bei gleichzeitig korrektem /api/v1-Mount.
+func NewRouterWithDepsAndOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config, options V1RouterOptions) http.Handler {
+	r := chi.NewRouter()
 
-    // Basis
-    r.Get("/livez", liveHandler())
-    r.Get("/readyz", readyHandler(pg, mg, rd))
-    r.Get("/healthz", readyHandler(pg, mg, rd))
-    r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
-        w.Header().Set("Content-Type", "application/json; charset=utf-8")
-        _ = json.NewEncoder(w).Encode(map[string]any{"version": version.Version, "commit": version.Commit, "build_time": version.BuildTime})
-    })
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(requestContextMiddleware)
+	r.Use(requestLoggerMiddleware)
+	r.Use(panicRecoveryMiddleware)
+	r.Use(middleware.AllowContentType("application/json", "multipart/form-data"))
+	r.Use(corsMiddleware)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Language", "de-DE")
+			next.ServeHTTP(w, req)
+		})
+	})
 
-    // API v1
-    r.Mount("/api/v1", NewV1Router(pg, mg, rd, cfg))
-    return r
+	// Basis
+	r.Get("/livez", liveHandler())
+	r.Get("/readyz", readyHandler(pg, mg, rd))
+	r.Get("/healthz", readyHandler(pg, mg, rd))
+	r.Get("/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version.Version, "commit": version.Commit, "build_time": version.BuildTime})
+	})
+
+	// API v1
+	r.Mount("/api/v1", NewV1RouterWithOptions(pg, mg, rd, cfg, options))
+	return r
 }

@@ -3,6 +3,7 @@ package accounting
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,16 +41,19 @@ type JournalService struct{ pg *pgxpool.Pool }
 
 func NewJournalService(pg *pgxpool.Pool) *JournalService { return &JournalService{pg: pg} }
 
-func (s *JournalService) Create(ctx context.Context, in JournalEntryInput) (*JournalEntry, error) {
-	return s.create(ctx, nil, in)
+func (s *JournalService) Create(ctx context.Context, in JournalEntryInput, companyID string) (*JournalEntry, error) {
+	return s.create(ctx, nil, in, companyID)
 }
 
-func (s *JournalService) CreateTx(ctx context.Context, tx pgx.Tx, in JournalEntryInput) (*JournalEntry, error) {
-	return s.create(ctx, tx, in)
+func (s *JournalService) CreateTx(ctx context.Context, tx pgx.Tx, in JournalEntryInput, companyID string) (*JournalEntry, error) {
+	return s.create(ctx, tx, in, companyID)
 }
 
 // Create within optional transaction
-func (s *JournalService) create(ctx context.Context, tx pgx.Tx, in JournalEntryInput) (*JournalEntry, error) {
+func (s *JournalService) create(ctx context.Context, tx pgx.Tx, in JournalEntryInput, companyID string) (*JournalEntry, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
 	if len(in.Lines) == 0 {
 		return nil, errors.New("keine Buchungszeilen")
 	}
@@ -81,8 +85,8 @@ func (s *JournalService) create(ctx context.Context, tx pgx.Tx, in JournalEntryI
 		defer tx.Rollback(ctx)
 		commit = true
 	}
-	_, err := tx.Exec(ctx, `INSERT INTO journal_entries (id, entry_date, description, currency, source, source_id) VALUES ($1,$2,$3,$4,$5,$6)`,
-		id, in.Date, in.Description, in.Currency, in.Source, in.SourceID)
+	_, err := tx.Exec(ctx, `INSERT INTO journal_entries (id, entry_date, description, currency, source, source_id, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+		id, in.Date, in.Description, in.Currency, in.Source, in.SourceID, companyID)
 	if err != nil {
 		return nil, err
 	}

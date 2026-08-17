@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -189,5 +190,460 @@ func TestInvoiceOutFlowWithPDFAndPayments(t *testing.T) {
 	}
 	if len(payments) != 1 {
 		t.Fatalf("expected one payment, got %d", len(payments))
+	}
+
+	// Nachdem eine Zahlung erfasst wurde, darf die Rechnung nicht mehr
+	// storniert werden (siehe Task 0.3.1: Zahlungs-Rückabwicklung ist
+	// bewusst nicht Teil dieses Storno-Konzepts).
+	stornoAfterPaymentReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+createdInvoice.ID+"/storno", bytes.NewReader([]byte(`{"reason":"Testfall"}`)))
+	stornoAfterPaymentReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stornoAfterPaymentReq.Header.Set("Content-Type", "application/json")
+	stornoAfterPaymentRec := httptest.NewRecorder()
+	handler.ServeHTTP(stornoAfterPaymentRec, stornoAfterPaymentReq)
+	if stornoAfterPaymentRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for storno after payment, got %d with body %s", stornoAfterPaymentRec.Code, stornoAfterPaymentRec.Body.String())
+	}
+}
+
+// TestInvoiceOutPaymentGuardsRejectInvalidPayments deckt die drei fachlich
+// zentralen Regeln aus PaymentService.apply() ab (Backlog 0.8), die vorher
+// weder unit- noch integrationsgetestet waren (sie liegen nach dem
+// tx.QueryRow-Laden der Rechnung, sind also ohne echte DB-Transaktion nicht
+// unit-testbar): Statusguard ("Rechnung ist nicht gebucht"),
+// Währungsabgleich ("Währung stimmt nicht mit Rechnung überein") und
+// Überzahlungsschutz ("Zahlung übersteigt offenen Betrag").
+func TestInvoiceOutPaymentGuardsRejectInvalidPayments(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-finance-guards@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-finance-guards@example.com", "Secret123!")
+
+	createContactBody := []byte(`{
+		"name":"Payment Guard Kunde",
+		"rolle":"customer",
+		"status":"active",
+		"typ":"org"
+	}`)
+	createContactReq := httptest.NewRequest(http.MethodPost, "/api/v1/contacts/", bytes.NewReader(createContactBody))
+	createContactReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createContactReq.Header.Set("Content-Type", "application/json")
+	createContactRec := httptest.NewRecorder()
+	handler.ServeHTTP(createContactRec, createContactReq)
+	if createContactRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for contact create, got %d with body %s", createContactRec.Code, createContactRec.Body.String())
+	}
+	var createdContact struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createContactRec.Body.Bytes(), &createdContact); err != nil {
+		t.Fatalf("decode contact create response: %v", err)
+	}
+
+	// net 300 + USt 19% (57) = gross 357.
+	createInvoiceBody := []byte(`{
+		"contact_id":"` + createdContact.ID + `",
+		"currency":"EUR",
+		"items":[
+			{
+				"description":"Montageleistung",
+				"qty":2,
+				"unit_price":150,
+				"tax_code":"DE19",
+				"account_code":"8000"
+			}
+		]
+	}`)
+	createInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/", bytes.NewReader(createInvoiceBody))
+	createInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createInvoiceReq.Header.Set("Content-Type", "application/json")
+	createInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(createInvoiceRec, createInvoiceReq)
+	if createInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for invoice create, got %d with body %s", createInvoiceRec.Code, createInvoiceRec.Body.String())
+	}
+	var createdInvoice struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createInvoiceRec.Body.Bytes(), &createdInvoice); err != nil {
+		t.Fatalf("decode invoice create response: %v", err)
+	}
+
+	applyPayment := func(body []byte) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+createdInvoice.ID+"/payments", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+	decodeErrorMessage := func(t *testing.T, rec *httptest.ResponseRecorder) string {
+		t.Helper()
+		var body struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+			t.Fatalf("decode error response: %v", err)
+		}
+		return body.Error.Message
+	}
+
+	// Guard 1: Statusguard - die Rechnung ist noch im Status "draft" (nicht
+	// gebucht), eine Zahlung darauf muss abgelehnt werden.
+	notBookedRec := applyPayment([]byte(`{"amount":100,"currency":"EUR","method":"bank"}`))
+	if notBookedRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for payment on unbooked invoice, got %d with body %s", notBookedRec.Code, notBookedRec.Body.String())
+	}
+	if msg := decodeErrorMessage(t, notBookedRec); msg != "Rechnung ist nicht gebucht" {
+		t.Fatalf("expected 'Rechnung ist nicht gebucht', got %q", msg)
+	}
+
+	bookReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+createdInvoice.ID+"/book", nil)
+	bookReq.Header.Set("Authorization", "Bearer "+accessToken)
+	bookRec := httptest.NewRecorder()
+	handler.ServeHTTP(bookRec, bookReq)
+	if bookRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invoice book, got %d with body %s", bookRec.Code, bookRec.Body.String())
+	}
+
+	// Guard 2: Waehrungsabgleich - die Rechnung lautet auf EUR, eine Zahlung
+	// in einer anderen Waehrung muss abgelehnt werden.
+	wrongCurrencyRec := applyPayment([]byte(`{"amount":100,"currency":"USD","method":"bank"}`))
+	if wrongCurrencyRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for currency mismatch, got %d with body %s", wrongCurrencyRec.Code, wrongCurrencyRec.Body.String())
+	}
+	if msg := decodeErrorMessage(t, wrongCurrencyRec); msg != "Währung stimmt nicht mit Rechnung überein" {
+		t.Fatalf("expected 'Währung stimmt nicht mit Rechnung überein', got %q", msg)
+	}
+
+	// Guard 3: Ueberzahlungsschutz - gross_amount ist 357, eine Zahlung
+	// darueber muss abgelehnt werden.
+	overpaymentRec := applyPayment([]byte(`{"amount":1000,"currency":"EUR","method":"bank"}`))
+	if overpaymentRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for overpayment, got %d with body %s", overpaymentRec.Code, overpaymentRec.Body.String())
+	}
+	if msg := decodeErrorMessage(t, overpaymentRec); msg != "Zahlung übersteigt offenen Betrag" {
+		t.Fatalf("expected 'Zahlung übersteigt offenen Betrag', got %q", msg)
+	}
+
+	// Regressionscheck: eine gueltige Zahlung innerhalb des offenen Betrags
+	// wird trotz der drei vorherigen Ablehnungen weiterhin akzeptiert - die
+	// Guards blockieren nur die ungueltigen Faelle, nicht den Normalfall.
+	validRec := applyPayment([]byte(`{"amount":100,"currency":"EUR","method":"bank"}`))
+	if validRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for valid payment, got %d with body %s", validRec.Code, validRec.Body.String())
+	}
+}
+
+func TestInvoiceOutStornoFlow(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-finance-storno@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-finance-storno@example.com", "Secret123!")
+
+	createContactReq := httptest.NewRequest(http.MethodPost, "/api/v1/contacts/", bytes.NewReader([]byte(`{
+		"name":"Storno Test Kunde",
+		"rolle":"customer",
+		"status":"active",
+		"typ":"org"
+	}`)))
+	createContactReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createContactReq.Header.Set("Content-Type", "application/json")
+	createContactRec := httptest.NewRecorder()
+	handler.ServeHTTP(createContactRec, createContactReq)
+	if createContactRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for contact create, got %d with body %s", createContactRec.Code, createContactRec.Body.String())
+	}
+	var contact struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createContactRec.Body.Bytes(), &contact); err != nil {
+		t.Fatalf("decode contact create response: %v", err)
+	}
+
+	createInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/", bytes.NewReader([]byte(`{
+		"contact_id":"`+contact.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Montageleistung","qty":2,"unit_price":150,"tax_code":"DE19","account_code":"8000"}]
+	}`)))
+	createInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createInvoiceReq.Header.Set("Content-Type", "application/json")
+	createInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(createInvoiceRec, createInvoiceReq)
+	if createInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for invoice create, got %d with body %s", createInvoiceRec.Code, createInvoiceRec.Body.String())
+	}
+	var invoice struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createInvoiceRec.Body.Bytes(), &invoice); err != nil {
+		t.Fatalf("decode invoice create response: %v", err)
+	}
+
+	// Storno eines noch nicht gebuchten (draft) Belegs muss abgelehnt werden.
+	stornoDraftReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+invoice.ID+"/storno", bytes.NewReader([]byte(`{"reason":"Testfall"}`)))
+	stornoDraftReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stornoDraftReq.Header.Set("Content-Type", "application/json")
+	stornoDraftRec := httptest.NewRecorder()
+	handler.ServeHTTP(stornoDraftRec, stornoDraftReq)
+	if stornoDraftRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for storno of draft invoice, got %d with body %s", stornoDraftRec.Code, stornoDraftRec.Body.String())
+	}
+
+	bookReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+invoice.ID+"/book", nil)
+	bookReq.Header.Set("Authorization", "Bearer "+accessToken)
+	bookRec := httptest.NewRecorder()
+	handler.ServeHTTP(bookRec, bookReq)
+	if bookRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for invoice book, got %d with body %s", bookRec.Code, bookRec.Body.String())
+	}
+
+	// Fehlender Stornogrund muss abgelehnt werden.
+	stornoNoReasonReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+invoice.ID+"/storno", bytes.NewReader([]byte(`{"reason":""}`)))
+	stornoNoReasonReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stornoNoReasonReq.Header.Set("Content-Type", "application/json")
+	stornoNoReasonRec := httptest.NewRecorder()
+	handler.ServeHTTP(stornoNoReasonRec, stornoNoReasonReq)
+	if stornoNoReasonRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for storno without reason, got %d with body %s", stornoNoReasonRec.Code, stornoNoReasonRec.Body.String())
+	}
+
+	stornoReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+invoice.ID+"/storno", bytes.NewReader([]byte(`{"reason":"Kunde hat storniert"}`)))
+	stornoReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stornoReq.Header.Set("Content-Type", "application/json")
+	stornoRec := httptest.NewRecorder()
+	handler.ServeHTTP(stornoRec, stornoReq)
+	if stornoRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for storno, got %d with body %s", stornoRec.Code, stornoRec.Body.String())
+	}
+	var stornoed struct {
+		Status               string  `json:"status"`
+		StornoGrund          string  `json:"storno_grund"`
+		StorniertAm          *string `json:"storniert_am"`
+		StornoJournalEntryID *string `json:"storno_journal_entry_id"`
+	}
+	if err := json.Unmarshal(stornoRec.Body.Bytes(), &stornoed); err != nil {
+		t.Fatalf("decode storno response: %v", err)
+	}
+	if stornoed.Status != "storniert" {
+		t.Fatalf("expected status storniert, got %q", stornoed.Status)
+	}
+	if stornoed.StornoGrund != "Kunde hat storniert" {
+		t.Fatalf("expected storno reason to persist, got %q", stornoed.StornoGrund)
+	}
+	if stornoed.StorniertAm == nil || *stornoed.StorniertAm == "" {
+		t.Fatal("expected storniert_am to be set")
+	}
+	if stornoed.StornoJournalEntryID == nil || *stornoed.StornoJournalEntryID == "" {
+		t.Fatal("expected storno_journal_entry_id to be set")
+	}
+
+	// Ein bereits stornierter Beleg darf nicht erneut storniert werden.
+	stornoAgainReq := httptest.NewRequest(http.MethodPost, "/api/v1/invoices-out/"+invoice.ID+"/storno", bytes.NewReader([]byte(`{"reason":"Nochmal"}`)))
+	stornoAgainReq.Header.Set("Authorization", "Bearer "+accessToken)
+	stornoAgainReq.Header.Set("Content-Type", "application/json")
+	stornoAgainRec := httptest.NewRecorder()
+	handler.ServeHTTP(stornoAgainRec, stornoAgainReq)
+	if stornoAgainRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for repeated storno, got %d with body %s", stornoAgainRec.Code, stornoAgainRec.Body.String())
+	}
+
+	// Task 0.3.3.1: das generische Aenderungsprotokoll muss "gebucht" und
+	// "storniert" als je einen Eintrag enthalten, neueste zuerst.
+	auditReq := httptest.NewRequest(http.MethodGet, "/api/v1/invoices-out/"+invoice.ID+"/audit-log", nil)
+	auditReq.Header.Set("Authorization", "Bearer "+accessToken)
+	auditRec := httptest.NewRecorder()
+	handler.ServeHTTP(auditRec, auditReq)
+	if auditRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for audit log, got %d with body %s", auditRec.Code, auditRec.Body.String())
+	}
+	var auditEntries []struct {
+		Action      string `json:"action"`
+		ActorUserID string `json:"actor_user_id"`
+		Note        string `json:"note"`
+	}
+	if err := json.Unmarshal(auditRec.Body.Bytes(), &auditEntries); err != nil {
+		t.Fatalf("decode audit log response: %v", err)
+	}
+	if len(auditEntries) != 2 {
+		t.Fatalf("expected 2 audit log entries, got %+v", auditEntries)
+	}
+	if auditEntries[0].Action != "storniert" || auditEntries[1].Action != "gebucht" {
+		t.Fatalf("expected [storniert, gebucht] newest-first, got %+v", auditEntries)
+	}
+	if auditEntries[0].ActorUserID == "" {
+		t.Fatal("expected actor_user_id to be set on storno entry")
+	}
+	if auditEntries[0].Note != "Kunde hat storniert" {
+		t.Fatalf("expected storno note to persist, got %q", auditEntries[0].Note)
+	}
+}
+
+// TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged belegt Subtask
+// 0.3.3.3 (Anbindung sales_orders an das Aenderungsprotokoll). Der Weg ueber
+// quotes-Annahme -> convert-to-sales-order -> Status "released" -> Rechnung
+// wird bewusst gewaehlt, um zwei bereits bekannte, unabhaengige Vorbefunde
+// zu umgehen (Backlog 0.24: DELETE des letzten Postens liefert 500 statt
+// 400; Backlog 0.25: direkte quotes/{id}/convert-to-invoice ohne
+// vorherigen Status-Uebergang schlaegt fehl) - beide sind in dieser Route
+// nicht involviert.
+func TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-finance-sales-audit@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-finance-sales-audit@example.com", "Secret123!")
+
+	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
+		"typ":      "org",
+		"rolle":    "customer",
+		"status":   "active",
+		"name":     "Sales Audit Kunde GmbH",
+		"email":    "sales-audit@example.com",
+		"telefon":  "+49 211 444444",
+		"waehrung": "EUR",
+	})
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{
+		"name":"Sales Audit Projekt",
+		"kunde_id":"`+customerID+`",
+		"status":"angebot"
+	}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+	var project struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &project); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	createQuoteReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/", bytes.NewReader([]byte(`{
+		"project_id":"`+project.ID+`",
+		"currency":"EUR",
+		"items":[{"description":"Wartungsvertrag","qty":1,"unit":"Pauschale","unit_price":650,"tax_code":"DE19"}]
+	}`)))
+	createQuoteReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createQuoteReq.Header.Set("Content-Type", "application/json")
+	createQuoteRec := httptest.NewRecorder()
+	handler.ServeHTTP(createQuoteRec, createQuoteReq)
+	if createQuoteRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for quote create, got %d with body %s", createQuoteRec.Code, createQuoteRec.Body.String())
+	}
+	var quote struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createQuoteRec.Body.Bytes(), &quote); err != nil {
+		t.Fatalf("decode quote create response: %v", err)
+	}
+
+	acceptReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+quote.ID+"/accept", bytes.NewReader([]byte(`{}`)))
+	acceptReq.Header.Set("Authorization", "Bearer "+accessToken)
+	acceptReq.Header.Set("Content-Type", "application/json")
+	acceptRec := httptest.NewRecorder()
+	handler.ServeHTTP(acceptRec, acceptReq)
+	if acceptRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for quote accept, got %d with body %s", acceptRec.Code, acceptRec.Body.String())
+	}
+
+	convertToSalesOrderReq := httptest.NewRequest(http.MethodPost, "/api/v1/quotes/"+quote.ID+"/convert-to-sales-order", nil)
+	convertToSalesOrderReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertToSalesOrderRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertToSalesOrderRec, convertToSalesOrderReq)
+	if convertToSalesOrderRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for quote conversion to sales order, got %d with body %s", convertToSalesOrderRec.Code, convertToSalesOrderRec.Body.String())
+	}
+	var salesOrder struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+		Items  []struct {
+			ID string `json:"id"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(convertToSalesOrderRec.Body.Bytes(), &salesOrder); err != nil {
+		t.Fatalf("decode sales order create response: %v", err)
+	}
+	if salesOrder.Status != "open" {
+		t.Fatalf("expected sales order status open, got %q", salesOrder.Status)
+	}
+
+	releaseReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+salesOrder.ID+"/status", bytes.NewReader([]byte(`{"status":"released"}`)))
+	releaseReq.Header.Set("Authorization", "Bearer "+accessToken)
+	releaseReq.Header.Set("Content-Type", "application/json")
+	releaseRec := httptest.NewRecorder()
+	handler.ServeHTTP(releaseRec, releaseReq)
+	if releaseRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sales order release, got %d with body %s", releaseRec.Code, releaseRec.Body.String())
+	}
+
+	convertToInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+salesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{"revenue_account":"8000"}`)))
+	convertToInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
+	convertToInvoiceReq.Header.Set("Content-Type", "application/json")
+	convertToInvoiceRec := httptest.NewRecorder()
+	handler.ServeHTTP(convertToInvoiceRec, convertToInvoiceReq)
+	if convertToInvoiceRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for sales order conversion to invoice, got %d with body %s", convertToInvoiceRec.Code, convertToInvoiceRec.Body.String())
+	}
+
+	auditReq := httptest.NewRequest(http.MethodGet, "/api/v1/sales-orders/"+salesOrder.ID, nil)
+	auditReq.Header.Set("Authorization", "Bearer "+accessToken)
+	auditRec := httptest.NewRecorder()
+	handler.ServeHTTP(auditRec, auditReq)
+	if auditRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for sales order get, got %d with body %s", auditRec.Code, auditRec.Body.String())
+	}
+	var finalOrder struct {
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(auditRec.Body.Bytes(), &finalOrder); err != nil {
+		t.Fatalf("decode sales order get response: %v", err)
+	}
+	if finalOrder.Status != "invoiced" {
+		t.Fatalf("expected final status invoiced, got %q", finalOrder.Status)
+	}
+
+	// Es existiert (noch) kein GET .../sales-orders/{id}/audit-log
+	// Endpunkt (nur für invoices_out, siehe Subtask 0.3.3.1) - daher wird
+	// das Protokoll hier direkt per SQL geprüft.
+	rows, err := env.PG.Query(context.Background(), `SELECT action, actor_user_id, before_data, after_data FROM entity_change_log WHERE entity_type='sales_order' AND entity_id=$1 ORDER BY created_at`, salesOrder.ID)
+	if err != nil {
+		t.Fatalf("query entity_change_log: %v", err)
+	}
+	defer rows.Close()
+	type logRow struct {
+		Action      string
+		ActorUserID string
+		Before      []byte
+		After       []byte
+	}
+	var logRows []logRow
+	for rows.Next() {
+		var r logRow
+		if err := rows.Scan(&r.Action, &r.ActorUserID, &r.Before, &r.After); err != nil {
+			t.Fatalf("scan entity_change_log row: %v", err)
+		}
+		logRows = append(logRows, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("iterate entity_change_log rows: %v", err)
+	}
+	if len(logRows) != 2 {
+		t.Fatalf("expected 2 audit log entries for sales_order, got %+v", logRows)
+	}
+	if logRows[0].Action != "status_geaendert" || logRows[1].Action != "in_rechnung_ueberfuehrt" {
+		t.Fatalf("expected [status_geaendert, in_rechnung_ueberfuehrt], got %+v", logRows)
+	}
+	for _, r := range logRows {
+		if r.ActorUserID == "" {
+			t.Fatalf("expected actor_user_id to be set on entry %+v", r)
+		}
 	}
 }

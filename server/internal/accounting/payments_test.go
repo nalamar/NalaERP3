@@ -17,7 +17,7 @@ func TestApplyRejectsNonPositiveAmount(t *testing.T) {
 		pay, err := s.Apply(context.Background(), PaymentInput{
 			InvoiceID: uuid.New(),
 			Amount:    amount,
-		})
+		}, "default")
 		if err == nil {
 			t.Fatalf("amount=%v: expected validation error, got nil", amount)
 		}
@@ -27,6 +27,24 @@ func TestApplyRejectsNonPositiveAmount(t *testing.T) {
 		if err.Error() != "Betrag muss > 0 sein" {
 			t.Fatalf("amount=%v: expected 'Betrag muss > 0 sein', got %q", amount, err.Error())
 		}
+	}
+}
+
+func TestApplyRejectsMissingCompanyID(t *testing.T) {
+	s := NewPaymentService(nil, nil)
+
+	pay, err := s.Apply(context.Background(), PaymentInput{
+		InvoiceID: uuid.New(),
+		Amount:    100,
+	}, "")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if pay != nil {
+		t.Fatalf("expected nil payment, got %#v", pay)
+	}
+	if err.Error() != "Mandant erforderlich" {
+		t.Fatalf("expected 'Mandant erforderlich', got %q", err.Error())
 	}
 }
 
