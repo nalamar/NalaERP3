@@ -699,6 +699,7 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 		"invoice_date":"2026-03-18T00:00:00Z",
 		"due_date":"2026-04-01T00:00:00Z",
 		"revenue_account":"8000",
+		"invoice_type":"abschlagsrechnung",
 		"items":[
 			{"sales_order_item_id":"`+partialSalesOrderItem.Item.ID+`","qty":2}
 		]
@@ -798,7 +799,8 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 	convertSalesOrderToInvoiceAgainReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
 		"invoice_date":"2026-03-20T00:00:00Z",
 		"due_date":"2026-04-03T00:00:00Z",
-		"revenue_account":"8000"
+		"revenue_account":"8000",
+		"invoice_type":"abschlagsrechnung"
 	}`)))
 	convertSalesOrderToInvoiceAgainReq.Header.Set("Authorization", "Bearer "+accessToken)
 	convertSalesOrderToInvoiceAgainReq.Header.Set("Content-Type", "application/json")
@@ -933,7 +935,7 @@ func TestQuoteFlowWithPricingAndPDF(t *testing.T) {
 		t.Fatalf("expected 400 for reopening completed sales order, got %d with body %s", reopenSalesOrderRec.Code, reopenSalesOrderRec.Body.String())
 	}
 
-	convertSalesOrderToInvoiceThirdReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{}`)))
+	convertSalesOrderToInvoiceThirdReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{"invoice_type":"abschlagsrechnung"}`)))
 	convertSalesOrderToInvoiceThirdReq.Header.Set("Authorization", "Bearer "+accessToken)
 	convertSalesOrderToInvoiceThirdReq.Header.Set("Content-Type", "application/json")
 	convertSalesOrderToInvoiceThirdRec := httptest.NewRecorder()
@@ -6426,6 +6428,7 @@ func TestCommercialWorkflowEndpointListsOpenFollowActions(t *testing.T) {
 		"invoice_date":"2026-04-03T00:00:00Z",
 		"due_date":"2026-04-17T00:00:00Z",
 		"revenue_account":"8000",
+		"invoice_type":"abschlagsrechnung",
 		"items":[{"sales_order_item_id":"`+partialSalesOrder.Items[0].ID+`","qty":1}]
 	}`)))
 	partialInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)

@@ -315,6 +315,255 @@ func TestMaterialsCreateAllowsEmptyCategory(t *testing.T) {
 	}
 }
 
+func TestMaterialsCreateAcceptsAndNormalizesProfileAttributes(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-profile@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-profile@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-PROFILE-0001",
+		"bezeichnung":"Fenster-Profil",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"profilserie":"  Schüco AWS 75  ",
+		"rc_klasse":"rc2",
+		"u_wert":1.3,
+		"brandschutzklasse":"  EI30  "
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var created struct {
+		ID                string  `json:"id"`
+		Profilserie       string  `json:"profilserie"`
+		RCKlasse          string  `json:"rc_klasse"`
+		UWert             float64 `json:"u_wert"`
+		Brandschutzklasse string  `json:"brandschutzklasse"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+	if created.Profilserie != "Schüco AWS 75" {
+		t.Fatalf("expected trimmed profilserie, got %q", created.Profilserie)
+	}
+	if created.RCKlasse != "RC2" {
+		t.Fatalf("expected normalized rc_klasse RC2, got %q", created.RCKlasse)
+	}
+	if created.UWert != 1.3 {
+		t.Fatalf("expected u_wert 1.3, got %v", created.UWert)
+	}
+	if created.Brandschutzklasse != "EI30" {
+		t.Fatalf("expected trimmed brandschutzklasse, got %q", created.Brandschutzklasse)
+	}
+}
+
+func TestMaterialsCreateRejectsInvalidRCKlasse(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-invalid-rc@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-invalid-rc@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-INVALID-RC",
+		"bezeichnung":"Ungueltige RC-Klasse",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"rc_klasse":"RC9"
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if body.Error.Code != "validation_error" {
+		t.Fatalf("expected validation_error, got %q", body.Error.Code)
+	}
+	if body.Error.Message != "Ungültige RC-Klasse (gültig: RC1, RC1N, RC2, RC2N, RC3, RC4, RC5, RC6)" {
+		t.Fatalf("unexpected validation message, got %q", body.Error.Message)
+	}
+}
+
+func TestMaterialsCreateRejectsNonPositiveUWert(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-invalid-uwert@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-invalid-uwert@example.com", "Secret123!")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-INVALID-UWERT",
+		"bezeichnung":"Ungueltiger U-Wert",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7,
+		"u_wert":0
+	}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d with body %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if body.Error.Code != "validation_error" {
+		t.Fatalf("expected validation_error, got %q", body.Error.Code)
+	}
+	if body.Error.Message != "U-Wert muss größer als 0 sein" {
+		t.Fatalf("unexpected validation message, got %q", body.Error.Message)
+	}
+}
+
+func TestMaterialsUpdatePatchesProfileAttributes(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-patch-profile@example.com", "Secret123!", "admin")
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-patch-profile@example.com", "Secret123!")
+
+	createReq := httptest.NewRequest(http.MethodPost, "/api/v1/materials/", bytes.NewReader([]byte(`{
+		"nummer":"MAT-IT-PATCH-PROFILE",
+		"bezeichnung":"Patch-Profil",
+		"typ":"profil",
+		"einheit":"Stk",
+		"dichte":2.7
+	}`)))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createRec := httptest.NewRecorder()
+	handler.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d with body %s", createRec.Code, createRec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode create response: %v", err)
+	}
+
+	patchReq := httptest.NewRequest(http.MethodPatch, "/api/v1/materials/"+created.ID, bytes.NewReader([]byte(`{
+		"rc_klasse":"rc3",
+		"u_wert":0.9
+	}`)))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchReq.Header.Set("Authorization", "Bearer "+accessToken)
+	patchRec := httptest.NewRecorder()
+	handler.ServeHTTP(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", patchRec.Code, patchRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/materials/"+created.ID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var fetched struct {
+		RCKlasse string  `json:"rc_klasse"`
+		UWert    float64 `json:"u_wert"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if fetched.RCKlasse != "RC3" {
+		t.Fatalf("expected normalized rc_klasse RC3 after patch, got %q", fetched.RCKlasse)
+	}
+	if fetched.UWert != 0.9 {
+		t.Fatalf("expected u_wert 0.9 after patch, got %v", fetched.UWert)
+	}
+}
+
+func TestMaterialsGetHandlesLegacyRowsWithoutProfileAttributes(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "integration-materials-legacy-profile@example.com", "Secret123!", "admin")
+
+	if _, err := env.PG.Exec(t.Context(), `
+        INSERT INTO materials (
+            id, nummer, bezeichnung, typ, einheit, dichte, attributes, company_id
+        ) VALUES (
+            'mat-legacy-profile-itest',
+            'MAT-LEGACY-PROFILE-0001',
+            'Legacy ohne Profilattribute',
+            'profil',
+            'Stk',
+            2.7,
+            '{}'::jsonb,
+            'default'
+        )
+        ON CONFLICT (id) DO NOTHING
+    `); err != nil {
+		t.Fatalf("seed legacy material: %v", err)
+	}
+
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "integration-materials-legacy-profile@example.com", "Secret123!")
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/materials/mat-legacy-profile-itest", nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+
+	var fetched struct {
+		Profilserie       string   `json:"profilserie"`
+		RCKlasse          string   `json:"rc_klasse"`
+		UWert             *float64 `json:"u_wert"`
+		Brandschutzklasse string   `json:"brandschutzklasse"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &fetched); err != nil {
+		t.Fatalf("decode get response: %v", err)
+	}
+	if fetched.Profilserie != "" || fetched.RCKlasse != "" || fetched.Brandschutzklasse != "" {
+		t.Fatalf("expected empty text attributes for legacy row, got %#v", fetched)
+	}
+	if fetched.UWert != nil {
+		t.Fatalf("expected nil u_wert for legacy row, got %v", *fetched.UWert)
+	}
+}
+
 func TestMaterialsUpdateAllowsExistingLegacyCategory(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
 	testutil.SeedAuthUser(t, env, "integration-materials-legacy-category@example.com", "Secret123!", "admin")

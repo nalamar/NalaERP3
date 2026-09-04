@@ -898,6 +898,7 @@ func TestContactCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testi
 	}
 
 	convertInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
+		"invoice_type":"abschlagsrechnung",
 		"invoice_date":"2026-03-18T00:00:00Z",
 		"due_date":"2026-04-01T00:00:00Z",
 		"revenue_account":"8000",

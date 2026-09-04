@@ -36,6 +36,7 @@ type InvoiceOut struct {
 	ID                   uuid.UUID          `json:"id"`
 	Number               *string            `json:"number,omitempty"`
 	Status               string             `json:"status"`
+	InvoiceType          string             `json:"invoice_type"`
 	SourceQuoteID        *uuid.UUID         `json:"source_quote_id,omitempty"`
 	SourceSalesOrderID   *uuid.UUID         `json:"source_sales_order_id,omitempty"`
 	ContactID            string             `json:"contact_id"`
@@ -57,6 +58,7 @@ type InvoiceListItem struct {
 	ID                 uuid.UUID  `json:"id"`
 	Number             *string    `json:"number,omitempty"`
 	Status             string     `json:"status"`
+	InvoiceType        string     `json:"invoice_type"`
 	SourceQuoteID      *uuid.UUID `json:"source_quote_id,omitempty"`
 	SourceSalesOrderID *uuid.UUID `json:"source_sales_order_id,omitempty"`
 	ContactID          string     `json:"contact_id"`
@@ -72,6 +74,7 @@ type InvoiceListItem struct {
 
 type InvoiceFilter struct {
 	Status             string
+	InvoiceType        string
 	ContactID          string
 	SourceSalesOrderID string
 	Search             string
@@ -98,11 +101,11 @@ func (s *ARService) Get(ctx context.Context, id uuid.UUID, companyID string) (*I
 	var sourceSalesOrderID uuid.NullUUID
 	var stornoJournalEntryID uuid.NullUUID
 	var storniertAm sql.NullTime
-	err := s.pg.QueryRow(ctx, `SELECT i.id, i.nummer, i.status, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.net_amount, i.tax_amount, i.gross_amount, i.paid_amount, i.storno_journal_entry_id, i.storniert_am, i.storno_grund
+	err := s.pg.QueryRow(ctx, `SELECT i.id, i.nummer, i.status, i.invoice_type, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.net_amount, i.tax_amount, i.gross_amount, i.paid_amount, i.storno_journal_entry_id, i.storniert_am, i.storno_grund
 		FROM invoices_out i
 		LEFT JOIN contacts c ON c.id = i.contact_id
 		WHERE i.id=$1 AND i.company_id=$2`, id, companyID).Scan(
-		&inv.ID, &number, &inv.Status, &sourceQuoteID, &sourceSalesOrderID, &inv.ContactID, &inv.ContactName, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount, &stornoJournalEntryID, &storniertAm, &inv.StornoGrund,
+		&inv.ID, &number, &inv.Status, &inv.InvoiceType, &sourceQuoteID, &sourceSalesOrderID, &inv.ContactID, &inv.ContactName, &inv.InvoiceDate, &due, &inv.Currency, &inv.NetAmount, &inv.TaxAmount, &inv.GrossAmount, &inv.PaidAmount, &stornoJournalEntryID, &storniertAm, &inv.StornoGrund,
 	)
 	if err != nil {
 		return nil, err
@@ -164,6 +167,10 @@ func (s *ARService) List(ctx context.Context, f InvoiceFilter, companyID string)
 		args = append(args, f.SourceSalesOrderID)
 		conds = append(conds, fmt.Sprintf("i.source_sales_order_id=$%d", len(args)))
 	}
+	if f.InvoiceType != "" {
+		args = append(args, f.InvoiceType)
+		conds = append(conds, fmt.Sprintf("i.invoice_type=$%d", len(args)))
+	}
 	if f.Search != "" {
 		args = append(args, "%"+strings.ToLower(f.Search)+"%")
 		conds = append(conds, fmt.Sprintf("(LOWER(i.nummer) LIKE $%d OR LOWER(i.id::text) LIKE $%d)", len(args), len(args)))
@@ -175,7 +182,7 @@ func (s *ARService) List(ctx context.Context, f InvoiceFilter, companyID string)
 		where = "WHERE " + strings.Join(conds, " AND ")
 	}
 	query := `
-SELECT i.id, i.nummer, i.status, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.gross_amount, i.paid_amount, i.storniert_am, i.storno_grund
+SELECT i.id, i.nummer, i.status, i.invoice_type, i.source_quote_id, i.source_sales_order_id, i.contact_id, COALESCE(c.name,''), i.invoice_date, i.due_date, i.currency, i.gross_amount, i.paid_amount, i.storniert_am, i.storno_grund
 FROM invoices_out i
 LEFT JOIN contacts c ON c.id = i.contact_id
 ` + where + `
@@ -194,7 +201,7 @@ LIMIT $` + fmt.Sprint(len(args)-1) + ` OFFSET $` + fmt.Sprint(len(args))
 		var sourceQuoteID uuid.NullUUID
 		var sourceSalesOrderID uuid.NullUUID
 		var storniertAm sql.NullTime
-		if err := rows.Scan(&it.ID, &num, &it.Status, &sourceQuoteID, &sourceSalesOrderID, &it.ContactID, &it.ContactName, &it.InvoiceDate, &due, &it.Currency, &it.GrossAmount, &it.PaidAmount, &storniertAm, &it.StornoGrund); err != nil {
+		if err := rows.Scan(&it.ID, &num, &it.Status, &it.InvoiceType, &sourceQuoteID, &sourceSalesOrderID, &it.ContactID, &it.ContactName, &it.InvoiceDate, &due, &it.Currency, &it.GrossAmount, &it.PaidAmount, &storniertAm, &it.StornoGrund); err != nil {
 			return nil, err
 		}
 		if num.Valid {

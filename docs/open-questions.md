@@ -55,3 +55,15 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   NICHT geändert (reine Bugfix-Subtask, kein Verhaltenswechsel ohne Freigabe).
   Kein Blocker für die laufende Subtask-Kette, aber vor Abschluss von Task
   0.1.3 zu klären.
+- **A.1.1 (Brandschutzklasse-Klassifikationssystem)**: `docs/adr/0006-metallbau-artikel-profilattribute.md`
+  legt für `materials.brandschutzklasse` bewusst freien Text statt einer
+  Enum-Validierung fest, weil im deutschen/europäischen Baurecht mehrere,
+  nicht deckungsgleiche Systeme parallel existieren (DIN 4102
+  Feuerwiderstandsklassen `F30`/`F60`/`F90`/`F120`/`F180` für Bauteile,
+  `T30`/`T90` für Feuerschutzabschlüsse/Türen; DIN EN 13501-2 z. B.
+  `EI30`/`EI60`/`REI90`), die je nach Bauteilart unterschiedlich greifen.
+  Frage an die Fachseite: welches System (oder welche Kombination) soll das
+  Metallbau-ERP tatsächlich abbilden? Status: **offen**, kein Blocker für
+  A.1.2/A.1.3 (freier Text funktioniert bis zur Klärung), aber vor einer
+  künftigen Enum-Verschärfung oder vor Epic I (GAEB-Systemvorgaben-Erkennung)
+  zu klären.

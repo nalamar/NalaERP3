@@ -260,6 +260,7 @@ func TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testi
 	}
 
 	convertSalesOrderToInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+createdSalesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{
+		"invoice_type":"abschlagsrechnung",
 		"invoice_date":"2026-04-03T00:00:00Z",
 		"due_date":"2026-04-17T00:00:00Z",
 		"revenue_account":"8000"
@@ -346,5 +347,104 @@ func TestProjectCommercialContextAggregatesQuotesSalesOrdersAndInvoices(t *testi
 	}
 	if !foundSalesOrderInvoice {
 		t.Fatal("expected sales order invoice in project context")
+	}
+}
+
+func TestProjectSetKostenstelleFlow(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	testutil.SeedAuthUser(t, env, "project-kostenstelle@example.com", "Secret123!", "admin")
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	accessToken := loginIntegrationUser(t, handler, "project-kostenstelle@example.com", "Secret123!")
+
+	createProjectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{"name":"Projekt mit Kostenstelle","status":"angebot"}`)))
+	createProjectReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createProjectReq.Header.Set("Content-Type", "application/json")
+	createProjectRec := httptest.NewRecorder()
+	handler.ServeHTTP(createProjectRec, createProjectReq)
+	if createProjectRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for project create, got %d with body %s", createProjectRec.Code, createProjectRec.Body.String())
+	}
+	var project struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createProjectRec.Body.Bytes(), &project); err != nil {
+		t.Fatalf("decode project create response: %v", err)
+	}
+
+	createCcReq := httptest.NewRequest(http.MethodPost, "/api/v1/cost-centers/", bytes.NewReader([]byte(`{"code":"WERK-PROJ","name":"Werkstatt Projektbezug"}`)))
+	createCcReq.Header.Set("Authorization", "Bearer "+accessToken)
+	createCcReq.Header.Set("Content-Type", "application/json")
+	createCcRec := httptest.NewRecorder()
+	handler.ServeHTTP(createCcRec, createCcReq)
+	if createCcRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for cost center create, got %d with body %s", createCcRec.Code, createCcRec.Body.String())
+	}
+	var costCenter struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createCcRec.Body.Bytes(), &costCenter); err != nil {
+		t.Fatalf("decode cost center create response: %v", err)
+	}
+
+	assignReq := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/"+project.ID+"/kostenstelle", bytes.NewReader([]byte(`{"kostenstelle_id":"`+costCenter.ID+`"}`)))
+	assignReq.Header.Set("Authorization", "Bearer "+accessToken)
+	assignReq.Header.Set("Content-Type", "application/json")
+	assignRec := httptest.NewRecorder()
+	handler.ServeHTTP(assignRec, assignReq)
+	if assignRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for kostenstelle assignment, got %d with body %s", assignRec.Code, assignRec.Body.String())
+	}
+	var assigned struct {
+		KostenstelleID *string `json:"kostenstelle_id"`
+	}
+	if err := json.Unmarshal(assignRec.Body.Bytes(), &assigned); err != nil {
+		t.Fatalf("decode assignment response: %v", err)
+	}
+	if assigned.KostenstelleID == nil || *assigned.KostenstelleID != costCenter.ID {
+		t.Fatalf("expected kostenstelle_id=%q, got %+v", costCenter.ID, assigned.KostenstelleID)
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/projects/"+project.ID, nil)
+	getReq.Header.Set("Authorization", "Bearer "+accessToken)
+	getRec := httptest.NewRecorder()
+	handler.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for project get, got %d with body %s", getRec.Code, getRec.Body.String())
+	}
+	var got struct {
+		KostenstelleID *string `json:"kostenstelle_id"`
+	}
+	if err := json.Unmarshal(getRec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode project get response: %v", err)
+	}
+	if got.KostenstelleID == nil || *got.KostenstelleID != costCenter.ID {
+		t.Fatalf("expected persisted kostenstelle_id=%q, got %+v", costCenter.ID, got.KostenstelleID)
+	}
+
+	unknownReq := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/"+project.ID+"/kostenstelle", bytes.NewReader([]byte(`{"kostenstelle_id":"00000000-0000-0000-0000-000000000000"}`)))
+	unknownReq.Header.Set("Authorization", "Bearer "+accessToken)
+	unknownReq.Header.Set("Content-Type", "application/json")
+	unknownRec := httptest.NewRecorder()
+	handler.ServeHTTP(unknownRec, unknownReq)
+	if unknownRec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown cost center, got %d with body %s", unknownRec.Code, unknownRec.Body.String())
+	}
+
+	clearReq := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/"+project.ID+"/kostenstelle", bytes.NewReader([]byte(`{"kostenstelle_id":null}`)))
+	clearReq.Header.Set("Authorization", "Bearer "+accessToken)
+	clearReq.Header.Set("Content-Type", "application/json")
+	clearRec := httptest.NewRecorder()
+	handler.ServeHTTP(clearRec, clearReq)
+	if clearRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for clearing kostenstelle, got %d with body %s", clearRec.Code, clearRec.Body.String())
+	}
+	var cleared struct {
+		KostenstelleID *string `json:"kostenstelle_id"`
+	}
+	if err := json.Unmarshal(clearRec.Body.Bytes(), &cleared); err != nil {
+		t.Fatalf("decode clear response: %v", err)
+	}
+	if cleared.KostenstelleID != nil {
+		t.Fatalf("expected kostenstelle_id=nil after clearing, got %+v", cleared.KostenstelleID)
 	}
 }

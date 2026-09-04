@@ -27,6 +27,7 @@ type QuoteItemInput struct {
 	UnitPrice               float64                         `json:"unit_price"`
 	TaxCode                 string                          `json:"tax_code"`
 	MaterialID              string                          `json:"material_id,omitempty"`
+	GroupID                 string                          `json:"group_id,omitempty"`
 	PriceMappingStatus      string                          `json:"price_mapping_status,omitempty"`
 	MaterialCandidateStatus string                          `json:"material_candidate_status,omitempty"`
 	MaterialCandidates      []MaterialCandidate             `json:"material_candidates,omitempty"`
@@ -453,7 +454,7 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 
 	itemIDs := make([]uuid.UUID, 0, len(in.Items))
 	for idx, item := range in.Items {
-		item, err = s.normalizeQuoteItem(ctx, tx, item)
+		item, err = s.normalizeQuoteItem(ctx, tx, id, item)
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
@@ -462,9 +463,9 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 			return uuid.Nil, nil, err
 		}
 		lineID := uuid.New()
-		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
+		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID))
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
@@ -516,6 +517,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 	rows, err := s.pg.Query(ctx, `
 		SELECT
 			qi.id,
+			COALESCE(qi.group_id::text,''),
 			qi.description,
 			qi.qty,
 			qi.unit,
@@ -667,6 +669,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 		var latestApprovalApprovedTargetMarginPercent sql.NullFloat64
 		if err := rows.Scan(
 			&quoteItemID,
+			&item.GroupID,
 			&item.Description,
 			&item.Qty,
 			&item.Unit,
@@ -3562,7 +3565,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 		return nil, err
 	}
 	for idx, item := range in.Items {
-		item, err = s.normalizeQuoteItem(ctx, tx, item)
+		item, err = s.normalizeQuoteItem(ctx, tx, id, item)
 		if err != nil {
 			return nil, err
 		}
@@ -3571,9 +3574,9 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 			return nil, err
 		}
 		lineID := uuid.New()
-		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus)
+		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID))
 		if err != nil {
 			return nil, err
 		}
@@ -3642,7 +3645,7 @@ func calcTotals(codes map[string]taxCodeInfo, items []QuoteItemInput) (net, tax 
 	return net, tax, nil
 }
 
-func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, item QuoteItemInput) (QuoteItemInput, error) {
+func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, quoteID uuid.UUID, item QuoteItemInput) (QuoteItemInput, error) {
 	if strings.TrimSpace(item.Description) == "" {
 		return item, errors.New("Beschreibung erforderlich")
 	}
@@ -3667,6 +3670,23 @@ func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, item QuoteI
 		if err := tx.QueryRow(ctx, `SELECT id FROM materials WHERE id=$1`, item.MaterialID).Scan(&exists); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return item, errors.New("material_id ist ungültig")
+			}
+			return item, err
+		}
+	}
+	item.GroupID = strings.TrimSpace(item.GroupID)
+	if item.GroupID != "" {
+		// group_id muss zum SELBEN Angebot gehoeren (Backlog B.1.3, ADR
+		// 0009) - verhindert, dass eine Position auf eine Gruppe eines
+		// FREMDEN Angebots verweist.
+		groupID, err := uuid.Parse(item.GroupID)
+		if err != nil {
+			return item, errors.New("group_id ist ungültig")
+		}
+		var exists string
+		if err := tx.QueryRow(ctx, `SELECT id FROM quote_item_groups WHERE id=$1 AND quote_id=$2`, groupID, quoteID).Scan(&exists); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return item, errors.New("group_id ist ungültig")
 			}
 			return item, err
 		}

@@ -5610,6 +5610,2363 @@ im Status-Guard geschlossen).
   dieses Feature vermutlich noch lange unentdeckt geblieben wären, da sie
   erst bei einem ECHTEN zweiten Mandanten sichtbar werden.
 
+**Damit ist Epic 0 (Plattform, Qualität & Compliance-Fundament) vollständig
+abgeschlossen.** Session-Fortsetzung beginnt mit Epic A (Stammdaten),
+Task A.1.
+
+**Subtask A.1.1 (ADR: Schema-Design-Entscheidung für Metallbau-Artikel-/
+Profilattribute) abgeschlossen.** Kontext: aufgabe.md Domäne A verlangt
+strukturierte Attribute Profilserie/RC-Klasse/U-Wert/Brandschutzklasse;
+dieselben vier werden in §4 (Epic I) als "Systemvorgaben" genannt, die das
+GAEB-Matching später erkennen soll — die Struktur aus A.1 ist also die
+Zielstruktur für I. Recherche (Migrationen, `materials/service.go`, `v1.go`,
+Flutter-Client, repo-weite Suche): `materials` hat aktuell nur generische
+Spalten (`nummer`, `bezeichnung`, `typ` (Freitext, kein Enum), `norm`,
+`werkstoffnummer`, `einheit`, `dichte`, `kategorie`,
+`length_mm`/`width_mm`/`height_mm`) plus eine generische
+`attributes jsonb`-Spalte (`Material.Attribute map[string]any`) als einzigen
+Erweiterungsmechanismus — keine der vier gesuchten Attribute existiert
+irgendwo im Repo (weder als Spalte noch als Go-Feld noch im Client). Einzige
+"Profil"-Treffer sind projektgebundene LogiKal-CAD-Import-Tabellen
+(`single_elevation_profiles`/`_articles`/`_glass`), die keine
+Stammdaten-Attribute auf `materials` sind — kein Namenskonflikt.
+
+**Entscheidung** (`docs/adr/0006-metallbau-artikel-profilattribute.md`):
+vier neue NULLABLE Spalten direkt auf `materials`
+(`profilserie text`, `rc_klasse text`, `u_wert numeric(6,3)`,
+`brandschutzklasse text`) — konsistent mit dem bereits etablierten Muster im
+Repo (`kategorie`, `dichte`, `length_mm`/`width_mm`/`height_mm` sind alle
+eigene, nullable Spalten statt jsonb-Catch-all). `attributes jsonb` bleibt
+unverändert für alle nicht vorab bekannten Zusatzattribute. Zwei verworfene
+Optionen dokumentiert: (a) alles in `attributes` jsonb belassen (keine
+Typsicherheit/Abfragbarkeit/Validierung), (b) eigene 1:1-Tabelle
+`material_profile_attributes` nur für Profil-Materialien (verworfen, da
+`typ` kein Enum ist und Brandschutzklasse nicht zwingend nur bei Profilen
+relevant ist).
+
+**Validierungsstrategie je Feld** (mit Begründung, um Rate-Verbot aus §0/§7.10
+einzuhalten): `rc_klasse` hart gegen DIN EN 1627 validiert (RC1/RC1N/RC2/
+RC2N/RC3/RC4/RC5/RC6 — offizielle, stabile Norm, in aufgabe.md §4 selbst als
+GAEB-Systemvorgabe genannt). `u_wert` nur auf Plausibilität (`>0`), kein Enum
+(physikalischer Messwert). `profilserie` bewusst freier Text ohne Enum —
+herstellerspezifischer Produktname, die Lieferant↔Profilserie-Zuordnung ist
+ausdrücklich Gegenstand von Backlog A.3 (Systemlieferanten-Konzept), das
+A.1 nicht vorwegnehmen soll. `brandschutzklasse` bewusst freier Text ohne
+Enum — es existieren mehrere, nicht deckungsgleiche Klassifikationssysteme
+parallel (DIN 4102 F30/F60/F90/F120/F180 bzw. T30/T90, sowie DIN EN 13501-2
+EI30/EI60/REI90), eine Festlegung auf ein System wäre eine unbelegte
+fachliche Vermutung — als neue offene Frage in `docs/open-questions.md`
+festgehalten (kein Blocker, freier Text funktioniert bis zur Klärung).
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0006-metallbau-artikel-profilattribute.md`
+(neu), `docs/open-questions.md` (neue offene Frage), `docs/backlog.md`
+(A.1 in Subtasks A.1.1/A.1.2/A.1.3 zerlegt, A.1.1 als done markiert).
+
+**Subtask A.1.2 (Migration: profilserie/rc_klasse/u_wert/brandschutzklasse
+als NULLABLE Spalten an `materials`) abgeschlossen**, gegen frische DB
+verifiziert. Neue Datei `server/internal/migrate/migrations/068_materials_profile_attributes.sql`
+(nächste freie Nummer nach 067) — additive `ALTER TABLE materials ADD COLUMN
+IF NOT EXISTS ...` für alle vier Spalten (`profilserie text`, `rc_klasse
+text`, `u_wert numeric(6,3)`, `brandschutzklasse text`), kein Backfill (NULL
+für Bestandszeilen), DOWN-Kommentarblock mit Datenverlustrisiko-Hinweis
+analog zum etablierten Muster aus `057_materials_warehouses_scope.sql`.
+Bewusst KEIN DB-CHECK-Constraint für `rc_klasse` — die Enum-Validierung
+gegen DIN EN 1627 erfolgt laut ADR 0006 im Anwendungscode (Subtask A.1.3),
+analog zum bestehenden Muster für `kategorie`
+(`normalizeAndValidateCategory`, kein CHECK-Constraint, sondern
+Anwendungslogik gegen `material_groups`).
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` alle clean.
+Docker-Testumgebung frisch aufgesetzt (`docker compose -f
+docker-compose.test.yml down -v && up -d --wait`, alle drei Container
+healthy). `NALA_INTEGRATION=1 go test ./internal/http/... -run
+TestMaterials -v -count=1` gegen diese frische DB: vollständige
+Migrationskette 001-068 lief beim ersten Testaufruf durch (Log bestätigt
+`Migration ausführen: 068_materials_profile_attributes.sql` als letzten
+Eintrag), alle 6 bestehenden `materials`-Testfunktionen PASS — keine
+Regression durch die neuen Spalten. Direkte SQL-Prüfung
+(`docker exec ... psql -c "\d materials"`) bestätigt alle vier neuen Spalten
+mit korrektem Typ und NULL als Default; `SELECT ... FROM schema_migrations
+WHERE filename LIKE '068%'` bestätigt das Migrations-Tracking aus ADR 0005
+funktioniert (Datei ist genau einmal eingetragen). DB danach erneut
+zurückgesetzt (`down -v && up -d --wait`) und `TestMaterials`-Lauf isoliert
+wiederholt: `ok nalaerp3/internal/http 1.578s` — sauberer, reproduzierbarer
+Beleg ohne die Test-Isolations-Artefakte eines vorherigen Doppellaufs auf
+derselben (nicht zurückgesetzten) DB (siehe Merken-Notiz).
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in A.1.3).
+Geänderte Dateien: `server/internal/migrate/migrations/068_materials_profile_attributes.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask A.1.3 (Anwendungscode: die vier Profilattribute in
+`server/internal/materials/service.go` + HTTP + Tests) abgeschlossen — damit
+ist Task A.1 vollständig abgeschlossen.** `Material`/`MaterialCreate`/
+`MaterialUpdate` um `Profilserie`/`RCKlasse`/`UWert`/`Brandschutzklasse`
+erweitert. Neue Validierungsfunktionen `normalizeAndValidateRCKlasse`
+(trimmt, normalisiert Großschreibung, prüft gegen die 8 DIN-EN-1627-Klassen
+RC1/RC1N/RC2/RC2N/RC3/RC4/RC5/RC6) und `validateUWert` (nur `>0`, kein
+Enum) — beide in `Create`/`Update` verdrahtet, analog zum bestehenden
+`normalizeAndValidateCategory`-Muster. `Profilserie`/`Brandschutzklasse`
+bewusst nur getrimmt, keine Enum-Prüfung (ADR 0006). `List`/`Get` liefern
+die drei Textfelder über `COALESCE(...,'')`, `u_wert` bleibt `*float64`
+(NULL bedeutet fachlich "nicht angegeben", nicht 0 — analog zu
+`length_mm`/`width_mm`/`height_mm`).
+
+**Echter Fund**: `v1.go` (HTTP-Wiring) brauchte KEINE Code-Änderung — die
+Materials-Endpunkte dekodieren/enkodieren bereits vollständig generisch über
+die Go-Structs, neue JSON-Felder werden automatisch durchgereicht, ohne
+manuelles Feld-Mapping. Ebenso kein neuer `classifyDomainError`-Eintrag
+nötig: die neuen Fehlermeldungen ("Ungültige RC-Klasse ...", "U-Wert muss
+größer als 0 sein") matchen bereits bestehende Substrings (`"ungültig"`,
+`"muss größer als 0 sein"`) und werden korrekt auf HTTP 400 gemappt — beides
+vorab durch Lesen von `v1.go`/`classifyDomainError` geprüft, nicht nur
+angenommen.
+
+Neue Tests: 10 reine Unit-Tests (`server/internal/materials/service_test.go`,
+DB-los) — Tabellentest über alle 8 gültigen RC-Klassen case-insensitiv,
+Negativfälle für ungültige RC-Klasse und `U-Wert<=0` sowohl in `Create` als
+auch in `Update`. 5 Integrationstests
+(`server/internal/http/materials_integration_test.go`): Anlage mit
+Normalisierung (Trimmen, Großschreibung), 400 bei ungültiger RC-Klasse, 400
+bei `U-Wert<=0`, PATCH aktualisiert beide Felder nachweislich (per GET
+verifiziert), sowie ein Regressionstest für Alt-Datensätze ohne die neuen
+Spalten (direkt per SQL ohne die vier neuen Felder eingefügt — NULL wird
+korrekt zu leerem String/`nil` statt Scan-Fehler, kein Crash bei
+Bestandsdaten aus der Zeit vor A.1.2).
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün, keine
+Regression in anderen Domänen (bestätigt auch, dass `materials.Material`/
+`MaterialCreate`/`MaterialUpdate` außerhalb des `materials`- und
+`http`-Pakets nirgends direkt referenziert werden — repo-weite Suche
+bestätigt). `go test ./internal/materials/... -v` (16 Tests, 10 davon neu):
+alle PASS. Docker-Testumgebung frisch aufgesetzt, `NALA_INTEGRATION=1 go
+test ./internal/http/... -run TestMaterials -v` (12 Tests, 5 davon neu)
+gegen frische DB: alle PASS. Zusätzlich vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle
+HTTP-Integrationstests aller Domänen) gegen erneut frisch aufgesetzte DB:
+`ok nalaerp3/internal/http 21.603s` — keine einzige Regression durch die
+Struct-/Query-Änderungen an `materials`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/materials/service_test.go`,
+`server/internal/http/materials_integration_test.go`, `docs/backlog.md`,
+`docs/state.md`. `v1.go` bewusst NICHT geändert (s. o.).
+
+**Subtask A.2.1 (ADR: Schema-Design-Entscheidung für Preisliste-Entität)
+abgeschlossen.** Kontext: aufgabe.md Domäne A nennt "Preislisten" explizit,
+`docs/01-gap-analysis.md:18` hatte das bereits als Lücke dokumentiert.
+Recherche (Migrationen, `materials/service.go`, `quotes/service.go`,
+Flutter-Client, repo-weite Suche): es existiert weder eine
+Preisliste-Entität noch überhaupt ein Verkaufspreis-Konzept — `materials`
+trägt ausschließlich einkaufsseitige Werte (`avg_purchase_price` als
+laufender Durchschnitt aus Wareneingängen). Wichtiger Befund: `quotes/service.go`
+hat bereits eine eigene, produktive, mehrfach getestete 3-Quellen-
+Preisfindungskette für Angebotspositionen (Letzter Bestellpreis →
+Durchschnittlicher Einkaufspreis → Zielmarge auf Kostenbasis,
+`primaryPriceSourceForMaterialTx`/`PriceSourcePriorityForQuoteItem`) mit
+eigener Audit-Tabelle `quote_item_price_decisions`
+(`decision_type`-CHECK-Constraint zuletzt in Migration 066 erweitert) — aus
+einer früheren, umfangreichen GAEB-Import-Session. **Bewusste
+Scope-Entscheidung**: A.2 fasst diese bestehende Kette NICHT an (wäre
+Domäne B, nicht A, und ein Eingriff in eine bereits funktionierende,
+delikate Logik ohne fachliche Notwendigkeit) — Preisliste wird als reine
+Domäne-A-Stammdaten-Entität gebaut, die spätere Integration als vierte
+Preisquelle ist als eigene, neue Backlog-Position vermerkt.
+
+**Entscheidung** (`docs/adr/0007-preisliste-entitaet.md`): zwei neue
+Tabellen. `price_lists` (Header, mandantengescoped von Anfang an NOT NULL,
+da neue Tabelle ohne Bestandsdaten — kein Expand-Contract nötig): Name,
+Lieferant als freier Text (bewusst keine FK, A.3 baut das später aus,
+gleiches Muster wie `profilserie` in ADR 0006), Währung PRO LISTE (nicht
+pro Zeile), Gültig-von (Pflicht)/-bis (optional = unbefristet), aktiv.
+`price_list_items` (Zeilen, Scope über `price_list_id` geerbt, analog
+`quote_items`): `material_id`, `min_menge`, `unit_price`, `UNIQUE
+(price_list_id, material_id, min_menge)`. Staffelpreis-Semantik: die Zeile
+mit der größten `min_menge <= bestellte Menge` gewinnt. Die konkrete
+Lookup-Priorität bei mehreren gleichzeitig gültigen Preislisten wird
+bewusst nicht in der ADR, sondern erst im Anwendungscode (A.2.3) entschieden
+— hängt von Details ab, die dort erst konkret werden.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0007-preisliste-entitaet.md` (neu),
+`docs/backlog.md` (A.2 in Subtasks A.2.1/A.2.2/A.2.3 zerlegt, A.2.1 als done
+markiert).
+
+**Subtask A.2.2 (Migration: `price_lists` + `price_list_items`) abgeschlossen**,
+gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/069_price_lists.sql` (nächste freie
+Nummer nach 068) — additive `CREATE TABLE IF NOT EXISTS` für beide
+Tabellen gemäß ADR 0007 (`price_lists` Header mit `company_id NOT NULL` von
+Anfang an, `price_list_items` Zeilen mit Scope-Vererbung über
+`price_list_id`), keine bestehende Tabelle geändert. DOWN-Kommentarblock
+analog zum etablierten Muster.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-069 lief beim
+Testaufruf fehlerfrei durch (Log bestätigt `Migration ausführen:
+069_price_lists.sql` als letzten Eintrag), alle 12 `materials`-Tests PASS —
+keine Regression. `\d price_lists`/`\d price_list_items` bestätigen alle
+Spalten mit korrektem Typ/Default; `schema_migrations` bestätigt Tracking.
+**Alle drei CHECK-/UNIQUE-Constraints direkt per SQL provoziert und
+bestätigt abgelehnt** (nicht nur Schema-Anzeige geprüft, sondern die Regel
+wirklich verletzt): `gueltig_bis < gueltig_von` → `chk_price_lists_gueltigkeit`
+lehnt ab; `unit_price=-5` → `chk_price_list_items_unit_price` lehnt ab;
+doppelte `(price_list_id, material_id, min_menge)` → `UNIQUE` lehnt ab; ein
+gültiger Insert (`min_menge=0, unit_price=12.50`) gelingt. DB danach
+zurückgesetzt und vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle Domänen) gegen
+erneut frisch aufgesetzte DB: `ok nalaerp3/internal/http 18.434s` — keine
+Regression durch die zwei neuen Tabellen.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in A.2.3).
+Geänderte Dateien: `server/internal/migrate/migrations/069_price_lists.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask A.2.3 (Anwendungscode: CRUD + Lookup-Helfer + HTTP + Tests für
+Preislisten) abgeschlossen — damit ist Task A.2 vollständig abgeschlossen.**
+Neue Datei `server/internal/materials/price_lists.go`: vollständiges CRUD
+für `PriceList` (Header) und `PriceListItem` (Staffelzeilen), Ownership-Kette
+Preisliste→Mandant und Preislistenzeile→Material→Mandant (letzteres über
+Wiederverwendung des bestehenden `s.Get`, analog zu `StockByMaterial`).
+Duplikat-Staffeln werden per `SELECT EXISTS`-Pre-Check VOR dem Insert
+abgefangen (nicht über den DB-UNIQUE-Fehler), damit die Fehlermeldung
+sauber über `classifyDomainError` auf 400 statt 500 gemappt wird — bewusste
+Anwendung des in A.1.3 bereits erkannten Prinzips.
+
+**Lookup-Helfer `EffectivePriceForMaterial`**: die in ADR 0007 bewusst offen
+gelassene Frage (Priorität bei mehreren gleichzeitig gültigen Preislisten)
+wurde hier entschieden — die Liste mit dem spätesten `gueltig_von` gewinnt.
+Eine einzige SQL-Abfrage mit `ORDER BY pl.gueltig_von DESC, pli.min_menge
+DESC LIMIT 1` löst sowohl diese Listen-Priorität als auch die
+Staffelpreis-Auswahl (größte `min_menge <= Menge`) in einem Schritt. Liefert
+`(nil, nil)` bei keinem Treffer — kein Fehler, sondern "keine Preisliste
+zuständig" (Aufrufer entscheidet über Fallback).
+
+**HTTP-Wiring** (`v1.go`, anders als bei A.1.3 diesmal ECHT nötig, da neue
+Ressourcen): neue Route-Gruppe `/price-lists` (voller Header-CRUD +
+Staffelzeilen-CRUD unter `/{id}/items`) sowie
+`GET /materials/{id}/effective-price?menge=&datum=`. Bewusste Entscheidung:
+alle neuen Endpunkte nutzen die bereits bestehenden
+`materials.read`/`materials.write`-Berechtigungen — KEINE neue
+Permission-Infrastruktur (keine neue Migration für `permissions`/
+`role_permissions` nötig), da Preislisten materialpreis-bezogene
+Stammdaten im selben Package sind. Kein neuer `classifyDomainError`-Eintrag
+nötig: alle neuen Fehlermeldungen nutzen bereits vorhandene Substrings
+("erforderlich", "darf nicht", "existiert bereits").
+
+Neue Tests: 11 reine Unit-Tests
+(`server/internal/materials/price_lists_test.go`, DB-los, alle
+Validierungs-Negativfälle vor dem ersten DB-Zugriff) sowie 8
+Integrationstests (`server/internal/http/price_lists_integration_test.go`
+— dabei einen Namenskonflikt mit dem bereits existierenden
+`createIntegrationMaterial`-Helfer aus `purchase_orders_integration_test.go`
+entdeckt und korrekt aufgelöst: eigene Test-Hilfsfunktion entfernt,
+stattdessen den bestehenden Helfer wiederverwendet). Fachlich wichtigster
+Test: `TestEffectivePriceForMaterialReturnsHighestApplicableTierAndNotFoundOtherwise`
+— drei Staffeln (0/10/100 Stk) angelegt, Abfrage bei Menge 50 bestätigt,
+dass korrekt die 10er-Staffel gewinnt (nicht 0er oder 100er), UND ein
+Stichtag vor `gueltig_von` liefert korrekt 404. Weitere Tests: CRUD-Flow,
+403 für `sales`-Rolle, 400 bei ungültigem Gültigkeitszeitraum,
+Update+Soft-Delete-Flow, Staffelzeilen-CRUD-Flow, 400 bei doppelter
+Staffel, 404 bei unbekanntem Material.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün.
+`go test ./internal/materials/... -v` (27 Tests, 11 davon neu): alle PASS.
+Docker-Testumgebung frisch aufgesetzt, `NALA_INTEGRATION=1 go test
+./internal/http/... -run "TestPriceLists|TestPriceListItems|TestEffectivePrice"
+-v` (8 Tests) gegen frische DB: alle PASS. Zusätzlich vollständiger,
+ungefilterter `NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle
+HTTP-Integrationstests aller Domänen) gegen erneut frisch aufgesetzte DB:
+`ok nalaerp3/internal/http 19.918s` — keine einzige Regression.
+
+Geänderte Dateien: `server/internal/materials/price_lists.go` (neu),
+`server/internal/materials/price_lists_test.go` (neu),
+`server/internal/http/price_lists_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+**Subtask A.3.1 (ADR: Schema-Design-Entscheidung für das
+Systemlieferanten-Konzept) abgeschlossen.** Kontext: ADR 0006 (A.1,
+`materials.profilserie`) und ADR 0007 (A.2, `price_lists.lieferant`)
+hatten beide bewusst freien Text gewählt und explizit auf A.3 als den Ort
+verwiesen, an dem die Bindung Lieferant↔Profilserie strukturiert wird.
+Recherche: `contacts` (`003_contacts.sql`) hat bereits eine `rolle`-Spalte
+(`customer|supplier|partner|both|other`, `contacts/service.go:30`) —
+`purchase_orders.supplier_id` referenziert bereits direkt `contacts(id)`,
+es existiert also KEINE separate Lieferantentabelle und soll auch keine
+entstehen (Vermeidung von Datenduplikat/-inkonsistenz).
+
+**Entscheidung** (`docs/adr/0008-systemlieferanten-konzept.md`): neue
+Junction-Tabelle `supplier_profile_series` (`contact_id` FK →
+`contacts(id) ON DELETE CASCADE`, `profilserie` als freier Text — bewusst
+KEINE eigene Profilserie-Katalogtabelle, das würde A.1s
+Freitext-Entscheidung konterkarieren und zwei parallele Quellen für
+"gültige Profilserien" schaffen —, `notiz`, `UNIQUE(contact_id,
+profilserie)`). Scope über `contact_id` geerbt, kein eigenes `company_id`
+(analog `contact_addresses`/`contact_persons`, ADR 0002). Fachliche Regel
+"nur Kontakte mit `rolle IN ('supplier','both')` dürfen gebunden werden"
+wird im Anwendungscode geprüft (A.3.3), nicht per DB-CHECK (Cross-Table-
+Constraints brauchen in Postgres einen Trigger, hier unverhältnismäßig).
+Code-Ort: neue Datei im bestehenden `contacts`-Paket (nicht `materials`) —
+die Bindung ist eine Erweiterung des Lieferanten-Kontakts.
+
+**Bewusst NICHT Teil von A.3** (bereits in der ADR dokumentiert, nicht nur
+vergessen): `materials.profilserie`/`price_lists.lieferant` werden NICHT
+rückwirkend auf harte FKs umgestellt — Breaking-Change-Risiko für
+bestehende Freitext-Werte, und der Backlog-Titel sagt "-Konzept", nicht
+"-Migration". Als mögliche spätere, separate Backlog-Position vermerkt.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0008-systemlieferanten-konzept.md`
+(neu), `docs/backlog.md` (A.3 in Subtasks A.3.1/A.3.2/A.3.3 zerlegt, A.3.1
+als done markiert).
+
+**Subtask A.3.2 (Migration: `supplier_profile_series`) abgeschlossen**,
+gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/070_supplier_profile_series.sql`
+(nächste freie Nummer nach 069) — additives `CREATE TABLE IF NOT EXISTS`
+gemäß ADR 0008 (`contact_id` FK auf `contacts(id) ON DELETE CASCADE`,
+`profilserie` als freier Text mit `CHECK (BTRIM(profilserie) <> '')`,
+`UNIQUE (contact_id, profilserie)`), keine bestehende Tabelle geändert.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-070 lief beim
+Testaufruf fehlerfrei durch (Log bestätigt `Migration ausführen:
+070_supplier_profile_series.sql` als letzten Eintrag), alle 9
+`contacts`-Tests PASS — keine Regression. `\d supplier_profile_series`
+bestätigt alle Spalten; `schema_migrations` bestätigt Tracking. **Alle drei
+Integritätsregeln direkt per SQL provoziert und bestätigt abgelehnt**:
+leerer `profilserie`-Text → CHECK lehnt ab; doppelte `(contact_id,
+profilserie)` → UNIQUE lehnt ab; unbekannter `contact_id` → FK lehnt ab; ein
+gültiger Insert (Kontakt mit `rolle='supplier'`, echtes `contacts`-Testdatum
+angelegt) gelingt. DB danach zurückgesetzt und vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle Domänen) gegen
+erneut frisch aufgesetzte DB: `ok nalaerp3/internal/http 19.852s` — keine
+Regression durch die neue Tabelle.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in A.3.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/070_supplier_profile_series.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask A.3.3 (Anwendungscode: CRUD + Reverse-Lookup + HTTP + Tests für
+Systemlieferanten) abgeschlossen — damit ist Task A.3 vollständig
+abgeschlossen, UND DAMIT DAS GESAMTE EPIC A (STAMMDATEN: A.1, A.2, A.3)
+VOLLSTÄNDIG ABGESCHLOSSEN.** Neue Datei
+`server/internal/contacts/system_suppliers.go`: CRUD für die Bindung
+(`CreateSupplierProfileSeries`/`ListSupplierProfileSeries`/
+`DeleteSupplierProfileSeries`, Ownership über `s.Get` analog zu
+`CreateAddress`) sowie `ListSuppliersByProfileSeries` als Reverse-Lookup —
+die eigentliche fachliche Motivation hinter "Bindung", nicht nur die
+Vorwärtsrichtung.
+
+**Echter, unabhängiger Fund**: `Contact.Rolle` wird beim Anlegen NICHT auf
+Kleinschreibung normalisiert (nur `isIn()` prüft case-insensitiv, der
+gespeicherte Wert kann z. B. "Supplier" statt "supplier" lauten,
+`contacts/service.go:255-258` — anders als der analoge, aber tatsächlich
+normalisierende `PersonRolle`-Pfad bei `:680`). `ensureSupplierRole`
+vergleicht deshalb bewusst case-insensitiv statt exakt, um dieses
+bestehende Verhalten korrekt zu berücksichtigen, statt es (außerhalb des
+Subtask-Scopes) zu "reparieren".
+
+Duplikat-Bindungen per `SELECT EXISTS`-Pre-Check abgefangen (gleiches
+Prinzip wie in A.2.3 etabliert). Alle neuen Fehlermeldungen bewusst so
+formuliert, dass sie bestehende `classifyDomainError`-Substrings treffen
+("ungültig", "erforderlich", "existiert bereits") — kein neuer Eintrag
+nötig.
+
+**HTTP-Wiring** (`v1.go`): `/contacts/{id}/profile-series` (POST/GET) +
+`/contacts/{id}/profile-series/{seriesID}` (DELETE) sowie die statische
+Reverse-Lookup-Route `/contacts/profile-series/{profilserie}/suppliers`
+(vor `/{id}` registriert, analog zum bereits bewährten
+`/materials/types`-vs-`/materials/{id}`-Routing-Muster aus diesem Repo),
+alle mit den bestehenden `contacts.read`/`contacts.write`-Berechtigungen —
+keine neue Permission-Infrastruktur, konsistent mit A.2.3.
+
+Neue Tests: 3 reine Unit-Tests
+(`server/internal/contacts/system_suppliers_test.go`, DB-los) sowie 5
+Integrationstests (`server/internal/http/system_suppliers_integration_test.go`
+— dabei ZWEI Namenskonflikte mit bereits existierenden Test-Helfern
+(`createIntegrationMaterial` aus der A.2.3-Session,
+`createIntegrationContact` aus `purchase_orders_integration_test.go`)
+entdeckt und jeweils durch Wiederverwendung statt Duplikat aufgelöst).
+Fachlich wichtigster Test:
+`TestSupplierProfileSeriesReverseLookupReturnsMatchingSuppliersOnly` — zwei
+Lieferanten binden dieselbe Profilserie plus eine dritte, andere Bindung,
+die Reverse-Lookup-Route liefert nachweislich exakt die zwei richtigen
+Lieferanten (nicht mehr, nicht weniger). Weitere Tests: CRUD-Flow, 400 bei
+Bindungsversuch an einen reinen `customer`-Kontakt, 201 bei `rolle=both`,
+400 bei doppelter Bindung.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün.
+`go test ./internal/contacts/... -v` (17 Tests, 3 davon neu): alle PASS.
+Docker-Testumgebung frisch aufgesetzt, `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestSupplierProfileSeries -v` (5 Tests) gegen
+frische DB: alle PASS. Zusätzlich vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle
+HTTP-Integrationstests aller Domänen) gegen erneut frisch aufgesetzte DB:
+`ok nalaerp3/internal/http 20.819s` — keine einzige Regression.
+
+Geänderte Dateien: `server/internal/contacts/system_suppliers.go` (neu),
+`server/internal/contacts/system_suppliers_test.go` (neu),
+`server/internal/http/system_suppliers_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+**Epic A (Stammdaten) vollständig abgeschlossen. Session-Fortsetzung beginnt
+mit Epic B (Angebots- & Auftragswesen), Task B.1.**
+
+**Subtask B.1.1 (ADR: Schema-Design-Entscheidung für LV-Hierarchie)
+abgeschlossen.** Kontext: aufgabe.md Domäne B verlangt LV-Verwaltung mit
+Los/Titel/Untertitel-Hierarchie; `docs/01-gap-analysis.md` hatte das bereits
+als Lücke vermerkt ("`quote_items` vorhanden, aber flach"). **Kritischer
+Recherchebefund**: eine echte GAEB-Hierarchie-Extraktion existiert im
+GESAMTEN Repo nicht, auch nicht teilweise — der einzige Parser
+(`gaeb_xml_subset_parser.go`) schließt LV-Hierarchie laut eigener
+Strategiedokumentation explizit aus (`docs/gaeb_xml_subset_parser_strategy.md:45`),
+und selbst das einzige hierarchienahe Feld, das er erfasst (`outline_no`),
+wird beim tatsächlichen Übernehmen eines Imports in ein Angebot
+(`ApplyImportToDraftQuote`) verworfen, nie gelesen.
+
+**Wichtige Scope-Klärung**: Backlog I.2.1 ("D81/D83/D86-Einlesen mit voller
+Hierarchie, Positionsart, Vorbemerkungen") ist explizit für den GAEB-PARSER
+selbst zuständig. B.1 ist davon unabhängig — es baut nur das ZIELMODELL
+(Schema + CRUD), das (a) I.2.1 später befüllen wird UND (b) schon jetzt
+manuelle Angebotsstrukturierung unabhängig von jedem GAEB-Import
+ermöglicht. B.1 fasst den GAEB-Parser (`gaeb_xml_subset_parser.go`,
+`imports.go`) daher bewusst NICHT an. Ebenfalls bewusst außerhalb des
+Scopes: "Positionsart" und "Vorbemerkungen" — beide werden im Backlog nur
+zusammen mit I.2.1 genannt, nicht im Titel von B.1.
+
+**Entscheidung** (`docs/adr/0009-lv-hierarchie-positionsmodell.md`): neue,
+separate Tabelle `quote_item_groups` (eigener Baum: `quote_id`,
+`parent_group_id`-Selbstreferenz, `kind IN ('los','titel','untertitel')`,
+`bezeichnung`, `sort_order`) statt Vermischung mit `quote_items` selbst
+(verworfene Option: würde bepreiste Positionen und reine
+Struktur-Überschriften in einer Tabelle vermengen, alle Preisspalten wären
+für Gruppenknoten bedeutungslos). `quote_items` bekommt nur eine
+NULLABLE `group_id`-FK, `ON DELETE SET NULL` (niemals CASCADE — Löschen
+einer Gruppe darf NIE bepreiste Positionen mitlöschen). 100%
+rückwärtskompatibel: `group_id=NULL` für jedes bestehende Angebot, keine
+Datenmigration nötig. Wohlgeformtheits-Prüfung (welcher `kind` darf unter
+welchem Eltern-`kind` stehen) bewusst im Anwendungscode statt per
+DB-Trigger (identisches Prinzip wie ADR 0008). Keine neue,
+vereinheitlichte Sortierspalte über Gruppen+Positionen — die
+Leseseite baut den Baum zur Laufzeit aus `sort_order` (Gruppen) und der
+bereits bestehenden `position`-Spalte (Positionen) zusammen.
+
+**Warnhinweis für B.1.3** (in der ADR und im Backlog vermerkt):
+`quotes/service.go` ist die größte und fragilste Datei der Session
+(bekannte, dokumentierte Vorbefunde wie Backlog 0.34 "conn busy" bei
+`Revise`) — die Folge-Subtask darf nur additiv erweitern, keine bestehende
+Funktion umbauen, die nicht direkt Teil der neuen Funktionalität ist.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0009-lv-hierarchie-positionsmodell.md`
+(neu), `docs/backlog.md` (B.1 in Subtasks B.1.1/B.1.2/B.1.3 zerlegt, B.1.1
+als done markiert).
+
+**Subtask B.1.2 (Migration: `quote_item_groups` + `quote_items.group_id`)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/071_quote_item_groups.sql` (nächste
+freie Nummer nach 070) — additives `CREATE TABLE IF NOT EXISTS` gemäß ADR
+0009 (`kind IN ('los','titel','untertitel')`, `bezeichnung` non-empty) plus
+`ALTER TABLE quote_items ADD COLUMN group_id UUID REFERENCES
+quote_item_groups(id) ON DELETE SET NULL`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-071 lief beim
+Testaufruf fehlerfrei durch, alle `quotes`-Integrationstests PASS — keine
+Regression. `\d quote_item_groups`/`\d quote_items` bestätigen alle Spalten;
+`schema_migrations` bestätigt Tracking. **Beide CHECK-Constraints direkt
+per SQL provoziert und bestätigt abgelehnt** (ungültiger `kind`, leere
+`bezeichnung`). **Die kritische Sicherheitseigenschaft aus der ADR real
+bewiesen, nicht nur behauptet**: echte Gruppe angelegt, echte Position
+daran gebunden, Gruppe gelöscht — direkte SQL-Prüfung zeigt die Position
+BLEIBT bestehen, nur `group_id` wird auf NULL gesetzt (kein
+`ON DELETE CASCADE`-Datenverlust bepreister Positionen). DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 20.695s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in B.1.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/071_quote_item_groups.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.1.3 (Anwendungscode: CRUD + Wohlgeformtheit + group_id-Wiring +
+Baum-Helfer + HTTP + Tests für LV-Hierarchie) abgeschlossen — damit ist
+Task B.1 vollständig abgeschlossen.** Neue Datei
+`server/internal/quotes/item_groups.go`: vollständiges CRUD für
+`QuoteItemGroup`, `validateGroupHierarchy` (Wohlgeformtheit im
+Anwendungscode statt DB-Trigger, analog ADR 0008), `GetQuoteItemTree`/
+`buildQuoteItemTree` als Baum-Assemblierungs-Helfer.
+
+**Wichtige, bewusst umgesetzte Sicherheitseigenschaft**: Gruppen-Mutationen
+(Create/Update/Delete) nutzen denselben Schreibschutz aus Backlog 0.3.2
+(`ensureQuoteEditable`: nur `draft`-Angebote, keine historischen, per
+`Revise` ersetzten Versionen) wie bestehende Positions-Mutationen — die
+LV-Struktur ist Teil des geschützten Angebotsinhalts, keine Hintertür am
+bestehenden Schutz vorbei. Ownership-Checks bewusst über leichtgewichtige,
+direkte Queries (`ensureQuoteOwned`/`ensureQuoteEditable`) statt des
+deutlich teureren, sehr komplexen `s.Get()` — konsistent mit dem bereits in
+`ApplyMaterialCandidate` etablierten Muster DIESER SPEZIFISCHEN Datei
+(anders als das `s.Get()`-Ownership-Muster in `materials`/`contacts`, wo
+`Get()` günstig ist).
+
+`QuoteItemInput` um `GroupID` erweitert. `normalizeQuoteItem` (Signatur um
+`quoteID`-Parameter erweitert, beide Aufrufer in `createQuoteTx`/`Update`
+angepasst) validiert bei gesetztem `group_id`, dass die referenzierte
+Gruppe zum SELBEN Angebot gehört — verhindert Cross-Quote-Referenzen.
+`Get()`s riesige SELECT/Scan-Kette (70+ Spalten mit mehreren LATERAL JOINs)
+wurde nur um GENAU eine Spalte (`qi.group_id`) an exakt der zur
+Scan-Reihenfolge passenden Position erweitert — vor der Änderung die
+komplette bestehende Spalten-/Scan-Zuordnung Zeile für Zeile nachvollzogen,
+um keine Verschiebung zu riskieren.
+
+**Bewusst NICHT angefasst** (dokumentierter, bewusster Gap, kein
+Versehen): `Revise()` (der bekannte "conn busy"-Bug-Bereich aus Backlog
+0.34) — neue Revisionen erhalten aktuell KEINE Gruppenstruktur (Positionen
+werden ungruppiert kopiert). Begründung: `Revise()` ist durch 0.34 ohnehin
+bereits für praktisch jedes Angebot mit Positionen blockiert, eine korrekte
+Gruppen-Kopie (inkl. ID-Remapping der gesamten `quote_item_groups`-Bäume)
+wäre eine eigene, größere Aufgabe und hätte das ADR-Warnhinweis-Risiko
+("nur additiv erweitern") überschritten.
+
+**HTTP-Wiring** (`v1.go`): `POST/GET /quotes/{id}/item-groups`,
+`PATCH/DELETE /quotes/{id}/item-groups/{groupID}`, `GET
+/quotes/{id}/item-tree` — bestehende `quotes.read`/`quotes.write`-
+Berechtigungen, keine neue Permission-Infrastruktur. **Echter, bei der
+Umsetzung entdeckter und sofort korrigierter Fund**: mehrere ursprünglich
+formulierte Fehlermeldungen ("los darf KEINEN übergeordneten Knoten
+haben") hätten `classifyDomainError` NICHT getroffen, da der bestehende
+Substring `"darf nicht"` heißt, nicht `"darf keinen"` — alle betroffenen
+Meldungen auf "Ungültige Hierarchie: ..." umformuliert (trifft den
+bestehenden `"ungültig"`-Substring), VOR dem Testlauf durch gezieltes
+Nachlesen von `classifyDomainError` gefunden, nicht durch Trial-and-Error.
+
+Neue Tests: 5 reine Unit-Tests (`server/internal/quotes/item_groups_test.go`,
+DB-los, nur die vor jedem DB-Zugriff liegenden Validierungspfade) sowie 6
+Integrationstests (`server/internal/http/quote_item_groups_integration_test.go`):
+CRUD-Flow (Los→Titel-Kind, Umbenennen, Löschen), 400 bei ungültiger
+Hierarchie, 403 für `procurement`-Rolle (bewusst NICHT `sales` gewählt, da
+`sales` laut `017_auth.sql` bereits `quotes.write` besitzt — durch Lesen
+der Migration geprüft, nicht angenommen), 400 bei Gruppen-Mutation auf
+einem nicht-draft-Angebot, positiver+negativer Fall für `group_id`-
+Zuweisung (eigenes Angebot erlaubt, fremdes Angebot abgelehnt). Fachlich
+wichtigster Test: `TestQuoteItemTreeAssemblesHierarchyCorrectly` — eine
+echte 3-Ebenen-Struktur (Los→Titel→Untertitel) mit einer zugeordneten und
+einer ungruppierten Position angelegt, der über die HTTP-Route
+assemblierte Baum geprüft und bestätigt exakt korrekt verschachtelt.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün. `go test
+./internal/quotes/... -v`: alle PASS (inkl. der 5 neuen Tests). Docker-
+Testumgebung frisch aufgesetzt, `NALA_INTEGRATION=1 go test
+./internal/http/... -run "TestQuoteItemGroups|TestQuoteItemUpdate|TestQuoteItemTree"
+-v` (6 Tests) gegen frische DB: alle PASS. **Kritischer Regressionscheck
+angesichts der Fragilität von `quotes/service.go`**: zusätzlich GEZIELT der
+komplette bestehende `TestQuote*`/`TestGAEB*`-Testbestand erneut gegen
+frische DB gelaufen — keine einzige Regression. Abschließend vollständiger,
+ungefilterter `NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle
+Domänen) gegen erneut frisch aufgesetzte DB: `ok nalaerp3/internal/http
+21.743s` — keine Regression.
+
+Geänderte Dateien: `server/internal/quotes/item_groups.go` (neu),
+`server/internal/quotes/item_groups_test.go` (neu),
+`server/internal/http/quote_item_groups_integration_test.go` (neu),
+`server/internal/quotes/service.go`, `server/internal/http/v1.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.2.1 (ADR: Schema-Design-Entscheidung für Nachtragsmanagement)
+abgeschlossen.** Kontext: `docs/01-gap-analysis.md:33` hatte bereits präzise
+festgehalten, dass kein Konzept "Nachtrag zu bestehendem Auftrag" existiert
+— nur Angebots-Revisionierung (`quotes.root_quote_id`/`Revise()`), die aber
+strukturell und rechtlich etwas anderes ist (Vorvertrags-Versionierung,
+ersetzt das Original; ein VOB/B-Nachtrag lässt den bereits erteilten
+Grundauftrag unverändert und kommt additiv hinzu). Recherche bestätigt:
+`sales_orders` hat keinerlei Versionierungsspalten, kein Analog zu
+`Revise()` existiert in `sales/service.go`. Bestehender Schreibschutz
+(`isEditableStatus`, Backlog 0.3.2) gilt bereits für Aufträge; Audit-
+Anbindung (`s.audit`) ist bei `sales_orders` bestätigt UNVOLLSTÄNDIG (nur
+Statuswechsel und Rechnungsüberführung protokolliert, Header-/Item-
+Änderungen nicht) — eine vorbestehende, unabhängige Lücke.
+
+**Entscheidung** (`docs/adr/0010-nachtragsmanagement.md`): zwei neue
+Tabellen `sales_order_addenda` (Header: `nachtrag_no` sequentiell PRO
+Auftrag, Status `entwurf`/`beantragt`/`angenommen`/`abgelehnt`,
+`begruendung`, `currency` automatisch vom Auftrag übernommen) +
+`sales_order_addendum_items` (identisches, bewusst schlankes Spaltenset
+wie `sales_order_items` — kein `material_id`, keine Hierarchie, da das
+Original auch keines hat). Verworfene Optionen: (a) Nachtrag als komplette
+neue Auftragsversion analog `quotes.Revise()` — passt fachlich nicht, der
+Grundauftrag muss unverändert bestehen bleiben; (b) Nachtrag als
+Boolean-Flag direkt auf `sales_order_items` — verliert Status/Begründung/
+Entscheidungsdatum, riskiert versehentliches Einrechnen abgelehnter
+Positionen.
+
+**Wichtige Design-Entscheidung**: die effektive Auftragssumme wird NICHT
+in `sales_orders` selbst geschrieben (keine stille Mutation bereits
+festgeschriebener Summen) — die Anwendungsschicht (B.2.3) berechnet sie
+zur Lesezeit additiv (Grundauftrag + Summe aller `angenommen`-Nachträge).
+Nur `entwurf`-Nachträge sind editierbar; `angenommen`/`abgelehnt` sind
+terminal (kein Zurücksetzen, Storno-statt-Änderung-Prinzip — ein neu zu
+verhandelnder Nachtrag wird als NEUER Nachtrag angelegt). Nachtrag-Anlage
+nur für Aufträge mit Status `open`/`released` (identisch zu
+`isEditableStatus`) — Erweiterung auf `invoiced`-Aufträge bewusst
+zurückgestellt, als mögliche künftige Backlog-Position vermerkt.
+
+**Bewusste Scope-Grenze**: die Nachtrag-**Entscheidung** selbst wird von
+Anfang an auditiert (`entity_change_log`, `entity_type =
+'sales_order_addendum'`) — das ist der fachliche Kern des Features. Die
+bereits bestehende, unabhängige Lücke (Header-/Item-Änderungen an
+`sales_orders` selbst sind nicht auditiert) wird NICHT im Rahmen von B.2
+geschlossen, sondern als separate, mögliche künftige Backlog-Position
+dokumentiert. Keine neue Permission-Infrastruktur — Nachtrag-CRUD/
+-Entscheidung nutzt die bestehenden `sales_orders.read`/`write`.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0010-nachtragsmanagement.md` (neu),
+`docs/backlog.md` (B.2 in Subtasks B.2.1/B.2.2/B.2.3 zerlegt, B.2.1 als
+done markiert).
+
+**Subtask B.2.2 (Migration: `sales_order_addenda` + `sales_order_addendum_items`)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/072_sales_order_addenda.sql` (nächste
+freie Nummer nach 071) — additives `CREATE TABLE IF NOT EXISTS` gemäß ADR
+0010 (`status`-CHECK auf die vier definierten Werte, `nachtrag_no`
+sequentiell pro Auftrag via `UNIQUE(sales_order_id, nachtrag_no)`), keine
+bestehende Tabelle geändert.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-072 lief beim
+Testaufruf fehlerfrei durch, alle `sales_orders`-Tests PASS — keine
+Regression. `\d sales_order_addenda`/`\d sales_order_addendum_items`
+bestätigen alle Spalten; `schema_migrations` bestätigt Tracking. **CHECK-
+und UNIQUE-Constraint direkt per SQL provoziert und bestätigt abgelehnt**
+(ungültiger Status, doppelte `nachtrag_no` pro Auftrag); zusätzlich das
+`ON DELETE CASCADE` von Addendum auf seine Positionen real geprüft (Löschen
+des Headers entfernt nachweislich auch die Positionszeile) — bewusst so
+vorgesehen, da eine Löschung ohnehin nur für `entwurf`-Nachträge zulässig
+sein wird (Statusprüfung folgt auf Anwendungsebene in B.2.3). DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 21.661s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in B.2.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/072_sales_order_addenda.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.2.3 (Anwendungscode: CRUD + Statusworkflow + Effektiv-Summen-
+Helfer + Audit-Anbindung + HTTP + Tests für Nachtragsmanagement)
+abgeschlossen — damit ist Task B.2 vollständig abgeschlossen.** Neue Datei
+`server/internal/sales/addenda.go`: vollständiges CRUD für
+`SalesOrderAddendum` (Header) und `SalesOrderAddendumItem` (Positionen,
+bewusste Wiederverwendung der bestehenden, unveränderten
+`validateItemInput`-Funktion statt Duplikation), `SubmitAddendum`
+(entwurf→beantragt, Festschreibung ab Antragstellung, mindestens eine
+Position erforderlich), `DecideAddendum` (beantragt→angenommen/abgelehnt,
+Ablehnungsgrund bei Ablehnung Pflicht), `EffectiveOrderTotals`.
+
+**Wiederverwendung statt Duplikation**: Nachtrag-Anlage nutzt die
+bestehende `ensureOrderEditableTx` unverändert (identische Anforderung
+"nur open/released" wie bei normalen Auftragspositionen) — deren
+`FOR UPDATE`-Sperre auf `sales_orders` serialisiert nebenbei gleichzeitige
+Nachtrag-Anlagen für denselben Auftrag, kein separater Advisory-Lock für
+die `nachtrag_no`-Vergabe nötig.
+
+**Die zentrale Design-Entscheidung aus ADR 0010 live gegen echtes Postgres
+bewiesen, nicht nur behauptet**: nach Akzeptanz eines Nachtrags über 100€
+(bei einem Grundauftrag mit ebenfalls 100€ Netto) blieb
+`sales_orders.net_amount` nachweislich unverändert bei 100€, während
+`GET /sales-orders/{id}/effective-totals` korrekt 200€ (100€ Basis + 100€
+angenommener Nachtrag) auswies — per Integrationstest UND per direkter
+API-Abfrage der beiden Endpunkte im selben Testlauf verifiziert.
+
+**Audit-Anbindung real verifiziert, nicht nur behauptet**: nach einer
+Testflow-Ausführung direkte SQL-Prüfung auf `entity_change_log` zeigt
+exakt einen Eintrag (`entity_type='sales_order_addendum'`,
+`action='entschieden'`, korrekter `actor_user_id`
+`itest-admin-integration-addenda@example.com`, `before_data={"status":
+"beantragt"}`, `after_data={"status": "angenommen"}`) — UND bestätigt,
+dass `salesSvc` in `v1.go:81` bereits produktiv mit `.WithAudit(auditSvc)`
+verdrahtet ist, die neue Protokollierung also kein totes Feature ist,
+sondern im echten Produktivpfad greift.
+
+**HTTP-Wiring** (`v1.go`): `POST/GET /sales-orders/{id}/addenda`, `GET
+/sales-orders/{id}/addenda/{addendumID}`, `POST/PATCH/DELETE
+.../items[/{itemID}]`, `POST .../submit`, `POST .../decide`, `GET
+/sales-orders/{id}/effective-totals` — bestehende `sales_orders.read`/
+`write`-Berechtigungen, keine neue Permission-Infrastruktur. Neue
+Fehlermeldungen bewusst VOR dem Testlauf gegen `classifyDomainError`
+geprüft und passend formuliert (u. a. "können bearbeitet werden",
+"können nicht erneut umgestellt werden", "keine positionen") — gelernte
+Lektion aus B.1.3 direkt angewendet, kein Trial-and-Error nötig.
+
+Neue Tests: 7 reine Unit-Tests (`server/internal/sales/addenda_test.go`,
+DB-los, vollständige Statusübergangs-Matrix + die vor jedem DB-Zugriff
+liegenden Validierungspfade) sowie 5 Integrationstests
+(`server/internal/http/sales_order_addenda_integration_test.go` — dabei
+einen neuen Helfer `createIntegrationSalesOrder` ergänzt, da zuvor gar
+keine dedizierte `sales_orders`-Test-Datei existierte; der einzige Weg zu
+einem echten `sales_orders`-Datensatz führt über
+Angebot→Annahme→Konvertierung, es gibt keine direkte POST-Route): voller
+Entwurf→Positionen→Beantragen→Annehmen-Flow inkl. Effektiv-Summen- und
+Unveränderlichkeits-Check, 400 bei fehlendem Ablehnungsgrund, 400 bei
+Beantragen eines Nachtrags ohne Positionen, 400 bei Positions-Mutation nach
+Einreichung (Festschreibung greift korrekt), 403 für `procurement`-Rolle.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün. `go test
+./internal/sales/... -v`: alle PASS (inkl. der 7 neuen Tests). Docker-
+Testumgebung frisch aufgesetzt, `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestSalesOrderAddenda -v` (5 Tests) gegen frische
+DB: alle PASS. **Regressionscheck**: zusätzlich gezielt der komplette
+bestehende `TestQuote*`/`TestSalesOrder*`/`TestCommercialWorkflow*`-
+Testbestand erneut gegen frische DB gelaufen — keine Regression.
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 22.840s` — keine Regression.
+
+**Damit ist das bisher bearbeitete Epic B (B.1 LV-Hierarchie, B.2
+Nachtragsmanagement) abgeschlossen — B.3 (Kalkulationsschema) und B.4
+(Abschlags-/Schlussrechnung VOB/B §16) bleiben offen.**
+
+Geänderte Dateien: `server/internal/sales/addenda.go` (neu),
+`server/internal/sales/addenda_test.go` (neu),
+`server/internal/http/sales_order_addenda_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.3.1 (ADR: Schema-Design-Entscheidung für das vollständige
+Kalkulationsschema) abgeschlossen.** Kontext: `anweisung.md:94` (Ursprungs-
+Vorgabe) und `docs/01-gap-analysis.md:34` hatten den Gap bereits präzise
+benannt: "einfaches Zielmargen-Modell, kein vollständiges
+Kalkulationsschema (Material/Lohn/Fremdleistung/Zuschläge getrennt)".
+Recherche bestätigt: `quote_items.unit_price` ist seit der Basismigration
+eine einzige flache Zahl, nie um Kostenart-Spalten erweitert. Die
+bestehende Preisfindungskette (`primaryPriceSourceForMaterialTx` →
+`ApplyPrimaryPriceSourceForQuoteItem` → `ApplyTargetUnitPriceForQuoteItem`)
+ist ausschließlich materialkostenbasiert (letzter Bestellpreis oder
+`materials.avg_purchase_price`) und wendet EINE pauschale Zielmarge
+(`quote_calculation_settings.target_margin_percent`, 20 %) an — eine
+Position ganz ohne `material_id` kann diese Kette gar nicht durchlaufen.
+**Wichtiger Befund**: keine Lohnkosten-Quelle (kein Stundensatz-Feld bei
+`hr.Employee`) und keine Fremdleistungskosten-Quelle (keine
+Nachunternehmer-Struktur in `purchasing`) existiert irgendwo im Repo —
+beide Kostenarten müssen im neuen Schema als manuell erfasste Werte
+modelliert werden, es gibt nichts Automatisches, worauf B.3 zurückgreifen
+könnte.
+
+**Entscheidung** (`docs/adr/0011-kalkulationsschema.md`): neue, separate
+1:1-Tabelle `quote_item_calculations` statt Umbau von
+`quote_items.unit_price` selbst (verworfen: `unit_price` wird an sehr
+vielen Stellen im fragilen `quotes/service.go` gelesen/geschrieben, ein
+Ersatz durch mehrere Spalten wäre ein riskanter Umbau des gesamten
+bestehenden Preispfads und würde JEDE Position zwingen, das neue Schema zu
+nutzen). Klassische deutsche Zuschlagskalkulation mit
+Kostenartentrennung: Material/Lohn/Fremdleistung bekommen JEWEILS einen
+EIGENEN Zuschlagssatz statt einer gemeinsamen Marge auf eine Gesamtsumme.
+Ein expliziter "Anwenden"-Schritt (analog zum bereits etablierten
+`ApplyPrimaryPriceSourceForQuoteItem`-Muster) schreibt das Ergebnis in
+`quote_items.unit_price` und protokolliert es in der BEREITS
+BESTEHENDEN `quote_item_price_decisions` (neuer `decision_type`-Wert
+`'calculation_scheme_applied'`, CHECK-Erweiterung analog Migration 066) —
+bewusst KEIN zweites, unabhängiges Protokoll.
+
+**Standardwerte bewusst auf 0**: `quote_calculation_settings` wird additiv
+um Default-Zuschlagssätze/-Stundensatz erweitert, alle mit Default 0 statt
+eines erfundenen Praxiswerts (z. B. "80 % Lohnzuschlag" wäre eine
+unbelegte fachliche Vermutung, aufgabe.md §0/§7.10) — Mandanten müssen ihre
+tatsächlichen Sätze selbst hinterlegen. Die bestehende Zielmargen-Kette
+(`target_margin_percent`) bleibt vollständig unverändert und koexistiert
+als zweiter, unabhängiger Preisfindungsweg — kein Breaking Change.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0011-kalkulationsschema.md` (neu),
+`docs/backlog.md` (B.3 in Subtasks B.3.1/B.3.2/B.3.3 zerlegt, B.3.1 als
+done markiert).
+
+**Subtask B.3.2 (Migration: `quote_item_calculations` + additive Spalten
+auf `quote_calculation_settings` + `decision_type`-CHECK-Erweiterung)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/073_quote_item_calculations.sql`
+(nächste freie Nummer nach 072) — additives `CREATE TABLE IF NOT EXISTS`
+gemäß ADR 0011 (sieben `CHECK (...>=0)`-Constraints, `UNIQUE
+(quote_item_id)` für die echte 1:1-Beziehung), vier additive Spalten auf
+`quote_calculation_settings` (alle Default 0), sowie die CHECK-Erweiterung
+auf `quote_item_price_decisions.decision_type` um
+`'calculation_scheme_applied'` (identisches Muster wie Migration 066).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-073 lief beim
+Testaufruf fehlerfrei durch, alle `quotes`-Tests PASS — keine Regression.
+`\d quote_item_calculations`/`\d quote_calculation_settings` bestätigen
+alle Spalten; `schema_migrations` bestätigt Tracking. **Alle Constraints
+direkt per SQL provoziert und bestätigt**: negativer `material_cost` →
+CHECK lehnt ab; doppelter `quote_item_id` → UNIQUE lehnt ab; ein gültiger
+Insert gelingt. **Die CHECK-Erweiterung auf `decision_type` live geprüft,
+nicht nur angenommen**: nach dem Constraint-Rebuild wurden sowohl der neue
+Wert `calculation_scheme_applied` als auch der bereits bestehende
+`target_price_applied` erfolgreich eingefügt — keine Regression am
+bestehenden Preisentscheidungs-Mechanismus (zusätzlich durch den
+vollständigen `TestQuote*`-Testlauf bestätigt, inkl. der Tests, die
+`apply-target-price` durchlaufen). DB danach zurückgesetzt und
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 23.286s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in B.3.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/073_quote_item_calculations.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.3.3 (Anwendungscode: CRUD + Berechnungs-/Anwenden-Logik +
+HTTP + Tests für das Kalkulationsschema) abgeschlossen — damit ist Task
+B.3 vollständig abgeschlossen, UND DAMIT DAS GESAMTE BISHER BEARBEITETE
+EPIC B (B.1 LV-Hierarchie, B.2 Nachtragsmanagement, B.3 Kalkulationsschema)
+abgeschlossen (nur B.4 bleibt offen).** Neue Datei
+`server/internal/quotes/calculations.go`: 1:1-CRUD für
+`QuoteItemCalculation` (PUT-Semantik via `ON CONFLICT DO UPDATE`) sowie
+`ApplyCalculationForQuoteItem` (identisches Muster wie
+`ApplyPrimaryPriceSourceForQuoteItem`/`ApplyTargetUnitPriceForQuoteItem`,
+bewusst OHNE `material_id`-Pflicht, da eine Kalkulation rein lohn-/
+fremdleistungsbasiert sein kann).
+
+**Die Kernrechnung der "getrennt"-Anforderung per Unit-Test exakt
+nachgerechnet und bestätigt**: 100€ Material+15% Zuschlag, 2h×40€
+Lohnkosten+80% Zuschlag, 50€ Fremdleistung+10% Zuschlag ergibt
+115€+144€+55€ = 314€ — jede Kostenart trägt nachweislich ihren EIGENEN
+Zuschlagssatz, nicht eine gemeinsame Marge auf eine Gesamtsumme (das ist
+der fachliche Kern von "Material/Lohn/Fremdleistung getrennt").
+`ApplyCalculationForQuoteItem` protokolliert über die bestehende
+`quote_item_price_decisions` (neuer `decision_type=
+'calculation_scheme_applied'`) — **per direkter SQL-Prüfung nach dem
+Testlauf bestätigt, dass der Eintrag real geschrieben wird** (kein
+zweites, unabhängiges Protokoll neben der bereits etablierten
+Preisentscheidungs-Historie).
+
+`quote_calculation_settings`-Service um die vier B.3-Default-Felder
+erweitert; die bestehende `GET/PUT /settings/quote-calculation`-Route
+brauchte KEINE Code-Änderung (generisches Struct-Passthrough — derselbe
+Fund-Typ wie bereits in A.1.3). Validierung in eine eigene, testbare
+Funktion `validateQuoteCalculationDefaults` extrahiert statt inline in
+`Upsert` zu belassen — kleine, bewusste Refaktorierung innerhalb der
+ohnehin für B.3 geänderten Datei, um DB-lose Unit-Tests zu ermöglichen.
+
+**Echter, bei der Testarbeit entdeckter und sofort behobener Fund**:
+`quote_calculation_settings` ist eine globale Singleton-Zeile (`id=
+'default'`), die zwischen Testfunktionen DESSELBEN Testlaufs NICHT
+zurückgesetzt wird. Ein neuer Integrationstest änderte versehentlich
+`target_margin_percent` mit, wodurch ein bereits bestehender, von dieser
+Subtask unveränderter Test (`TestQuoteCalculationSettingsFlow` aus
+`settings_integration_test.go`, der einen frischen Default-Wert 20
+erwartet) fehlschlug — vollständig durch den Regressionslauf aufgedeckt,
+nicht übersehen. Behoben, indem der neue Test dieses Feld unangetastet
+lässt (reine Testisolations-Falle, kein Produktivcode-Bug).
+
+**HTTP-Wiring** (`v1.go`): `PUT/GET/DELETE
+/quotes/{id}/items/{itemID}/calculation`, `POST .../apply-calculation` —
+bestehende `quotes.read`/`write`-Berechtigungen, keine neue Permission-
+Infrastruktur. Ein neuer `classifyDomainError`-Substring `"keine
+kalkulation"` ergänzt (analog zum bereits bestehenden `"keine
+preisentscheidung"` für die strukturell identische "Voraussetzung fehlt"-
+Situation bei `ApplyTargetUnitPriceForQuoteItem`).
+
+Neue Tests: 9 reine Unit-Tests (6 in
+`server/internal/quotes/calculations_test.go` — inkl. der exakten
+Nachrechnung der getrennten Zuschlagslogik —, 3 in
+`server/internal/settings/quote_calculation_test.go`, alle DB-los) sowie
+6 Integrationstests
+(`server/internal/http/quote_item_calculations_integration_test.go`):
+voller Anlegen→Abrufen→Anwenden→Löschen-Flow inkl. direkter SQL-Prüfung
+des Preisentscheidungs-Eintrags, 400 bei negativen Werten, 400 bei
+Anwenden ohne vorhandene Kalkulation, 400 bei Mutation auf einem
+nicht-draft-Angebot (Festschreibung greift korrekt), sowie ein
+Roundtrip-Test für die neuen Settings-Felder.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l .` — alle clean.
+`go test ./...` über alle 15 Nicht-Integrationspakete: grün. `go test
+./internal/quotes/...`/`./internal/settings/...`: alle PASS (inkl. der 9
+neuen Tests). Docker-Testumgebung frisch aufgesetzt,
+`NALA_INTEGRATION=1 go test ./internal/http/... -run
+"TestQuoteItemCalculation|TestQuoteCalculationSettings" -v` (6 Tests)
+gegen frische DB: alle PASS. **Regressionscheck**: zusätzlich gezielt der
+komplette bestehende `TestQuote*`/`TestGAEB*`/`TestSettings*`-Testbestand
+erneut gegen frische DB gelaufen — keine Regression, inkl. Bestätigung,
+dass die CHECK-Erweiterung aus B.3.2 den bestehenden
+`apply-target-price`-Pfad nicht bricht. Abschließend vollständiger,
+ungefilterter `NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle
+Domänen) gegen erneut frisch aufgesetzte DB: `ok nalaerp3/internal/http
+23.860s` — keine Regression.
+
+Geänderte Dateien: `server/internal/quotes/calculations.go` (neu),
+`server/internal/quotes/calculations_test.go` (neu),
+`server/internal/settings/quote_calculation_test.go` (neu),
+`server/internal/http/quote_item_calculations_integration_test.go` (neu),
+`server/internal/settings/quote_calculation.go`, `server/internal/http/v1.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.4.1 (ADR: Schema-Design-Entscheidung für Abschlags-/
+Schlussrechnung nach VOB/B §16) abgeschlossen.** **Wichtigster
+Recherchebefund**: Teilrechnungsstellung gegen einen Auftrag existiert
+bereits vollständig und produktiv — `invoice_out_items.source_sales_order_item_id`
+(Migration 038), `remainingQtyByItemTx`/`selectInvoiceQuantities`
+berechnen bereits korrekt die offene Restmenge über ALLE bisherigen
+Rechnungen hinweg, mehrfache `ConvertToInvoice`-Aufrufe gegen denselben
+Auftrag sind bereits möglich. B.4 baut daher NICHT die Teilrechnungs-
+Mechanik selbst, sondern nur die VOB/B-§16-spezifische Typisierung
+(Abschlag vs. Schluss) und zwei Geschäftsregeln obendrauf.
+
+**Erkenntnis, die das Design deutlich vereinfacht**: da jede Rechnung
+(Abschlag oder Schluss) ohnehin laut bestehender Mechanik nur die noch
+NICHT abgerechnete Restmenge je Position enthält, ist eine Schlussrechnung
+automatisch bereits "um alle vorherigen Abschlagszahlungen bereinigt" —
+eine separate monetäre Verrechnungslogik ("Gesamtsumme minus bereits
+gezahlte Abschläge") ist NICHT nötig, das leistet die bestehende
+Mengenlogik bereits.
+
+**Vorbestehender, dokumentierter Bug gefunden (nicht im Rahmen von B.4
+behoben)**: `ConvertToInvoice` setzt bei JEDEM Aufruf, auch bei einer
+kleinen Teilrechnung, `sales_orders.status='invoiced'`
+(`server/internal/sales/service.go:747`) — dieser Status bedeutet also nur
+"mindestens eine Rechnung existiert", nicht "vollständig abgerechnet". B.4
+verwendet ihn deshalb NICHT als Signal für "Schlussrechnung bereits
+gestellt", sondern prüft direkt `invoices_out.invoice_type` — als separate,
+mögliche künftige Backlog-Position vermerkt.
+
+**Entscheidung** (`docs/adr/0012-abschlags-schlussrechnung.md`): additive
+Spalte `invoices_out.invoice_type` (Default `'rechnung'`, CHECK-Constraint
+auf drei Werte) statt Vermischung mit dem bestehenden Buchungs-/Zahlungs-/
+Storno-Status. **Minimal-invasive Umsetzung**: `accounting.ARService.createTx`/
+`CreateFromSalesOrderTx`/`InvoiceOutInput` bleiben UNVERÄNDERT — der Typ
+wird stattdessen per zusätzlichem `UPDATE` INNERHALB der bereits offenen
+`ConvertToInvoice`-Transaktion gesetzt, kein neuer Parameter im
+gemeinsamen, auch vom Quote-Rechnungspfad genutzten `accounting`-Insert-
+Pfad. Lesepfad (`Get`/`List`) wird nur additiv um `invoice_type` ergänzt.
+Zwei Geschäftsregeln: (1) keine weitere Rechnung (Abschlag ODER Schluss)
+nach einer bereits bestehenden, nicht stornierten Schlussrechnung; (2)
+eine Schlussrechnung muss zwingend die komplette Restmenge aller
+Positionen abdecken, keine Teilmengen erlaubt. Sicherheitseinbehalt
+(VOB/B §17) bewusst außerhalb des Scopes (Backlog-Titel nennt nur §16).
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0012-abschlags-schlussrechnung.md`
+(neu), `docs/backlog.md` (B.4 in Subtasks B.4.1/B.4.2/B.4.3 zerlegt, B.4.1
+als done markiert).
+
+**Subtask B.4.2 (Migration: `invoices_out.invoice_type` + CHECK-Constraint)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/074_invoices_out_invoice_type.sql`
+(nächste freie Nummer nach 073) — additive `ALTER TABLE invoices_out ADD
+COLUMN invoice_type text NOT NULL DEFAULT 'rechnung'` + CHECK-Constraint
+auf die drei ADR-0012-Werte. Bewusst MIT CHECK-Constraint (anders als das
+Nachbarfeld `status`, das laut `062_invoices_out_storno.sql`-Kommentar
+historisch bedingt keinen CHECK hat) — `invoice_type` ist eine neue Spalte
+mit von Anfang an klar definiertem, stabilem Wertesatz.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-074 lief beim
+Testaufruf fehlerfrei durch, alle `quotes`-/Rechnungs-Tests PASS — keine
+Regression. `\d invoices_out` bestätigt die neue Spalte; `schema_migrations`
+bestätigt Tracking. **Default-Wert und CHECK-Constraint direkt per SQL
+geprüft**: eine neu angelegte Rechnung erhält automatisch `'rechnung'`;
+`UPDATE ... SET invoice_type='sonstwas'` wird korrekt abgelehnt;
+`UPDATE ... SET invoice_type='abschlagsrechnung'` gelingt. DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 23.943s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in B.4.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/074_invoices_out_invoice_type.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask B.4.3 (letzte Subtask von Task B.4; Anwendungscode:
+`ConvertToInvoice`-Erweiterung, `invoice_type` lesend in
+`accounting.ARService`, HTTP-Wiring, Tests) abgeschlossen**, gegen frische
+DB verifiziert. `server/internal/sales/service.go`:
+`ConvertToInvoiceInput` um Pflichtfeld `InvoiceType` erweitert,
+`vobInvoiceTypes`-Map zur Validierung; Geschäftsregel 1 (keine weitere
+Rechnung nach bereits aktiver, nicht stornierter Schlussrechnung) direkt
+nach `loadForInvoiceTx` geprüft, Geschäftsregel 2 (Schlussrechnung muss die
+komplette Restmenge aller Positionen abdecken) direkt nach
+`selectInvoiceQuantities` geprüft; `invoice_type` wird per zusätzlichem
+`UPDATE invoices_out SET invoice_type=$2` innerhalb der bestehenden
+Transaktion gesetzt — `accounting.ARService.createTx`/`InvoiceOutInput`
+bewusst unangetastet (wie in B.4.1 entschieden). `accounting/ar.go`:
+`InvoiceType` auf `InvoiceOut`/`InvoiceListItem`/`InvoiceFilter`, `Get`/
+`List` lesen/filtern die neue Spalte mit. `v1.go`: `invoice_type`-Filter
+auf `GET /invoices-out`, neuer `classifyDomainError`-Substring `"muss die
+gesamte restmenge"`. Neue Tests: 3 Unit-Tests
+(`server/internal/sales/invoice_type_test.go`) sowie 4 Integrationstests
+(`server/internal/http/sales_order_invoice_type_integration_test.go`), u. a.
+ein Flow-Test, der beweist, dass eine Schlussrechnung nur den tatsächlichen
+Rest abrechnet (keine Doppelverrechnung) und danach jede weitere
+Konvertierung mit 400 blockiert wird.
+
+**Nebenbefund beim Pflichtfeld-Umbau**: `invoice_type` als Pflichtfeld auf
+`ConvertToInvoiceInput` brach 6 vorbestehende Tests, die den
+Sales-Order-`/convert-to-invoice`-Endpunkt ohne dieses Feld aufriefen
+(`TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged`,
+`TestQuoteFlowWithPricingAndPDF`,
+`TestCommercialWorkflowEndpointListsOpenFollowActions`, 3× in
+`quotes_integration_test.go`, sowie je einmal in
+`contacts_integration_test.go:900` und `projects_integration_test.go:262`)
+— alle Aufrufe um `"invoice_type":"abschlagsrechnung"` ergänzt (Semantik
+jedes einzelnen Tests vorher geprüft, keiner davon braucht eigentlich eine
+Schlussrechnung).
+
+**Größerer Diagnose-Exkurs während der Verifikation**: ein erster
+vollständiger `NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf zeigte
+~61 fehlschlagende Tests über alle Domänen hinweg, durchgehend mit
+"bereits vorhanden/existiert bereits"-artigen Fehlern — auf den ersten
+Blick wie eine massive Regression irgendwo im Session-Diff. Ausführliche
+Bisektion per `git stash` bestätigte zunächst nur, dass die Kaskade auch
+nach vollständigem Zurücksetzen aller B.4.3-Dateien bestehen blieb, und
+erst ein `git stash push -u` auf den kompletten Session-Diff (zurück auf
+Commit `a0b3499`) zeigte einen sauberen Lauf. Die eigentliche Ursache nach
+Wiederherstellung und epic-weiser Bisektion (Epic A allein reproduzierte
+die Kaskade bereits vollständig): **kein Code-Fehler, sondern ein Artefakt
+des eigenen Diagnosevorgehens** — `testutil.SetupIntegrationEnv` truncatet
+die Test-DB nicht zwischen einzelnen `go test`-Prozessaufrufen, und
+wiederholte manuelle Testläufe gegen dieselbe, nie zurückgesetzte
+Postgres-Instanz häuften Fixture-Daten (feste Namen/E-Mails/IDs) an, bis
+Eindeutigkeits-Constraints kollidierten. Mit einem einzigen, sauberen Lauf
+gegen eine frisch aufgesetzte DB reduzierten sich die Fehler auf zwei
+echte (beide auf das fehlende `invoice_type`-Feld in
+`contacts_integration_test.go`/`projects_integration_test.go`
+zurückzuführen, seitdem behoben).
+
+**Zweiter, kleinerer Befund dabei**: `go test ./...` (alle Pakete) zeigt
+selbst gegen eine frische DB vereinzelt 1-2 flackernde Fehlschläge,
+während `go test ./... -p 1` (Pakete sequenziell statt parallel)
+durchgehend `ok` liefert. Ursache: mehrere Integrationstest-Pakete
+(`http`, `quotes`, `sales`, …) laufen bei Gos Standard-Paketparallelität
+gleichzeitig gegen dieselbe fest verdrahtete, gemeinsame
+Postgres-Testinstanz (`testutil.SetupIntegrationEnv`, feste DSN, kein
+Isolations-Mechanismus zwischen Paketen). Vorbestehende Eigenschaft des
+Testharnesses, keine Regression dieser Session — nicht behoben (außerhalb
+des B.4.3-Scopes), aber relevant für künftige Sessions: die für diese
+Session etablierte Verifikationsmethode
+(`NALA_INTEGRATION=1 go test ./internal/http/...` als Einzelpaket) ist
+davon nicht betroffen und bleibt zuverlässig.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+mehrfach frisch aufgesetzt (`docker compose -f docker-compose.test.yml
+down -v && up -d`). `NALA_INTEGRATION=1 go test ./internal/http/...
+-count=1` (Einzelpaket, alle Domänen, einmaliger Lauf gegen frische DB):
+`ok nalaerp3/internal/http 25.205s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell, einmaliger Lauf gegen frische DB): durchgehend `ok`.
+**Damit ist Task B.4 vollständig abgeschlossen — und damit auch das
+gesamte Epic B (B.1, B.2, B.3, B.4) abgeschlossen.**
+
+Geänderte Dateien: `server/internal/sales/service.go`,
+`server/internal/accounting/ar.go`, `server/internal/http/v1.go`,
+`server/internal/http/accounting_integration_test.go`,
+`server/internal/http/quotes_integration_test.go`,
+`server/internal/http/contacts_integration_test.go`,
+`server/internal/http/projects_integration_test.go`,
+`server/internal/sales/invoice_type_test.go` (neu),
+`server/internal/http/sales_order_invoice_type_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.1.1 (ADR: Schema-Design-Entscheidung für projektbezogene
+Lagerreservierung) abgeschlossen** — erste Subtask von Epic C (Waren- &
+Lagerwirtschaft). **Wichtigster Recherchebefund**: `sales_order_items` hat
+kein `material_id`-Feld (nur `quote_items`, seit
+`047_quote_item_manual_mapping.sql`) — eine Reservierung kann daher NICHT
+automatisch aus einer Auftragsposition abgeleitet werden, ohne das
+Auftragsschema zu ändern; das würde die Subtask deutlich über die
+~8-Datei/~400-Zeilen-Grenze aus §6.3 treiben und ist explizit NICHT Teil
+von C.1 (eigene, mögliche künftige Backlog-Position). Der bestehende
+Lagerbestand ist ein reines additives Buchungsjournal (`stock_movements`,
+`SUM(quantity)` je Material/Lager/Ort/Batch) ohne jeden Reservierungs- oder
+Verfügbarkeitsbegriff — jede physisch vorhandene Menge gilt heute als
+für jeden Zweck frei verfügbar.
+
+**Entscheidung** (`docs/adr/0013-lagerreservierung-projektbezogen.md`):
+neue, eigenständige Tabelle `stock_reservations`
+(`material_id`+`warehouse_id`+`project_id`+`qty`+`status`), manuell über
+die API angelegt, analog zu `stock_movements`. `project_id` bewusst NOT
+NULL (anders als das nullable Feld auf `quotes`/`sales_orders` — laut
+Backlog-Titel ist "projektbezogen" konstitutiv für C.1). Granularität
+Material+Lager, bewusst OHNE Location/Batch (Batches existieren erst nach
+Wareneingang, eine Reservierung muss aber auch vorher möglich sein).
+**Kernregel**: Verfügbarkeit = physischer Bestand minus Summe aktiver
+Reservierungen je Material+Lager; eine neue Reservierung, die das
+übersteigt, wird hart mit 400 abgelehnt (keine Teilerfüllung) — eine
+Reservierungslogik ohne diese Prüfung wäre nur ein Label ohne fachlichen
+Wert. Freigabe ist eine eigene, manuelle Aktion (`status →
+'freigegeben'`), bewusst OHNE automatische Kopplung an `CreateMovement`
+(mangels zuverlässiger 1:1-Zuordnung zwischen Warenausgang und
+Reservierung, da `sales_order_items` kein `material_id` hat). Keine
+eigene `company_id`/`branch_id`-Spalte — Scope wird über `warehouse_id`
+geerbt, exakt das etablierte Muster für `stock_movements` (ADR 0002).
+Implementierung in `materials.Service` (kein neues Paket, da alle
+bisherigen Lager-/Bestandsfunktionen dort bereits leben). Keine neue
+Permission-Infrastruktur — Wiederverwendung von
+`stock_movements.read`/`stock_movements.write`.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien:
+`docs/adr/0013-lagerreservierung-projektbezogen.md` (neu),
+`docs/backlog.md` (C.1 in Subtasks C.1.1/C.1.2/C.1.3 zerlegt, C.1.1 als
+done markiert), `docs/state.md`.
+
+**Subtask C.1.2 (Migration: `stock_reservations`-Tabelle) abgeschlossen**,
+gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/075_stock_reservations.sql` (nächste
+freie Nummer nach 074) — legt die Tabelle exakt gemäß ADR 0013 an:
+`material_id`/`warehouse_id` als `text`-FKs (wie `stock_movements`),
+`project_id UUID NOT NULL` (Pflichtfeld, "projektbezogen" konstitutiv),
+`qty numeric(18,6) CHECK (qty > 0)`, `status text DEFAULT 'aktiv' CHECK
+(status IN ('aktiv','freigegeben'))`, `grund`/`referenz` als freier Text,
+`released_at` nullable. Composite-Index `(material_id, warehouse_id,
+status)` für die künftige Verfügbarkeitsprüfung in C.1.3. Kein eigenes
+`company_id`/`branch_id` (Scope-Vererbung über `warehouse_id`, wie
+entschieden).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-075 lief beim
+Testaufruf fehlerfrei durch, alle `TestMaterials*`/`TestWarehouse*`/
+`TestStockMovement*`-Tests PASS — keine Regression. `\d stock_reservations`
+bestätigt Spalten/Typen/Indizes/FKs exakt wie in der ADR entschieden.
+**Beide CHECK-Constraints direkt per SQL provoziert**: `qty=0` korrekt
+mit `check_violation` abgelehnt, `status='sonstwas'` korrekt abgelehnt;
+eine gültige Reservierung (`qty=5`, kein `status` angegeben) erfolgreich
+eingefügt mit bestätigtem Default `status='aktiv'`. DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 27.519s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in C.1.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/075_stock_reservations.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.1.3 (letzte Subtask von Task C.1; Anwendungscode: CRUD +
+Verfügbarkeits-Helfer in `materials.Service`, HTTP-Wiring, Tests)
+abgeschlossen** — damit ist Task C.1 vollständig abgeschlossen. Neu in
+`server/internal/materials/service.go`: `StockReservation`/
+`StockReservationCreate`/`StockReservationFilter`, `availableStockTx`
+(physischer Bestand minus Summe aktiver Reservierungen — die Kernregel aus
+ADR 0013), `AvailableStock` (lesender Endpunkt-Pfad), `CreateReservation`
+(prüft Material-/Lager-/Projekt-Zugehörigkeit zum Mandanten, lehnt mit 400
+ab, wenn `qty` die verfügbare Menge übersteigt; ein
+`pg_advisory_xact_lock(hashtext(material_id), hashtext(warehouse_id))`
+serialisiert konkurrierende Anlagen für dasselbe Material+Lager-Paar,
+unabhängig davon, ob bereits sperrbare `stock_movements`-Zeilen
+existieren), `ReleaseReservation` (`status: aktiv → freigegeben`, `FOR
+UPDATE OF r` gegen die Zielzeile, lehnt eine bereits freigegebene
+Reservierung ab), `ListReservations` (Filter nach Projekt/Material/Lager/
+Status). HTTP-Wiring (`v1.go`): neue Route-Gruppe `/stock-reservations`
+(`POST /`, `GET /`, `GET /available`, `POST /{id}/release`) —
+Wiederverwendung von `stock_movements.read`/`stock_movements.write`, wie
+in der ADR entschieden. **Wichtiger Fund beim Wiring**: die
+Materials-Domäne routet Fehler durchgängig über `writeHTTPError` mit
+hartkodiertem Status statt über `classifyDomainError` (bereits
+bestehendes Muster, z. B. `CreateMovement` gibt "Material nicht gefunden"
+als 400 zurück, nicht 404) — die neuen Reservierungs-Routen folgen
+demselben Muster, kein neuer `classifyDomainError`-Substring nötig.
+`CreateMovement`/`StockByMaterial` komplett unangetastet.
+
+Neue Tests: 7 reine Unit-Tests (`server/internal/materials/reservations_test.go`,
+DB-los) sowie 5 Integrationstests
+(`server/internal/http/stock_reservations_integration_test.go`): voller
+Anlegen→Verfügbarkeit-prüfen→Auflisten→Freigeben-Flow, 400 bei Menge über
+verfügbarem Bestand, **400 bei einer zweiten Reservierung, die die von
+der ersten bereits gebundene Menge verletzt (der eigentliche Kernbeweis
+der "Reservierungslogik" aus ADR 0013)**, 400 bei unbekanntem Projekt, 400
+beim erneuten Freigeben einer bereits freigegebenen Reservierung.
+
+**Nebenfund beim Regressionslauf, sofort behoben**: der neue Dateiname
+`stock_reservations_integration_test.go` sortiert alphabetisch VOR
+`warehouses_integration_test.go` — dadurch legen die neuen Tests im
+vollen Paketlauf jetzt VOR `TestWarehouseLocationStockMovementFlow` ein
+zusätzliches Lager im von allen Integrationstests geteilten
+`'default'`-Mandanten an. Dessen Assertion `len(warehouses) != 1` war
+bereits vorher fragil (setzt exklusiven Alleinbesitz der Lagerliste
+voraus, obwohl der eigene Nachbartest in derselben Datei ebenfalls ein
+Lager anlegt) und brach durch die neue Dateireihenfolge erstmals
+sichtbar — kein Verhaltensfehler in `ListWarehouses` selbst, sondern
+dieselbe Art Testisolations-Falle wie bereits in B.3.3
+(`quote_calculation_settings`) dokumentiert. Behoben durch Wechsel auf
+eine Containment-Prüfung (die Liste enthält die erzeugte ID) statt
+Längenvergleich, in `server/internal/http/warehouses_integration_test.go`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. `gofmt -l` meldet
+`materials/service.go` und `http/v1.go` — per `gofmt -d` bestätigt reines
+CRLF-Zeilenenden-Artefakt (Windows-Checkout, bereits in B.4.3
+dokumentiert), kein echter Formatierungsfehler; die neu geschriebene
+Datei `reservations_test.go` ist selbst `gofmt`-clean mit LF. `go test
+./internal/materials/...` grün. `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestStockReservation` (5 Tests) gegen frische DB
+grün. Docker-Testumgebung mehrfach frisch aufgesetzt; abschließend
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 30.257s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/http/v1.go`,
+`server/internal/http/warehouses_integration_test.go`,
+`server/internal/materials/reservations_test.go` (neu),
+`server/internal/http/stock_reservations_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.2.1 (ADR: Schema-Design-Entscheidung für den Inventurprozess)
+abgeschlossen** — erste Subtask von Task C.2 (Epic C, nach Abschluss von
+C.1). **Wichtigster Recherchebefund**: `StockMovementCreate.Typ` kennt
+laut bestehendem Kommentar bereits die Werte `purchase, in, out,
+transfer, adjust` — der Korrekturbuchungstyp `adjust` existiert also
+bereits im Schema, wird aber aktuell nirgends erzeugt (`CreateMovement`
+behandelt ihn technisch identisch zu jedem anderen Typ). C.2 befüllt ihn
+erstmals produktiv, ohne `CreateMovement` selbst zu ändern.
+
+**Entscheidung** (`docs/adr/0014-inventurprozess.md`): zwei neue Tabellen
+`inventories` (Header, Status `laufend`/`abgeschlossen`, scope-vererbt
+über `warehouse_id` wie `stock_movements`/`stock_reservations`) und
+`inventory_lines` (Zählpositionen: `soll_qty`, `ist_qty`). Der Soll-Wert
+wird JE ZÄHLPOSITION beim Hinzufügen aus dem aktuellen Buchbestand fixiert
+— bewusst KEIN warehouse-weiter Bewegungsstopp während der Inventur (das
+wäre eine eigene, deutlich größere Fachlogik, die `CreateMovement`
+anfassen müsste und außerhalb des C.2-Titels liegt); stattdessen zeigt
+das System beim Erfassen jeder Position live den aktuellen Soll-Wert.
+Bewusst KEINE `UNIQUE`-Constraint auf Zählpositionen — eine versehentliche
+Doppelzählung ist ein Anwenderproblem, keine Datenintegritätsverletzung,
+da additive `adjust`-Buchungen sich beim Abschluss korrekt aufsummieren.
+Beim Abschluss (`POST /inventories/{id}/close`) wird für JEDE
+Zählposition mit `ist_qty ≠ soll_qty` transaktional genau eine
+`stock_movements`-Zeile (`movement_type='adjust'`) erzeugt, danach ist die
+Inventur (Header UND alle Zeilen) vollständig schreibgeschützt
+(Festschreibung, wie bei `sales_order_addenda`/Angeboten etabliert). Kein
+eigener Storno-Mechanismus — `stock_movements` ist bereits additiv/
+Storno-sicher, eine fehlerhafte Inventur wird durch eine neue Inventur
+oder eine manuelle Korrekturbuchung richtiggestellt. Keine Kopplung an
+`stock_reservations` (C.1) — eine Inventur zählt den physischen Bestand,
+Reservierungen sind ein rein planerischer Soft Hold und bleiben
+unberührt. Implementierung in `materials.Service`, keine neue
+Permission-Infrastruktur (Wiederverwendung von
+`stock_movements.read`/`stock_movements.write`) — beides analog zu C.1.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0014-inventurprozess.md` (neu),
+`docs/backlog.md` (C.2 in Subtasks C.2.1/C.2.2/C.2.3 zerlegt, C.2.1 als
+done markiert), `docs/state.md`.
+
+**Subtask C.2.2 (Migration: `inventories`/`inventory_lines`-Tabellen)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/076_inventories.sql` (nächste freie
+Nummer nach 075) — legt beide Tabellen exakt gemäß ADR 0014 an:
+`inventories` mit `warehouse_id`-FK (Scope-Vererbung wie
+`stock_movements`/`stock_reservations`), `status text DEFAULT 'laufend'
+CHECK (status IN ('laufend','abgeschlossen'))`, `closed_at` nullable;
+`inventory_lines` mit `soll_qty`/`ist_qty numeric(18,6)` (`ist_qty >= 0`
+CHECK), `location_id` nullable wie bei `stock_movements`, bewusst OHNE
+`UNIQUE`-Constraint (Doppelzählung ist laut ADR ein Anwenderproblem,
+keine Datenintegritätsverletzung).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-076 lief beim
+Testaufruf fehlerfrei durch, alle `TestMaterials*`/`TestWarehouse*`/
+`TestStockMovement*`/`TestStockReservation*`-Tests PASS — keine
+Regression. `\d inventories`/`\d inventory_lines` bestätigen Spalten/
+Typen/Indizes/FKs exakt wie in der ADR entschieden. **Beide
+CHECK-Constraints direkt per SQL provoziert**: `inventories.status=
+'sonstwas'` korrekt abgelehnt, `inventory_lines.ist_qty=-1` korrekt
+abgelehnt; eine gültige Inventur (Default `status='laufend'`) und eine
+gültige Zählposition (`soll=10, ist=7`) erfolgreich eingefügt. DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go
+test ./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 28.997s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in C.2.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/076_inventories.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.2.3 (letzte Subtask von Task C.2; Anwendungscode: CRUD +
+automatische adjust-Buchungserzeugung in `materials.Service`, HTTP-Wiring,
+Tests) abgeschlossen** — damit ist Task C.2 vollständig abgeschlossen, und
+damit auch das gesamte, bisher bearbeitete Epic C (C.1, C.2; nur noch C.3
+offen). Neu in `server/internal/materials/service.go`: `Inventory`/
+`InventoryCreate`/`InventoryFilter`/`InventoryLine`/`InventoryLineCreate`,
+`StartInventory` (prüft Lager-Zugehörigkeit zum Mandanten),
+`GetInventory`/`ListInventories` (Filter Lager/Status), `AddInventoryLine`
+(prüft per `FOR UPDATE OF i`, dass die Inventur noch `laufend` ist, sowie
+Material-/Lagerort-Zugehörigkeit zum Mandanten; fixiert `soll_qty` aus dem
+aktuellen Buchbestand — mit `location_id` gefiltert auf genau diesen Ort,
+ohne `location_id` über das gesamte Lager aggregiert, wie in ADR 0014
+entschieden), `ListInventoryLines`, `CloseInventory` (sperrt die
+Inventur-Zeile, erzeugt für JEDE Zählposition mit `ist_qty ≠ soll_qty`
+transaktional genau eine `stock_movements`-Zeile mit
+`movement_type='adjust'`, `reference='inventur:<id>'` — der bislang im
+Schema vorgesehene, aber ungenutzte `adjust`-Typ wird damit erstmals
+produktiv befüllt —, Zeilen ohne Differenz erzeugen bewusst keine
+Leerbuchung, danach `status='abgeschlossen'`). HTTP-Wiring (`v1.go`): neue
+Route-Gruppe `/inventories` (`POST /`, `GET /`, `GET /{id}`, `POST
+/{id}/lines`, `GET /{id}/lines`, `POST /{id}/close`) — Wiederverwendung
+von `stock_movements.read`/`stock_movements.write`, gleiches
+`writeHTTPError`-Muster wie C.1.3 (kein `classifyDomainError`, siehe
+dortiger Fund). `CreateMovement`/`StockByMaterial` komplett unangetastet.
+
+Neue Tests: 9 reine Unit-Tests
+(`server/internal/materials/inventories_test.go`, DB-los) sowie 4
+Integrationstests (`server/internal/http/inventories_integration_test.go`):
+voller Start→Zählen→Abschließen-Flow **mit direktem Beweis über `GET
+/materials/{id}/stock`, dass der Buchbestand nach Abschluss korrekt von
+10 auf die gezählten 7 korrigiert wird** — der eigentliche Kernbeweis des
+Inventurprozesses aus ADR 0014 —, Beweis, dass eine Zählposition ohne
+Differenz bewusst KEINE Buchung erzeugt (Bestand bleibt unverändert), 400
+beim Hinzufügen einer Zählposition nach Abschluss (Festschreibung), 400
+beim erneuten Abschließen, sowie ein Get/List-Flow mit Lager-/
+Status-Filter.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` auf den
+neuen Dateien clean. `go test ./internal/materials/...` grün. Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestInventory` (4 Tests) gegen frische DB grün;
+abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 27.133s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/http/v1.go`,
+`server/internal/materials/inventories_test.go` (neu),
+`server/internal/http/inventories_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.3.1 (ADR: Schema-Design-Entscheidung für die Verschnitt-/
+Reststückverwaltung) abgeschlossen** — erste Subtask von Task C.3, der
+letzten Task in Epic C. **Wichtigster Recherchebefund**: `materials.
+length_mm` (seit `014_material_dimensions_and_units.sql`) beschreibt die
+Standardlänge des ARTIKELS (Stammdatum), nicht die Länge eines konkreten
+Einzelstücks im Lager — der bestehende, mengenbasierte `stock_movements`-
+Bestand kann zwei 1,5-m-Stäbe nicht von einem 3-m-Stab unterscheiden
+(beide ergeben `quantity=3`). Für C.3 wird daher eine neue, unabhängige
+Längenangabe je Einzelstück benötigt.
+
+**Entscheidung** (`docs/adr/0015-verschnitt-reststueckverwaltung.md`):
+neue Tabelle `profile_offcuts`, Scope-Vererbung über `warehouse_id` wie
+`stock_movements`/`stock_reservations`/`inventories`. Bewusst KEINE
+erfundene Mindestlänge, ab der ein Rest als "Reststück" statt "Verschnitt"
+gilt — dafür gibt es weder in `aufgabe.md` noch in den Recon-Dokumenten
+eine Vorgabe, eine Zahl wäre eine unbelegte Annahme (aufgabe.md §7.1).
+Stattdessen: die explizite Registrierung eines Reststücks IST die
+fachliche Entscheidung, dass es wiederverwendbar ist — alles nicht
+Registrierte bleibt implizit Verschnitt, ohne dass das System selbst
+eine Länge bewertet. Verbrauch (`ConsumeOffcut`) mutiert nie die Länge
+einer bestehenden Zeile, sondern schließt sie ab (`status='verbraucht'`,
+`consumed_at`, `used_length_mm` bleiben stehen) und erzeugt bei
+verbleibendem Rest transaktional EIN neues, über `source_offcut_id`
+verkettetes Stück — konsistent mit dem in dieser Session durchgängig
+etablierten "Storno/Korrektur statt Mutation"-Muster (`stock_movements`,
+ADR 0012). Registrierung nur für Materialien mit gesetztem `profilserie`
+(direkte Nutzung des in A.1 bereits verifizierten Feldes, keine neue
+Annahme — für Nicht-Profil-Artikel wie Schrauben ergibt eine
+Einzelstück-Länge fachlich keinen Sinn). Keine Kopplung an C.1/C.2 — eine
+eigenständige, stückzahlbasierte Nebenbuchführung. Implementierung in
+`materials.Service`, keine neue Permission-Infrastruktur (Wiederverwendung
+von `stock_movements.read`/`stock_movements.write`) — beides analog zu
+C.1/C.2.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien:
+`docs/adr/0015-verschnitt-reststueckverwaltung.md` (neu), `docs/backlog.md`
+(C.3 in Subtasks C.3.1/C.3.2/C.3.3 zerlegt, C.3.1 als done markiert),
+`docs/state.md`.
+
+**Subtask C.3.2 (Migration: `profile_offcuts`-Tabelle) abgeschlossen**,
+gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/077_profile_offcuts.sql` (nächste
+freie Nummer nach 076) — legt die Tabelle exakt gemäß ADR 0015 an:
+`material_id`/`warehouse_id`/`location_id`-FKs wie bei den übrigen
+Lagertabellen, `length_mm numeric(18,6) CHECK (length_mm > 0)`, `status
+text DEFAULT 'verfügbar' CHECK (status IN ('verfügbar','verbraucht'))`,
+`source_offcut_id` als selbstreferenzierende FK für die Verkettung neu
+entstandener Reststücke, `consumed_at`/`used_length_mm` nullable bis
+Verbrauch. Composite-Index `(material_id, warehouse_id, status)` für die
+künftige Mindestlängen-Suche in C.3.3.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-077 lief beim
+Testaufruf fehlerfrei durch, alle `TestMaterials*`/`TestWarehouse*`/
+`TestStockMovement*`/`TestStockReservation*`/`TestInventory*`-Tests PASS
+— keine Regression. `\d profile_offcuts` bestätigt Spalten/Typen/
+Indizes/FKs exakt wie in der ADR entschieden, inkl. der
+selbstreferenzierenden `source_offcut_id`-FK. **Beide CHECK-Constraints
+direkt per SQL provoziert**: `length_mm=0` korrekt abgelehnt,
+`status='sonstwas'` korrekt abgelehnt; eine gültige Registrierung
+(Default `status='verfügbar'`) sowie die Verkettung eines neu
+entstandenen Reststücks über `source_offcut_id` nach simuliertem
+Verbrauch erfolgreich demonstriert. DB danach zurückgesetzt und
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 29.371s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in C.3.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/077_profile_offcuts.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask C.3.3 (letzte Subtask von Task C.3; Anwendungscode: CRUD +
+automatische Rest-Stück-Erzeugung in `materials.Service`, HTTP-Wiring,
+Tests) abgeschlossen** — damit ist Task C.3 vollständig abgeschlossen, und
+damit auch das GESAMTE EPIC C (C.1 Reservierungslogik, C.2
+Inventurprozess, C.3 Verschnitt-/Reststückverwaltung). Neu in
+`server/internal/materials/service.go`: `ProfileOffcut`/
+`ProfileOffcutCreate`/`ProfileOffcutFilter`/`ProfileOffcutConsume`/
+`ConsumeOffcutResult`, `RegisterOffcut` (prüft Material-/Lager-/
+Lagerort-Zugehörigkeit zum Mandanten UND dass `materials.profilserie`
+gesetzt ist, sonst "Material ist kein Profil"), `ListOffcuts` (Filter
+Material/Lager/Status/Mindestlänge — die eigentliche fachliche
+Kernfunktion aus ADR 0015: "finde ein verfügbares Reststück von Material
+X mit mindestens Y mm"), `ConsumeOffcut` (sperrt die Zielzeile per `FOR
+UPDATE OF o`, lehnt ab, wenn bereits verbraucht oder `used_length_mm` die
+Stücklänge übersteigt, schließt die Zielzeile ab OHNE ihre Länge zu
+mutieren, erzeugt bei positivem Rest transaktional ein neues, über
+`source_offcut_id` verkettetes Stück — Storno-statt-Mutation-Muster wie
+in der ADR entschieden). HTTP-Wiring (`v1.go`): neue Route-Gruppe
+`/profile-offcuts` (`POST /`, `GET /` inkl. `min_length_mm`-Query-
+Parameter über `strconv.ParseFloat`, wie beim bestehenden
+`effective-price`-Endpunkt, `POST /{id}/consume`) — Wiederverwendung von
+`stock_movements.read`/`stock_movements.write`, gleiches
+`writeHTTPError`-Muster wie C.1.3/C.2.3. `CreateMovement`/
+`StockByMaterial`/`CreateReservation`/`StartInventory` komplett
+unangetastet.
+
+Neue Tests: 7 reine Unit-Tests
+(`server/internal/materials/offcuts_test.go`, DB-los) sowie 5
+Integrationstests
+(`server/internal/http/profile_offcuts_integration_test.go`): voller
+Registrieren→Suchen-nach-Mindestlänge→Verbrauchen-Flow **mit direktem
+Beweis, dass ein Teilverbrauch (2000mm registriert, 1200mm verbraucht)
+ein neues, verfügbares 800mm-Reststück mit korrektem `source_offcut_id`
+erzeugt und dass NUR dieses neue Stück anschließend als `verfügbar`
+gelistet wird** — der eigentliche Kernbeweis der Reststückverkettung aus
+ADR 0015 —, Beweis, dass vollständiger Verbrauch (Menge = Stücklänge)
+bewusst KEIN Reststück erzeugt, 400 bei Verbrauch über die Stücklänge
+hinaus, 400 beim erneuten Verbrauch eines bereits verbrauchten Stücks,
+400 beim Registrieren auf einem Material ohne `profilserie`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` auf den
+neuen Dateien clean. `go test ./internal/materials/...` grün. Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestProfileOffcut` (5 Tests) gegen frische DB
+grün; abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go
+test ./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 34.597s` — keine Regression.
+Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes
+Repo, alle Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/http/v1.go`,
+`server/internal/materials/offcuts_test.go` (neu),
+`server/internal/http/profile_offcuts_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.1.1 (ADR: Schema-Design-Entscheidung für die
+Bedarfsermittlung aus Angebot/Mindestbestand) abgeschlossen** — erste
+Subtask von Epic D (Bestellwesen), direkt im Anschluss an den Abschluss
+von Epic C. **Wichtigster Recherchebefund**: `sales_order_items` hat kein
+`material_id` (bereits in ADR 0013 festgestellt) — nach Umwandlung eines
+Angebots in einen Auftrag bleibt `quote_items` daher die einzig
+verfügbare Quelle für materialbezogenen Bedarf, auch für bereits
+akzeptierte/umgewandelte Angebote. `quotes.status` kennt `draft, sent,
+accepted, rejected`.
+
+**Entscheidung** (`docs/adr/0016-bedarfsermittlung.md`): neue Spalte
+`materials.mindestbestand` (nullable, `CHECK (mindestbestand IS NULL OR
+mindestbestand >= 0)`, additiv wie `rc_klasse`/`u_wert` in A.1.3). Bewusst
+KEINE kombinierte, einzelne Bedarfszahl mit Verrechnungsformel zwischen
+Angebots-Bedarf und Mindestbestand-Soll — dafür gibt es keine belegte
+fachliche Vorgabe, eine erfundene Formel wäre eine unbelegte Annahme
+(aufgabe.md §7.1). Stattdessen zwei unabhängig lesbare Sichten:
+`MinStockShortfalls` (verfügbarer Bestand — physischer Bestand minus
+aktive Reservierungen — materialweit über ALLE Lager des Mandanten
+aggregiert, verglichen gegen das konfigurierte Soll) und `QuoteDemand`
+(Summe `quote_items.qty` aller Angebote mit Status `sent` ODER
+`accepted` je Material — akzeptierte Angebote zählen bewusst mit, weil
+sie eine reale, vom Kunden bestätigte Zusage sind und `quote_items` die
+einzige Quelle bleibt). Mindestbestand ist lagerübergreifend je Material
+(Artikel-Eigenschaft, keine Lagerplatz-Eigenschaft). Implementierung
+bewusst in `purchasing.Service` (neue Datei `purchasing/demand.go`,
+Direkt-SQL gegen materials-/Lager-/quotes-Tabellen ohne neue
+Paket-Kopplung, analog zu B.4.1) statt in `materials.Service` wie
+C.1-C.3, da Bedarfsermittlung fachlich Beschaffungslogik ("was muss
+eingekauft werden") ist, nicht Lager-/Bestandsverwaltung. Keine neue
+Permission-Infrastruktur (Wiederverwendung von `purchase_orders.read`).
+D.1 legt bewusst nur Lese-/Berechnungspfade an, keine automatische
+Bestellvorschlagserzeugung.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0016-bedarfsermittlung.md` (neu),
+`docs/backlog.md` (D.1 in Subtasks D.1.1/D.1.2/D.1.3 zerlegt, D.1.1 als
+done markiert), `docs/state.md`.
+
+**Subtask D.1.2 (Migration: `materials.mindestbestand` Spalte +
+CHECK-Constraint) abgeschlossen**, gegen frische DB verifiziert. Neue
+Datei `server/internal/migrate/migrations/078_materials_mindestbestand.sql`
+(nächste freie Nummer nach 077) — additive Spalte `mindestbestand
+numeric(18,6)` (NULL = kein Mindestbestand konfiguriert, Default für alle
+bestehenden/neuen Zeilen) plus `CHECK (mindestbestand IS NULL OR
+mindestbestand >= 0)`, per idempotentem `DO $$`-Block ergänzt (analog zum
+`invoice_type`-Muster aus B.4.2, da `ADD CONSTRAINT` kein `IF NOT EXISTS`
+kennt).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-078 lief beim
+Testaufruf fehlerfrei durch, alle `TestMaterials*`/`TestWarehouse*`/
+`TestStockMovement*`/`TestStockReservation*`/`TestInventory*`/
+`TestProfileOffcut*`-Tests PASS — keine Regression. `\d materials`
+bestätigt neue Spalte und Constraint. **CHECK-Constraint direkt per SQL
+provoziert**: negativer Wert korrekt abgelehnt, `mindestbestand=10`
+erfolgreich gesetzt, ein Material ohne Angabe bleibt korrekt `NULL`. DB
+danach zurückgesetzt und vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf (alle Domänen)
+gegen erneut frisch aufgesetzte DB: `ok nalaerp3/internal/http 31.354s`
+— keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in D.1.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/078_materials_mindestbestand.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.1.3 (letzte Subtask von Task D.1; Anwendungscode:
+`mindestbestand`-Feld in `materials.Service`, `MinStockShortfalls`/
+`QuoteDemand` in neuer Datei `purchasing/demand.go`, HTTP-Wiring, Tests)
+abgeschlossen** — damit ist Task D.1 vollständig abgeschlossen.
+`materials/service.go`: `MindestBestand *float64` additiv in `Material`/
+`MaterialCreate`/`MaterialUpdate` aufgenommen (gleiches Muster wie
+`rc_klasse`/`u_wert` aus A.1.3 — `Create`/`Update`/`Get`/`List` alle um
+die Spalte ergänzt), neue `validateMindestbestand` (muss `NULL` oder `>=
+0` sein, wie im DB-CHECK aus D.1.2). Neue Datei
+`server/internal/purchasing/demand.go`: `MinStockShortfalls`
+(Direkt-SQL: verfügbarer Bestand je Material — Summe
+`stock_movements.quantity` minus Summe aktiver `stock_reservations.qty`
+— materialweit über alle Lager aggregiert, verglichen gegen
+`mindestbestand`; nur Materialien mit echter Unterdeckung erscheinen),
+`QuoteDemand` (Direkt-SQL: Summe `quote_items.qty` je Material für
+Angebote mit `status IN ('sent','accepted')`, keine Verrechnung gegen
+Bestand, wie in ADR 0016 entschieden). HTTP-Wiring (`v1.go`): neue
+Route-Gruppe `/purchasing/demand` (`GET /min-stock-shortfalls`, `GET
+/quote-demand`) — Wiederverwendung von `purchase_orders.read`,
+`writeDomainError`/`classifyDomainError`-Muster wie der Rest der
+`purchase-orders`-Routengruppe (anders als die Materials-Domäne, die
+`writeHTTPError` nutzt — die neue Funktion lebt in `purchasing`, folgt
+daher dessen Konvention). `CreateMovement`/`StockByMaterial`/
+`availableStockTx`/`purchasing.Create` komplett unangetastet.
+
+Neue Tests: 1 Unit-Test in `materials/service_test.go` (negativer
+`mindestbestand` abgelehnt), 2 Unit-Tests in `purchasing/demand_test.go`
+(DB-los, `Mandant erforderlich` je Funktion), sowie 2 Integrationstests
+(`server/internal/http/purchasing_demand_integration_test.go`): voller
+Beweis, dass ein Material mit `mindestbestand=10` und leerem Lager mit
+`fehlmenge=10` in der Unterdeckungsliste erscheint UND nach Wareneingang
+auf 15 Stück wieder verschwindet; voller Beweis, dass ein `draft`-Angebot
+NICHT zum Bedarf beiträgt, ein anschließend auf `sent` gestelltes Angebot
+dagegen mit korrektem `demand_qty=5` erscheint.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` auf den
+neuen Dateien clean (Meldung zu `materials/service_test.go` ist das
+bereits dokumentierte CRLF-Artefakt, kein echter Fehler). `go test
+./internal/materials/...`/`./internal/purchasing/...` grün.
+Docker-Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go
+test ./internal/http/... -run "TestMinStockShortfallsFlow|TestQuoteDemandFlow"`
+(2 Tests) gegen frische DB grün; abschließend vollständiger,
+ungefilterter `NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf
+(alle Domänen) gegen erneut frisch aufgesetzte DB: `ok
+nalaerp3/internal/http 31.779s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/materials/service_test.go`,
+`server/internal/http/v1.go`,
+`server/internal/purchasing/demand.go` (neu),
+`server/internal/purchasing/demand_test.go` (neu),
+`server/internal/http/purchasing_demand_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.2.1 (ADR: Schema-Design-Entscheidung für den Anfrageprozess
+(RFQ) vor Bestellung) abgeschlossen** — erste Subtask von Task D.2, nach
+Abschluss von D.1. **Wichtigster Recherchebefund**: `purchasing.Create`
+prüft aktuell selbst NICHT, ob `SupplierID` eine Lieferantenrolle hat —
+ein strengerer Rollen-Check existiert bereits, aber privat in
+`contacts.Service.ensureSupplierRole` (A.3) und ist von `purchasing` aus
+nicht ohne neue Paket-Kopplung aufrufbar. `purchase_orders.status` hat
+bewusst KEINEN DB-CHECK-Constraint (Validierung nur im Anwendungscode
+über `Statuses()`/`isIn()`).
+
+**Entscheidung** (`docs/adr/0017-rfq-anfrageprozess.md`): drei neue
+Tabellen `rfqs`/`rfq_items`/`rfq_supplier_quotes`. Ein Gewinner-Lieferant
+je GESAMTER Anfrage (kein Splitting über mehrere Lieferanten je
+Position) — Umwandlung erzeugt genau eine neue `PurchaseOrder`, der
+gewählte Lieferant muss für JEDE Position eine Offerte abgegeben haben,
+sonst Ablehnung. `rfqs` bekommt eine eigene `company_id`-Spalte (wie
+`purchase_orders` selbst — ein eigenständiges Dokument auf
+Dokumentenebene, kein Kind einer anderen Tabelle wie `warehouse_id` bei
+C.1-C.3). `status` bewusst OHNE DB-CHECK — Konsistenz mit dem
+unmittelbaren Schwester-Dokument `purchase_orders`, das ebenfalls nur im
+Anwendungscode validiert (Abweichung vom sonst in dieser Session
+üblichen CHECK-Muster, hier bewusst zugunsten der Konsistenz innerhalb
+derselben Tabellenfamilie). Lieferanten-Offerten sind Upsert (`UNIQUE
+(rfq_item_id, supplier_id)`), keine Historie — vor jeder Bestellung ist
+eine Offerte eine unverbindliche Verhandlungsangabe, kein
+GoBD-relevanter Beleg (anders als Buchhaltungsbelege mit
+Storno-Pflicht). Keine Lieferantenrollen-Prüfung beim Registrieren einer
+Offerte — eine strengere Prüfung nur für RFQ wäre eine Inkonsistenz
+gegenüber der bestehenden `purchasing.Create`, in die die Anfrage am Ende
+mündet (vorbestehende Lücke, nicht im Rahmen von D.2 behoben). Eigener
+Nummernkreis (Entity `rfq`), analog zu `purchase_order`. Implementierung
+in `purchasing.Service`, keine neue Permission-Infrastruktur
+(Wiederverwendung von `purchase_orders.read`/`purchase_orders.write`).
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0017-rfq-anfrageprozess.md` (neu),
+`docs/backlog.md` (D.2 in Subtasks D.2.1/D.2.2/D.2.3 zerlegt, D.2.1 als
+done markiert), `docs/state.md`.
+
+**Subtask D.2.2 (Migration: `rfqs`/`rfq_items`/`rfq_supplier_quotes`-
+Tabellen + `number_sequences`-Eintrag für Entity `rfq`) abgeschlossen**,
+gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/079_rfqs.sql` (nächste freie Nummer
+nach 078) — legt alle drei Tabellen exakt gemäß ADR 0017 an: `rfqs` mit
+eigener `company_id`-Spalte (FK auf `company_profiles`, wie
+`purchase_orders`), `status` bewusst OHNE CHECK (Konsistenz mit
+`purchase_orders`), `UNIQUE(nummer)`; `rfq_items` mit `material_id ON
+DELETE RESTRICT` wie `purchase_order_items`; `rfq_supplier_quotes` mit
+`UNIQUE (rfq_item_id, supplier_id)` fürs Upsert-Verhalten.
+
+**Echter, bei dieser Subtask entdeckter Fund (nicht hier behoben)**:
+`settings.NumberingService.Next()` erzeugt bei fehlendem
+`number_sequences`-Eintrag einen HARTKODIERTEN Fallback-Pattern
+`"PO-{YYYY}-{NNNN}"` unabhängig vom übergebenen `entity`-Namen
+(`server/internal/settings/numbering.go:106`) — ohne expliziten Seed
+hätten RFQ-Nummern fälschlich mit `"PO-"` statt `"RFQ-"` begonnen. Der
+Bug betrifft potenziell jede künftige neue Entity und jeden künftigen
+zweiten Mandanten; eigenständige, separate Korrektur außerhalb des
+D.2-Scopes (analog zum bereits in D.2.1 dokumentierten Verzicht auf eine
+strengere Lieferantenrollen-Prüfung — beides vorbestehende bzw. durch
+D.2 sichtbar gewordene Lücken, bewusst nicht mitgefixt). Umgangen durch
+expliziten Seed direkt in der Migration
+(`INSERT INTO number_sequences (company_id, entity, pattern,
+next_value) SELECT 'default', 'rfq', 'RFQ-{YYYY}-{NNNN}', 1 WHERE NOT
+EXISTS (...)`) — dem POST-Composite-PK-Muster (`company_id`+`entity`,
+seit Migration 061), da die alte, migrationszeitliche Seed-Form ohne
+`company_id` (wie ursprünglich bei `purchase_order`/`sales_order`) seit
+der PK-Umstellung nicht mehr möglich ist.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-079 lief beim
+Testaufruf fehlerfrei durch, alle `TestPurchaseOrders*`/`TestMaterials*`/
+`TestMinStockShortfallsFlow`/`TestQuoteDemandFlow`-Tests PASS — keine
+Regression. `\d rfqs`/`\d rfq_items`/`\d rfq_supplier_quotes` bestätigen
+Spalten/Typen/Indizes/FKs exakt wie in der ADR entschieden.
+`SELECT ... FROM number_sequences WHERE entity='rfq'` bestätigt den
+korrekten Seed (`company_id='default'`, `pattern='RFQ-{YYYY}-{NNNN}'`,
+`next_value=1`); die `company_profiles`-Zeile für `'default'` wurde
+direkt geprüft (erfüllt die neue FK). DB danach zurückgesetzt und
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 28.406s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in D.2.3).
+Geänderte Dateien: `server/internal/migrate/migrations/079_rfqs.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.2.3 (letzte Subtask von Task D.2; Anwendungscode:
+`CreateRFQ`/`RegisterSupplierQuote`/`ListSupplierQuotes`/
+`ConvertToPurchaseOrder`/`CancelRFQ` in neuer Datei `purchasing/rfq.go`,
+HTTP-Wiring, Tests) abgeschlossen** — damit ist Task D.2 vollständig
+abgeschlossen. `CreateRFQ` (Autonummer via `NumberingService`, Entity
+`rfq`), `GetRFQ`/`ListRFQs`, `RegisterSupplierQuote` (Upsert per `ON
+CONFLICT (rfq_item_id, supplier_id) DO UPDATE`, lehnt ab wenn Anfrage
+nicht `offen` ist, prüft Lieferanten-Zugehörigkeit zum Mandanten OHNE
+Rollen-Check, wie in ADR 0017 entschieden), `ListSupplierQuotes`
+(sortiert nach Position dann Preis — die Vergleichsansicht für die
+Lieferantenauswahl), `CancelRFQ` (`FOR UPDATE`, `offen→storniert`),
+`ConvertToPurchaseOrder` (sperrt die Anfrage-Zeile, lehnt ab wenn der
+gewählte Lieferant NICHT für jede Position eine Offerte abgegeben hat,
+dupliziert bewusst das Insert-Muster aus `purchasing.Create` INNERHALB
+derselben Transaktion statt es aufzurufen, damit Anfrage-Abschluss und
+Bestellungs-Anlage atomar bleiben). HTTP-Wiring (`v1.go`): neue
+Route-Gruppe `/rfqs` — Wiederverwendung von
+`purchase_orders.read`/`purchase_orders.write`, zwei neue
+`classifyDomainError`-Substrings ergänzt (`"nicht mehr offen"`, `"ein
+angebot abgegeben"`).
+
+**Zwei echte, bei der Testarbeit entdeckte und sofort behobene Bugs**:
+(1) `ConvertToPurchaseOrder`s JOIN-Query selektierte 8 Spalten (inkl.
+ungenutztem `ri.id`), scannte aber nur 7 Ziele — pgx-Fehler "number of
+field descriptions must equal number of destinations" bei JEDEM Aufruf;
+behoben durch Entfernen der ungenutzten Spalte aus dem SELECT. (2)
+`classifyDomainError` kannte weder `"nicht mehr offen"` noch die
+Formulierung für "Lieferant hat nicht für alle Positionen ein Angebot
+abgegeben" — beide Fehler wurden fälschlich als 500 statt 400
+ausgeliefert; durch die zwei neuen Substrings behoben (gleiches, in
+dieser Session etablierte Erweiterungsmuster wie z. B. B.4.3).
+`purchasing.Create`/`Get`/`List`/`Update` komplett unangetastet.
+
+Neue Tests: 12 reine Unit-Tests (`server/internal/purchasing/rfq_test.go`,
+DB-los) sowie 5 Integrationstests
+(`server/internal/http/rfqs_integration_test.go`): voller
+Anlegen→Auflisten→Abrufen-Flow, **voller Beweis, dass zwei
+Lieferanten-Offerten für dieselbe Position korrekt nach Preis sortiert
+erscheinen (billigste zuerst) UND dass die Umwandlung zum gewählten
+(billigeren) Lieferanten eine `PurchaseOrder` mit exakt dessen Preis
+erzeugt und die Anfrage auf `abgeschlossen` setzt** — der eigentliche
+Kernbeweis des RFQ-Prozesses aus ADR 0017 —, 400 bei Umwandlung mit
+unvollständigen Offerten (nur 1 von 2 Positionen beantwortet), 400 bei
+einer Offerte auf eine bereits stornierte Anfrage.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` auf den
+neuen Dateien clean. `go test ./internal/purchasing/...` grün. Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestRFQ` (5 Tests) gegen frische DB grün;
+abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 28.729s` — keine Regression.
+Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes
+Repo, alle Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/v1.go`,
+`server/internal/purchasing/rfq.go` (neu),
+`server/internal/purchasing/rfq_test.go` (neu),
+`server/internal/http/rfqs_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.3.1 (ADR: Schema-Design-Entscheidung für die
+Eingangsrechnungsprüfung/3-Way-Match) abgeschlossen** — erste Subtask
+von Task D.3, der letzten Task in Epic D. **Wichtigster
+Recherchebefund**: `purchase_orders.status='received'` ist ein reiner
+Kopf-Status der GESAMTEN Bestellung, keine granulare Wareneingangs-
+Erfassung je Position — es gibt aktuell keine strukturierte Verknüpfung
+zwischen `stock_movements` (physischer Wareneingang,
+`movement_type='purchase'` existiert bereits und löst schon heute die
+Durchschnittspreis-Fortschreibung aus) und `purchase_order_items` außer
+dem freien Textfeld `reference`. Für Rechnungen gibt es bisher nur
+`accounting.ARService` (Accounts Receivable, `invoices_out`) — keine
+`invoices_in`-Tabelle, kein Accounts-Payable-Dienst.
+
+**Entscheidung** (`docs/adr/0018-eingangsrechnungspruefung.md`): additive,
+nullable FK `stock_movements.purchase_order_item_id` statt einer
+komplett eigenen Wareneingangs-Buchführung (`goods_receipts`) — vermeidet
+zwei Quellen der Wahrheit für denselben physischen Vorgang,
+`CreateMovement` bleibt bis auf das neue optionale Feld unverändert. Neue
+Tabellen `invoices_in`/`invoice_in_items` bewusst OHNE Buchungs-/Storno-/
+Freigabeworkflow, keine `journal_entries`-Anbindung, keine
+USt.-Behandlung — der Backlog-Titel verlangt eine PRÜFUNG (Abgleich
+dreier Datenquellen: Bestellt/Erhalten/Berechnet), keinen vollständigen
+Kreditorenbuchhaltungs-Workflow wie bei `invoices_out` (das wäre ein
+eigenständiges, deutlich größeres Vorhaben, voraussichtlich Epic E —
+Finanzwesen). `MatchInvoiceIn` ist eine reine Lese-/Berechnungsfunktion
+ohne Toleranzschwelle (exakter Vergleich, keine erfundene
+Verrechnungsformel, analog zur bereits in ADR 0016 getroffenen
+Entscheidung). Neue Permissions `invoices_in.read`/`write` — anders als
+C.1-D.2 gibt es keine bestehende, fachlich passende Permission
+(`/invoices-in` ist laut Backlog-Titel eine genuin neue Domäne).
+Implementierung in neuer Datei `accounting/ap.go` (`APService`,
+Schwester-Konzept zum bestehenden `ARService`) statt in
+`purchasing.Service` wie D.1/D.2 — eine Rechnung ist fachlich ein
+Buchhaltungsdokument, unabhängig vom Bestellbezug. D.3.3 ist
+voraussichtlich groß genug (2 Pakete, neue Domäne, Match-Logik) für eine
+eigene Micro-Subtask-Zerlegung — Entscheidung darüber bei Erreichen von
+D.3.3.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien:
+`docs/adr/0018-eingangsrechnungspruefung.md` (neu), `docs/backlog.md`
+(D.3 in Subtasks D.3.1/D.3.2/D.3.3 zerlegt, D.3.1 als done markiert),
+`docs/state.md`.
+
+**Subtask D.3.2 (Migration: `invoices_in`/`invoice_in_items`-Tabellen,
+`stock_movements.purchase_order_item_id`-Spalte, zwei neue Permissions)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/080_invoices_in.sql` (nächste freie
+Nummer nach 079) — legt gemäß ADR 0018 alles in einer Migration an:
+`stock_movements.purchase_order_item_id` (nullable FK auf
+`purchase_order_items`, `ON DELETE SET NULL`); `invoices_in` mit eigener
+`company_id`-Spalte (wie `invoices_out`/`purchase_orders`),
+`purchase_order_id` nullable, `status` bewusst OHNE CHECK (aktuell nur
+ein Wert `'erfasst'`); `invoice_in_items` mit `purchase_order_item_id`
+nullable, kein `tax_code` (wie `purchase_order_items`); zwei neue
+Permissions `invoices_in.read`/`write`, zugewiesen an `role-finance`,
+`role-procurement` UND `role-admin`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-080 lief beim
+Testaufruf fehlerfrei durch, alle `TestPurchaseOrders*`/`TestWarehouse*`/
+`TestStockMovement*`/`TestRFQ*`-Tests PASS — keine Regression. `\d
+invoices_in`/`\d invoice_in_items`/`\d stock_movements` bestätigen
+Spalten/Typen/Indizes/FKs exakt wie in der ADR entschieden; direkte
+SQL-Abfrage bestätigt beide neuen Permissions UND die korrekte Zuordnung
+zu allen drei Rollen (admin/finance/procurement). DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go
+test ./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 31.087s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in D.3.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/080_invoices_in.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask D.3.3 (Anwendungscode) — Größenschätzung ergab 2 Pakete
+(`materials`, `accounting`), eine neue HTTP-Domäne und Match-Logik über
+~500-700 Zeilen in ~5 Dateien, damit über der §6.3-Schwelle (~400
+Zeilen) für eine einzelne Subtask. In 3 Micro-Subtasks zerlegt: D.3.3.1
+(`StockMovementCreate`-Erweiterung), D.3.3.2 (`APService`-Kernlogik +
+Unit-Tests), D.3.3.3 (HTTP-Wiring + Integrationstests, letzte Subtask
+von Epic D).**
+
+**Micro-Subtask D.3.3.1 (`StockMovementCreate` um
+`purchase_order_item_id` erweitern) abgeschlossen**, gegen frische DB
+verifiziert. `server/internal/materials/service.go`:
+`StockMovementCreate.PurchaseOrderItemID *string` additiv ergänzt;
+`CreateMovement` prüft bei gesetztem Feld (innerhalb der bestehenden
+Transaktion, analog zu den bereits vorhandenen
+`materialOwned`/`warehouseOwned`-Prüfungen) per JOIN über
+`purchase_order_items`→`purchase_orders`, dass die Bestellposition zum
+Mandanten gehört, sonst "Bestellposition nicht gefunden"; INSERT um die
+neue Spalte ergänzt. Kein HTTP-Wiring nötig — `POST /stock-movements/`
+deserialisiert bereits generisch in `StockMovementCreate` (gleiches
+Struct-Passthrough-Muster wie mehrfach zuvor, z. B. A.1.3).
+
+Neue Tests in `server/internal/http/warehouses_integration_test.go`:
+neuer Helfer `setupPurchaseOrderFixtureForMovementLink`
+(Material+Lager+Lieferant+Bestellung mit einer Position),
+`TestStockMovementCreateAcceptsPurchaseOrderItemLink` (201, **direkte
+SQL-Prüfung bestätigt `stock_movements.purchase_order_item_id` korrekt
+persistiert**), `TestStockMovementCreateRejectsUnknownPurchaseOrderItem`
+(400 bei unbekannter/fremder Bestellposition).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean (`gofmt`-Meldung zu
+`service.go` ist das bereits dokumentierte CRLF-Artefakt aus B.4.3,
+`warehouses_integration_test.go` selbst ist clean). Docker-Testumgebung
+mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/http/... -run "TestStockMovementCreateAcceptsPurchaseOrderItemLink|TestStockMovementCreateRejectsUnknownPurchaseOrderItem"`
+gegen frische DB grün; abschließend vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/http/...`-Lauf gegen erneut
+frisch aufgesetzte DB: `ok nalaerp3/internal/http 33.214s` — keine
+Regression. Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1`
+(gesamtes Repo, alle Pakete sequenziell) gegen frische DB: durchgehend
+`ok`.
+
+Geänderte Dateien: `server/internal/materials/service.go`,
+`server/internal/http/warehouses_integration_test.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+**Micro-Subtask D.3.3.2 (`APService` in neuer Datei `accounting/ap.go` +
+Unit-Tests) abgeschlossen**, gegen frische DB verifiziert. `CreateInvoiceIn`
+(prüft Lieferant-/Bestellungs-/Bestellpositions-Zugehörigkeit zum
+Mandanten, mindestens eine Position, `Menge > 0`), `GetInvoiceIn`/
+`ListInvoicesIn` (Filter Lieferant/Bestellung), `MatchInvoiceIn`
+(Kernfunktion aus ADR 0018: je Rechnungsposition mit
+Bestellpositions-Bezug werden `bestellt` aus `purchase_order_items`,
+`erhalten` aus `SUM(stock_movements.quantity) WHERE
+purchase_order_item_id=X` und `berechnet` aus der Rechnungsposition
+selbst gegenübergestellt; `MengeStimmt` vergleicht berechnet gegen
+ERHALTEN — der eigentliche AP-Kontrollpunkt, es darf nur bezahlt werden
+was tatsächlich eingegangen ist —, `PreisStimmt` vergleicht berechnet
+gegen BESTELLT; Positionen ohne Bestellpositions-Bezug werden explizit
+als nicht abgleichbar markiert statt verglichen).
+
+Kein HTTP-Wiring in dieser Micro-Subtask (folgt in D.3.3.3) — daher
+Verifikation direkt gegen Postgres statt über HTTP, analog zum bereits
+etablierten Muster in `accounting/bank_integration_test.go` (Backlog
+0.37). Neue Tests: 9 reine Unit-Tests (`server/internal/accounting/ap_test.go`,
+DB-los) sowie 5 Integrationstests
+(`server/internal/accounting/ap_integration_test.go`, direkt gegen
+echtes Postgres): **voller Beweis, dass eine Rechnung über die
+vollständig erhaltene Menge zum bestellten Preis `MengeStimmt=true`/
+`PreisStimmt=true` ergibt**, **voller Beweis, dass eine Rechnung über
+mehr als tatsächlich erhalten (10 berechnet vs. 6 erhalten) UND zu einem
+abweichenden Preis beide Flags korrekt auf `false` setzt** — der
+eigentliche Kernbeweis des 3-Way-Match aus ADR 0018 —, Beweis dass eine
+Position ohne Bestellpositions-Bezug als nicht abgleichbar markiert wird
+(alle Vergleichsfelder bleiben `nil`), 400 bei unbekanntem Lieferanten,
+Listenfilter nach Lieferant.
+
+**Kleiner, selbst verursachter und sofort behobener Fund**: beim ersten
+Entwurf wurde eine eigene `itoa`-Hilfsfunktion geschrieben statt des im
+übrigen Repo etablierten `fmt.Sprintf("...$%d", ...)`-Musters für
+dynamische Query-Platzhalter — unnötige Neuerfindung, durch `fmt.Sprintf`
+ersetzt und die überflüssige Funktion entfernt.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` auf allen drei
+neuen Dateien clean (ein anfänglicher, echter Formatierungsfehler in
+`ap.go` — Struct-Feld-Ausrichtung nach den Bearbeitungen — direkt mit
+`gofmt -w` behoben). Docker-Testumgebung mehrfach frisch aufgesetzt;
+`NALA_INTEGRATION=1 go test ./internal/accounting/... -run TestAPService`
+(5 Tests) gegen frische DB grün; abschließend vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frisch aufgesetzte DB: durchgehend `ok`, keine
+Regression.
+
+Geänderte Dateien: `server/internal/accounting/ap.go` (neu),
+`server/internal/accounting/ap_test.go` (neu),
+`server/internal/accounting/ap_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Micro-Subtask D.3.3.3 (letzte Subtask von Epic D; HTTP-Wiring
+`/invoices-in`, Integrationstests inkl. End-to-End-Beweis des 3-Way-Match)
+abgeschlossen** — damit sind D.3.3, Task D.3 UND DAS GESAMTE EPIC D (D.1
+Bedarfsermittlung, D.2 RFQ-Anfrageprozess, D.3 Eingangsrechnungsprüfung)
+vollständig abgeschlossen. `v1.go`: `apSvc := accounting.NewAPService(pg)`
+instanziiert, neue Route-Gruppe `/invoices-in` (`POST /`, `GET /` inkl.
+`lieferant_id`/`bestellung_id`-Query-Filter, `GET /{id}`, `GET
+/{id}/match`) — Wiederverwendung der in D.3.2 angelegten
+`invoices_in.read`/`write`-Permissions, `writeDomainError`/
+`classifyDomainError`-Muster wie der Rest der `accounting`-Domäne; alle
+Fehlermeldungen aus `APService` trafen bereits bestehende Substrings
+(`"nicht gefunden"` → 404, `"erforderlich"`/`"muss größer als 0 sein"` →
+400), kein neuer Substring nötig.
+
+Neue Tests in `server/internal/http/invoices_in_integration_test.go`:
+Helfer `setupInvoiceInFixture`/`receiveGoods`/`createInvoiceIn`/
+`matchInvoiceIn`, 5 Integrationstests — voller
+Anlegen→Abrufen→Auflisten-Flow, **End-to-End-Beweis des 3-Way-Match über
+die vollständige HTTP-API** (vollständiger Wareneingang zum bestellten
+Preis → `menge_stimmt=true`/`preis_stimmt=true`; unvollständiger
+Wareneingang UND abweichender Preis → beide Flags `false`) — der
+eigentliche Kernbeweis von Epic D.3 und damit von Epic D insgesamt —,
+Beweis dass eine Position ohne Bestellbezug als nicht abgleichbar
+markiert wird, 404 bei unbekanntem Lieferanten (nicht 400 —
+`classifyDomainError` routet `"nicht gefunden"`-Meldungen auf 404,
+anders als die Materials-Domäne mit ihrem `writeHTTPError`-Muster).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` sauber
+bis auf das bereits dokumentierte CRLF-Artefakt auf `v1.go`. Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/http/... -run TestInvoicesIn` (5 Tests) gegen frische DB
+grün; abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go
+test ./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 35.272s` — keine Regression.
+Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes
+Repo, alle Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/v1.go`,
+`server/internal/http/invoices_in_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask E.1.1 (ADR: Schema-Design-Entscheidung für das
+Kostenstellenmodell) abgeschlossen** — erste Subtask von Epic E
+(Finanzwesen), direkt im Anschluss an den Abschluss von Epic D.
+**Wichtigster Recherchebefund**: kein bestehender Kostenstellen-Begriff
+im Repo. `journal_lines` bekam erst nachträglich (Migration 067) eine
+eigene `company_id`-Spalte — der ursprüngliche Kommentar aus
+`058_accounting_scope.sql` dazu ("erbt den Scope, daher keine eigene
+Spalte") ist damit überholt, aber keine echte Inkonsistenz, sondern eine
+spätere, bewusste Korrektur (zur Kenntnis genommen, nicht Teil dieser
+ADR).
+
+**Entscheidung** (`docs/adr/0019-kostenstellenmodell.md`): neue
+Stammdatentabelle `cost_centers` (mandantenweit, wie `materials`/
+`warehouses`) plus additive, nullable `journal_lines.kostenstelle_id`-FK.
+Zuordnung auf ZEILENEBENE (`journal_lines`), nicht auf dem
+Buchungskopf (`journal_entries`) — eine einzelne Buchung kann mehrere
+Kostenstellen gleichzeitig betreffen (z. B. Material für zwei
+verschiedene Werkstätten in einer Rechnung), Kopf-Ebene wäre zu grob für
+die spätere Soll-Ist-Auswertung in E.2. Zuordnung bewusst optional
+(nullable) — kein Zwang, dafür gibt es keine belegte fachliche Vorgabe.
+Keine Mandanten-Zugehörigkeits-Vorabprüfung beim Buchen — konsistent mit
+der bestehenden, ebenfalls nur per DB-FK geprüften Behandlung von
+`account_code` in derselben `JournalService.create`-Funktion (keine neue
+Inkonsistenz innerhalb derselben Funktion). Soft-Delete über
+`aktiv=false` statt echtem Löschen (analog `materials.DeleteSoft`) —
+Kostenstellen dürfen nach Verwendung in Buchungen nicht spurlos
+verschwinden. Implementierung in `accounting`-Paket (neue Datei
+`accounting/cost_centers.go`), da Kostenstellen fachlich Rechnungswesen-
+Stammdaten sind. Neue Permissions `cost_centers.read`/`write` (keine
+bestehende passt — `accounts`/Kontenrahmen hat selbst noch kein
+HTTP-Wiring), analog zur bereits in D.3 getroffenen Entscheidung für
+`invoices_in.*`. Keine Auswertungs-/Reporting-Logik — das ist explizit
+E.2 (Projektcontrolling), nicht E.1.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0019-kostenstellenmodell.md` (neu),
+`docs/backlog.md` (E.1 in Subtasks E.1.1/E.1.2/E.1.3 zerlegt, E.1.1 als
+done markiert), `docs/state.md`.
+
+**Subtask E.1.2 (Migration: `cost_centers`-Tabelle,
+`journal_lines.kostenstelle_id`-Spalte, zwei neue Permissions)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/081_cost_centers.sql` (nächste freie
+Nummer nach 080) — legt gemäß ADR 0019 alles in einer Migration an:
+`cost_centers` mit eigener `company_id`-Spalte (mandantenweite
+Stammdaten wie `materials`/`warehouses`), `UNIQUE (company_id, code)`,
+`aktiv boolean DEFAULT true`; `journal_lines.kostenstelle_id` (nullable
+FK, `ON DELETE SET NULL`); zwei neue Permissions
+`cost_centers.read`/`write`, zugewiesen an `role-finance` und
+`role-admin`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-081 lief beim
+Testaufruf fehlerfrei durch, alle `TestPurchaseOrders*`/`TestInvoicesIn*`/
+`TestRFQ*`-Tests PASS — keine Regression. `\d cost_centers`/`\d
+journal_lines` bestätigen Spalten/Typen/Indizes/FKs exakt wie in der ADR
+entschieden; direkte SQL-Abfrage bestätigt beide neuen Permissions UND
+die korrekte Zuordnung zu beiden Rollen (admin/finance).
+**UNIQUE-Constraint direkt per SQL provoziert**: doppelter `code`
+innerhalb desselben Mandanten korrekt abgelehnt, gültige Kostenstelle mit
+bestätigtem Default `aktiv=true` erfolgreich eingefügt. DB danach
+zurückgesetzt und vollständiger, ungefilterter `NALA_INTEGRATION=1 go
+test ./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 31.286s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in E.1.3).
+Geänderte Dateien: `server/internal/migrate/migrations/081_cost_centers.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+**Subtask E.1.3 (letzte Subtask von Task E.1; Anwendungscode: CRUD in
+neuer Datei `accounting/cost_centers.go`, `JournalLineInput`-Erweiterung,
+HTTP-Wiring, Tests) abgeschlossen** — damit ist Task E.1 vollständig
+abgeschlossen. `CostCenterService` mit `Create`/`Get`/`List` (Default nur
+`aktiv=true`, `include_inactive`-Filter)/`Update` (dynamischer
+SET-Builder wie `materials.Update`, Soft-Delete über `aktiv=false` statt
+echtem Löschen). `journal.go`: `JournalLineInput.KostenstelleID *string`
+additiv ergänzt, INSERT um die Spalte erweitert,
+`JournalService.create`s Bilanzierungslogik (Soll/Haben-Ausgleich)
+unangetastet. HTTP-Wiring (`v1.go`): neue Route-Gruppe `/cost-centers`
+— Wiederverwendung der in E.1.2 angelegten Permissions.
+
+**Echter, bei der Testarbeit entdeckter und sofort behobener Fund**:
+`CreateCostCenter` hatte ursprünglich KEINE Vorab-Prüfung auf doppelten
+`code` — ein Duplikat hätte die rohe Postgres-UNIQUE-Verletzung als
+unklassifizierten 500 statt eines sauberen 400 ausgeliefert
+(Inkonsistenz zur restlichen Codebasis, z. B. `contacts`-Domäne mit
+expliziter Duplikatserkennung); behoben durch `SELECT EXISTS`-
+Vorabprüfung in `Create` UND `Update` (bei Code-Änderung).
+
+Da `JournalService` (wie `APService` vor D.3.3.3) keinen direkten
+HTTP-Handler für `JournalEntryInput` hat, wurde die
+`kostenstelle_id`-Persistierung direkt gegen Postgres bewiesen (analog
+zum etablierten Muster aus `bank_integration_test.go`/D.3.3.2), NICHT
+über HTTP. Neue Tests: 9 reine Unit-Tests
+(`server/internal/accounting/cost_centers_test.go`, DB-los) sowie 1
+direkter Postgres-Integrationstest
+(`server/internal/accounting/journal_kostenstelle_integration_test.go`,
+**beweist, dass eine Buchungszeile mit `kostenstelle_id` korrekt
+persistiert wird, während eine Zeile ohne Kostenstellen-Bezug korrekt
+`NULL` bleibt**) sowie 2 HTTP-Integrationstests
+(`server/internal/http/cost_centers_integration_test.go`): voller
+Anlegen→Abrufen→Auflisten→Deaktivieren-Flow (inkl. Beweis, dass eine
+deaktivierte Kostenstelle standardmäßig aus der Liste verschwindet und
+nur mit `include_inactive=true` wieder erscheint), 400 bei doppeltem
+Code.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` auf allen fünf
+neuen/geänderten Dateien clean (zwei anfängliche, echte
+Formatierungsfehler — Struct-Feld-Ausrichtung in
+`journal.go`/`cost_centers.go` — direkt mit `gofmt -w` behoben). Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/accounting/... -run "TestCostCenter|TestJournalCreateWithKostenstelleIDPersists"`
+gegen frische DB grün; `NALA_INTEGRATION=1 go test ./internal/http/...
+-run TestCostCenters` (2 Tests) gegen frische DB grün; abschließend
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch
+aufgesetzte DB: `ok nalaerp3/internal/http 33.795s` — keine Regression.
+Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes
+Repo, alle Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/accounting/cost_centers.go` (neu),
+`server/internal/accounting/cost_centers_test.go` (neu),
+`server/internal/accounting/journal.go`,
+`server/internal/accounting/journal_kostenstelle_integration_test.go`
+(neu), `server/internal/http/v1.go`,
+`server/internal/http/cost_centers_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask E.2.1 (ADR: Schema-Design-Entscheidung für das
+Projektcontrolling/Soll-Ist im Server) abgeschlossen** — erste Subtask
+von Task E.2, direkt im Anschluss an den Abschluss von Task E.1.
+**Wichtigster Recherchebefund**: es gibt AKTUELL KEINE strukturierte
+Verknüpfung zwischen Projekten und tatsächlich angefallenen Kosten —
+`purchase_orders` hat kein `project_id`, `hr` kennt keine Zeiterfassung/
+Lohnbuchung, `stock_movements` hat kein `project_id`; die einzige
+belastbare Kosten-Seite ist `quote_item_calculations` (B.3) und das ist
+SOLL, nicht IST. `journal_lines`/`cost_centers` (E.1) wurden zwar
+explizit für diesen Zweck vorbereitet, aber Projekte sind bisher NICHT
+mit Kostenstellen verknüpft — diese fehlende Verknüpfung ist die
+zentrale Lücke, die E.2 zuerst schließen muss, bevor überhaupt ein
+Soll-Ist-Vergleich möglich ist. Nebenbefund: `projects.Service` hat
+keinen generischen Update-Pfad, nur die enge, bereits bestehende
+`UpdateStatus` — ein ADR-Entwurf, der fälschlich einen generischen
+`projects.Update`/`ProjectUpdate` unterstellte, wurde vor Abschluss noch
+korrigiert.
+
+**Entscheidung** (`docs/adr/0020-projektcontrolling.md`): neue Spalte
+`projects.kostenstelle_id` (optional, kein Zwang zur Zuordnung) statt
+einer neuen `journal_lines.project_id`-Spalte (würde die gerade in E.1
+getroffene Kostenstellen-Zentrierung umgehen, zwei parallele
+Zuordnungsmechanismen schaffen). Soll-Kosten per SQL-Ausdruck (dieselbe,
+seit B.3.3 stabile und getestete Formel direkt als SQL statt Export der
+bisher privaten `computeCalculationTotals`-Funktion aus `quotes`,
+vermeidet eine neue Cross-Package-Abhängigkeit), multipliziert mit
+`quote_items.qty`, nur nicht überholte Angebotsrevisionen
+(`superseded_by_quote_id IS NULL`, Konsistenz mit dem bereits
+bestehenden `quoteSvc.List`-Filter in `commercial_context.go`).
+Ist-Kosten nur aus `accounts.type='expense'`-Konten, gefiltert auf die
+Projekt-Kostenstelle; `null` statt `0`, wenn keine Kostenstelle
+zugeordnet ist (0 würde fälschlich "keine Kosten angefallen"
+suggerieren statt "nicht messbar"). Für die Kostenstellen-Zuordnung
+wird eine ebenso enge neue Funktion `projects.Service.SetKostenstelle`
+ergänzt (analog zu `UpdateStatus`), kein generisches `ProjectUpdate`
+eingeführt. Implementierung im `http`-Paket (neue Datei
+`http/project_controlling.go`), konsistent mit dem bereits etablierten,
+funktionierenden Präzedenzfall `commercial_context.go` für exakt diese
+Art von Cross-Domain-Aggregation (projects+quotes+accounting+
+cost_centers) — kein neues architektonisches Muster eingeführt.
+
+Reine Dokumentations-Subtask, kein Code geändert — keine Build-/Testläufe
+nötig. Geänderte Dateien: `docs/adr/0020-projektcontrolling.md` (neu),
+`docs/backlog.md` (E.2 in Subtasks E.2.1/E.2.2/E.2.3 zerlegt, E.2.1 als
+done markiert), `docs/state.md`.
+
+**Subtask E.2.2 (Migration: `projects.kostenstelle_id`-Spalte)
+abgeschlossen**, gegen frische DB verifiziert. Neue Datei
+`server/internal/migrate/migrations/082_projects_kostenstelle.sql`
+(nächste freie Nummer nach 081) — additive, nullable FK
+`kostenstelle_id` auf `cost_centers`, `ON DELETE SET NULL`, gemäß ADR
+0020.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt, vollständige Migrationskette 001-082 lief beim
+Testaufruf fehlerfrei durch, alle `TestProject*`/`TestCostCenters*`-Tests
+PASS — keine Regression. `\d projects` bestätigt neue Spalte, Index und
+FK exakt wie in der ADR entschieden. DB danach zurückgesetzt und
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 37.668s` — keine Regression.
+
+Reine Migrations-Subtask, kein Anwendungscode geändert (folgt in E.2.3).
+Geänderte Dateien:
+`server/internal/migrate/migrations/082_projects_kostenstelle.sql` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+**Subtask E.2.3 (Anwendungscode) — Größenschätzung ergab mehrere
+Datenquellen (Soll-/Ist-Erlös wiederverwendet, Soll-/Ist-Kosten neu,
+hybrider Integrationstest nötig, da `JournalService` keinen
+HTTP-Handler hat), damit über der §6.3-Schwelle für eine einzelne
+Subtask. In 3 Micro-Subtasks zerlegt: E.2.3.1 (`SetKostenstelle` inkl.
+eigenem HTTP-Endpunkt), E.2.3.2 (`http/project_controlling.go`-
+Aggregationslogik), E.2.3.3 (HTTP-Wiring des Controlling-Endpunkts +
+End-to-End-Test, letzte Subtask von Task E.2).**
+
+**Micro-Subtask E.2.3.1 (`projects.Service.SetKostenstelle` inkl.
+eigenem HTTP-Endpunkt) abgeschlossen**, gegen frische DB verifiziert.
+`projects/service.go`: `Project.KostenstelleID *string` additiv ergänzt
+(`Get`/`List` erweitert, `Create` bewusst unverändert — ein neu
+angelegtes Projekt hat immer `NULL`, Zuordnung erfolgt ausschließlich
+über `SetKostenstelle`), neue Funktion `SetKostenstelle` (Projekt-ID
+erforderlich, bei gesetzter `kostenstelleID` Zugehörigkeits-Prüfung zum
+Mandanten über Direkt-SQL — analog zu `materials.CreateMovement`s
+Ownership-Checks —, `nil`/leerer String löscht die Zuordnung, kein
+Fehler).
+
+Anders als bei D.3.3.1 (reine Struct-Erweiterung, bestehende Route
+deserialisiert generisch) BRAUCHT `SetKostenstelle` einen NEUEN, eigenen
+Endpunkt (kein generischer Update-Pfad vorhanden) — deshalb bewusst
+SOFORT inkl. HTTP-Wiring umgesetzt statt wie D.3.3.1 rein auf
+Service-Ebene, damit die Micro-Subtask für sich vollständig
+abgeschlossen und über HTTP verifizierbar ist. HTTP-Wiring (`v1.go`):
+`PATCH /projects/{id}/kostenstelle` (Body `{"kostenstelle_id":
+"..."|null}`) — Wiederverwendung von `projects.write`.
+
+Neue Tests: 1 Unit-Test (`server/internal/projects/service_test.go`,
+DB-los, `Projekt-ID erforderlich`) sowie 1 Integrationstest
+(`server/internal/http/projects_integration_test.go`,
+`TestProjectSetKostenstelleFlow`): voller
+Zuordnen→Abrufen(persistiert)→Ablehnen-bei-unbekannter-Kostenstelle
+(404)→Entfernen-Flow.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean, `gofmt -l` clean
+(bis auf das bereits dokumentierte CRLF-Artefakt auf `v1.go`). Docker-
+Testumgebung mehrfach frisch aufgesetzt; `NALA_INTEGRATION=1 go test
+./internal/projects/... -run TestSetKostenstelle` grün;
+`NALA_INTEGRATION=1 go test ./internal/http/... -run
+TestProjectSetKostenstelleFlow` gegen frische DB grün; abschließend
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf gegen erneut frisch aufgesetzte DB: `ok
+nalaerp3/internal/http 30.666s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/projects/service.go`,
+`server/internal/projects/service_test.go`,
+`server/internal/http/v1.go`,
+`server/internal/http/projects_integration_test.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+### E.2.3.2 `http/project_controlling.go` (Soll-/Ist-Erlös/-Kosten-Aggregation) + Tests
+
+Zweite von drei Micro-Subtasks von Task E.2.3 (ADR 0020). Neue Datei
+`server/internal/http/project_controlling.go`: unexportierte Funktion
+`buildProjectControlling(ctx, projectID, pg, projSvc, quoteSvc,
+companyID) (*projectControllingResponse, error)`. Response-Struct
+`projectControllingResponse` mit `project_id`, `soll_erloes`,
+`ist_erloes`, `soll_kosten`, `ist_kosten *float64`,
+`deckungsbeitrag_soll`, `deckungsbeitrag_ist *float64`.
+
+Erlös-Seite ist reine Wiederverwendung bestehender Bausteine aus
+`commercial_context.go` (`quoteSvc.List`/`listProjectInvoices`) — kein
+neuer Code, nur ein zweiter Aufrufer. Kosten-Seite ist neu und der
+eigentliche Kern der Subtask: Soll-Kosten per rohem SQL-Ausdruck über
+`quote_item_calculations`⋈`quote_items`⋈`quotes` (dieselbe, seit
+B.3.3 stabile Zuschlagskalkulations-Formel — bewusst als SQL statt
+Export der bisher privaten `computeCalculationTotals`-Funktion aus
+`quotes`, um keine neue Cross-Package-Abhängigkeit einzuführen, siehe
+ADR 0020), multipliziert mit `quote_items.qty`, gefiltert auf
+`superseded_by_quote_id IS NULL` (Konsistenz mit `quoteSvc.List`).
+Ist-Kosten per `journal_lines`⋈`accounts`-Aggregation
+(`SUM(debit-credit)`, gefiltert auf `kostenstelle_id =
+projects.kostenstelle_id` UND `accounts.type='expense'`) — bleibt
+bewusst `nil` (nicht `0`), wenn dem Projekt keine Kostenstelle
+zugeordnet ist, exakt wie in ADR 0020 entschieden (`0` würde fälschlich
+"keine Kosten angefallen" statt "nicht messbar" suggerieren).
+
+Diese Subtask umfasst bewusst NOCH KEIN HTTP-Wiring (folgt als letzte
+Subtask in E.2.3.3) — `buildProjectControlling` wird im neuen
+Integrationstest direkt aufgerufen, analog zum bereits etablierten
+Muster für Funktionen ohne eigenen Handler (D.3.3.2/E.1.3).
+
+Neuer Test: `server/internal/http/project_controlling_integration_test.go`,
+`TestBuildProjectControllingAggregatesSollUndIstKosten` — hybrider
+Test: alle Fixtures (Kontakt, Projekt, Angebot mit `project_id` und
+einer Position `qty=2`, Kalkulation über `PUT
+/quotes/{id}/items/{itemID}/calculation`, Kostenstelle über `POST
+/cost-centers/`, Zuordnung über das in E.2.3.1 gebaute `PATCH
+/projects/{id}/kostenstelle`) ausschließlich über HTTP. Erste Prüfung
+OHNE Kostenstellen-Zuordnung beweist `soll_kosten=628` (Kalkulation:
+material_total=115, lohn_total=144, fremdleistung_total=55 →
+Einzelpreis 314 × qty 2 = 628, exakt gegengerechnet), `soll_erloes`
+gleich der Angebots-Bruttosumme, UND explizit `ist_kosten=nil`/
+`deckungsbeitrag_ist=nil` (nicht `0`) mangels Kostenstelle — das ist
+der zentrale, in ADR 0020 festgelegte Verhaltensvertrag und wird hier
+konkret bewiesen. Danach wird eine Buchung mit zwei Zeilen (250 Soll
+auf Aufwandskonto `3400` MIT `kostenstelle_id`, 250 Haben auf `1200`
+OHNE Kostenstellen-Bezug) direkt über
+`accounting.NewJournalService(env.PG).Create(...)` gebucht (kein
+HTTP-Handler für `JournalEntryInput` vorhanden, analog E.1.3). Ein
+zweiter Aufruf von `buildProjectControlling` beweist danach
+`ist_kosten=250` (nur die getaggte Zeile zählt, die unbelegte
+Gegenbuchung wird korrekt ausgeschlossen) und den daraus korrekt
+abgeleiteten `deckungsbeitrag_ist`, während `soll_kosten` durch die
+Buchung unverändert bleibt.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. `gofmt -l` auf
+beiden neuen Dateien clean (zwei anfängliche, echte
+Formatierungsfehler — Struct-Feld-Ausrichtung in
+`project_controlling.go` und Import-Block-Ausrichtung im neuen
+Testfile — direkt mit `gofmt -w` behoben). Docker-Testumgebung
+mehrfach frisch aufgesetzt (`docker compose -f
+docker-compose.test.yml down -v && up -d`, jeweils auf
+`pg_isready` gewartet); `NALA_INTEGRATION=1 go test
+./internal/http/... -run
+TestBuildProjectControllingAggregatesSollUndIstKosten -v` gegen frische
+DB grün (0.73s, alle Assertions inkl. beider `nil`-Fälle bestanden);
+abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf gegen erneut frisch aufgesetzte DB: `ok
+nalaerp3/internal/http 31.093s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte/neue Dateien: `server/internal/http/project_controlling.go`
+(neu), `server/internal/http/project_controlling_integration_test.go`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+### E.2.3.3 HTTP-Wiring `GET /projects/{id}/controlling`, End-to-End-Integrationstest (letzte Subtask von Task E.2 — Task E.2 damit abgeschlossen)
+
+Dritte und letzte Micro-Subtask von Task E.2.3. `server/internal/http/v1.go`:
+neue Route `GET /projects/{id}/controlling` (Permission `projects.read`),
+direkt neben der bestehenden `commercial-context`-Route platziert, ruft
+die in E.2.3.2 gebaute `buildProjectControlling` auf und liefert deren
+Ergebnis unverändert als JSON zurück. Kein neuer Service, keine neue
+Aggregationslogik — reines Wiring der bereits fertigen und in E.2.3.2
+bewiesenen Funktion.
+
+**Echter, bei der Arbeit an der für diese Subtask geforderten
+Negativ-Testfall entdeckter und sofort behobener Fund**:
+`projects.Service.Get` gab bei unbekannter Projekt-ID den rohen
+`pgx.ErrNoRows`-Fehler unverändert zurück, statt ihn — wie in
+ausnahmslos jeder anderen Domäne im Repo (`materials`,
+`accounting/cost_centers`, `purchasing/rfq`, `sales/addenda`,
+`quotes/calculations` etc., durchgängig per `errors.Is(err,
+pgx.ErrNoRows)` geprüft) — in eine `"<Entität> nicht gefunden"`-Domain-
+Error umzuwandeln. Da `classifyDomainError` `pgx.ErrNoRows`s
+Fehlertext ("no rows in result set") nicht kennt, wäre das ohne diesen
+Fund als unklassifizierter 500 statt eines sauberen 404 ausgeliefert
+worden — sowohl vom neuen `GET .../controlling`-Endpunkt als auch vom
+bereits bestehenden, unveränderten `GET /projects/{id}`, der denselben
+`Service.Get`-Aufruf teilt. Behoben in
+`server/internal/projects/service.go`: `Get` wrappt `pgx.ErrNoRows`
+jetzt zu `"Projekt nicht gefunden"` (trifft den bereits bestehenden
+`classifyDomainError`-Substring `"nicht gefunden"`, kein neuer
+Substring nötig); Import `github.com/jackc/pgx/v5` ergänzt. Diese
+Korrektur liegt exakt im Aufrufpfad des in dieser Subtask gelieferten
+Endpunkts (kein separates, unangekündigtes Refactoring) und ändert
+kein Verhalten, von dem ein bestehender Test abhing — der einzige
+zweite Aufrufer von `Service.Get` (die bereits bestehende `GET
+/projects/{id}`-Route) lieferte vorher ebenfalls fälschlich einen 500
+und profitiert von derselben Korrektur.
+
+Neue Tests in `server/internal/http/project_controlling_integration_test.go`:
+`TestProjectControllingEndpointEndToEnd` — anders als
+`TestBuildProjectControllingAggregatesSollUndIstKosten` (E.2.3.2, ruft
+`buildProjectControlling` direkt auf) geht dieser Test ausschließlich
+über die echte HTTP-Route und beweist damit das Wiring selbst
+(Route, Permission, JSON-Serialisierung), nicht nochmal die
+Aggregationslogik. Voller Flow: Kontakt→Projekt→Angebot mit
+`project_id` und einer Position (Kalkulation: material_total=220,
+lohn_total=60, fremdleistung_total=20 → 300 je Einheit, qty=1 →
+soll_kosten=300)→`GET .../controlling` OHNE Kostenstelle beweist
+`soll_kosten=300`, `ist_kosten=nil`, `deckungsbeitrag_ist=nil`→
+Kostenstelle anlegen+zuordnen→Buchung (100 Soll auf `3400` MIT
+`kostenstelle_id`, 100 Haben auf `1200` OHNE) direkt über
+`accounting.NewJournalService(env.PG).Create(...)` (kein HTTP-Handler
+für `JournalEntryInput`, analog E.1.3/E.2.3.2)→`GET .../controlling`
+erneut beweist `ist_kosten=100` und den korrekt abgeleiteten
+`deckungsbeitrag_ist`, `soll_kosten` unverändert. Negativfall (Pflicht
+lt. Arbeitszyklus): `GET /projects/{unbekannte-UUID}/controlling` →
+404 `"Projekt nicht gefunden"` (beweist direkt die oben beschriebene
+Fehlerbehandlungs-Korrektur).
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. `gofmt -l` auf
+`project_controlling_integration_test.go` und `projects/service.go`
+clean; `v1.go` zeigt weiterhin nur das bereits mehrfach dokumentierte,
+reine CRLF-Artefakt (`gofmt -d` bestätigt: ausnahmslos jede Zeile der
+Datei als geändert markiert, keine echte Formatierungsabweichung).
+Docker-Testumgebung mehrfach frisch aufgesetzt (`docker compose -f
+docker-compose.test.yml down -v && up -d`, jeweils auf `pg_isready`
+gewartet); `NALA_INTEGRATION=1 go test ./internal/http/... -run
+"TestProjectControllingEndpointEndToEnd|TestBuildProjectControllingAggregatesSollUndIstKosten"
+-v` gegen frische DB grün (beide Tests PASS, inkl. 404-Negativfall,
+Server-Log zeigt `status=404 code=not_found
+message="Projekt nicht gefunden"` für die unbekannte ID). Abschließend
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf gegen erneut frisch aufgesetzte DB: `ok
+nalaerp3/internal/http 31.656s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+**Damit ist Task E.2 (Projektcontrolling) vollständig abgeschlossen.**
+Server liefert nun unter `GET /projects/{id}/controlling` Soll-/Ist-
+Erlös, Soll-/Ist-Kosten und Deckungsbeitrag Soll/Ist für ein Projekt,
+mit `null` (nicht `0`) für die Ist-Kosten-Seite, solange dem Projekt
+keine Kostenstelle zugeordnet ist.
+
+Geänderte Dateien: `server/internal/http/v1.go`,
+`server/internal/projects/service.go`,
+`server/internal/http/project_controlling_integration_test.go`,
+`docs/backlog.md`, `docs/state.md`.
+
 ## Offene Punkte
 
 Siehe `docs/open-questions.md` — Detailfragen zu Mandanten-Scoping-Design

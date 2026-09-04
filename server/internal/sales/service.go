@@ -94,6 +94,7 @@ type quoteApprovalReworkQuerier interface {
 
 type ConvertToInvoiceInput struct {
 	RevenueAccount string                      `json:"revenue_account"`
+	InvoiceType    string                      `json:"invoice_type"`
 	InvoiceDate    time.Time                   `json:"invoice_date"`
 	DueDate        *time.Time                  `json:"due_date,omitempty"`
 	Items          []ConvertToInvoiceItemInput `json:"items,omitempty"`
@@ -680,10 +681,21 @@ func (s *Service) UpdateStatus(ctx context.Context, id uuid.UUID, status string,
 	return s.Get(ctx, id, companyID)
 }
 
+// vobInvoiceTypes sind die beiden nach VOB/B §16 zulaessigen Rechnungsarten
+// fuer eine Konvertierung aus einem Auftrag (Backlog B.4, ADR 0012) - eine
+// auftragsgebundene Rechnung ist unter VOB/B immer das eine oder das
+// andere, bewusst KEIN stiller Default auf den neutralen Wert 'rechnung'.
+var vobInvoiceTypes = map[string]bool{"abschlagsrechnung": true, "schlussrechnung": true}
+
 func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *accounting.ARService, in ConvertToInvoiceInput, companyID string, actorUserID string) (*ConvertToInvoiceResult, error) {
 	if arSvc == nil {
 		return nil, errors.New("invoice service fehlt")
 	}
+	invoiceType := strings.ToLower(strings.TrimSpace(in.InvoiceType))
+	if !vobInvoiceTypes[invoiceType] {
+		return nil, errors.New("invoice_type ist ungültig (gültig: abschlagsrechnung, schlussrechnung)")
+	}
+
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -697,6 +709,24 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if len(items) == 0 {
 		return nil, errors.New("keine Positionen")
 	}
+
+	// Geschaeftsregel 1 (ADR 0012): keine weitere Rechnung (Abschlag ODER
+	// erneute Schlussrechnung) nach einer bereits bestehenden, NICHT
+	// stornierten Schlussrechnung - eine stornierte Schlussrechnung
+	// blockiert bewusst nicht (GoBD-Storno-Pfad bleibt nutzbar).
+	var hasActiveSchlussrechnung bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM invoices_out
+			WHERE source_sales_order_id=$1 AND invoice_type='schlussrechnung' AND status <> 'storniert'
+		)
+	`, id).Scan(&hasActiveSchlussrechnung); err != nil {
+		return nil, err
+	}
+	if hasActiveSchlussrechnung {
+		return nil, errors.New("für diesen Auftrag existiert bereits eine Schlussrechnung")
+	}
+
 	remainingByItem, err := remainingQtyByItemTx(ctx, tx, id)
 	if err != nil {
 		return nil, err
@@ -710,6 +740,19 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if err != nil {
 		return nil, err
 	}
+
+	// Geschaeftsregel 2 (ADR 0012): eine Schlussrechnung muss die gesamte
+	// Restmenge JEDER Position abdecken - keine separate monetaere
+	// Verrechnungslogik noetig, da jede Rechnung ohnehin nur die noch
+	// offene Restmenge enthaelt (siehe ADR 0012, Kontext).
+	if invoiceType == "schlussrechnung" {
+		for _, item := range items {
+			if remainingByItem[item.ID]-selectedQtyByItemID[item.ID] > 0.0001 {
+				return nil, errors.New("Schlussrechnung muss die gesamte Restmenge aller Positionen abrechnen")
+			}
+		}
+	}
+
 	for _, item := range items {
 		qtyToInvoice := selectedQtyByItemID[item.ID]
 		if qtyToInvoice <= 0 {
@@ -744,6 +787,14 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if err != nil {
 		return nil, err
 	}
+	// invoice_type wird bewusst per zusaetzlichem UPDATE statt eines neuen
+	// Parameters in accounting.ARService.createTx gesetzt (ADR 0012:
+	// minimal-invasiv, kein Eingriff in den auch vom Quote-Rechnungspfad
+	// genutzten, GoBD-sensiblen Insert-Pfad).
+	if _, err := tx.Exec(ctx, `UPDATE invoices_out SET invoice_type=$2 WHERE id=$1`, invoice.ID, invoiceType); err != nil {
+		return nil, err
+	}
+	invoice.InvoiceType = invoiceType
 	if _, err := tx.Exec(ctx, `UPDATE sales_orders SET linked_invoice_out_id=$2, status='invoiced' WHERE id=$1`, id, invoice.ID); err != nil {
 		return nil, err
 	}

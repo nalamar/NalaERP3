@@ -63,6 +63,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	auditSvc := auditlog.NewService(pg)
 	poSvc := purchasing.NewService(pg).WithAudit(auditSvc)
 	arSvc := accounting.NewARService(pg, numSvc, journalSvc, auditSvc)
+	apSvc := accounting.NewAPService(pg)
+	ccSvc := accounting.NewCostCenterService(pg)
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
 	bankSvc := accounting.NewBankService(pg, paymentSvc)
 	pdfSvc := settings.NewPDFService(pg)
@@ -414,6 +416,166 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, docs)
 		})
+
+		// Effektiver Preis aus Preislisten (Backlog A.2.3): welcher Preis
+		// gilt fuer dieses Material bei gegebener Menge/Stichtag.
+		r.With(requirePermission("materials.read")).Get("/{id}/effective-price", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			q := req.URL.Query()
+			menge := 0.0
+			if v := q.Get("menge"); v != "" {
+				parsed, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Menge")
+					return
+				}
+				menge = parsed
+			}
+			var at time.Time
+			if v := q.Get("datum"); v != "" {
+				parsed, err := time.Parse("2006-01-02", v)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges Datum (Format: YYYY-MM-DD)")
+					return
+				}
+				at = parsed
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			result, err := matSvc.EffectivePriceForMaterial(req.Context(), id, menge, at, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			if result == nil {
+				writeAPIError(w, req, http.StatusNotFound, "not_found", "Keine gültige Preisliste für dieses Material/diese Menge gefunden")
+				return
+			}
+			writeJSON(w, http.StatusOK, result)
+		})
+	})
+
+	// Preislisten (Backlog A.2, ADR 0007) - eigene Stammdaten-Entitaet,
+	// nutzt dieselben Berechtigungen wie /materials (materials.read/write),
+	// da Preislisten Materialpreis-Stammdaten sind und A.2 bewusst keine
+	// eigene Permission-Infrastruktur einfuehrt (siehe docs/state.md A.2.3).
+	protected.Route("/price-lists", func(r chi.Router) {
+		r.With(requirePermission("materials.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in materials.PriceListCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.CreatePriceList(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		r.With(requirePermission("materials.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			lim := 0
+			off := 0
+			if v := q.Get("limit"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					lim = n
+				}
+			}
+			if v := q.Get("offset"); v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					off = n
+				}
+			}
+			filter := materials.PriceListFilter{
+				Q:      q.Get("q"),
+				Limit:  lim,
+				Offset: off,
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			list, err := matSvc.ListPriceLists(req.Context(), filter, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+
+		r.With(requirePermission("materials.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			pl, err := matSvc.GetPriceList(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, pl)
+		})
+
+		r.With(requirePermission("materials.write")).Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in materials.PriceListUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.UpdatePriceList(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(requirePermission("materials.write")).Delete("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := matSvc.DeleteSoftPriceList(req.Context(), id, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		r.With(requirePermission("materials.write")).Post("/{id}/items", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in materials.PriceListItemCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.CreatePriceListItem(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		r.With(requirePermission("materials.read")).Get("/{id}/items", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			list, err := matSvc.ListPriceListItems(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+
+		r.With(requirePermission("materials.write")).Delete("/{id}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			itemID := chi.URLParam(req, "itemID")
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := matSvc.DeletePriceListItem(req.Context(), id, itemID, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
 	})
 
 	// Kontakte (CRM)
@@ -444,6 +606,21 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		r.With(requirePermission("contacts.read")).Get("/roles", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, contacts.Roles()) })
 		r.With(requirePermission("contacts.read")).Get("/statuses", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, contacts.Statuses()) })
 		r.With(requirePermission("contacts.read")).Get("/types", func(w http.ResponseWriter, req *http.Request) { writeJSON(w, http.StatusOK, contacts.Types()) })
+
+		// Systemlieferanten-Reverse-Lookup (Backlog A.3, ADR 0008): welche
+		// Lieferanten fuehren eine bestimmte Profilserie. Statische Route
+		// vor "/{id}" registriert, analog zu /roles, /statuses, /types.
+		r.With(requirePermission("contacts.read")).Get("/profile-series/{profilserie}/suppliers", func(w http.ResponseWriter, req *http.Request) {
+			profilserie := chi.URLParam(req, "profilserie")
+			companyID, _ := companyIDFromContext(req.Context())
+			list, err := conSvc.ListSuppliersByProfileSeries(req.Context(), profilserie, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+
 		r.With(requirePermission("contacts.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
 			var in contacts.ContactCreate
 			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
@@ -487,6 +664,43 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			id := chi.URLParam(req, "id")
 			companyID, _ := companyIDFromContext(req.Context())
 			if err := conSvc.DeleteSoft(req.Context(), id, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		// Systemlieferanten: Profilserien-Bindung (Backlog A.3, ADR 0008)
+		r.With(requirePermission("contacts.write")).Post("/{id}/profile-series", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in contacts.SupplierProfileSeriesCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := conSvc.CreateSupplierProfileSeries(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("contacts.read")).Get("/{id}/profile-series", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			list, err := conSvc.ListSupplierProfileSeries(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		})
+		r.With(requirePermission("contacts.write")).Delete("/{id}/profile-series/{seriesID}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			seriesID := chi.URLParam(req, "seriesID")
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := conSvc.DeleteSupplierProfileSeries(req.Context(), id, seriesID, companyID); err != nil {
 				writeDomainError(w, req, err)
 				return
 			}
@@ -948,6 +1162,115 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		})
 	})
 
+	protected.Route("/purchasing/demand", func(r chi.Router) {
+		r.With(requirePermission("purchase_orders.read")).Get("/min-stock-shortfalls", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.MinStockShortfalls(req.Context(), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("purchase_orders.read")).Get("/quote-demand", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.QuoteDemand(req.Context(), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
+	protected.Route("/rfqs", func(r chi.Router) {
+		r.With(requirePermission("purchase_orders.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in purchasing.RFQCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			rfq, items, err := poSvc.CreateRFQ(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"rfq": rfq, "positionen": items})
+		})
+		r.With(requirePermission("purchase_orders.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.ListRFQs(req.Context(), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("purchase_orders.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			rfq, items, err := poSvc.GetRFQ(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"rfq": rfq, "positionen": items})
+		})
+		r.With(requirePermission("purchase_orders.write")).Post("/items/{itemID}/quotes", func(w http.ResponseWriter, req *http.Request) {
+			itemID := chi.URLParam(req, "itemID")
+			var in purchasing.SupplierQuoteInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.RegisterSupplierQuote(req.Context(), itemID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("purchase_orders.read")).Get("/{id}/quotes", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.ListSupplierQuotes(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("purchase_orders.write")).Post("/{id}/cancel", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := poSvc.CancelRFQ(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("purchase_orders.write")).Post("/{id}/convert-to-purchase-order", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in struct {
+				SupplierID string `json:"lieferant_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			po, items, err := poSvc.ConvertToPurchaseOrder(req.Context(), id, in.SupplierID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"bestellung": po, "positionen": items})
+		})
+	})
+
 	protected.Route("/invoices-out", func(r chi.Router) {
 		r.With(requirePermission("invoices_out.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
 			q := req.URL.Query()
@@ -965,6 +1288,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			companyID, _ := companyIDFromContext(req.Context())
 			list, err := arSvc.List(req.Context(), accounting.InvoiceFilter{
 				Status:             q.Get("status"),
+				InvoiceType:        q.Get("invoice_type"),
 				ContactID:          q.Get("contact_id"),
 				SourceSalesOrderID: q.Get("source_sales_order_id"),
 				Search:             q.Get("q"),
@@ -1198,6 +1522,109 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			if _, err := w.Write(pdfBytes); err != nil {
 				return
 			}
+		})
+	})
+
+	protected.Route("/invoices-in", func(r chi.Router) {
+		r.With(requirePermission("invoices_in.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in accounting.InvoiceInCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			invoice, items, err := apSvc.CreateInvoiceIn(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"rechnung": invoice, "positionen": items})
+		})
+		r.With(requirePermission("invoices_in.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			f := accounting.InvoiceInFilter{
+				SupplierID:      q.Get("lieferant_id"),
+				PurchaseOrderID: q.Get("bestellung_id"),
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := apSvc.ListInvoicesIn(req.Context(), f, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("invoices_in.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			invoice, items, err := apSvc.GetInvoiceIn(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"rechnung": invoice, "positionen": items})
+		})
+		r.With(requirePermission("invoices_in.read")).Get("/{id}/match", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := apSvc.MatchInvoiceIn(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
+	protected.Route("/cost-centers", func(r chi.Router) {
+		r.With(requirePermission("cost_centers.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in accounting.CostCenterCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := ccSvc.Create(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("cost_centers.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			includeInactive := req.URL.Query().Get("include_inactive") == "true"
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := ccSvc.List(req.Context(), companyID, includeInactive)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("cost_centers.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := ccSvc.Get(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("cost_centers.write")).Patch("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in accounting.CostCenterUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := ccSvc.Update(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
 		})
 	})
 
@@ -1491,6 +1918,197 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, order)
 		})
+
+		// Nachtragsmanagement (Backlog B.2, ADR 0010)
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/addenda", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			var in sales.SalesOrderAddendumCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.CreateAddendum(req.Context(), orderID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}/addenda", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.ListAddenda(req.Context(), orderID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}/effective-totals", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.EffectiveOrderTotals(req.Context(), orderID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}/addenda/{addendumID}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.GetAddendum(req.Context(), orderID, addendumID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/addenda/{addendumID}/items", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			var in sales.SalesOrderAddendumItemInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.CreateAddendumItem(req.Context(), orderID, addendumID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Patch("/{id}/addenda/{addendumID}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			var in sales.SalesOrderAddendumItemUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.UpdateAddendumItem(req.Context(), orderID, addendumID, itemID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Delete("/{id}/addenda/{addendumID}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := salesSvc.DeleteAddendumItem(req.Context(), orderID, addendumID, itemID, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/addenda/{addendumID}/submit", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.SubmitAddendum(req.Context(), orderID, addendumID, companyID, actorUserIDFromContext(req.Context()))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/addenda/{addendumID}/decide", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			var in struct {
+				Accepted        bool   `json:"accepted"`
+				Ablehnungsgrund string `json:"ablehnungsgrund"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.DecideAddendum(req.Context(), orderID, addendumID, in.Accepted, sales.SalesOrderAddendumRejection{Ablehnungsgrund: in.Ablehnungsgrund}, companyID, actorUserIDFromContext(req.Context()))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(requirePermission("sales_orders.write"), requirePermission("invoices_out.write")).Post("/{id}/convert-to-invoice", func(w http.ResponseWriter, req *http.Request) {
 			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
@@ -1778,6 +2396,181 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+
+		// LV-Hierarchie (Los/Titel/Untertitel) - Backlog B.1, ADR 0009
+		r.With(requirePermission("quotes.write")).Post("/{id}/item-groups", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			var in quotes.QuoteItemGroupCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.CreateQuoteItemGroup(req.Context(), quoteID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/{id}/item-groups", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.ListQuoteItemGroups(req.Context(), quoteID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/{id}/item-tree", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.GetQuoteItemTree(req.Context(), quoteID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Patch("/{id}/item-groups/{groupID}", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			groupID, err := uuid.Parse(chi.URLParam(req, "groupID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Gruppen-ID")
+				return
+			}
+			var in quotes.QuoteItemGroupUpdate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.UpdateQuoteItemGroup(req.Context(), quoteID, groupID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Delete("/{id}/item-groups/{groupID}", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			groupID, err := uuid.Parse(chi.URLParam(req, "groupID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Gruppen-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := quoteSvc.DeleteQuoteItemGroup(req.Context(), quoteID, groupID, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+
+		// Kalkulationsschema Material/Lohn/Fremdleistung/Zuschläge
+		// (Backlog B.3, ADR 0011)
+		r.With(requirePermission("quotes.write")).Put("/{id}/items/{itemID}/calculation", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			var in quotes.QuoteItemCalculationInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.UpsertQuoteItemCalculation(req.Context(), quoteID, itemID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.read")).Get("/{id}/items/{itemID}/calculation", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.GetQuoteItemCalculation(req.Context(), quoteID, itemID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("quotes.write")).Delete("/{id}/items/{itemID}/calculation", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := quoteSvc.DeleteQuoteItemCalculation(req.Context(), quoteID, itemID, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		r.With(requirePermission("quotes.write")).Post("/{id}/items/{itemID}/apply-calculation", func(w http.ResponseWriter, req *http.Request) {
+			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
+				return
+			}
+			itemID, err := uuid.Parse(chi.URLParam(req, "itemID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Positions-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.ApplyCalculationForQuoteItem(req.Context(), quoteID, itemID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(requirePermission("quotes.write")).Get("/{id}/items/{itemID}/material-search", func(w http.ResponseWriter, req *http.Request) {
 			quoteID, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
@@ -2667,10 +3460,37 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+		r.With(requirePermission("projects.write")).Patch("/{id}/kostenstelle", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in struct {
+				KostenstelleID *string `json:"kostenstelle_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := projSvc.SetKostenstelle(req.Context(), id, in.KostenstelleID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(requirePermission("projects.read")).Get("/{id}/commercial-context", func(w http.ResponseWriter, req *http.Request) {
 			id := chi.URLParam(req, "id")
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := buildProjectCommercialContext(req.Context(), id, pg, quoteSvc, salesSvc, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("projects.read")).Get("/{id}/controlling", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := buildProjectControlling(req.Context(), id, pg, projSvc, quoteSvc, companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -3833,6 +4653,190 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		})
 	})
 
+	protected.Route("/stock-reservations", func(r chi.Router) {
+		r.With(requirePermission("stock_movements.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in materials.StockReservationCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.CreateReservation(req.Context(), in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			f := materials.StockReservationFilter{
+				ProjectID:   q.Get("project_id"),
+				MaterialID:  q.Get("material_id"),
+				WarehouseID: q.Get("warehouse_id"),
+				Status:      q.Get("status"),
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ListReservations(req.Context(), f, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/available", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.AvailableStock(req.Context(), q.Get("material_id"), q.Get("warehouse_id"), companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"available": out})
+		})
+		r.With(requirePermission("stock_movements.write")).Post("/{id}/release", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ReleaseReservation(req.Context(), id, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
+	protected.Route("/inventories", func(r chi.Router) {
+		r.With(requirePermission("stock_movements.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in materials.InventoryCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.StartInventory(req.Context(), in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			f := materials.InventoryFilter{
+				WarehouseID: q.Get("warehouse_id"),
+				Status:      q.Get("status"),
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ListInventories(req.Context(), f, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.GetInventory(req.Context(), id, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("stock_movements.write")).Post("/{id}/lines", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in materials.InventoryLineCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.AddInventoryLine(req.Context(), id, in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/{id}/lines", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ListInventoryLines(req.Context(), id, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("stock_movements.write")).Post("/{id}/close", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.CloseInventory(req.Context(), id, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
+	protected.Route("/profile-offcuts", func(r chi.Router) {
+		r.With(requirePermission("stock_movements.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in materials.ProfileOffcutCreate
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.RegisterOffcut(req.Context(), in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("stock_movements.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			f := materials.ProfileOffcutFilter{
+				MaterialID:  q.Get("material_id"),
+				WarehouseID: q.Get("warehouse_id"),
+				Status:      q.Get("status"),
+			}
+			if v := q.Get("min_length_mm"); v != "" {
+				parsed, err := strconv.ParseFloat(v, 64)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Mindestlänge")
+					return
+				}
+				f.MinLengthMM = &parsed
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ListOffcuts(req.Context(), f, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("stock_movements.write")).Post("/{id}/consume", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in materials.ProfileOffcutConsume
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := matSvc.ConsumeOffcut(req.Context(), id, in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
 	protected.Route("/warehouses", func(r chi.Router) {
 		r.With(requirePermission("warehouses.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
 			var in materials.WarehouseCreate
@@ -3934,6 +4938,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "offene nacharbeit"),
 		strings.Contains(msg, "zielmarge noch nicht"),
 		strings.Contains(msg, "keine preisentscheidung"),
+		strings.Contains(msg, "keine kalkulation"),
 		strings.Contains(msg, "bereits vorhanden"),
 		strings.Contains(msg, "bereits aktiv"),
 		strings.Contains(msg, "darf nicht"),
@@ -3964,6 +4969,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "vollständig fakturiert"),
 		strings.Contains(msg, "muss größer als 0 sein"),
 		strings.Contains(msg, "überschreitet die offene restmenge"),
+		strings.Contains(msg, "muss die gesamte restmenge"),
 		strings.Contains(msg, "können nicht erneut umgestellt werden"),
 		strings.Contains(msg, "keine positionen"),
 		strings.Contains(msg, "dürfen nicht"),
@@ -3971,7 +4977,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "keine priorisierte preisquelle"),
 		strings.Contains(msg, "ungueltiger freigabeentscheid"),
 		strings.Contains(msg, "existiert bereits"),
-		strings.Contains(msg, "abgeleitet werden"):
+		strings.Contains(msg, "abgeleitet werden"),
+		strings.Contains(msg, "nicht mehr offen"),
+		strings.Contains(msg, "ein angebot abgegeben"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

@@ -585,7 +585,7 @@ func TestSalesOrderStatusChangeAndConvertToInvoiceAreAuditLogged(t *testing.T) {
 		t.Fatalf("expected 200 for sales order release, got %d with body %s", releaseRec.Code, releaseRec.Body.String())
 	}
 
-	convertToInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+salesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{"revenue_account":"8000"}`)))
+	convertToInvoiceReq := httptest.NewRequest(http.MethodPost, "/api/v1/sales-orders/"+salesOrder.ID+"/convert-to-invoice", bytes.NewReader([]byte(`{"revenue_account":"8000","invoice_type":"abschlagsrechnung"}`)))
 	convertToInvoiceReq.Header.Set("Authorization", "Bearer "+accessToken)
 	convertToInvoiceReq.Header.Set("Content-Type", "application/json")
 	convertToInvoiceRec := httptest.NewRecorder()

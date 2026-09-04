@@ -20,6 +20,21 @@ func TestCreateRejectsMissingCompanyID(t *testing.T) {
 	}
 }
 
+func TestSetKostenstelleRejectsMissingID(t *testing.T) {
+	svc := NewService(nil)
+
+	project, err := svc.SetKostenstelle(context.Background(), "", nil, "company-1")
+	if err == nil {
+		t.Fatal("expected validation error, got nil")
+	}
+	if project != nil {
+		t.Fatalf("expected nil project, got %#v", project)
+	}
+	if err.Error() != "Projekt-ID erforderlich" {
+		t.Fatalf("expected Projekt-ID erforderlich, got %q", err.Error())
+	}
+}
+
 func TestCreateRejectsMissingName(t *testing.T) {
 	svc := NewService(nil)
 

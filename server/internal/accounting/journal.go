@@ -12,10 +12,11 @@ import (
 )
 
 type JournalLineInput struct {
-	AccountCode string  `json:"account_code"`
-	Debit       float64 `json:"debit"`
-	Credit      float64 `json:"credit"`
-	Memo        string  `json:"memo"`
+	AccountCode    string  `json:"account_code"`
+	Debit          float64 `json:"debit"`
+	Credit         float64 `json:"credit"`
+	Memo           string  `json:"memo"`
+	KostenstelleID *string `json:"kostenstelle_id"`
 }
 
 type JournalEntryInput struct {
@@ -92,8 +93,8 @@ func (s *JournalService) create(ctx context.Context, tx pgx.Tx, in JournalEntryI
 	}
 	for i, l := range in.Lines {
 		lineID := uuid.New()
-		if _, err := tx.Exec(ctx, `INSERT INTO journal_lines (id, entry_id, account_code, debit, credit, memo, company_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-			lineID, id, l.AccountCode, l.Debit, l.Credit, l.Memo, companyID); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO journal_lines (id, entry_id, account_code, debit, credit, memo, company_id, kostenstelle_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+			lineID, id, l.AccountCode, l.Debit, l.Credit, l.Memo, companyID, l.KostenstelleID); err != nil {
 			return nil, err
 		}
 		_ = i

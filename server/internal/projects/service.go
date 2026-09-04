@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"nalaerp3/internal/settings"
 )
@@ -26,6 +27,10 @@ type Project struct {
 	KundeID  string    `json:"kunde_id"`
 	Status   string    `json:"status"`
 	Angelegt time.Time `json:"angelegt_am"`
+	// KostenstelleID verweist optional auf eine Kostenstelle (E.1,
+	// ADR 0020) - Grundlage fuer die Ist-Kosten-Aggregation im
+	// Projektcontrolling (E.2). Keine Pflichtzuordnung.
+	KostenstelleID *string `json:"kostenstelle_id"`
 }
 
 type QuoteSnapshot struct {
@@ -110,13 +115,42 @@ func (s *Service) Create(ctx context.Context, in ProjectCreate, companyID string
 
 func (s *Service) Get(ctx context.Context, id string, companyID string) (*Project, error) {
 	var p Project
-	err := s.pg.QueryRow(ctx, `SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am FROM projects WHERE id=$1 AND company_id=$2`, id, companyID).Scan(
-		&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt,
+	err := s.pg.QueryRow(ctx, `SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am, kostenstelle_id FROM projects WHERE id=$1 AND company_id=$2`, id, companyID).Scan(
+		&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt, &p.KostenstelleID,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("Projekt nicht gefunden")
+		}
 		return nil, err
 	}
 	return &p, nil
+}
+
+// SetKostenstelle ordnet einem Projekt eine Kostenstelle zu oder entfernt
+// die Zuordnung (kostenstelleID == nil). Grundlage fuer die Ist-Kosten-
+// Aggregation im Projektcontrolling (E.2, ADR 0020) - keine Pflicht-
+// zuordnung, analog zur bereits bestehenden, engen UpdateStatus (kein
+// generischer Update-Pfad fuer projects).
+func (s *Service) SetKostenstelle(ctx context.Context, id string, kostenstelleID *string, companyID string) (*Project, error) {
+	if strings.TrimSpace(id) == "" {
+		return nil, errors.New("Projekt-ID erforderlich")
+	}
+	if kostenstelleID != nil && strings.TrimSpace(*kostenstelleID) != "" {
+		var owned bool
+		if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM cost_centers WHERE id=$1 AND company_id=$2)`, *kostenstelleID, companyID).Scan(&owned); err != nil {
+			return nil, err
+		}
+		if !owned {
+			return nil, errors.New("Kostenstelle nicht gefunden")
+		}
+	} else {
+		kostenstelleID = nil
+	}
+	if _, err := s.pg.Exec(ctx, `UPDATE projects SET kostenstelle_id=$2 WHERE id=$1 AND company_id=$3`, id, kostenstelleID, companyID); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, companyID)
 }
 
 func (s *Service) BuildQuoteSnapshot(ctx context.Context, id string, companyID string) (*QuoteSnapshot, error) {
@@ -195,7 +229,7 @@ func (s *Service) List(ctx context.Context, f ProjectFilter, companyID string) (
 	}
 	off := f.Offset
 	sb := strings.Builder{}
-	sb.WriteString(`SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am FROM projects`)
+	sb.WriteString(`SELECT id, nummer, name, COALESCE(kunde_id,''), status, angelegt_am, kostenstelle_id FROM projects`)
 	conds := []string{"company_id=$1"}
 	args := []any{companyID}
 	idx := 2
@@ -224,7 +258,7 @@ func (s *Service) List(ctx context.Context, f ProjectFilter, companyID string) (
 	out := make([]Project, 0, lim)
 	for rows.Next() {
 		var p Project
-		if err := rows.Scan(&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt); err != nil {
+		if err := rows.Scan(&p.ID, &p.Nummer, &p.Name, &p.KundeID, &p.Status, &p.Angelegt, &p.KostenstelleID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
