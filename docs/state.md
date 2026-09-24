@@ -7,20 +7,19 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.8.1** (Migration 085: Summenfelder und
-> Fälligkeit auf `invoices_in`, Steuerkategorie/-satz/Einheit auf
-> `invoice_in_items`, neue Tabelle `invoice_in_taxes`), siehe Abschnitt
-> "Epic E, Task E.8" weiter unten. E.1-E.6 sind abgeschlossen, ebenso
-> Epic 0 (0.1-0.5).
-> **Nächste Subtask: E.8.2** — Service-Ebene: `InvoiceIn`/`InvoiceInItem`
-> um die neuen Felder erweitern, neuen Typ für die Steueraufschlüsselung
-> ergänzen, `CreateInvoiceIn` schreibt sie, `GetInvoiceIn`/
-> `ListInvoicesIn` lesen sie, plus Tests. **Achtung**: `tax_rate` ist in
-> den neuen Spalten PROZENT (`19.00`), während `tax_codes.rate` ein
-> Bruchteil ist (`0.1900`) — beides existiert jetzt nebeneinander.
-> Danach **E.8.3** (Übernahme füllt die Felder, Notiz-Notlösung aus E.6
-> ablösen — ersetzen, nicht ergänzen, sonst steht dieselbe Information
-> doppelt), **E.7** (pdfcpu-Wartungspunkt) und die Epics F, G, H, I.
+> Zuletzt abgeschlossen: **E.8.2** (Service-Ebene: Summen, Fälligkeit,
+> Steuerangaben je Position und Steueraufschlüsselung werden geschrieben
+> und gelesen), siehe Abschnitt "Epic E, Task E.8" weiter unten.
+> E.1-E.6 sind abgeschlossen, ebenso Epic 0 (0.1-0.5).
+> **Nächste Subtask: E.8.3** (letzte Subtask von Task E.8) — die Übernahme
+> `TakeOverEInvoice` (E.6) füllt die neuen Felder aus dem Parse-Ergebnis:
+> Summen, Fälligkeit, `TaxCategory`/`TaxRate`/`UnitCode` je Position und
+> die Steueraufschlüsselung. **Dabei die Notiz-Notlösung aus E.6
+> ERSETZEN, nicht ergänzen** — sonst steht dieselbe Information doppelt
+> und kann auseinanderlaufen; die Notiz behält nur noch die Herkunft und
+> die Hinweise aus der Rechnung. `ParsedEInvoice` liefert alles Nötige
+> bereits feldweise. Danach **E.7** (pdfcpu-Wartungspunkt) und die Epics
+> F (HR), G (Fuhrpark), H (Produktion), I (KI-Angebotserzeugung aus GAEB).
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9588,6 +9587,75 @@ E.8.2/E.8.3 gefüllt und gelesen.
 Geänderte/neue Dateien:
 `server/internal/migrate/migrations/085_invoices_in_tax_and_totals.sql`
 (neu), `docs/backlog.md`, `docs/state.md`.
+
+### E.8.2 Service: Steuer- und Summenangaben schreiben und lesen
+
+`server/internal/accounting/ap.go` um die in E.8.1 angelegten Felder
+erweitert: `InvoiceIn` trägt jetzt `NetAmount`/`TaxAmount`/`GrossAmount`,
+`DueDate` und die Steueraufschlüsselung, `InvoiceInItem` die Angaben
+`TaxCategory`/`TaxRate`/`UnitCode`; dazu die neuen Typen `InvoiceInTax`
+und `InvoiceInTaxInput`. `CreateInvoiceIn` schreibt alles,
+`GetInvoiceIn` lädt es zurück, `ListInvoicesIn` liefert die Summen mit.
+
+**Signatur bewusst stabil gehalten.** Die Aufschlüsselung wurde als Feld
+`InvoiceIn.Taxes` modelliert, statt `GetInvoiceIn` einen dritten
+Rückgabewert zu geben. Zwei Gründe: die Aufschlüsselung gehört fachlich
+zur Rechnung (genau wie die Summen), und eine Signaturänderung hätte
+ohne Gegenwert jeden Aufrufer angefasst. `ListInvoicesIn` lässt das Feld
+bewusst leer — für eine Liste je Zeile eine zweite Abfrage zu fahren wäre
+unverhältnismäßig. Das ist an beiden Stellen im Code kommentiert und
+durch einen eigenen Test festgehalten, damit die leere Liste dort nicht
+als Fehler missverstanden wird.
+
+**Die Steueraufschlüsselung wird in DERSELBEN Transaktion geschrieben**
+wie Kopf und Positionen: sie hängt per `ON DELETE CASCADE` an der
+Rechnung und darf nie ohne sie existieren.
+
+**Eigene Abfrage statt JOIN**: `listInvoiceInTaxes` lädt die
+Aufschlüsselung separat. Positionen und Steuergruppen sind zwei
+unabhängige 1:n-Beziehungen zur Rechnung — ein gemeinsamer JOIN würde
+ein Kreuzprodukt erzeugen und die Beträge vervielfachen.
+
+**Nebenbei korrigiert**: `GetInvoiceIn` und `ListInvoicesIn` prüften
+`rows.Err()` nach der Iteration nicht. Ein Verbindungsabbruch mitten im
+Lesen wäre dadurch als leere bzw. unvollständige Liste durchgegangen,
+statt als Fehler. Ergänzt — die Stellen lagen unmittelbar in den
+Schleifen, die diese Subtask ohnehin anfassen musste.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen geänderten/neuen Dateien clean. Neue Tests
+`server/internal/accounting/ap_tax_totals_integration_test.go` (5 Tests)
+gegen frische DB:
+
+- voller Weg schreiben → Rückgabe prüfen → **erneut laden** (erst das
+  beweist, dass gespeichert wurde und nicht nur die Rückgabe stimmt),
+  inklusive Sortierung der Steuergruppen und korrekter Zuordnung zur
+  Rechnung;
+- **der fachliche Kerntest**: eine Rechnung, deren ausgewiesener
+  Bruttobetrag (999,99) nicht zu den Positionen (100) passt, behält
+  genau diese Werte — es wird nichts nachgerechnet und nichts korrigiert
+  (ADR 0023);
+- eine bei uns nirgends vorgesehene Steuerkategorie (`Z`) wird
+  akzeptiert, samt Befreiungsgrund — der Beleg für die Entscheidung aus
+  E.8.1, hier weder gegen `tax_codes` zu prüfen noch eine Werteliste zu
+  erzwingen;
+- **Rückwärtskompatibilität**: eine manuell erfasste Rechnung ohne die
+  neuen Angaben bleibt anlegbar, die Defaults greifen, es entsteht keine
+  leere Steuergruppe und es werden keine Steuerwerte erfunden;
+- die Liste liefert Summen, aber bewusst keine Aufschlüsselung.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 29.559s`), keine Regression — insbesondere
+laufen die bestehenden AP-Tests und der 3-Way-Match unverändert, obwohl
+`CreateInvoiceIn` jetzt mehr Spalten schreibt.
+
+Die Übernahme aus E.6 füllt die neuen Felder noch NICHT — das ist E.8.3,
+zusammen mit der Ablösung der dortigen Notiz-Notlösung.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/ap_tax_totals_integration_test.go` (neu),
+`server/internal/accounting/ap.go`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
