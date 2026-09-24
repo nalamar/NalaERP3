@@ -103,5 +103,10 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   belastbare Quelle vorliegt. Statt eine Namensliste zu raten, wird beim
   Umsetzen von E.5.4 entschieden, ob überhaupt nach Namen gesucht oder
   schlicht der erste Anhang genommen wird, der sich als EN-16931-XML parsen
-  lässt. Status: **offen**, kein Blocker — betrifft nur die Auswahlstrategie
-  innerhalb von E.5.4, nicht das Format selbst.
+  lässt. Status: **beantwortet** in E.5.4 (2026-09-24): es wird NICHT auf einen
+  festen Namen bestanden. Der Anhang mit dem verifizierten Namen
+  `factur-x.xml` wird zuerst versucht, danach alle übrigen; der erste,
+  der sich als EN-16931-XML lesen lässt, gewinnt. Das Parsen ist die
+  belastbarste Prüfung — ein Anhang, der als gültige CII- oder
+  UBL-Rechnung durchgeht, IST die Rechnung, unabhängig vom Dateinamen.
+  Damit war keine geratene Namensliste nötig.

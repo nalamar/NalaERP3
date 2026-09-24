@@ -7,22 +7,19 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.5.3** (UBL-Eingangsparser + Formaterkennung
-> `ParseEInvoiceXML`), siehe Abschnitt "Epic E, Task E.5" weiter unten.
-> Beide EN-16931-Syntaxen werden damit gelesen und liefern nachweislich
-> dasselbe Zielmodell. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4 sind
-> vollständig abgeschlossen.
-> **Nächste Subtask: E.5.4** — ZUGFeRD-PDF: Abhängigkeit
-> `github.com/pdfcpu/pdfcpu` (Apache-2.0) aufnehmen und begründen,
-> eingebetteten Anhang aus der PDF extrahieren und an
-> `ParseEInvoiceXML` übergeben, plus Tests. **Achtung**: die in E.5.1
-> verifizierte Signatur von `ExtractAttachmentsRaw` stammt aus `master` —
-> vor dem Schreiben von Code gegen die TATSÄCHLICH gepinnte Version
-> prüfen, die Signatur hat sich zwischen Versionen geändert. Der
-> Anhang-Extraktor aus `zugferd_export_integration_test.go` ist ein
-> Testhelfer für unsere eigenen gofpdf-PDFs und ausdrücklich NICHT
-> wiederverwendbar (ADR 0023). Offene Detailfrage zum Anhang-Dateinamen
-> steht in `docs/open-questions.md`.
+> Zuletzt abgeschlossen: **E.5.4** (ZUGFeRD-PDF: Anhang per `pdfcpu`
+> extrahieren und parsen), siehe Abschnitt "Epic E, Task E.5" weiter
+> unten. Damit sind alle drei Eingangswege lesbar: CII-XML, UBL-XML und
+> ZUGFeRD-PDF. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4 sind vollständig
+> abgeschlossen.
+> **Nächste Subtask: E.5.5** (letzte Subtask von Task E.5) — HTTP-Endpunkt
+> `POST /invoices-in/parse-e-invoice` (Multipart-Upload, Permission
+> `invoices_in.write`) inkl. Lieferanten-Zuordnungsvorschlag (Abgleich über
+> USt-IdNr., ersatzweise Name, mit Kennzeichnung ob eindeutig),
+> Größenbegrenzung des Uploads und End-to-End-Integrationstest. Der
+> Endpunkt nimmt XML UND PDF an — Weiche über `ExtractEInvoiceFromPDF`
+> bzw. `ParseEInvoiceXML`. **Laut ADR 0023 wird NICHTS persistiert**: die
+> Übernahme nach `invoices_in` ist Backlog E.6, nicht Teil von E.5.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9221,6 +9218,103 @@ Geänderte/neue Dateien:
 `server/internal/accounting/einvoice_parse_ubl_test.go` (neu),
 `server/internal/accounting/einvoice_parse.go`, `docs/backlog.md`,
 `docs/state.md`.
+
+### E.5.4 ZUGFeRD-/Factur-X-PDF: Anhang extrahieren und parsen
+
+Neue Datei `server/internal/accounting/einvoice_parse_pdf.go`:
+`ExtractEInvoiceFromPDF([]byte) (*ParsedEInvoice, error)` löst die in
+einer ZUGFeRD-PDF eingebettete XML heraus und gibt sie an
+`ParseEInvoiceXML` (E.5.3) — bewusst an die Formaterkennung und nicht
+direkt an den CII-Parser, damit auch eine PDF mit UBL-Anhang gelesen wird.
+Der Absender bestimmt die Syntax auch innerhalb einer PDF.
+
+**Neue Abhängigkeit `github.com/pdfcpu/pdfcpu` v0.15.0**, begründet nach
+§2: Lizenz Apache-2.0 (zulässig), aktiv gepflegt, keine Micro-Dependency
+sondern das etablierte PDF-Werkzeug im Go-Ökosystem. Notwendig, weil das
+Projekt mit `gofpdf` nur einen PDF-SCHREIBER hat — eine bestehende PDF
+kann gofpdf nicht öffnen. Bewusst die stabile `v0.15.0` statt der
+verfügbaren `v0.16.0-rc.1`.
+
+**Die Warnung aus E.5.3 hat sich ausgezahlt**: die in ADR 0023 (E.5.1)
+gegen `master` verifizierte Signatur von `ExtractAttachmentsRaw` hat
+einen `context.Context` als ersten Parameter — die gepinnte v0.15.0 hat
+ihn NICHT. Vor dem Schreiben erneut im Quellcode der tatsächlich
+gepinnten Version nachgesehen; ohne diese Prüfung wäre Code gegen eine
+nicht existierende Signatur entstanden.
+
+**Nebenwirkung der Abhängigkeit, offengelegt**: `go get` hat vier
+`golang.org/x`-Module mit hochgezogen (`crypto` 0.46→0.54, `sync`
+0.19→0.22, `sys` 0.39→0.47, `text` 0.32→0.40). Besonders relevant ist
+`x/text`, weil der DATEV-Export (E.3.3.1) darüber Windows-1252 kodiert.
+Im vollen Testlauf ausdrücklich gegengeprüft: alle DATEV-Tests bleiben
+grün, ebenso `internal/auth` (nutzt `x/crypto`).
+
+**Offene Frage aus ADR 0023 hier entschieden** (Dateiname des Anhangs):
+es wird NICHT auf einen festen Namen bestanden. Verifiziert ist nur
+`factur-x.xml` (ZUGFeRD 2.1+/Factur-X, den unser eigener Ausgang
+schreibt); für ältere ZUGFeRD-Stände liegt keine belastbare Quelle vor,
+und eine geratene Namensliste wäre genau die Art Annahme, die ADR 0023
+vermeiden will. Stattdessen: der Anhang mit dem bekannten Namen wird
+zuerst versucht, danach alle übrigen; der erste, der sich als
+EN-16931-XML lesen lässt, gewinnt. Das Parsen ist die belastbarste
+Prüfung — ein Anhang, der als gültige CII- oder UBL-Rechnung durchgeht,
+IST die Rechnung, unabhängig vom Dateinamen.
+
+**Weitere Entscheidungen**: `ValidationRelaxed`, weil fremde PDFs sich
+nicht immer streng an die Spezifikation halten und eine Rechnung wegen
+eines formalen PDF-Mangels abzulehnen unverhältnismäßig wäre, solange die
+eingebetteten Daten einwandfrei sind. Größengrenze von 16 MiB je Anhang
+(`io.LimitReader`), da der Anhang von einem Dritten stammt — für eine
+EN-16931-XML sehr großzügig.
+
+**Echter Fund, im Produktivcode behoben statt im Test weggedrückt**: bei
+einer PDF ganz ohne Anhänge liefert pdfcpu nicht etwa eine leere Liste,
+sondern einen Fehler. Der Anwender hätte für die häufigste Fehlbedienung
+(eine gewöhnliche Rechnungs-PDF statt einer ZUGFeRD-PDF) die englische
+Bibliotheksmeldung `EmbeddedFiles name tree: no attachments available`
+gesehen. Der Fall wird jetzt erkannt und in eine klare deutsche Meldung
+übersetzt.
+
+**Dieser Punkt ist ein gekennzeichneter WORKAROUND (§7.2)**: pdfcpu
+v0.15.0 bietet dafür KEINEN typisierten Fehler, sondern nur
+`errors.New(...)` mit Literaltext (im Quellcode nachgesehen,
+`pkg/pdfcpu/model/attach.go:395`). Ein Abgleich auf den Meldungstext ist
+die einzige Möglichkeit, diesen Normalfall von einer echt kaputten PDF zu
+unterscheiden. Die saubere Lösung wäre ein Sentinel-Fehler in pdfcpu;
+solange es den nicht gibt, ist der Abgleich an die gepinnte Version
+gebunden und beim Anheben der Version zu prüfen — als **neue
+Backlog-Position E.7** eingetragen. Bricht der Abgleich still, ist die
+Folge lediglich eine unschönere Fehlermeldung, kein falsches Ergebnis.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+beiden neuen Dateien clean. Neue Tests
+`server/internal/accounting/einvoice_parse_pdf_test.go` (8 Tests +
+8 Unterfälle, DB-los — die Test-PDFs entstehen zur Laufzeit über
+dieselbe Renderfunktion, die auch unser ZUGFeRD-Ausgang nutzt
+(`pdfgen.RenderInvoiceOutWithAttachments`, E.4.3.4), sodass Ausgang und
+Eingang einander prüfen statt beide nur gegen eine selbst gebaute
+Vorstellung davon, wie eine ZUGFeRD-PDF aussieht).
+
+Abgedeckt: eingebettete CII-XML ergibt per `reflect.DeepEqual` exakt
+dasselbe Ergebnis wie das direkte Parsen derselben XML; eingebettete
+UBL-XML wird ebenso gelesen (Beweis, dass über die Formaterkennung
+gegangen wird); drei abweichende Dateinamen werden trotzdem gefunden;
+bei mehreren Anhängen gewinnt der mit dem bekannten Namen; ein
+unlesbarer Anhang verhindert den Fund nicht; fünf Negativfälle (leere
+Datei, keine PDF, PDF ohne Anhang, PDF mit fremdartigem Anhang, PDF mit
+XML die keine Rechnung ist) jeweils mit Beweis, dass kein Teilergebnis
+zurückkommt; die Fehlermeldung benennt die geprüften Anhänge; und der
+XXE-Nachweis greift auch auf dem PDF-Weg.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.654s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_parse_pdf.go` (neu),
+`server/internal/accounting/einvoice_parse_pdf_test.go` (neu),
+`server/go.mod`, `server/go.sum`, `docs/backlog.md`,
+`docs/open-questions.md`, `docs/state.md`.
 
 ## Offene Punkte
 
