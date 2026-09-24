@@ -7,18 +7,23 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.5.1** (ADR 0023: Format-/Umfangsentscheidung
-> E-Rechnung Eingang; E.5 dabei in fünf Subtasks zerlegt), siehe Abschnitt
-> "Epic E, Task E.5" weiter unten. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4
-> sind vollständig abgeschlossen — E-Rechnung AUSGANG (XRechnung + ZUGFeRD)
-> ist nutzbar.
-> **Nächste Subtask: E.5.2** — gemeinsames Zielmodell für geparste
-> Eingangsrechnungen + CII-Eingangsparser (DB-los) + Unit-Tests inkl.
-> Negativfällen. **Achtung**: namensraumbasiert parsen
-> (`xml:"<namespace> <local>"`); die Schreib-Structs aus
-> `einvoice_cii.go` sind dafür NICHT wiederverwendbar, weil der
-> Präfix-im-Elementnamen-Trick nur beim Schreiben funktioniert und
-> Absender beliebige Präfixe wählen dürfen.
+> Zuletzt abgeschlossen: **E.5.2** (gemeinsames Zielmodell
+> `ParsedEInvoice` + CII-Eingangsparser, DB-los, namensraumbasiert), siehe
+> Abschnitt "Epic E, Task E.5" weiter unten. Epic 0 (0.1-0.5) und
+> E.1/E.2/E.3/E.4 sind vollständig abgeschlossen.
+> **Nächste Subtask: E.5.3** — UBL-Eingangsparser (DB-los) auf DASSELBE
+> Zielmodell `ParsedEInvoice`, plus Formaterkennung über den
+> Wurzelelement-Namensraum (eine Dispatch-Funktion, die CII und UBL
+> unterscheidet und an den jeweiligen Parser weiterreicht). Die
+> UBL-Struktur ist komplett anders als CII: Wurzel `ubl:Invoice`
+> (`urn:oasis:names:specification:ubl:schema:xsd:Invoice-2`), flache
+> `cbc:`-Felder (`cbc:ID`, `cbc:IssueDate` im Format `YYYY-MM-DD` — NICHT
+> das CII-Format 102 —, `cbc:InvoiceTypeCode`, `cbc:DocumentCurrencyCode`,
+> `cbc:BuyerReference`) und `cac:`-Gruppen
+> (`cac:AccountingSupplierParty`, `cac:LegalMonetaryTotal` mit
+> `cbc:PayableAmount`). Die Namensraumkonstante `nsUBLInvoice` liegt bereits
+> in `einvoice_parse.go`, ebenso `eInvoicePlausibilityHinweise`, das
+> syntaxunabhängig wiederverwendet werden kann.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9028,6 +9033,94 @@ Keine Code-Änderung in dieser Subtask — `invoices_in`/`invoice_in_items`/
 
 Geänderte/neue Dateien: `docs/adr/0023-e-rechnung-eingang.md` (neu),
 `docs/open-questions.md`, `docs/backlog.md`, `docs/state.md`.
+
+### E.5.2 Gemeinsames Zielmodell + CII-Eingangsparser (DB-los)
+
+Neue Datei `server/internal/accounting/einvoice_parse.go`: das von BEIDEN
+Syntaxen geteilte Zielmodell (`ParsedEInvoice` mit `ParsedParty`,
+`ParsedLine`, `ParsedTax`) und `ParseCIIInvoice([]byte)
+(*ParsedEInvoice, error)`. Bewusst ohne Datenbankzugriff — die
+Lieferantenzuordnung ist E.5.5, die Übernahme nach `invoices_in` laut
+ADR 0023 gar nicht Teil von Task E.5 (Backlog E.6).
+
+**Kernpunkt dieser Subtask — namensraumbasiertes Lesen.** Alle
+Lese-Structs matchen über vollqualifizierte Namensräume
+(`xml:"<namespace-uri> <local-name>"`), NICHT über Präfixe. Das ist der
+in ADR 0023 festgehaltene Unterschied zum Ausgang: in `einvoice_cii.go`
+stehen die Präfixe fest in den Elementnamen, weil `encoding/xml` beim
+SCHREIBEN keine Präfixe ausgeben kann — beim LESEN wäre genau das falsch,
+weil ein Absender beliebige Präfixe wählen darf (`rsm`/`ram` sind
+Konvention, nicht Vorschrift). Die Schreib- und Lese-Structs sind deshalb
+bewusst getrennt und nicht austauschbar.
+
+**Grundhaltung des Parsers**: streng genug, um Unsinn zu erkennen,
+nachsichtig genug, um an einem fehlenden Kann-Feld nicht zu scheitern —
+es ist die Rechnung eines Dritten, wir dürfen sie nicht zurückweisen,
+nur weil sie nicht so aussieht, wie wir selbst schreiben würden.
+Harte Fehler gibt es nur bei: nicht lesbarem XML, fremdem Wurzelelement,
+fehlender Rechnungsnummer und fehlendem/unlesbarem Rechnungsdatum. Alles
+andere wird gelesen, so gut es geht.
+
+**Datumsformat bewusst eng**: ein `udt:DateTimeString` mit einem anderen
+`format` als `102` (CCYYMMDD) wird mit Fehler abgelehnt statt geraten —
+ein falsch interpretiertes Datum auf einer Rechnung wäre schlimmer als
+eine abgelehnte Datei.
+
+**Keine Korrekturen, nur Hinweise** (ADR 0023): abweichende Summen,
+fehlender Verkäufername, fehlende Steuerkennung, fehlende Währung und
+fehlende Positionen landen in `ParsedEInvoice.Hinweise`. Die gelieferten
+Werte bleiben unverändert — es ist die Rechnung des Absenders. Toleranz
+beim Summenabgleich 1 Cent, damit übliche Rundungen keine Hinweisflut
+erzeugen.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+beiden neuen Dateien clean. Neue Tests
+`server/internal/accounting/einvoice_parse_test.go` (11 Tests +
+8 Unterfälle, alle DB-los). Drei davon tragen die eigentliche Beweislast:
+
+1. **Präfix-Unabhängigkeit** — dieselbe Rechnung einmal mit den Präfixen
+   `a`/`b`/`c` statt `rsm`/`ram`/`udt` (inklusive umbenannter
+   `xmlns`-Deklarationen) und einmal komplett OHNE Präfixe über
+   Default-Namensräume. Beide müssen identisch gelesen werden. Damit ist
+   die Kernbehauptung aus ADR 0023 belegt statt behauptet.
+2. **Kreisschluss zum Ausgang** — eine mit `BuildCrossIndustryInvoice`
+   (E.4.3.1) erzeugte Rechnung wird vom Eingangsparser wieder vollständig
+   gelesen und Feld für Feld gegen das Ausgangsmodell geprüft. Das prüft
+   Schreiber und Leser gegeneinander, statt beide nur gegen die eigene
+   Erwartung.
+3. **Keine externen Entitäten** — ein Dokument mit
+   `<!ENTITY xxe SYSTEM "file:///etc/passwd">` darf niemals Dateiinhalt
+   ins Ergebnis bringen; zulässig sind nur ein Fehler oder ein Ergebnis
+   ohne aufgelöste Entität. Damit ist die in ADR 0023 als
+   *Nachweispflicht* formulierte Anforderung erfüllt (nicht bloß über das
+   Verhalten von `encoding/xml` behauptet).
+
+Dazu: Vollständigkeit aller Felder inkl. `schemeID`-Unterscheidung
+`VA`/`FC` für USt-IdNr. und Steuernummer, Ablehnung eines UBL-Dokuments
+mit klarer Meldung, acht Negativfälle (kein XML, abgeschnittenes XML,
+leeres Dokument, fremdes Wurzelelement, fehlende Nummer, fehlendes
+Datum, unlesbares Datum, nicht unterstütztes Datumsformat — jeweils mit
+Beweis, dass KEIN Teilergebnis zurückgegeben wird), Hinweis-Fälle
+(abweichende Bruttosumme bei unverändert übernommenem Wert, fehlende
+Steuerkennung, fehlende Positionen) und ein Minimaldokument, das belegt,
+dass fehlende Kann-Felder nicht erfunden werden.
+
+**Eigener Testfehler, reproduziert und behoben**: der Präfix-Test schlug
+zunächst fehl, weil der Replacer zwar `rsm:` → `a:` ersetzte, die
+Deklaration `xmlns:rsm=` aber unverändert ließ — das Präfix `a` war
+dadurch gar nicht deklariert, und Go behandelte den Namensraum als
+literal `"a"`. Kein Parser-Fehler, sondern ein Testdokument, das etwas
+anderes prüfte als beabsichtigt; Deklarationen werden jetzt
+mitumbenannt.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.531s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_parse.go` (neu),
+`server/internal/accounting/einvoice_parse_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
