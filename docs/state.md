@@ -7,14 +7,17 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.4.2** (additive Migration
-> `invoices_out.buyer_reference`, siehe Abschnitt "Epic E, Task E.4" weiter
-> unten). Epic 0 (0.1-0.5), Epic E.1/E.2/E.3 sind vollständig abgeschlossen.
-> **Nächste Subtask: E.4.3** — Anwendungscode E-Rechnung Ausgang
-> (CII-XML-Builder, DB-Abfrage/Mapping, HTTP-Wiring XRechnung + ZUGFeRD).
-> Umfang überschreitet voraussichtlich §6.3 → beim Start zuerst in
-> Micro-Subtasks zerlegen (Zerlegungsvorschlag steht in ADR 0022,
-> Abschnitt "Konsequenzen"). Maßgeblich ist immer `docs/backlog.md`.
+> Zuletzt abgeschlossen: **E.4.3.1** (CII-XML-Serialisierer, DB-los, siehe
+> Abschnitt "Epic E, Task E.4" weiter unten). Epic 0 (0.1-0.5) und
+> E.1/E.2/E.3 sind vollständig abgeschlossen; E.4 ist bis einschließlich
+> E.4.3.1 erledigt.
+> **Nächste Subtask: E.4.3.2** — DB-Abfrage/Mapping `invoices_out`→
+> `CIIInvoice`: Käuferadress-Auflösung aus `contact_addresses`
+> (`billing` > `is_primary` > irgendeine, sonst Fehler),
+> Steuerkategorie-Ableitung aus `tax_codes` (`rate>0`→`S`,
+> `rate=0 AND reverse_charge`→`AE`, sonst `E`), Steueraufschlüsselung je
+> Steuersatz-Gruppe, Typ-Code-Zuordnung, Status-Guard (`booked`/`paid`).
+> Maßgeblich ist immer `docs/backlog.md`.
 
 
 **Subtask 0.3.3.4 (Anbindung `purchase_orders` an das Änderungsprotokoll)
@@ -8538,6 +8541,134 @@ und PDF-Renderung komplett unangetastet; ein Schreibpfad für
 Geänderte/neue Dateien:
 `server/internal/migrate/migrations/084_invoices_out_buyer_reference.sql`
 (neu), `docs/backlog.md`, `docs/state.md`.
+
+### E.4.3 Zerlegung in Micro-Subtasks
+
+Die in ADR 0022 vorhergesagte Überschreitung von §6.3 hat sich beim
+Kontextlesen bestätigt (verschachtelte CII-Struktur über vier Ebenen, zwei
+Endpunkte, PDF-Embedding, zahlreiche Negativfälle). E.4.3 wurde daher vor
+der ersten Codezeile in vier Micro-Subtasks zerlegt (analog D.3.3/E.2.3/
+E.3.3), genau entlang des in ADR 0022 "Konsequenzen" vorgezeichneten
+Schnitts:
+
+- **E.4.3.1** reiner CII-Serialisierer, DB-los, eigenständig verifizierbar
+- **E.4.3.2** DB-Abfrage/Mapping (Käuferadresse, Steuerkategorien, Guards)
+- **E.4.3.3** HTTP-Wiring XRechnung
+- **E.4.3.4** ZUGFeRD-PDF-Embedding (letzte Subtask von Task E.4)
+
+### E.4.3.1 CII-XML-Serialisierer (DB-los)
+
+Neue Datei `server/internal/accounting/einvoice_cii.go`: exportiertes
+Eingabemodell (`CIIInvoice`, `CIIParty`, `CIILineItem`, `CIITaxBreakdown`)
+und `BuildCrossIndustryInvoice(CIIInvoice) ([]byte, error)`, das eine
+vollständige UN/CEFACT-Cross-Industry-Invoice im XRechnung-3.0-Profil
+erzeugt. Bewusst ohne Datenbankzugriff UND ohne eigene Rechenlogik: der
+Baustein serialisiert ausschließlich bereits aufgelöste, fertig berechnete
+Werte. Das Beschaffen dieser Werte ist E.4.3.2 — die Trennung hält den
+Serialisierer vollständig ohne DB verifizierbar und verhindert, dass
+Mapping-Fehler und Serialisierungsfehler sich später gegenseitig verdecken.
+
+**Struktur gegen die Primärquelle geprüft, nicht aus der Erinnerung** (§7.1).
+Die in E.4.1 geladene KoSIT-Beispieldatei 01.01a enthält zwei benötigte
+Elemente NICHT (`DueDateDateTime`, `ExemptionReason`). Statt deren Form zu
+raten, wurde per GitHub-Code-Suche im offiziellen KoSIT-Repository gezielt
+ein Geschäftsfall gesucht, der beide enthält (01.21a), und dessen Rohtext
+geladen. Daraus übernommen:
+
+- die exakte, XSD-`sequence`-relevante Feldreihenfolge der
+  Steueraufschlüsselung: `CalculatedAmount`, `TypeCode`, `ExemptionReason`,
+  `BasisAmount`, `CategoryCode`, `RateApplicablePercent`,
+- die Platzierung von `DueDateDateTime` innerhalb
+  `SpecifiedTradePaymentTerms` (nach `Description`),
+- die Bankverbindungs-Struktur (`IBANID`/`AccountName`, BIC separat über
+  `PayeeSpecifiedCreditorFinancialInstitution`),
+- die Verwendung von `schemeID="FC"` (Steuernummer) neben `schemeID="VA"`
+  (USt-IdNr.).
+
+Die Reihenfolge der Kindelemente ist in CII durch XSD-`sequence` festgelegt
+und damit NICHT beliebig — jede Umsortierung macht das Dokument
+schemaungültig. Das ist der Grund für die explizite Reihenfolge-Prüfung im
+Test (s. u.).
+
+**Technische Kernentscheidung**: `encoding/xml` kann keine
+Namensraum-Präfixe ausgeben. Gelöst über Präfixe als festen Bestandteil der
+Elementnamen (`xml:"ram:ID"`) plus einmalige `xmlns`-Deklarationen als
+Attribute am Wurzelelement. Ergebnis ist exakt die Präfixform der
+offiziellen Beispieldateien; im Test durch echten `xml.Decoder`-Durchlauf
+UND Namensraum-Vergleich abgesichert, nicht nur per Stringvergleich.
+
+**Weitere Entscheidungen**: Beträge immer mit genau zwei Nachkommastellen
+und PUNKT als Dezimaltrennzeichen (`xs:decimal` — bewusster Gegensatz zum
+Komma im DATEV-Export aus E.3, beides im selben Paket, daher explizit
+getestet); Mengen mit bis zu vier Nachkommastellen ohne überflüssige Nullen;
+Datumsangaben im `udt`-Format 102 (CCYYMMDD); Einheiten-Fallback `C62` laut
+ADR 0022; der Zahlungsweg-Block (`TypeCode` 58, SEPA) entfällt KOMPLETT,
+wenn keine IBAN gepflegt ist, statt einen nicht existierenden Zahlungsweg
+zu behaupten; `TotalPrepaidAmount` nur bei tatsächlicher Anzahlung;
+Steuernummer (`FC`) nur beim Verkäufer; Ländercode-Fallback `DE` mit
+Normalisierung auf Großbuchstaben.
+
+**Konkretisierung ggü. ADR 0022**: dort war eine Befreiungsbegründung nur
+für Kategorie `E` festgelegt. `validateCIIInvoice` erzwingt die
+EN-16931-Regel jetzt für BEIDE steuerfreien Kategorien — `AE` und `E`
+erfordern eine Begründung (BT-120), `S` darf keine tragen, unbekannte
+Kategorien werden abgelehnt. Die konkrete AE-Begründung
+("Steuerschuldnerschaft des Leistungsempfängers") setzt E.4.3.2, nicht der
+Serialisierer.
+
+Sämtliche EN-16931-Pflichtangaben werden geprüft und bei Fehlen mit klarer,
+das fehlende Feld benennender Fehlermeldung abgelehnt, statt einen
+Platzhalter zu erfinden — ein Dokument mit erfundenen Pflichtangaben würde
+beim Empfänger als gültige Rechnung gelten.
+
+**Tests** (`server/internal/accounting/einvoice_cii_test.go`, 20 Tests +
+17 Unterfälle, alle DB-los und ohne `NALA_INTEGRATION=1` lauffähig):
+Wohlgeformtheit per echtem `xml.Decoder`-Durchlauf; Wurzelelement, vier
+Namensräume und Präfixe; beide Kontext-Kennungen inkl. ihrer XSD-Reihenfolge;
+Belegkopf mit Datumsformat 102; Typ-Code 380/386; beide Parteien inkl.
+Beweis, dass die Steuernummer NUR beim Verkäufer erscheint; Positionen inkl.
+Einheiten-Fallback; Summenblock inkl. Beweis, dass KEIN Komma als
+Dezimaltrennzeichen auftaucht; Anzahlungs-Sonderfall; Zahlungsweg mit/ohne
+IBAN und mit/ohne BIC; Fälligkeit/Zahlungsbedingung inkl. Komplett-Entfall;
+**Feldreihenfolge der Steueraufschlüsselung per Index-Vergleich** (eine
+Umsortierung wäre durch reine Enthält-Prüfungen NICHT auffindbar, würde das
+Dokument aber schemaungültig machen); mehrere Steuersatz-Gruppen;
+XML-Maskierung von `&`/`<`/`"` bei erhaltenen Umlauten mit erneuter
+Wohlgeformtheitsprüfung; Ländercode-Fallback und -Normalisierung;
+Mengenformatierung. Dazu 13 Negativfälle für fehlende Pflichtangaben (inkl.
+Beweis, dass im Fehlerfall KEIN Teildokument zurückgegeben wird) und 4
+Negativfälle für die Steuerkategorie-Regeln plus eine Gegenprobe (`E` MIT
+Begründung ist gültig).
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+beiden neuen Dateien clean. `go test ./internal/accounting/... -run
+TestBuildCII -v`: 20/20 PASS inkl. aller Unterfälle, ohne DB.
+**Zusätzlich zur Testgrün-Prüfung wurde das erzeugte Dokument selbst
+ausgegeben und Element für Element gegen die KoSIT-Referenzdatei gesichtet**
+— Testgrün beweist nur die eigenen Annahmen, nicht die Übereinstimmung mit
+der Spezifikation. Aufbau, Verschachtelung, Reihenfolge und Attribute
+stimmen überein; einzige Abweichung ist die semantisch identische
+Schreibweise des leeren Pflichtelements
+(`<ram:ApplicableHeaderTradeDelivery></...>` statt `<.../>`).
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.199s`), keine Regression.
+
+**Nebenbei korrigiert**: eine im Testfile zunächst definierte paketweite
+`min`-Hilfsfunktion überdeckte die seit Go 1.21 eingebaute Funktion für das
+GESAMTE Paket `accounting` — latente Falle für andere Dateien des Pakets,
+entfernt zugunsten des Builtins.
+
+**Bestätigter Fremdbefund, nicht angefasst** (§7.5): `gofmt -l` meldet
+`internal/accounting/ar.go`. Mit `gofmt -d` als dasselbe reine
+CRLF-Artefakt bestätigt, das für `v1.go` schon dokumentiert ist
+(ausnahmslos JEDE Zeile wird als geändert markiert); die Datei ist laut
+`git status` von dieser Subtask unberührt.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_cii.go` (neu),
+`server/internal/accounting/einvoice_cii_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
