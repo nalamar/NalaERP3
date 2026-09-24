@@ -7,16 +7,19 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.4.3.1** (CII-XML-Serialisierer, DB-los, siehe
-> Abschnitt "Epic E, Task E.4" weiter unten). Epic 0 (0.1-0.5) und
-> E.1/E.2/E.3 sind vollständig abgeschlossen; E.4 ist bis einschließlich
-> E.4.3.1 erledigt.
-> **Nächste Subtask: E.4.3.2** — DB-Abfrage/Mapping `invoices_out`→
-> `CIIInvoice`: Käuferadress-Auflösung aus `contact_addresses`
-> (`billing` > `is_primary` > irgendeine, sonst Fehler),
-> Steuerkategorie-Ableitung aus `tax_codes` (`rate>0`→`S`,
-> `rate=0 AND reverse_charge`→`AE`, sonst `E`), Steueraufschlüsselung je
-> Steuersatz-Gruppe, Typ-Code-Zuordnung, Status-Guard (`booked`/`paid`).
+> Zuletzt abgeschlossen: **E.4.3.2** (DB-Abfrage/Mapping `invoices_out`→
+> `CIIInvoice`, siehe Abschnitt "Epic E, Task E.4" weiter unten). Epic 0
+> (0.1-0.5) und E.1/E.2/E.3 sind vollständig abgeschlossen; E.4 ist bis
+> einschließlich E.4.3.2 erledigt — Serialisierer und Mapping stehen, es
+> fehlt nur noch die HTTP-Anbindung.
+> **Nächste Subtask: E.4.3.3** — HTTP-Wiring
+> `GET /invoices-out/{id}/xrechnung` (`application/xml`, Dateiname
+> `xrechnung_<Nummer>.xml`, bestehende Permission `invoices_out.read`) +
+> End-to-End-Integrationstest inkl. Negativfällen. **Dabei zusätzlich
+> nötig**: ein Schreibpfad für `invoices_out.buyer_reference` — E.4.2 legte
+> nur die Spalte an, es existiert bis heute KEIN Weg sie über die API zu
+> befüllen (die Tests aus E.4.3.2 setzen sie direkt per SQL); analog zur in
+> E.3.3.3 nachgezogenen `PATCH /settings/company/datev`-Lücke.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -8668,6 +8671,98 @@ CRLF-Artefakt bestätigt, das für `v1.go` schon dokumentiert ist
 Geänderte/neue Dateien:
 `server/internal/accounting/einvoice_cii.go` (neu),
 `server/internal/accounting/einvoice_cii_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### E.4.3.2 DB-Abfrage/Mapping `invoices_out` → `CIIInvoice`
+
+Neue Datei `server/internal/accounting/einvoice_query.go`: `EInvoiceService`
+mit `BuildCIIInvoice(ctx, invoiceID, companyID) (CIIInvoice, error)`. Löst
+eine Rechnung aus `invoices_out`/`invoice_out_items`/`contacts`/
+`contact_addresses`/`tax_codes`/`company_profiles` vollständig auf und
+liefert das Eingabemodell für den Serialisierer aus E.4.3.1. Reine
+Lesefunktion. Die Trennung bleibt strikt: dieser Baustein entscheidet WAS in
+die Rechnung gehört, E.4.3.1 WIE sie aussieht.
+
+**Umgesetzte Entscheidungen aus ADR 0022:**
+
+- **Status-Guard**: nur `booked`/`paid`; `draft` und alles Stornierte werden
+  mit klarer Meldung abgelehnt. Storno wird über `storniert_am` UND
+  `status` geprüft (doppelt, weil beide Felder den Zustand tragen können).
+- **Käuferadresse** aus `contact_addresses`, Präferenz per SQL
+  `ORDER BY (art='billing') DESC, is_primary DESC, id` — Rechnungsadresse
+  vor Hauptadresse vor irgendeiner. Keine Adresse → Fehler, keine erfundene
+  Adresse.
+- **Steuerkategorie** (UNTDID 5305) aus `tax_codes`: `rate>0` → `S`,
+  `rate=0 AND reverse_charge` → `AE`, sonst `E`.
+- **Typ-Code** (UNTDID 1001): `abschlagsrechnung` → `386`, sonst `380`.
+- **Befreiungsbegründungen** (BT-120) hier gesetzt, da fachlich:
+  `AE` → "Steuerschuldnerschaft des Leistungsempfängers",
+  `E` → "Steuerbefreit". Der Serialisierer erzwingt nur ihre Existenz.
+
+**Wichtiger Fallstrick, im Code dokumentiert**: `tax_codes.rate` ist ein
+BRUCHTEIL (`0.1900`), nicht Prozent — `calcTotals`/`buildJournal` rechnen
+durchgängig `net * rate`. CII verlangt in `RateApplicablePercent` dagegen
+Prozent, daher `rate * 100`. Eine Verwechslung hätte eine Rechnung mit
+0,19 % statt 19 % erzeugt, die formal gültig und inhaltlich falsch wäre.
+
+**Eigene, enge `tax_codes`-Abfrage statt Erweiterung des geteilten
+`taxCodeInfo`**: `taxCodeInfo` (ar.go:499) trägt kein `reverse_charge`, hängt
+aber an den Buchungspfaden `buildJournal`/`calcTotals`. Eine Erweiterung dort
+hätte Code angefasst, der nicht zu dieser Subtask gehört (§7.5) — stattdessen
+eine eigene, auf `code`/`rate`/`reverse_charge` beschränkte Abfrage.
+
+**Bewusste Konkretisierung: leeres Steuerkennzeichen wird abgelehnt.**
+`invoice_out_items.tax_code` ist nullable, und die Buchungspfade behandeln
+das legitim als "0 %, kein Fehler" (z. B. Durchlaufposten). Für eine
+E-Rechnung verlangt EN 16931 aber je Position eine fachlich zutreffende
+Kategorie — "steuerbefreit" und "Durchlaufposten" sind nicht dasselbe. Statt
+zu raten wird der Export mit benannter Position abgelehnt.
+
+**Summen-Abgleich gegen den gebuchten Beleg**: Positionssummen und
+Steuerbeträge werden aus `invoice_out_items` aggregiert und gegen
+`invoices_out.net_amount`/`tax_amount` geprüft (Toleranz 1 Cent). Weichen
+sie ab, wird der Export abgelehnt statt eine E-Rechnung zu erzeugen, die dem
+gebuchten Beleg widerspricht. Ausgegeben werden die aus den Positionen
+gerechneten, gerundeten Werte, damit die EN-16931-Summenregeln exakt
+aufgehen.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+beiden neuen Dateien clean. Neue Integrationstests in
+`server/internal/accounting/einvoice_query_integration_test.go` (9 Tests +
+8 Unterfälle) gegen frische DB: vollständiger Happy Path (Verkäufer aus
+Firmenprofil inkl. Vorrang der Rechnungs-E-Mail, Käufer inkl. aufgelöster
+Anschrift und USt-IdNr., Positionen, Einheiten-Fallback, Steuergruppe,
+alle fünf Summenfelder) mit **Gegenprobe, dass das gemappte Modell den
+Serialisierer aus E.4.3.1 auch tatsächlich passiert**; alle drei Stufen der
+Adress-Präferenz; fehlende Adresse; fehlende Käuferreferenz; Status-Guard
+für `draft` und für eine echt über `ARService.Storno` stornierte Rechnung;
+Kategorie-Ableitung für `DE0`→`E` und `RC`→`AE` jeweils inkl.
+Serialisierer-Gegenprobe; zwei Steuersätze → zwei Gruppen mit korrekten
+Teilsummen; Position ohne Steuerkennzeichen; Abschlagsrechnung → 386;
+unbekannte Rechnungs-ID mit dem etablierten Substring "nicht gefunden"
+(Vorbereitung der 404-Zuordnung in E.4.3.3).
+
+**Eigener Fixture-Fehler, reproduziert und behoben** (kein Produktivcode-
+Bug): die Tests nutzten zunächst Erlöskonto `8400`, das im SKR04-Seed aus
+`017_accounting_basics.sql` gar nicht existiert — alle Tests scheiterten am
+Fremdschlüssel `invoice_out_items_account_code_fkey`. Per SQL-Abfrage gegen
+die laufende DB geklärt, dass nur `8000` (19 %) und `8100` (7 %) geseedet
+sind, und die Fixtures darauf umgestellt. Dabei zusätzlich geprüft und
+bestätigt, dass `DE0`/`RC` trotz fehlender USt-Verbindlichkeitskonten
+buchbar sind: `buildJournal` (ar.go:581) legt die Steuerzeile nur bei
+`tax > 0.0001` an.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.151s`), keine Regression. Besonders geprüft,
+weil die Tests das GETEILTE Firmenprofil `default` um Anschrift/USt-IdNr./
+Bankverbindung ergänzen (nötig, da der Seed aus `025_company_profile.sql`
+nur Name und Land enthält) — diese Ergänzung wirkt paketübergreifend, hat
+aber keinen bestehenden Test beeinflusst.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_query.go` (neu),
+`server/internal/accounting/einvoice_query_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
