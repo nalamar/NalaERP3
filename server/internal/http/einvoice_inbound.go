@@ -35,6 +35,20 @@ type eInvoiceParseResponse struct {
 	Lieferantensuche *accounting.SupplierSuggestion `json:"lieferantensuche"`
 }
 
+// parseUploadedEInvoice erkennt anhand der Dateisignatur, ob eine PDF
+// oder eine XML vorliegt, und parst entsprechend. Eine Stelle fuer beide
+// Aufrufer (Vorschau und Uebernahme), damit die Erkennung nicht zweimal
+// existiert und auseinanderlaufen kann.
+func parseUploadedEInvoice(data []byte) (*accounting.ParsedEInvoice, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("E-Rechnung Eingang: die hochgeladene Datei ist leer")
+	}
+	if bytes.HasPrefix(data, pdfMagic) {
+		return accounting.ExtractEInvoiceFromPDF(data)
+	}
+	return accounting.ParseEInvoiceXML(data)
+}
+
 // parseInboundEInvoice erkennt anhand des DATEIINHALTS, ob eine PDF oder
 // eine XML hochgeladen wurde, parst entsprechend und sucht einen
 // passenden Lieferanten.
@@ -50,24 +64,13 @@ func parseInboundEInvoice(
 	companyID string,
 	apSvc *accounting.APService,
 ) (*eInvoiceParseResponse, error) {
-	if len(data) == 0 {
-		return nil, fmt.Errorf("E-Rechnung Eingang: die hochgeladene Datei ist leer")
-	}
-
-	var (
-		parsed *accounting.ParsedEInvoice
-		quelle string
-		err    error
-	)
-	if bytes.HasPrefix(data, pdfMagic) {
-		quelle = "pdf"
-		parsed, err = accounting.ExtractEInvoiceFromPDF(data)
-	} else {
-		quelle = "xml"
-		parsed, err = accounting.ParseEInvoiceXML(data)
-	}
+	parsed, err := parseUploadedEInvoice(data)
 	if err != nil {
 		return nil, err
+	}
+	quelle := "xml"
+	if bytes.HasPrefix(data, pdfMagic) {
+		quelle = "pdf"
 	}
 
 	suggestion, err := apSvc.SuggestSupplier(ctx, parsed.Seller, companyID)
@@ -95,4 +98,26 @@ func readLimitedUpload(r io.Reader, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("Die Datei ist größer als die zulässigen %d MiB", limit>>20)
 	}
 	return data, nil
+}
+
+// takeOverInboundEInvoice parst die hochgeladene Datei erneut und legt
+// daraus eine Eingangsrechnung an (Backlog E.6).
+//
+// Bewusst wird die DATEI verarbeitet und nicht ein vom Client
+// geschicktes Datenmodell: sonst koennte der Client Betraege oder die
+// Rechnungsnummer abweichend von der tatsaechlichen Rechnung setzen. Der
+// Client steuert ausschliesslich die Entscheidungen, die ein Mensch
+// treffen muss - Lieferant und Bestellbezug.
+func takeOverInboundEInvoice(
+	ctx context.Context,
+	data []byte,
+	decision accounting.EInvoiceTakeoverDecision,
+	companyID string,
+	apSvc *accounting.APService,
+) (*accounting.InvoiceIn, []accounting.InvoiceInItem, error) {
+	parsed, err := parseUploadedEInvoice(data)
+	if err != nil {
+		return nil, nil, err
+	}
+	return apSvc.TakeOverEInvoice(ctx, parsed, decision, companyID)
 }

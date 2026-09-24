@@ -7,21 +7,22 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.5.5** — und damit **Task E.5 (E-Rechnung
-> Eingang) VOLLSTÄNDIG**, siehe Abschnitt "Epic E, Task E.5" weiter unten.
-> Zusammen mit E.4 ist der gesamte E-Rechnungs-Teil aus `aufgabe.md` §2
-> erfüllt: Ausgang als XRechnung und ZUGFeRD, Eingang als CII-XML,
-> UBL-XML und ZUGFeRD-PDF über `POST /invoices-in/parse-e-invoice`.
-> **Epic E (Finanzwesen) ist damit bis auf die daraus entstandenen
-> Folgepositionen abgeschlossen** (E.1-E.5 done).
-> **Nächste Subtask: E.6** — Übernahme einer geparsten Eingangs-E-Rechnung
-> nach `invoices_in` (Lieferantenbestätigung, Bestellzuordnung). Aus
-> ADR 0023 bewusst aus E.5 herausgehalten, weil `invoices_in.supplier_id`
-> ein Pflicht-Fremdschlüssel auf `contacts` ist und eine automatische
-> Anlage Stammdaten aus einer fremden Datei erzeugen würde. Die Bausteine
-> stehen: `ParsedEInvoice`, `APService.SuggestSupplier` und
-> `APService.CreateInvoiceIn`. Danach offen: **E.7** (pdfcpu-Workaround bei
-> Versionsanhebung) sowie die Epics F, G, H und I.
+> Zuletzt abgeschlossen: **E.6** (Übernahme einer geparsten
+> Eingangs-E-Rechnung nach `invoices_in` über
+> `POST /invoices-in/from-e-invoice`), siehe Abschnitt "Epic E, Task E.6"
+> weiter unten. Der E-Rechnungs-Weg ist damit durchgängig: Ausgang
+> (XRechnung/ZUGFeRD), Eingang (CII/UBL/ZUGFeRD-PDF), Vorschau mit
+> Lieferantenvorschlag und Übernahme. **E.1-E.6 sind abgeschlossen**,
+> ebenso Epic 0 (0.1-0.5).
+> **Nächste Subtask: E.8** — strukturierte Ablage der beim Eingang
+> geparsten Steuer- und Summenangaben: `invoice_in_items` hat weder
+> Steuerkennzeichen noch Mengeneinheit, `invoices_in` gar keine
+> Summenfelder; E.6 rettet diese Angaben derzeit nur als Klartext in die
+> Notiz. Umfang (Migration + Service + Übernahme + Tests) vor dem Start
+> gegen §6.3 prüfen und ggf. zerlegen. Danach offen: **E.7**
+> (pdfcpu-Workaround bei Versionsanhebung, kleine Wartungsaufgabe) sowie
+> die Epics F (HR), G (Fuhrpark), H (Produktion) und I (KI-gestützte
+> Angebotserzeugung aus GAEB — das erklärte Endziel laut `aufgabe.md` §1).
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9413,6 +9414,88 @@ Geänderte/neue Dateien:
 `server/internal/http/einvoice_inbound.go` (neu),
 `server/internal/http/einvoice_inbound_integration_test.go` (neu),
 `server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+## Epic E, Task E.6 — Übernahme einer geparsten Eingangs-E-Rechnung
+
+Neuer Endpunkt `POST /invoices-in/from-e-invoice` (Multipart: `file` plus
+die Entscheidungsfelder `lieferant_id`, optional `bestellung_id` und
+`notiz`), Permission `invoices_in.write`. Neue Datei
+`server/internal/accounting/einvoice_takeover.go` mit
+`APService.TakeOverEInvoice` und `APService.FindInvoiceInByNumber`.
+
+**Zentrale Design-Entscheidung: die Rechnungsdaten kommen aus der DATEI,
+nicht vom Client.** Der Client lädt die Datei erneut hoch und schickt
+ausschließlich die Entscheidungen mit, die ein Mensch treffen muss
+(Lieferant, Bestellbezug, Notiz). Der Server parst neu und baut die
+Eingangsrechnung aus dem Parse-Ergebnis. Die naheliegende Alternative —
+der Client schickt das in E.5.5 erhaltene JSON zurück — wurde verworfen:
+dann könnte er Beträge, Mengen oder die Rechnungsnummer abweichend von
+der tatsächlichen Rechnung setzen, und in einem buchungsrelevanten
+Kontext ist das nicht vertretbar. Ein eigener Test schiebt dem Endpunkt
+absichtlich abweichende Werte unter (`rechnungsnummer`, `waehrung`,
+`menge`, `preis`, `rechnungsdatum`) und weist nach, dass sie wirkungslos
+bleiben.
+
+**Lieferant muss bestätigt werden.** Ohne `lieferant_id` wird abgelehnt —
+`SuggestSupplier` aus E.5.5 liefert bewusst nur einen Vorschlag, und
+gerade im Fall `mehrdeutig` gibt es absichtlich keinen Einzelvorschlag,
+den der Server einfach übernehmen könnte.
+
+**Schutz vor Doppelerfassung**: gleicher Lieferant + gleiche
+Rechnungsnummer wird mit 409 und Nennung der bereits vorhandenen
+Eingangsrechnung abgelehnt. Bewusst im Anwendungscode und nicht als
+Datenbank-Constraint: `invoices_in` trägt bereits manuell erfasste
+Bestände, für die eine nachträgliche Unique-Constraint fehlschlagen
+könnte, und die Regel gilt fachlich für den Übernahmeweg — dasselbe
+Muster wie bei den VOB-Regeln aus B.4.3.
+
+**Positionen ohne Menge werden abgelehnt**, mit Nennung von Position und
+Bezeichnung, statt stillschweigend auf 1 gesetzt zu werden: eine
+erfundene Menge wäre ein inhaltlicher Fehler in einer Eingangsrechnung.
+
+**Wiederverwendung statt zweiter Quelle der Wahrheit**: die Übernahme
+ruft das bestehende `CreateInvoiceIn` auf, das bereits die
+Mandanten-Zugehörigkeit von Lieferant, Bestellung und Bestellpositionen
+prüft und in einer Transaktion schreibt. Ebenso wurde die
+Formaterkennung XML/PDF aus E.5.5 in ein gemeinsames
+`parseUploadedEInvoice` gezogen, das Vorschau und Übernahme teilen — sie
+darf nicht an zwei Stellen existieren und auseinanderlaufen.
+
+**BEKANNTE LÜCKE, dokumentiert statt verschwiegen**: `invoice_in_items`
+hat weder Steuerkennzeichen noch Mengeneinheit, und `invoices_in` trägt
+überhaupt keine Summenfelder. Die geparste Steueraufschlüsselung, die
+ausgewiesenen Summen und das Fälligkeitsdatum lassen sich strukturiert
+also gar nicht ablegen. Als Notlösung werden sie zusammen mit der
+Herkunft in die Notiz geschrieben, damit die Information dem
+Sachbearbeiter wenigstens erhalten bleibt — strukturiert gehören sie ins
+Datenmodell, eingetragen als **neue Backlog-Position E.8**. Es wird
+dabei nichts gerechnet und nichts ergänzt, nur übernommen was in der
+Rechnung steht.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen neuen Dateien clean. Neuer Test
+`server/internal/http/einvoice_takeover_integration_test.go` (3 Tests +
+5 Unterfälle) gegen frische DB: vollständiger Happy Path mit Nachweis,
+dass Nummer, Datum, Währung und Positionen aus der Datei stammen und die
+Notiz Herkunft, USt-IdNr., Summen und Steueraufschlüsselung festhält;
+Persistenz per direkter Abfrage bestätigt; Doppelerfassung liefert 409
+und hinterlässt keine zweite Rechnung; fünf Negativfälle (ohne
+bestätigten Lieferanten, unbekannter Lieferant, unbekannte Bestellung,
+keine E-Rechnung, Position ohne Menge) jeweils **mit Vorher/Nachher-
+Vergleich, dass ein abgelehnter Import nichts anlegt** — die in E.5.5
+gelernte Lehre, solche Aussagen als Differenz statt als absolute Zählung
+zu prüfen, direkt angewandt; plus der oben beschriebene Test gegen
+untergeschobene Client-Werte.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 29.621s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_takeover.go` (neu),
+`server/internal/http/einvoice_takeover_integration_test.go` (neu),
+`server/internal/http/einvoice_inbound.go`, `server/internal/http/v1.go`,
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 

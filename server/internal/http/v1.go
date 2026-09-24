@@ -1513,6 +1513,42 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	})
 
 	protected.Route("/invoices-in", func(r chi.Router) {
+		r.With(requirePermission("invoices_in.write")).Post("/from-e-invoice", func(w http.ResponseWriter, req *http.Request) {
+			req.Body = http.MaxBytesReader(w, req.Body, maxEInvoiceUploadBytes)
+			if err := req.ParseMultipartForm(maxEInvoiceUploadBytes); err != nil {
+				writeAPIError(w, req, http.StatusRequestEntityTooLarge, "validation_error",
+					fmt.Sprintf("Upload fehlgeschlagen oder größer als die zulässigen %d MiB", maxEInvoiceUploadBytes>>20))
+				return
+			}
+			file, _, err := req.FormFile("file")
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Datei fehlt (Feld 'file')")
+				return
+			}
+			defer file.Close()
+
+			data, err := readLimitedUpload(file, maxEInvoiceUploadBytes)
+			if err != nil {
+				writeAPIError(w, req, http.StatusRequestEntityTooLarge, "validation_error", err.Error())
+				return
+			}
+
+			decision := accounting.EInvoiceTakeoverDecision{
+				SupplierID: req.FormValue("lieferant_id"),
+				Note:       req.FormValue("notiz"),
+			}
+			if po := strings.TrimSpace(req.FormValue("bestellung_id")); po != "" {
+				decision.PurchaseOrderID = &po
+			}
+
+			companyID, _ := companyIDFromContext(req.Context())
+			invoice, items, err := takeOverInboundEInvoice(req.Context(), data, decision, companyID, apSvc)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, map[string]any{"rechnung": invoice, "positionen": items})
+		})
 		r.With(requirePermission("invoices_in.write")).Post("/parse-e-invoice", func(w http.ResponseWriter, req *http.Request) {
 			// Harte Obergrenze VOR dem Parsen des Formulars: ohne sie
 			// wuerde ParseMultipartForm beliebig grosse Uploads
@@ -4988,7 +5024,8 @@ func classifyDomainError(err error) (int, string) {
 	case strings.Contains(msg, "nicht gefunden"):
 		return http.StatusNotFound, "not_found"
 	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"),
-		strings.Contains(msg, "weicht vom gebuchten"):
+		strings.Contains(msg, "weicht vom gebuchten"),
+		strings.Contains(msg, "bereits erfasst"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
