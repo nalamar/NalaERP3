@@ -65,6 +65,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	arSvc := accounting.NewARService(pg, numSvc, journalSvc, auditSvc)
 	apSvc := accounting.NewAPService(pg)
 	ccSvc := accounting.NewCostCenterService(pg)
+	datevExportSvc := accounting.NewDatevExportService(pg)
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
 	bankSvc := accounting.NewBankService(pg, paymentSvc)
 	pdfSvc := settings.NewPDFService(pg)
@@ -1573,6 +1574,36 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				return
 			}
 			writeJSON(w, http.StatusOK, out)
+		})
+	})
+
+	protected.Route("/accounting", func(r chi.Router) {
+		r.With(requirePermission("datev.export")).Get("/datev-export", func(w http.ResponseWriter, req *http.Request) {
+			qv := req.URL.Query()
+			von, err := time.Parse("2006-01-02", qv.Get("von"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges oder fehlendes Datum 'von' (Format YYYY-MM-DD)")
+				return
+			}
+			bis, err := time.Parse("2006-01-02", qv.Get("bis"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges oder fehlendes Datum 'bis' (Format YYYY-MM-DD)")
+				return
+			}
+			if bis.Before(von) {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "'bis' darf nicht vor 'von' liegen")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			content, filename, err := buildDatevExportFile(req.Context(), companyID, von, bis, companySvc, datevExportSvc)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.Header().Set("Content-Type", "text/csv; charset=windows-1252")
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(content)
 		})
 	})
 
@@ -4473,6 +4504,20 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			w.WriteHeader(http.StatusNoContent)
 		})
+		r.Patch("/datev", func(w http.ResponseWriter, req *http.Request) {
+			var in settings.DatevSettingsInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, "Ungültige Eingabe", err)
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			profile, err := companySvc.UpdateDatevSettings(req.Context(), in, companyID)
+			if err != nil {
+				writeHTTPError(w, req, http.StatusBadRequest, err.Error(), err)
+				return
+			}
+			writeJSON(w, http.StatusOK, profile)
+		})
 		r.Get("/branches", func(w http.ResponseWriter, req *http.Request) {
 			companyID, _ := companyIDFromContext(req.Context())
 			items, err := companySvc.ListBranches(req.Context(), companyID)
@@ -4979,6 +5024,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "existiert bereits"),
 		strings.Contains(msg, "abgeleitet werden"),
 		strings.Contains(msg, "nicht mehr offen"),
+		strings.Contains(msg, "kein eindeutiges gegenkonto"),
 		strings.Contains(msg, "ein angebot abgegeben"):
 		return http.StatusBadRequest, "validation_error"
 	default:

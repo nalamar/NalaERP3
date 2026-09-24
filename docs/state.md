@@ -5,6 +5,18 @@
 
 ## Aktueller Pfad
 
+> **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
+> historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
+> Zuletzt abgeschlossen: **E.4.2** (additive Migration
+> `invoices_out.buyer_reference`, siehe Abschnitt "Epic E, Task E.4" weiter
+> unten). Epic 0 (0.1-0.5), Epic E.1/E.2/E.3 sind vollständig abgeschlossen.
+> **Nächste Subtask: E.4.3** — Anwendungscode E-Rechnung Ausgang
+> (CII-XML-Builder, DB-Abfrage/Mapping, HTTP-Wiring XRechnung + ZUGFeRD).
+> Umfang überschreitet voraussichtlich §6.3 → beim Start zuerst in
+> Micro-Subtasks zerlegen (Zerlegungsvorschlag steht in ADR 0022,
+> Abschnitt "Konsequenzen"). Maßgeblich ist immer `docs/backlog.md`.
+
+
 **Subtask 0.3.3.4 (Anbindung `purchase_orders` an das Änderungsprotokoll)
 abgeschlossen — damit sind Task 0.3.3, UND DAMIT DAS GESAMTE EPIC 0.3
 (GoBD-Fundament: Storno, Festschreibung, Änderungsprotokoll) VOLLSTÄNDIG
@@ -7967,11 +7979,572 @@ Geänderte Dateien: `server/internal/http/v1.go`,
 `server/internal/http/project_controlling_integration_test.go`,
 `docs/backlog.md`, `docs/state.md`.
 
+## Epic E, Task E.3 — DATEV-Export (EXTF, Format-Version 13)
+
+### E.3.1 ADR: Format-Design-Entscheidung
+
+Erste Subtask von Task E.3 (dritte Task von Epic E, nach E.1 Kostenstellen-
+modell und E.2 Projektcontrolling). `aufgabe.md` §2 fordert fix eine
+"Buchhaltungsschnittstelle: DATEV-konformer Export (EXTF / DATEV-Format-
+Version 13)". Die dazu in `docs/open-questions.md` offene Frage ("kein
+konkretes Zielsystem vorgegeben") ist jetzt geklärt: EXTF ("Extern-Format")
+ist laut DATEV-Definition genau für den Import aus Nicht-DATEV-Software in
+JEDES DATEV-kompatible System gedacht — ein konkretes Zielsystem ist keine
+Voraussetzung für die Formatwahl, sondern der Zweck des Formats selbst.
+
+**Fehlende Recherchegrundlage im Repo, geschlossen per Websuche**: Es gibt
+keine lokale Kopie der offiziellen DATEV-Datensatzbeschreibung. Da eine
+falsch geratene Feldreihenfolge/-belegung eine GoBD-relevant fehlerhafte
+oder unbrauchbare Datei erzeugen würde, wurde die exakte Feldspezifikation
+per `WebSearch`/`WebFetch` recherchiert und gegen zwei unabhängige,
+deckungsgleiche Quellen verifiziert: eine reale Beispieldatei
+`EXTF_Buchungsstapel.csv` MIT echten Feldwerten, und der vollständige
+Feld-für-Feld-Quellcode (31 Header-Felder, 125 Buchungssatz-Spalten inkl.
+Typ/Länge/Pflichtfeld-Kennzeichen, exakte Ausgabeformatierung je Feldtyp,
+Trennzeichen/Encoding/Zeilenende) des aktiv gepflegten, production-
+genutzten Open-Source-Ruby-Gems `ledermann/datev` (MIT-lizenziert). Beide
+Quellen stimmen exakt überein. Diese Recherche ersetzt keine offizielle
+DATEV-Zertifizierung (nicht durchführbar in dieser Umgebung) — Ziel ist ein
+strukturell und inhaltlich korrektes, in jede DATEV-kompatible Software
+importierbares Dokument.
+
+Ergebnis, siehe `docs/adr/0021-datev-export.md` im Detail:
+- **Formatkategorie 21 "Buchungsstapel"** (einzige Kategorie, die zur
+  vorhandenen `journal_entries`/`journal_lines`-Datenbasis passt), Format-
+  Version 13 (fix laut aufgabe.md). Datei = 31-Feld-Kopfzeile + feste
+  125-Spalten-Namenszeile + Datenzeilen. Semikolon-getrennt, Windows-1252-
+  kodiert, `\r\n`-Zeilenende, Komma als Dezimaltrennzeichen, Textfelder in
+  `"..."`, leere Felder bleiben komplett leer — spezifikationskonform, nicht
+  verhandelbar.
+- **Feldabdeckung**: nur die für unser Datenmodell sinnvollen Buchungssatz-
+  Felder werden befüllt (Umsatz, Soll/Haben-Kennzeichen, Konto, Gegenkonto,
+  Belegdatum, Belegfeld 1, Buchungstext, KOST1 = Kostenstellen-`code`) —
+  Rest der 125 Spalten bleibt spezifikationskonform leer (exakt das Muster,
+  das auch die recherchierte Referenzimplementierung selbst nutzt).
+- **Zentrale Design-Entscheidung — Gegenkonto bei Mehrzeilern**:
+  `JournalService.create` erlaubt beliebig viele Buchungszeilen (nur
+  Summe Soll = Summe Haben wird geprüft, `journal.go:69`), DATEVs
+  Buchungssatz-Zeile ist aber strukturell für genau ein Konto + ein
+  Gegenkonto ausgelegt. 1:1- und 1:N/N:1-Buchungen (eine Seite hat genau
+  eine Zeile) werden korrekt aufgelöst — das ist DATEVs eigenes, offiziell
+  unterstütztes "Splittbuchung mit Sammelkonto"-Muster. Echte N:M-Buchungen
+  (mehrere Zeilen auf BEIDEN Seiten) haben KEIN eindeutig ableitbares
+  Gegenkonto pro Zeile — diese werden beim Export mit expliziter
+  Fehlermeldung (unter Nennung der betroffenen `journal_entries.id`)
+  abgelehnt statt ein Gegenkonto zu raten, da ein falsches Gegenkonto in
+  einer Buchhaltungsschnittstelle ein GoBD-relevanter Fehler wäre, kein
+  kosmetisches Problem. Betrifft nach aktuellem Codestand voraussichtlich
+  keine bestehende Buchungsquelle, ist aber durch die offene
+  `JournalLineInput[]`-API theoretisch möglich.
+- **Neue, additive Konfigurationsfelder auf `company_profiles`**:
+  `datev_berater_nr`/`datev_mandant_nr` (beide nullable, Pflicht-Prüfung
+  erst beim Export mit klarer Fehlermeldung), `datev_skr` (Default `'04'`,
+  passend zum bereits als SKR04-Auszug geseedeten Kontenrahmen),
+  `datev_sachkontenlaenge` (Default `4`, passend zu den 4-stelligen
+  Kontonummern), `datev_fiscal_year_start_month` (Default `1` =
+  Kalenderjahr, mit Abstand häufigster deutscher Fall — bildet
+  vereinfachend nur den Monat ab, der Tag wird als der 1. angenommen,
+  als offene Detailfrage in `docs/open-questions.md` vermerkt, kein
+  Blocker).
+- **Festschreibung** im Kopf- und Zeilen-Feld immer `0`/leer — unser Export
+  erzwingt keine DATEV-seitige Festschreibungs-Entscheidung, das bleibt dem
+  Anwender/Steuerberater beim Import überlassen (unabhängig von unserem
+  eigenen GoBD-Festschreibungsbegriff aus Epic 0.3, der sich auf UNSERE
+  eigenen Belege bezieht). **Herkunfts-Kennzeichen** `"RE"` (offiziell nur
+  für bei DATEV registrierte Software reserviert, wird beim Import ohnehin
+  durch `"SV"` ersetzt — folgenlos).
+- **Neuer Endpunkt** `GET /accounting/datev-export?von=&bis=`
+  (`text/csv`-Antwort, `Content-Disposition: attachment`, Windows-1252-
+  kodierter Body), **neue Permission `datev.export`** (analog zur bereits
+  etablierten `bank.read`/`bank.write`/`cost_centers.*`-Entscheidung: keine
+  bestehende Permission passt für vollen Ledger-Export), zugewiesen an
+  `role-finance`/`role-admin`.
+
+Keine Schreiblogik, keine Code-Änderung in dieser Subtask (reine ADR-/
+Rechercharbeit) — `journal_entries`/`journal_lines`/`accounts`/
+`cost_centers`/`company_profiles` komplett unangetastet.
+
+Geänderte/neue Dateien: `docs/adr/0021-datev-export.md` (neu),
+`docs/open-questions.md`, `docs/backlog.md`, `docs/state.md`.
+
+### E.3.2 Migration: fünf neue Spalten auf `company_profiles`, neue Permission `datev.export`
+
+Zweite Subtask von Task E.3 (ADR 0021). Neue Datei
+`server/internal/migrate/migrations/083_datev_export.sql` — additive
+Migration, zwei Teile:
+
+1. Fünf neue Spalten auf `company_profiles`: `datev_berater_nr`/
+   `datev_mandant_nr` (beide nullable `integer` — bewusst KEIN Default/
+   Dummy-Wert, der Export in E.3.3 prüft explizit auf deren Vorhandensein
+   und liefert bei fehlender Konfiguration eine klare Fehlermeldung statt
+   eine ungültige DATEV-Datei mit leeren Pflichtfeldern zu erzeugen),
+   `datev_skr` (`text NOT NULL DEFAULT '04'`, passend zum bereits als
+   SKR04-Auszug geseedeten Kontenrahmen aus `017_accounting_basics.sql`),
+   `datev_sachkontenlaenge` (`smallint NOT NULL DEFAULT 4`, passend zu den
+   durchgängig 4-stelligen Kontonummern im Seed), `datev_fiscal_year_start_month`
+   (`smallint NOT NULL DEFAULT 1` = Kalenderjahr, `CHECK (BETWEEN 1 AND 12)`).
+2. Neue Permission `datev.export` (Kontext `finance`, analog zum bereits
+   etablierten Muster aus `065_bank_permissions.sql`/`081_cost_centers.sql`
+   — keine bestehende Permission passt für einen vollen Ledger-Export),
+   zugewiesen an `role-finance` UND `role-admin`.
+
+Verifiziert: `go build ./...`, `go vet ./...` clean. Docker-Testumgebung
+frisch aufgesetzt (`docker compose -f docker-compose.test.yml down -v &&
+up -d`, auf `pg_isready` gewartet), vollständige Migrationskette 001-083
+lief beim Testaufruf (`TestCostCenters*`) fehlerfrei durch, keine
+Regression. Direkte Postgres-Inspektion (`\d company_profiles`) bestätigt
+alle fünf neuen Spalten, Typen, Defaults und die CHECK-Constraint exakt
+wie in ADR 0021 entschieden; direkte SQL-Abfrage bestätigt die neue
+Permission UND deren korrekte Zuordnung zu beiden Rollen; die bestehende
+`default`-Firmenprofilzeile zeigt die Defaults korrekt angewendet
+(`datev_skr='04'`, `datev_sachkontenlaenge=4`,
+`datev_fiscal_year_start_month=1`, Berater-/Mandantennummer `NULL`).
+**CHECK-Constraint direkt per SQL provoziert**: `UPDATE company_profiles
+SET datev_fiscal_year_start_month=13` korrekt mit
+`violates check constraint` abgelehnt. DB danach zurückgesetzt und
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test
+./internal/http/...`-Lauf (alle Domänen) gegen erneut frisch aufgesetzte
+DB: `ok nalaerp3/internal/http 31.684s` — keine Regression. Zusätzlich
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` (gesamtes Repo, alle
+Pakete sequenziell) gegen frische DB: durchgehend `ok`.
+
+Geänderte/neue Dateien: `server/internal/migrate/migrations/083_datev_export.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
+### E.3.3 (Anwendungscode) — Größenschätzung überschreitet §6.3, in Micro-Subtasks zerlegt
+
+Analog zu D.3.3/E.2.3: E.3.3 (CSV-Builder, DB-Abfrage inkl. Gegenkonto-
+Auflösung, HTTP-Wiring, Tests) wurde auf Basis der ADR-0021-Entscheidungen
+auf Umfang geschätzt (125-Spalten-Struct, Windows-1252-Encoding-Logik,
+DB-Query mit Gegenkonto-Auflösung inkl. N:M-Ablehnung, HTTP-Wiring, mehrere
+Testfälle) — überschreitet §6.3. Zerlegt in: **E.3.3.1** (reiner CSV-Builder,
+DB-los, vollständig eigenständig verifizierbar), **E.3.3.2** (DB-Abfrage
+inkl. Gegenkonto-Auflösung), **E.3.3.3** (HTTP-Wiring `GET
+/accounting/datev-export` + End-to-End-Integrationstest, letzte Subtask
+von Task E.3).
+
+### E.3.3.1 CSV-Builder (Header-/Spalten-/Buchungssatzzeilen, Windows-1252-Encoding) + Unit-Tests
+
+Neue Datei `server/internal/accounting/datev_export.go`:
+`DatevHeaderInput`/`DatevBookingRow`-Structs (nur die in ADR 0021
+festgelegten, für unser Datenmodell relevanten Felder), Funktion
+`BuildDatevBuchungsstapel(header, rows) ([]byte, error)` — baut die
+vollständige 31-Feld-Kopfzeile, die feste 125-Spalten-Namenszeile
+(`buildDatevBookingColumns`, exakt wie in ADR 0021 gegen zwei unabhängige
+Quellen verifiziert recherchiert) und je Buchungssatz eine 125-Spalten-
+Datenzeile (nur die 8 in ADR 0021 festgelegten Felder befüllt — Umsatz,
+Soll/Haben-Kennzeichen, Konto, Gegenkonto, Belegdatum, Belegfeld 1,
+Buchungstext, KOST1 —, Rest bleibt spezifikationskonform leer),
+Windows-1252-kodiert über `golang.org/x/text/encoding/charmap`.
+
+**Nebenbemerkung, kein Fund/keine Korrektur**: `golang.org/x/text` war
+bereits eine transitive Abhängigkeit (Modul bereits in `go.sum`), jetzt
+direkt importiert. `go mod tidy` danach ausgeführt, dabei nebenbei einen
+bereits VOR dieser Session bestehenden go.mod-Hygienefehler korrigiert:
+`golang.org/x/crypto` war als `// indirect` markiert, obwohl
+`internal/auth/service.go` es schon vorher direkt importierte (bcrypt) —
+reine Metadaten-Korrektur ohne Verhaltensänderung, `go mod tidy` macht das
+automatisch für jede direkt importierte Abhängigkeit.
+
+Hilfsfunktionen: `datevQuote` (DATEV-Textfeld-Quoting inkl. Verdopplung
+enthaltener `"`, leere Werte bleiben unquotiert-leer wie spezifiziert),
+`datevTruncate` (Rune-sichere Kürzung — eine byte-basierte Kürzung würde
+Mehrbyte-UTF-8-Zeichen wie `ü`/`ß` mitten im Zeichen zerschneiden),
+`datevDecimal` (Komma statt Punkt als Dezimaltrennzeichen, wie
+spezifiziert), `datevPadAccount` (Konto-Padding mit führenden Nullen auf
+`Sachkontenlänge`, längere Kontonummern bleiben unverändert statt
+gekürzt zu werden).
+
+Neue Tests in `server/internal/accounting/datev_export_test.go` (9 Tests,
+alle DB-los, reine Unit-Tests): Kopfzeile Feld-für-Feld gegen die in
+ADR 0021 festgelegten Werte geprüft (inkl. `Erzeugt am`-Zeitstempel-
+Format `yyyyMMddHHmmssLLL`, `SKR`, `Berater`/`Mandant`, `Festschreibung`
+immer `"0"`); Spaltennamen-Zeile stichprobenartig gegen die recherchierte
+offizielle Liste geprüft (inkl. exaktem `–`-Zeichen [EN DASH, nicht
+Bindestrich] in `KOST1 – Kostenstelle` — dessen korrekte Windows-1252-
+Kodierbarkeit direkt über eine Encode-Decode-Rundreise im Test bewiesen
+wird, CP1252 enthält den EN DASH auf Position 0x96); Buchungssatzzeile
+Feld-für-Feld inkl. Anführungszeichen-Verdopplung
+(`"Wareneingang ""Profile"""`); Beweis, dass ALLE nicht befüllten der 125
+Spalten leer bleiben (iteriert über die komplette Zeile); Beweis, dass
+`Umsatz` immer positiv exportiert wird unabhängig vom Vorzeichen der
+Eingabe (Vorzeichen kommt ausschließlich aus dem Soll/Haben-Kennzeichen);
+Konto-Padding-Fälle inkl. Grenzfall "Konto länger als Sachkontenlänge
+bleibt unverändert" (keine Kürzung, das wäre Datenverlust); Rune-sichere
+Kürzung; CRLF-Zeilenende (`\r\n`, nicht `\n`).
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` auf beiden neuen
+Dateien clean. `go test ./internal/accounting/... -run "TestBuildDatev|TestDatev"
+-v`: 9/9 PASS (keine DB nötig, reine Unit-Tests). Abschließend
+vollständiger `go test ./internal/accounting/... -v` (alle Unit-Tests des
+Pakets; DB-abhängige Integrationstests korrekt via
+`integration tests disabled; set NALA_INTEGRATION=1` geskippt): alle PASS,
+keine Regression an bestehenden `accounting`-Tests (Journal/AP/AR/Bank/
+CostCenters).
+
+Geänderte/neue Dateien: `server/internal/accounting/datev_export.go` (neu),
+`server/internal/accounting/datev_export_test.go` (neu),
+`server/go.mod`, `server/go.sum`, `docs/backlog.md`, `docs/state.md`.
+
+### E.3.3.2 DB-Abfrage inkl. Gegenkonto-Auflösung + Integrationstests
+
+Neue Datei `server/internal/accounting/datev_export_query.go`:
+`DatevExportService` mit `LoadBookingRows(ctx, companyID, von, bis)
+([]DatevBookingRow, error)` — lädt `journal_entries`⋈`journal_lines`⋈
+`cost_centers` (LEFT JOIN für die `KOST1`-Code-Auflösung, eine Buchungs-
+zeile muss keine Kostenstelle haben) für den Mandanten im angegebenen
+Zeitraum, gruppiert die Zeilen je Buchung (`journal_entries.id`) und ruft
+je Buchung die reine, DB-lose Funktion `datevResolveEntryRows` auf.
+
+`datevResolveEntryRows` partitioniert die Zeilen einer Buchung in Soll
+(`debit>0`) und Haben (`credit>0`) — Zeilen mit `debit=0 UND credit=0`
+tragen zu keiner Seite bei und werden ignoriert (ein Umsatz von 0 wäre
+ohnehin nicht spezifikationskonform exportierbar). Danach greift die in
+ADR 0021 festgelegte Logik: hat eine Seite genau eine Zeile, wird für jede
+Zeile der Gegenseite eine Zeile erzeugt (Gegenkonto = das eine Konto der
+"einen" Seite) — das deckt sowohl 1:1 als auch 1:N/N:1-Splittbuchungen ab.
+Haben BEIDE Seiten mehr als eine Zeile, gibt die Funktion einen Fehler
+zurück statt zu raten.
+
+**Konkretisierung gegenüber ADR 0021**: Die ADR hatte bewusst offen
+gelassen, ob eine N:M-Buchung den GESAMTEN Export scheitern lässt oder nur
+selbst übersprungen wird ("übersprungen/abgelehnt"). Entschieden für
+**kompletten Abbruch des Exports** mit einer Fehlermeldung, die die
+betroffene Buchung (ID + Datum + Zeilenzahl je Seite) benennt: ein
+stillschweigend unvollständiger Export wäre ein GoBD-Vollständigkeits-
+risiko — ein Anwender könnte eine fehlende Buchung in einer langen Datei
+leicht übersehen und sie dem Steuerberater als vollständig übergeben,
+während ein fehlgeschlagener Export mit klarer Fehlermeldung eine bewusste
+Behandlung erzwingt (Buchung korrigieren oder manuell nachbuchen).
+
+`KOST1` je erzeugter Zeile kommt von der jeweils EIGENEN beitragenden
+Buchungszeile (der Zeile auf der "vielen"-Seite, nicht von der
+gegenüberliegenden "einen" Seite) und bleibt leer, wenn diese konkrete
+Zeile keine Kostenstelle hat — auch wenn andere Zeilen derselben Buchung
+eine haben.
+
+Neue Tests in `server/internal/accounting/datev_export_query_test.go`
+(4 Integrationstests, Buchungen direkt über `JournalService` erzeugt,
+analog zum bereits etablierten Muster aus
+`journal_kostenstelle_integration_test.go`, da `JournalService` keinen
+eigenen HTTP-Handler hat): 1:1-Auflösung (inkl. Beweis, dass `Belegfeld1`
+aus `source_id` und `Buchungstext` mangels eigenem Zeilen-Memo auf
+`description` zurückfällt); 1:N-Splittbuchung (2 Soll-Zeilen gegen 1
+Haben-Zeile, inkl. Beweis, dass `Kost1` je Zeile aus deren EIGENER
+Kostenstelle kommt und bei fehlender Zuordnung leer bleibt, selbst wenn
+eine Schwesterzeile derselben Buchung eine hat); N:M-Ablehnung (Fehler-
+meldung nennt sowohl die Buchungs-ID als auch `"Soll: 2, Haben: 2"`);
+Zeitraum-Filterung (3 Buchungen an 3 verschiedenen Tagen, nur die im
+angefragten Zeitraum liegende wird zurückgegeben).
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` auf beiden
+neuen Dateien clean. Docker-Testumgebung mehrfach frisch aufgesetzt;
+`NALA_INTEGRATION=1 go test ./internal/accounting/... -run
+TestDatevExport -v` gegen frische DB grün (4/4 PASS beim ersten,
+sauberen Lauf). **Zwischenzeitlich beobachtete Testfehler beim direkten
+Wiederholen desselben Testlaufs OHNE zwischenzeitlichen DB-Reset** waren
+die bereits mehrfach in dieser Session dokumentierte Fixture-Akkumulation
+zwischen separaten `go test`-Prozessaufrufen (identische Buchungen/Konten-
+Codes/Kostenstellen-Codes kollidierten mit denen des vorherigen Laufs) —
+keine echten Bugs, bestätigt durch den anschließenden, gemäß etablierter
+Verifikationsdisziplin (`docker compose down -v && up -d` unmittelbar vor
+jedem finalen Lauf) sauberen Lauf: vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./internal/accounting/... -v`-Lauf (alle
+Tests des Pakets) gegen frisch aufgesetzte DB: alle PASS, keine
+Regression. Zusätzlich `NALA_INTEGRATION=1 go test ./... -p 1 -count=1`
+(gesamtes Repo, alle Pakete sequenziell) gegen frische DB: durchgehend
+`ok`.
+
+Geänderte/neue Dateien: `server/internal/accounting/datev_export_query.go`
+(neu), `server/internal/accounting/datev_export_query_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### E.3.3.3 HTTP-Wiring `GET /accounting/datev-export`, End-to-End-Integrationstest (letzte Subtask von Task E.3 — Task E.3 und Epic-E.3 damit abgeschlossen)
+
+Dritte und letzte Micro-Subtask von E.3.3. `server/internal/http/v1.go`:
+neue Route-Gruppe `/accounting` mit `GET /datev-export?von=&bis=`
+(Permission `datev.export`), `datevExportSvc :=
+accounting.NewDatevExportService(pg)` instanziiert. Neue Datei
+`server/internal/http/datev_export.go`: `buildDatevExportFile`
+orchestriert (reine Orchestrierung, keine eigene Geschäftslogik):
+Firmenprofil laden → Berater-/Mandantennummer-Pflichtprüfung →
+`resolveDatevFiscalYearStart` (löst den nur als Monat konfigurierten
+Wirtschaftsjahresbeginn auf das zum Exportzeitraum passende konkrete
+Datum auf — jüngstes Vorkommen dieses Monats/1. auf oder vor `von`) →
+`exportSvc.LoadBookingRows` (E.3.3.2) → `accounting.BuildDatevBuchungsstapel`
+(E.3.3.1) → Dateiname `EXTF_Buchungsstapel_<von>_<bis>.csv`.
+
+**Vorher fehlende, notwendige Anwendungscode-Lücke geschlossen**: keiner
+der drei Micro-Subtasks hatte explizit vorgesehen, WIE Berater-/
+Mandantennummer usw. (E.3.2-Migrationsspalten) überhaupt gesetzt werden
+können — ohne das wäre der Endpunkt nie benutzbar gewesen (aufgabe.md-
+Verbot halbfertiger Umsetzungen). `settings.CompanyProfile`/
+`CompanyService.Get` um die fünf E.3.2-Spalten erweitert (rein lesend,
+risikofrei). Für das SETZEN bewusst NICHT den bestehenden
+`PUT /settings/company`-Vollersatz erweitert (dort würde ein Client, der
+die restlichen 18 `CompanyProfile`-Felder nicht kennt, bei einem
+Vollersatz versehentlich Berater-/Mandantennummer zurücksetzen) —
+stattdessen NEUE, enge Funktion `CompanyService.UpdateDatevSettings` +
+eigener Endpunkt `PATCH /settings/company/datev`, exakt analog zur
+`SetKostenstelle`-Entscheidung aus E.2.3.1 (enge Funktion statt
+Erweiterung eines generischen Vollersatz-Pfads). `UpdateDatevSettings`
+validiert `Berater≥1001`/`Mandant>0` (laut DATEV-Spezifikation, siehe
+ADR 0021) und normalisiert SKR/Sachkontenlänge/WJ-Beginn-Monat auf
+sinnvolle Defaults statt leere/Null-Werte zu persistieren.
+
+Neuer `classifyDomainError`-Substring `"kein eindeutiges gegenkonto"`
+ergänzt, damit die N:M-Ablehnung aus E.3.3.2 korrekt als 400 statt 500
+ankommt. Die "Berater/Mandant fehlt"-Fehlermeldung wurde bewusst mit
+"erforderlich" formuliert statt "nicht konfiguriert" — letzteres ist
+bereits ein bestehender, auf 500 gemappter Substring in
+`classifyDomainError`, hier handelt es sich aber um einen klientenseitig
+behebbaren 400-Fall (Administrator muss die Einstellung nachtragen, kein
+Server-/Infrastrukturfehler).
+
+Neuer Test: `server/internal/http/datev_export_integration_test.go`,
+`TestDatevExportEndpointEndToEnd` — Negativfall 1 (kein Berater/Mandant
+konfiguriert → 400), Negativfall 2 (ungültiges Datumsformat → 400), dann
+`PATCH /settings/company/datev` → Buchung direkt über `JournalService`
+(kein HTTP-Handler, analog E.1.3/E.2.3.2/E.3.3.2) → `GET
+/accounting/datev-export` beweist 200, korrekten `Content-Type`
+(`text/csv; charset=windows-1252`) und `Content-Disposition`, und (nach
+Windows-1252-Decodierung des Response-Bodys) korrekte Berater-/
+Mandantennummer im Header sowie Umsatz/Belegfeld1 in der Buchungszeile.
+
+**Echter, bei der finalen `-p 1`-Gesamtrepo-Verifikation gefundener und
+behobener Fund — ein Test-Fixture-Kollisionsfehler, kein
+Produktivcode-Bug**: Der neue End-to-End-Test schlug NUR dann fehl, wenn
+er als Teil eines vollen `go test ./...`-Laufs ausgeführt wurde, nicht
+in Isolation — ein klassisches Symptom für DB-Fixture-Kollision
+zwischen separaten Testpaketen. Ursache gefunden: der Test fragte
+ursprünglich den gesamten Monat `2026-03-01`–`2026-03-31` ab; da
+`datev_export_query_test.go` (E.3.3.2) eigene Testbuchungen exakt auf
+`2026-03-10/11/12/31` für dieselbe Company `"default"` anlegt und
+`testutil.SetupIntegrationEnv` die DB — wie bereits mehrfach in dieser
+Session dokumentiert — NICHT zwischen separaten `go test`-
+Prozessaufrufen zurücksetzt, sammelte der breite Bereich bei einem
+gemeinsamen Lauf Buchungen aus dem `accounting`-Paket mit ein und
+verfälschte die Zeilen-Index-Annahmen der Assertions. **Fund bewusst
+verifiziert, nicht nur vermutet**: der volle Repo-Lauf wurde absichtlich
+OHNE zwischenzeitlichen DB-Reset wiederholt und erzeugte exakt dasselbe
+Kollisionsmuster (u. a. `TestDatevExportLoadBookingRowsResolvesOneToOne`
+selbst schlug dabei fehl — eindeutiger Beweis für DB-Zustand statt
+Code-Fehler). Behoben durch Einschränkung des Testzeitraums auf einen
+einzelnen, mit keinem anderen Fixture kollidierenden Tag (`2026-03-20`
+statt des ganzen Monats) — danach lief der volle Repo-Lauf sauber durch.
+
+Verifiziert: `go build ./...`, `go vet ./...`, `gofmt -l` auf allen
+neuen/geänderten Dateien clean (`v1.go` weiterhin nur das bereits
+mehrfach dokumentierte, reine CRLF-Artefakt). Docker-Testumgebung
+mehrfach frisch aufgesetzt (inkl. der bewussten Kollisions-Reproduktion
+zur Fund-Bestätigung, danach erneut zurückgesetzt); `NALA_INTEGRATION=1
+go test ./internal/http/... -run TestDatevExportEndpointEndToEnd -v`
+gegen frische DB grün. Abschließend EIN sauberer, vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1`-Lauf (gesamtes Repo,
+alle Pakete sequenziell) gegen frisch aufgesetzte DB: durchgehend `ok`
+über alle 17 Pakete mit Tests, keine Regression.
+
+**Damit ist Task E.3 (DATEV-Export, EXTF Format-Version 13) und damit
+Epic E vollständig um seine dritte Task erweitert abgeschlossen.**
+Server liefert nun unter `GET /accounting/datev-export?von=&bis=` einen
+spezifikationskonformen, Windows-1252-kodierten DATEV-EXTF-
+Buchungsstapel für einen beliebigen Zeitraum, sofern Berater-/
+Mandantennummer über `PATCH /settings/company/datev` gepflegt wurden.
+
+Geänderte/neue Dateien: `server/internal/http/v1.go`,
+`server/internal/http/datev_export.go` (neu),
+`server/internal/http/datev_export_integration_test.go` (neu),
+`server/internal/settings/company.go`, `docs/backlog.md`, `docs/state.md`.
+
+## Epic E, Task E.4 — E-Rechnung Ausgang (XRechnung + ZUGFeRD 2.x)
+
+### E.4.1 ADR: Format-Design-Entscheidung
+
+Erste Subtask von Task E.4 (vierte Task von Epic E, nach E.1
+Kostenstellenmodell, E.2 Projektcontrolling, E.3 DATEV-Export).
+`aufgabe.md` §2 fordert fix: "E-Rechnung: Ausgang XRechnung und ZUGFeRD
+2.x, Eingang mindestens Parsen" (Eingang ist E.5, separate Task).
+
+**Fehlende Recherchegrundlage im Repo, geschlossen per Websuche** (analog
+zu E.3.1/ADR 0021): per `WebSearch`/`WebFetch` gegen das offizielle
+KoSIT-Testsuite-Repository `itplr-kosit/xrechnung-testsuite` recherchiert
+(KoSIT ist die für die deutsche XRechnung-Spezifikation zuständige
+Stelle) — zwei vollständige, für denselben Geschäftsvorfall
+deckungsgleiche Beispieldateien geladen und verglichen: eine in
+UBL-2.1-Syntax, eine in CII-Syntax (UN/CEFACT Cross Industry Invoice),
+beide mit `CustomizationID` `urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0`
+(aktuelle Version: XRechnung 3.0) und `ProfileID`
+`urn:fdc:peppol.eu:2017:poacc:billing:01:1.0` (Peppol BIS Billing 3.0).
+
+**Zentrale, aufwandssparende Design-Entscheidung**: XRechnung ist
+syntaxoffen — UBL 2.1 und CII sind laut Recherche gleichwertig
+zugelassene Ausdrucksformen desselben EN-16931-Datenmodells. ZUGFeRD 2.x
+(technisch identisch mit Factur-X) verlangt dagegen zwingend CII
+(eingebettet in ein PDF/A-3). Da beide vom Aufgabentext geforderten
+Formate dasselbe Quelldatenmodell (`invoices_out`) abbilden müssen, wird
+**CII als alleinige zu implementierende XML-Syntax** gewählt — sie deckt
+XRechnung (als eigenständige `.xml`-Datei, laut Recherche ein
+gleichwertiger, offiziell unterstützter Weg) UND ZUGFeRD (dieselbe
+CII-Datei, in die bestehende Rechnungs-PDF eingebettet) mit EINER
+Mapping-/Serialisierungslogik ab, statt UBL und CII parallel zu pflegen.
+
+**Werkzeuggrenze recherchiert und bewusst offengelegt** (kein
+verschwiegener Workaround): `server/internal/pdfgen` nutzt
+`github.com/jung-kurt/gofpdf`. Der Quellcode
+(`gofpdf@v1.16.2/attachments.go`) bestätigt eingebettete Dateianhänge
+über `Fpdf.SetAttachments` — das Grundwerkzeug für ZUGFeRD ist vorhanden.
+Was fehlt: `/AFRelationship`, XMP-Metadaten, `/OutputIntent` mit
+ICC-Profil und die übrigen ISO-19005-3(PDF/A-3)-Konformitätsanforderungen
+— echte, formale PDF/A-3-Zertifizierung ist mit der aktuellen
+PDF-Erzeugung NICHT erreichbar, ohne die PDF-Engine grundlegend zu
+ersetzen (out of scope). Ergebnis: PDF mit eingebetteter, inhaltlich
+vollständiger CII-XML (`factur-x.xml`), von den meisten
+E-Rechnungs-Extraktionswerkzeugen lesbar, aber ohne formale
+PDF/A-3-Zertifizierung — als offene Frage in `docs/open-questions.md`
+vermerkt.
+
+**Drei Datenlücken im bestehenden Modell identifiziert und entschieden**:
+1. **BuyerReference** (EN-16931-Pflichtfeld BT-10, Leitweg-ID bei B2G
+   bzw. Kundenreferenz bei B2B) existiert in keiner Tabelle — neue
+   nullable Spalte `invoices_out.buyer_reference`, Pflicht-Prüfung erst
+   beim tatsächlichen E-Rechnungs-Export (analog zur
+   Beraternummer/Mandantennummer-Konvention aus E.3: nicht bei
+   Rechnungserstellung erzwingen, das würde alle bisherigen
+   Erstellungspfade brechen).
+2. **Käuferadresse**: überraschender, bestätigter Bestand — der
+   bestehende `GET /invoices-out/{id}/pdf`-Handler übergibt an
+   `pdfgen.InvoiceOutData` aktuell NUR `ContactName`/`ContactID`, KEINE
+   Adressfelder (die heutige PDF-Rechnung druckt gar keine Käuferadresse).
+   Für CII ist die Käuferadresse (BG-8) Pflicht — neue Abfrage gegen
+   `contact_addresses` nötig (Präferenz `art='billing'` > `is_primary`
+   > irgendeine vorhandene; keine Adresse vorhanden → Export wird mit
+   klarer Fehlermeldung abgelehnt, keine erfundene Adresse). Bestehende
+   PDF-Logik bleibt unverändert (nicht Teil dieser Task).
+3. **Mengeneinheit je Rechnungsposition**: `invoice_out_items` hat kein
+   `unit`-Feld (anders als `materials`/`quote_items`). Fester
+   UN/ECE-Rec.-20-Fallback-Code `"C62"` ("Stück/nicht näher spezifizierte
+   Einheit") für alle Positionen — dokumentierte Vereinfachung, ein
+   echtes Einheiten-Tracking bei Rechnungspositionen wäre ein
+   eigenständiges, größeres Feature.
+
+**Weitere Entscheidungen**: Steuerkategorie-Code (UNTDID 5305) aus den
+bestehenden `tax_codes` abgeleitet, keine neue Stammdatenpflege:
+`rate>0` → `"S"` (Standard rate); `rate=0 AND reverse_charge` → `"AE"`
+(VAT Reverse Charge); `rate=0 AND NOT reverse_charge` → `"E"` (Exempt).
+Rechnungstyp-Code (UNTDID 1001, BT-3) aus `invoices_out.invoice_type`
+(B.4.2): `'abschlagsrechnung'` → `386` (Prepayment invoice, exakte
+semantische Entsprechung), sonst `380` (Commercial invoice). Export nur
+für `status IN ('booked','paid')` — analog zur bereits etablierten
+GoBD-Festschreibung aus Epic 0.3, ein `draft` darf nicht als
+rechtsverbindliche E-Rechnung das Haus verlassen. `storniert`e Rechnungen
+werden ausgeschlossen (eine echte Rechnungskorrektur-E-Rechnung, UNTDID-
+1001-Typ `381` Credit note, ist explizit out of scope für diese Task).
+
+**Neue Endpunkte** (geplant für E.4.3): `GET /invoices-out/{id}/xrechnung`
+(`application/xml`) und `GET /invoices-out/{id}/zugferd`
+(`application/pdf`), beide mit der bereits bestehenden
+`invoices_out.read`-Permission — kein neues Recht nötig, der Charakter
+entspricht dem bereits vorhandenen `/pdf`-Export derselben Rechnung
+(anders als beim DATEV-Ledger-Export in E.3, der eine neue, sensiblere
+Fähigkeit war).
+
+Keine Schreiblogik, keine Code-Änderung in dieser Subtask (reine ADR-/
+Rechercharbeit) — `invoices_out`/`invoice_out_items`/`contacts`/
+`contact_addresses`/`company_profiles` komplett unangetastet.
+
+Geänderte/neue Dateien: `docs/adr/0022-e-rechnung-ausgang.md` (neu),
+`docs/open-questions.md`, `docs/backlog.md`, `docs/state.md`.
+
+### E.4.2 Migration: `invoices_out.buyer_reference`
+
+Zweite Subtask von Task E.4 (ADR 0022). Neue Datei
+`server/internal/migrate/migrations/084_invoices_out_buyer_reference.sql` —
+additive Migration mit genau EINER neuen Spalte: `invoices_out.buyer_reference`
+(nullable `text`) für das EN-16931-Pflichtfeld BT-10 "BuyerReference"
+(Leitweg-ID bei B2G-Rechnungen, vom Kunden geforderte Bestell-/Kunden-
+referenz bei B2B), plus `COMMENT ON COLUMN` mit Verweis auf ADR 0022.
+
+Vier bewusste, im Migrationskommentar selbst begründete Entscheidungen:
+
+1. **Spalte auf `invoices_out`, nicht auf `contacts`** — eine Leitweg-ID
+   bzw. Kundenreferenz gehört je Rechnung/Vorgang zum Beleg und ist keine
+   stabile Stammdaten-Eigenschaft des Kontakts (so bereits in ADR 0022
+   entschieden, hier nur umgesetzt).
+2. **Nullable und OHNE Default** — die Pflicht-Prüfung erfolgt erst beim
+   tatsächlichen E-Rechnungs-Export (E.4.3) mit klarer Fehlermeldung. Exakt
+   die in E.3.2 für `datev_berater_nr`/`datev_mandant_nr` etablierte
+   Konvention: ein `NOT NULL` hier würde ALLE bestehenden Rechnungs-
+   Erstellungspfade brechen und eine rückwirkende Datenmigration für
+   Bestandsrechnungen erfordern; ein Dummy-Default würde eine ungültige
+   E-Rechnung mit erfundener Referenz erzeugen statt den fehlenden Wert
+   sichtbar zu machen.
+3. **Kein CHECK-Constraint** — anders als bei `invoice_type`
+   (`074_invoices_out_invoice_type.sql`, feste Werteliste) ist der
+   Wertebereich hier eine extern vorgegebene Freitext-Kennung ohne
+   projektweit erzwingbares Format. Eine Längen-/Formatprüfung für den
+   Export gehört in den Anwendungscode (E.4.3).
+4. **Kein Index** — die Spalte wird ausschließlich zusammen mit der
+   ohnehin über den Primärschlüssel geladenen Rechnung gelesen
+   (`GET /invoices-out/{id}/xrechnung` bzw. `/zugferd`), nie als Filter-
+   oder Sortierkriterium.
+
+Keine neue Permission: beide geplanten Export-Endpunkte nutzen laut ADR 0022
+die bereits bestehende `invoices_out.read` — anders als beim DATEV-Ledger-
+Export (E.3.2), der eine eigene, sensiblere Fähigkeit war.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean. Docker Desktop war
+zu Sessionbeginn nicht gestartet (`docker compose` scheiterte am fehlenden
+Named Pipe) und musste erst hochgefahren werden — danach Testumgebung frisch
+aufgesetzt (`down -v && up -d`, auf `pg_isready` gewartet). Vollständige
+Migrationskette 001-084 lief fehlerfrei durch, `084_invoices_out_buyer_reference.sql`
+erscheint als letzte Datei im Migrationslog und als Eintrag in
+`schema_migrations`. `\d invoices_out` und `information_schema.columns`
+bestätigen Typ `text`, `is_nullable=YES`, kein Default; `col_description`
+bestätigt den gesetzten Spaltenkommentar.
+
+**Verhalten direkt per SQL bewiesen statt nur die DDL gelesen**: Wert-
+Rundreise mit realistischer Leitweg-ID (`991-12345-67`); Unicode-
+Freitextreferenz (`Bestellnr. Müller & Söhne / 2026-Ä-77`) wird akzeptiert
+und beweist, dass weder CHECK noch Längenbegrenzung greifen; eine
+Rechnungsanlage OHNE Referenz bleibt möglich (`buyer_reference IS NULL`),
+Bestandsrechnungen bekommen korrekt NULL statt eines Defaults; Idempotenz
+durch zweites Ausführen des `ADD COLUMN IF NOT EXISTS` (Postgres meldet
+`NOTICE ... skipping`, Bestandswert unverändert). Beim Anlegen der
+Prüf-Fixtures nebenbei bestätigt: `contacts.typ` ist NOT NULL (erster
+Insert-Versuch ohne `typ` wurde korrekt abgelehnt) — kein Fund, nur
+Fixture-Korrektur.
+
+**DOWN-Pfad tatsächlich ausgeführt, nicht nur dokumentiert**:
+`ALTER TABLE invoices_out DROP COLUMN IF EXISTS buyer_reference` entfernt die
+Spalte; beide Testrechnungen überleben inkl. Nummer, Status und Betrag
+unbeschädigt (die Spalte wird von keiner anderen Tabelle referenziert und von
+keinem Constraint verwendet); ein anschließendes erneutes UP bringt die Spalte
+zurück, die Referenzwerte sind erwartungsgemäß weg — genau das im
+Migrationskommentar als DATENVERLUSTRISIKO dokumentierte Verhalten, damit
+belegt statt behauptet.
+
+Danach wurde die DB vollständig zurückgesetzt (die manuellen Prüf-Fixtures
+`E42-TEST`/`E42-TEST-2` und der Testkontakt sollten keinen Testlauf
+verfälschen — die aus E.3.3.3 bekannte Fixture-Akkumulation) und ein
+vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./... -p 1 -count=1`-
+Lauf (gesamtes Repo, alle Pakete sequenziell) gegen frisch aufgesetzte DB
+ausgeführt: durchgehend `ok` (u. a. `ok nalaerp3/internal/http 28.352s`,
+`ok nalaerp3/internal/migrate 1.356s`), keine Regression.
+
+Kein Anwendungscode in dieser Subtask — `invoices_out`-Service, HTTP-Layer
+und PDF-Renderung komplett unangetastet; ein Schreibpfad für
+`buyer_reference` entsteht erst in E.4.3.
+
+Geänderte/neue Dateien:
+`server/internal/migrate/migrations/084_invoices_out_buyer_reference.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
+
 ## Offene Punkte
 
-Siehe `docs/open-questions.md` — Detailfragen zu Mandanten-Scoping-Design
-(0.2.1.1) und DATEV-Zielsystem (E.3) sind vorgemerkt, aber keine Blocker für
-den aktuellen Arbeitsbeginn.
+Siehe `docs/open-questions.md` — Detailfrage zu Mandanten-Scoping-Design
+(0.2.1.1) ist vorgemerkt, aber kein Blocker. DATEV-Zielsystem (E.3) ist seit
+E.3.1 (ADR 0021, 2026-09-04) beantwortet; offen ist dort nur noch eine
+Detailfrage zum Wirtschaftsjahresbeginn-Tag (E.3.1), ebenfalls kein Blocker.
 
 Bei der Verifikation von 0.1.1.1 (`go test ./...`) wurde ein **vorbestehender,
 unabhängiger Testfehler** in `server/internal/purchasing` gefunden (Panic durch

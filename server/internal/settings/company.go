@@ -29,6 +29,15 @@ type CompanyProfile struct {
 	IBAN          string    `json:"iban"`
 	BIC           string    `json:"bic"`
 	UpdatedAt     time.Time `json:"updated_at"`
+
+	// DATEV-Export (ADR 0021, Backlog E.3). DatevBeraterNr/DatevMandantNr
+	// bleiben nullable - der Export prueft explizit auf deren Vorhandensein
+	// statt einen Dummy-Wert zu exportieren.
+	DatevBeraterNr            *int   `json:"datev_berater_nr"`
+	DatevMandantNr            *int   `json:"datev_mandant_nr"`
+	DatevSKR                  string `json:"datev_skr"`
+	DatevSachkontenlaenge     int    `json:"datev_sachkontenlaenge"`
+	DatevFiscalYearStartMonth int    `json:"datev_fiscal_year_start_month"`
 }
 
 type CompanyBranch struct {
@@ -55,13 +64,15 @@ func (s *CompanyService) Get(ctx context.Context, companyID string) (*CompanyPro
 	var out CompanyProfile
 	err := s.pg.QueryRow(ctx, `
         SELECT id, name, legal_form, branch_name, street, postal_code, city, country, email, phone, website,
-               invoice_email, tax_no, vat_id, bank_name, account_holder, iban, bic, updated_at
+               invoice_email, tax_no, vat_id, bank_name, account_holder, iban, bic, updated_at,
+               datev_berater_nr, datev_mandant_nr, datev_skr, datev_sachkontenlaenge, datev_fiscal_year_start_month
         FROM company_profiles
         WHERE id=$1
     `, companyID).Scan(
 		&out.ID, &out.Name, &out.LegalForm, &out.BranchName, &out.Street, &out.PostalCode, &out.City, &out.Country,
 		&out.Email, &out.Phone, &out.Website, &out.InvoiceEmail, &out.TaxNo, &out.VatID, &out.BankName,
 		&out.AccountHolder, &out.IBAN, &out.BIC, &out.UpdatedAt,
+		&out.DatevBeraterNr, &out.DatevMandantNr, &out.DatevSKR, &out.DatevSachkontenlaenge, &out.DatevFiscalYearStartMonth,
 	)
 	if err != nil {
 		return nil, err
@@ -124,6 +135,54 @@ func (s *CompanyService) Upsert(ctx context.Context, in CompanyProfile, companyI
     `, companyID, in.Name, in.LegalForm, in.BranchName, in.Street, in.PostalCode, in.City, in.Country, in.Email, in.Phone,
 		in.Website, in.InvoiceEmail, in.TaxNo, in.VatID, in.BankName, in.AccountHolder, in.IBAN, in.BIC)
 	return err
+}
+
+// DatevSettingsInput sind die fuenf DATEV-Exportkonfigurationsfelder
+// (ADR 0021, Backlog E.3). Eigene, enge Update-Funktion statt Erweiterung
+// des generischen Upsert-Vollersatzes (analog zur SetKostenstelle-
+// Entscheidung aus E.2.3.1): ein Client, der die restlichen 18
+// CompanyProfile-Felder nicht kennt, wuerde bei einem Vollersatz sonst
+// versehentlich Berater-/Mandantennummer o.ae. zuruecksetzen.
+type DatevSettingsInput struct {
+	BeraterNr            *int   `json:"datev_berater_nr"`
+	MandantNr            *int   `json:"datev_mandant_nr"`
+	SKR                  string `json:"datev_skr"`
+	Sachkontenlaenge     int    `json:"datev_sachkontenlaenge"`
+	FiscalYearStartMonth int    `json:"datev_fiscal_year_start_month"`
+}
+
+func (s *CompanyService) UpdateDatevSettings(ctx context.Context, in DatevSettingsInput, companyID string) (*CompanyProfile, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if in.BeraterNr != nil && *in.BeraterNr < 1001 {
+		return nil, errors.New("DATEV-Beraternummer muss mindestens 1001 sein")
+	}
+	if in.MandantNr != nil && *in.MandantNr <= 0 {
+		return nil, errors.New("DATEV-Mandantennummer muss größer als 0 sein")
+	}
+	skr := trim(in.SKR)
+	if skr == "" {
+		skr = "04"
+	}
+	sachkontenlaenge := in.Sachkontenlaenge
+	if sachkontenlaenge <= 0 {
+		sachkontenlaenge = 4
+	}
+	fiscalMonth := in.FiscalYearStartMonth
+	if fiscalMonth < 1 || fiscalMonth > 12 {
+		fiscalMonth = 1
+	}
+
+	_, err := s.pg.Exec(ctx, `
+        UPDATE company_profiles
+        SET datev_berater_nr=$2, datev_mandant_nr=$3, datev_skr=$4, datev_sachkontenlaenge=$5, datev_fiscal_year_start_month=$6, updated_at=now()
+        WHERE id=$1
+    `, companyID, in.BeraterNr, in.MandantNr, skr, sachkontenlaenge, fiscalMonth)
+	if err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, companyID)
 }
 
 func normalizeCountry(s string) string {

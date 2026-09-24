@@ -45,8 +45,35 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   ansteht — kein Blocker für den Start von Epic 0.1.
 - **E.3/E.4 (DATEV/E-Rechnung)**: Keine Angabe, ob ein konkretes
   Buchhaltungssystem als DATEV-Exportziel vorgegeben ist (Format-Version 13
-  ist in aufgabe.md §2 fix vorgegeben) — wird bei Erreichen von Epic E erneut
-  geprüft.
+  ist in aufgabe.md §2 fix vorgegeben). Status: **beantwortet** bei Erreichen
+  von E.3 (2026-09-04) — EXTF ("Extern-Format") ist laut DATEV-Definition
+  explizit für den Import in JEDES DATEV-kompatible System gedacht, ein
+  konkretes Zielsystem ist keine Voraussetzung. → `docs/adr/0021-datev-export.md`.
+- **E.3.1 (DATEV-Wirtschaftsjahresbeginn-Tag)**: `company_profiles.datev_fiscal_year_start_month`
+  (ADR 0021) bildet nur den Monat des Wirtschaftsjahresbeginns ab, der Tag
+  wird fix als der 1. angenommen. Ein abweichender Beginn mitten im Monat
+  (in der deutschen Praxis extrem selten) kann damit nicht abgebildet werden.
+  Status: **offen**, kein Blocker für E.3.2/E.3.3 (Default deckt den
+  Standardfall Kalenderjahr ab), aber vor einer produktiven Nutzung mit
+  einem Mandanten mit tatsächlich abweichendem Wirtschaftsjahr zu klären.
+- **E.4.1 (ZUGFeRD/PDF-A-3-Konformität)**: `docs/adr/0022-e-rechnung-ausgang.md`
+  legt fest, dass der ZUGFeRD-Export eine PDF mit eingebetteter,
+  inhaltlich vollständiger CII-XML (`factur-x.xml`) liefert, OHNE formale
+  ISO-19005-3(PDF/A-3)-Zertifizierungskonformität (kein XMP-Metadaten-
+  Stream, kein `/OutputIntent` mit eingebettetem ICC-Profil) — die
+  bestehende PDF-Erzeugung (`github.com/jung-kurt/gofpdf`) bietet dafür
+  keine native Unterstützung, eine vollständige PDF/A-3-Konformität würde
+  einen Wechsel der PDF-Engine erfordern. Status: **offen**, kein Blocker
+  für E.4.2/E.4.3 (der Anhang ist inhaltlich vollständig und von den
+  meisten E-Rechnungs-Extraktionswerkzeugen lesbar), aber vor einer
+  Nutzung mit Empfängern zu klären, die strikte PDF/A-3-Validierung
+  voraussetzen (z. B. manche öffentliche Auftraggeber-Portale).
+- **E.4.1 (Mengeneinheit je Rechnungsposition)**: `invoice_out_items` hat
+  kein `unit`-Feld; der E-Rechnungs-Export verwendet fest den
+  UN/ECE-Rec.-20-Fallback-Code `"C62"` ("Stück/nicht näher spezifizierte
+  Einheit") für alle Positionen. Status: **offen**, kein Blocker für
+  E.4.2/E.4.3, aber vor einer Erweiterung um echtes Einheiten-Tracking
+  bei Rechnungspositionen (eigenständiges, größeres Feature) zu klären.
 - **0.1.3.1 (hr: Default-Wert für `Employee.Active` bei Anlage)**: Beim Beheben
   des No-Op-Bugs (`server/internal/hr/service.go:98-100`) aufgefallen: neue
   Mitarbeitende erhalten `Active=false`, sofern der Aufrufer es nicht explizit
