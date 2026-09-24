@@ -7,22 +7,20 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.6** (Übernahme einer geparsten
-> Eingangs-E-Rechnung nach `invoices_in` über
-> `POST /invoices-in/from-e-invoice`), siehe Abschnitt "Epic E, Task E.6"
-> weiter unten. Der E-Rechnungs-Weg ist damit durchgängig: Ausgang
-> (XRechnung/ZUGFeRD), Eingang (CII/UBL/ZUGFeRD-PDF), Vorschau mit
-> Lieferantenvorschlag und Übernahme. **E.1-E.6 sind abgeschlossen**,
-> ebenso Epic 0 (0.1-0.5).
-> **Nächste Subtask: E.8** — strukturierte Ablage der beim Eingang
-> geparsten Steuer- und Summenangaben: `invoice_in_items` hat weder
-> Steuerkennzeichen noch Mengeneinheit, `invoices_in` gar keine
-> Summenfelder; E.6 rettet diese Angaben derzeit nur als Klartext in die
-> Notiz. Umfang (Migration + Service + Übernahme + Tests) vor dem Start
-> gegen §6.3 prüfen und ggf. zerlegen. Danach offen: **E.7**
-> (pdfcpu-Workaround bei Versionsanhebung, kleine Wartungsaufgabe) sowie
-> die Epics F (HR), G (Fuhrpark), H (Produktion) und I (KI-gestützte
-> Angebotserzeugung aus GAEB — das erklärte Endziel laut `aufgabe.md` §1).
+> Zuletzt abgeschlossen: **E.8.1** (Migration 085: Summenfelder und
+> Fälligkeit auf `invoices_in`, Steuerkategorie/-satz/Einheit auf
+> `invoice_in_items`, neue Tabelle `invoice_in_taxes`), siehe Abschnitt
+> "Epic E, Task E.8" weiter unten. E.1-E.6 sind abgeschlossen, ebenso
+> Epic 0 (0.1-0.5).
+> **Nächste Subtask: E.8.2** — Service-Ebene: `InvoiceIn`/`InvoiceInItem`
+> um die neuen Felder erweitern, neuen Typ für die Steueraufschlüsselung
+> ergänzen, `CreateInvoiceIn` schreibt sie, `GetInvoiceIn`/
+> `ListInvoicesIn` lesen sie, plus Tests. **Achtung**: `tax_rate` ist in
+> den neuen Spalten PROZENT (`19.00`), während `tax_codes.rate` ein
+> Bruchteil ist (`0.1900`) — beides existiert jetzt nebeneinander.
+> Danach **E.8.3** (Übernahme füllt die Felder, Notiz-Notlösung aus E.6
+> ablösen — ersetzen, nicht ergänzen, sonst steht dieselbe Information
+> doppelt), **E.7** (pdfcpu-Wartungspunkt) und die Epics F, G, H, I.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9496,6 +9494,100 @@ Geänderte/neue Dateien:
 `server/internal/http/einvoice_takeover_integration_test.go` (neu),
 `server/internal/http/einvoice_inbound.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
+
+## Epic E, Task E.8 — Steuer- und Summenangaben eingehender E-Rechnungen
+
+### E.8 Zerlegung in Subtasks
+
+Der Umfang (Migration über zwei Tabellen plus eine neue Tabelle, dann
+Service-Structs und Lesepfade, dann die Übernahme samt Ablösung der
+Notiz-Notlösung aus E.6) überschreitet §6.3 und wurde vor der ersten
+Codezeile zerlegt:
+
+- **E.8.1** Migration (additiv, reversibel)
+- **E.8.2** Service: Structs und `CreateInvoiceIn`/`GetInvoiceIn`/
+  `ListInvoicesIn` um die neuen Felder erweitern
+- **E.8.3** Übernahme: `TakeOverEInvoice` füllt die neuen Felder, die
+  Notiz-Notlösung aus E.6 wird abgelöst
+
+### E.8.1 Migration: Summen, Steuerangaben, Steueraufschlüsselung
+
+Neue Datei
+`server/internal/migrate/migrations/085_invoices_in_tax_and_totals.sql`
+(nächste freie Nummer nach 084), drei Teile:
+
+1. **Kopfsummen und Fälligkeit** auf `invoices_in`: `net_amount`,
+   `tax_amount`, `gross_amount` (alle `numeric(18,4) NOT NULL DEFAULT 0`)
+   und `due_date` (nullable `date`). Die Betragsspalten bekommen einen
+   Default, weil bestehende, manuell erfasste Eingangsrechnungen diese
+   Angaben schlicht nicht haben und `0` dort die ehrliche Aussage "nicht
+   erfasst" ist; `due_date` bleibt nullable, weil ein Default ein
+   erfundenes Datum wäre.
+2. **Steuerangaben und Mengeneinheit** auf `invoice_in_items`:
+   `tax_category`, `tax_rate` (in PROZENT), `unit_code`.
+3. **Neue Tabelle `invoice_in_taxes`** für die Steueraufschlüsselung auf
+   Belegebene (EN 16931 BG-23) mit `ON DELETE CASCADE`.
+
+**Die wichtigste Entscheidung betrifft die Semantik**: gespeichert wird,
+was der LIEFERANT ausweist. `invoices_in` bekommt eigene Summenspalten,
+statt die Summen aus den Positionen abzuleiten — eine von den Positionen
+abweichende Summe ist eine Tatsache der Rechnung und darf nicht
+wegrationalisiert werden (ADR 0023: nichts nachrechnen, nichts
+korrigieren). Per SQL belegt: eine Rechnung mit netto 100, Steuer 19 und
+brutto 999,99 wird anstandslos gespeichert.
+
+**Bewusst KEIN Fremdschlüssel auf `tax_codes` und KEIN CHECK auf eine
+Werteliste** bei `tax_category`: der Wert ist der UNTDID-5305-Code des
+Absenders (S/AE/E/…), nicht unser internes Steuerkennzeichen. Ein Mapping
+auf unsere Stammdaten wäre ein Rateschritt, und ein Fremdschlüssel oder
+CHECK würde jede Rechnung unannehmbar machen, deren — völlig zulässige —
+Kategorie wir nicht vorgesehen haben. UNTDID 5305 kennt mehr Kategorien
+als die drei, die unser eigener Ausgang schreibt (ADR 0022). Ebenfalls
+per SQL belegt: eine Position mit der bei uns nirgends vorgesehenen
+Kategorie `Z` wird akzeptiert.
+
+**Achtung bei `tax_rate`**: in PROZENT (`19.00`), anders als
+`tax_codes.rate`, das ein Bruchteil ist (`0.1900`). Als Spaltenkommentar
+festgehalten, weil beides im selben Projekt nebeneinander existiert.
+
+Eigene Tabelle für die Aufschlüsselung statt weiterer Spalten, weil eine
+Rechnung mehrere Steuersatz-Gruppen haben kann (19 % und 7 %) — das ist
+eine 1:n-Beziehung. Keine neue Permission nötig: die Felder gehören zu
+Eingangsrechnungen und sind von `invoices_in.read`/`write` abgedeckt.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean. Docker-Umgebung
+frisch aufgesetzt, vollständige Migrationskette 001-085 fehlerfrei
+durchgelaufen (`085_…` als letzter Eintrag in `schema_migrations`);
+`information_schema` und `\d invoice_in_taxes` bestätigen Typen,
+Nullability, Defaults, Index und den CASCADE-Fremdschlüssel.
+
+**Verhalten per SQL bewiesen statt nur die DDL gelesen**: eine
+Bestandsrechnung ohne die neuen Angaben bleibt anlegbar (Defaults
+greifen, `due_date` bleibt NULL); eine in sich abweichende Summe wird
+gespeichert statt erzwungen; eine Position trägt Kategorie/Satz/Einheit;
+eine nicht vorgesehene Kategorie wird akzeptiert; zwei Steuergruppen
+liegen nebeneinander; und das Löschen der Rechnung räumt die
+Aufschlüsselung per CASCADE mit ab.
+
+**DOWN-Pfad tatsächlich ausgeführt, nicht nur dokumentiert**: Tabelle
+gedroppt und alle sieben Spalten entfernt — die Bestandsrechnung
+überlebt mit Nummer, Lieferant und Status unbeschädigt; anschließendes
+erneutes UP bringt die Spalten zurück (Idempotenz über
+`ADD COLUMN IF NOT EXISTS` bestätigt).
+
+Danach DB vollständig zurückgesetzt (die manuellen Prüf-Fixtures sollten
+keinen Testlauf verfälschen) und vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1`-Lauf gegen frisch
+aufgesetzte DB: durchgehend `ok` (u. a. `ok nalaerp3/internal/http
+29.501s`), keine Regression.
+
+Kein Anwendungscode in dieser Subtask — `ap.go`, die Übernahme aus E.6
+und der HTTP-Layer bleiben unangetastet; die neuen Felder werden erst in
+E.8.2/E.8.3 gefüllt und gelesen.
+
+Geänderte/neue Dateien:
+`server/internal/migrate/migrations/085_invoices_in_tax_and_totals.sql`
+(neu), `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
