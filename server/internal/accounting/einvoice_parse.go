@@ -28,9 +28,12 @@ import (
 // Namensraeume der beiden EN-16931-Syntaxen. Die UBL-Konstanten werden
 // bereits hier definiert, weil die Formaterkennung (E.5.3) sie braucht.
 const (
+	// Nur die Wurzel-Namensraeume stehen als Konstanten: sie werden fuer
+	// die Formaterkennung im Code gebraucht. Die uebrigen Namensraeume
+	// (ram/udt bzw. cbc/cac) erscheinen ausschliesslich in Struct-Tags,
+	// und Struct-Tags koennen keine Konstanten referenzieren - eine
+	// Konstante dafuer waere toter Code.
 	nsCIIRSM = "urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"
-	nsCIIRAM = "urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"
-	nsCIIUDT = "urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100"
 
 	nsUBLInvoice = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
 )

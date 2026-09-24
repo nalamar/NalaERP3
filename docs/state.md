@@ -7,23 +7,22 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.5.2** (gemeinsames Zielmodell
-> `ParsedEInvoice` + CII-Eingangsparser, DB-los, namensraumbasiert), siehe
-> Abschnitt "Epic E, Task E.5" weiter unten. Epic 0 (0.1-0.5) und
-> E.1/E.2/E.3/E.4 sind vollständig abgeschlossen.
-> **Nächste Subtask: E.5.3** — UBL-Eingangsparser (DB-los) auf DASSELBE
-> Zielmodell `ParsedEInvoice`, plus Formaterkennung über den
-> Wurzelelement-Namensraum (eine Dispatch-Funktion, die CII und UBL
-> unterscheidet und an den jeweiligen Parser weiterreicht). Die
-> UBL-Struktur ist komplett anders als CII: Wurzel `ubl:Invoice`
-> (`urn:oasis:names:specification:ubl:schema:xsd:Invoice-2`), flache
-> `cbc:`-Felder (`cbc:ID`, `cbc:IssueDate` im Format `YYYY-MM-DD` — NICHT
-> das CII-Format 102 —, `cbc:InvoiceTypeCode`, `cbc:DocumentCurrencyCode`,
-> `cbc:BuyerReference`) und `cac:`-Gruppen
-> (`cac:AccountingSupplierParty`, `cac:LegalMonetaryTotal` mit
-> `cbc:PayableAmount`). Die Namensraumkonstante `nsUBLInvoice` liegt bereits
-> in `einvoice_parse.go`, ebenso `eInvoicePlausibilityHinweise`, das
-> syntaxunabhängig wiederverwendet werden kann.
+> Zuletzt abgeschlossen: **E.5.3** (UBL-Eingangsparser + Formaterkennung
+> `ParseEInvoiceXML`), siehe Abschnitt "Epic E, Task E.5" weiter unten.
+> Beide EN-16931-Syntaxen werden damit gelesen und liefern nachweislich
+> dasselbe Zielmodell. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4 sind
+> vollständig abgeschlossen.
+> **Nächste Subtask: E.5.4** — ZUGFeRD-PDF: Abhängigkeit
+> `github.com/pdfcpu/pdfcpu` (Apache-2.0) aufnehmen und begründen,
+> eingebetteten Anhang aus der PDF extrahieren und an
+> `ParseEInvoiceXML` übergeben, plus Tests. **Achtung**: die in E.5.1
+> verifizierte Signatur von `ExtractAttachmentsRaw` stammt aus `master` —
+> vor dem Schreiben von Code gegen die TATSÄCHLICH gepinnte Version
+> prüfen, die Signatur hat sich zwischen Versionen geändert. Der
+> Anhang-Extraktor aus `zugferd_export_integration_test.go` ist ein
+> Testhelfer für unsere eigenen gofpdf-PDFs und ausdrücklich NICHT
+> wiederverwendbar (ADR 0023). Offene Detailfrage zum Anhang-Dateinamen
+> steht in `docs/open-questions.md`.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9121,6 +9120,107 @@ Geänderte/neue Dateien:
 `server/internal/accounting/einvoice_parse.go` (neu),
 `server/internal/accounting/einvoice_parse_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### E.5.3 UBL-Eingangsparser + Formaterkennung
+
+Neue Datei `server/internal/accounting/einvoice_parse_ubl.go`:
+`ParseUBLInvoice` liest eine Rechnung in UBL-2.1-Syntax auf DASSELBE
+Zielmodell `ParsedEInvoice` wie der CII-Parser, plus `ParseEInvoiceXML`
+als Formaterkennung. Wie in E.5.2 vollständig DB-los und
+namensraumbasiert.
+
+**Struktur gegen die Primärquelle geprüft, Element für Element.** Die
+KoSIT-Beispiele 01.01a/01.04a/01.21a/02.01a/04.01a in UBL-Syntax wurden
+im Rohtext geladen. Damit ist jede übernommene Elementposition belegt
+statt geraten — insbesondere die vier, die aus der CII-Erfahrung heraus
+falsch geraten worden wären:
+
+- `cbc:IssueDate`/`cbc:DueDate` sind **xs:date (YYYY-MM-DD)**, nicht das
+  CII-Format 102 (CCYYMMDD). Eigene `parseUBLDate`; `parseCIIDate` wäre
+  hier schlicht falsch.
+- Die Steuernummer steht nicht an einem `schemeID`-Attribut wie in CII,
+  sondern ergibt sich aus `cac:PartyTaxScheme/cac:TaxScheme/cbc:ID`:
+  `VAT` → USt-IdNr., `FC` → Steuernummer.
+- Der Gesamtsteuerbetrag steht im `cbc:TaxAmount` des `cac:TaxTotal`, die
+  Aufschlüsselung in dessen `cac:TaxSubtotal`-Elementen; die
+  Befreiungsbegründung heißt `cbc:TaxExemptionReason` (verifiziert in
+  01.21a).
+- `cbc:PrepaidAmount` in `cac:LegalMonetaryTotal` (verifiziert in
+  04.01a) — in den gängigen Beispielen nicht enthalten, deshalb gezielt
+  per Code-Suche über das Repository belegt, statt es aus der
+  UBL-Schemakenntnis zu behaupten.
+
+**Entscheidung zum Namen**: `cac:PartyLegalEntity/cbc:RegistrationName`
+(eingetragener Name, BT-27) hat Vorrang vor `cac:PartyName/cbc:Name`
+(Handelsname, BT-28) — für die Lieferantenzuordnung in E.5.5 ist der
+eingetragene Name der belastbarere Wert. E-Mail: `cac:Contact/
+cbc:ElectronicMail`, ersatzweise `cbc:EndpointID` mit `schemeID="EM"`.
+
+**Unbekannte TaxScheme-Kennungen werden ignoriert, nicht geraten.** Die
+KoSIT-Beispiele enthalten an dieser Stelle real den Platzhalter `???` —
+eine solche Angabe als Steuernummer durchzureichen wäre eine erfundene
+Stammdatenangabe. Eigener Test dafür.
+
+**Formaterkennung** `ParseEInvoiceXML`: liest nur das Wurzelelement und
+gibt anhand von dessen Namensraum an `ParseCIIInvoice` oder
+`ParseUBLInvoice` ab; alles andere wird mit einer Meldung abgelehnt, die
+beide unterstützten Formate benennt. Bewusst nicht anhand von Dateiname
+oder Endung (ADR 0023): beim Eingang bestimmt der Absender beides.
+
+**Wiederverwendung statt Duplikat**: `eInvoicePlausibilityHinweise` und
+`parseEInvoiceAmount` aus E.5.2 werden unverändert mitgenutzt — die
+Plausibilitätsprüfung ist syntaxunabhängig und existiert genau einmal.
+
+**Toter Code entfernt** (beim Aufräumen der eigenen Arbeit bemerkt): die
+Konstanten `nsCIIRAM`, `nsCIIUDT`, `nsUBLCBC`, `nsUBLCAC` waren nirgends
+referenziert. Go-Struct-Tags können keine Konstanten auflösen, die
+Namensraum-URIs stehen dort zwangsläufig als Literale — eine Konstante
+dafür ist definitionsgemäß tot. Nur die beiden Wurzel-Namensräume, die
+die Formaterkennung im Code braucht, bleiben; der Grund steht jetzt als
+Kommentar dort.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen neuen Dateien clean (`internal/accounting/ar.go` wird weiterhin
+gemeldet — diesmal explizit gegengeprüft, weil die Datei in E.4.3.3
+angefasst wurde: eine LF-normalisierte Kopie ist gofmt-konform, es ist
+also nach wie vor nur das dokumentierte CRLF-Artefakt).
+
+Neue Tests `server/internal/accounting/einvoice_parse_ubl_test.go`
+(11 Tests + 8 Unterfälle, DB-los). Der zentrale ist
+**`TestBothSyntaxesYieldIdenticalModel`**: `ublInboundSample` bildet
+exakt denselben Geschäftsvorfall ab wie `ciiInboundSample` aus E.5.2, und
+beide Parse-Ergebnisse werden per `reflect.DeepEqual` verglichen — die
+Formatkennung ist der einzige erlaubte Unterschied. Damit ist die Zusage
+aus ADR 0023, dass das Zielmodell wirklich syntaxunabhängig ist, bewiesen
+statt behauptet; ein Mapping-Fehler in nur einer der beiden Syntaxen
+fliegt sofort auf.
+
+Dazu: vollständiges UBL-Feldmapping, Präfix-Unabhängigkeit auch für UBL,
+Dispatch für beide Formate, vier Dispatch-Negativfälle (fremdes
+Wurzelelement, richtiger Elementname im falschen Namensraum, Binärdatei,
+leere Datei), gegenseitige Zurückweisung (CII an den UBL-Parser und
+umgekehrt), vier UBL-Negativfälle (fehlende Nummer, fehlendes/unlesbares
+Rechnungsdatum, unlesbares Fälligkeitsdatum), Platzhalter-TaxScheme,
+Anzahlung, E-Mail-Fallback, Summenhinweis und der XXE-Nachweis auch für
+UBL.
+
+**Eigener Testfehler, wieder derselbe Mechanismus wie in E.5.2**: der
+UBL-Präfixtest ersetzte zunächst schlicht `ubl:` → `x:` — diese
+Zeichenfolge kommt aber auch INNERHALB der Namensraum-URI vor
+(`urn:oasis:names:specification:ubl:schema:xsd:Invoice-2`), wodurch der
+Test die URI selbst verfälschte und etwas anderes prüfte als
+beabsichtigt. Jetzt werden nur die Präfixe an den Element-Begrenzern
+(`<ubl:`, `</ubl:`) und die `xmlns`-Deklarationen ersetzt.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.623s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_parse_ubl.go` (neu),
+`server/internal/accounting/einvoice_parse_ubl_test.go` (neu),
+`server/internal/accounting/einvoice_parse.go`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Offene Punkte
 
