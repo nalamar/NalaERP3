@@ -7,19 +7,21 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.4.3.2** (DB-Abfrage/Mapping `invoices_out`→
-> `CIIInvoice`, siehe Abschnitt "Epic E, Task E.4" weiter unten). Epic 0
-> (0.1-0.5) und E.1/E.2/E.3 sind vollständig abgeschlossen; E.4 ist bis
-> einschließlich E.4.3.2 erledigt — Serialisierer und Mapping stehen, es
-> fehlt nur noch die HTTP-Anbindung.
-> **Nächste Subtask: E.4.3.3** — HTTP-Wiring
-> `GET /invoices-out/{id}/xrechnung` (`application/xml`, Dateiname
-> `xrechnung_<Nummer>.xml`, bestehende Permission `invoices_out.read`) +
-> End-to-End-Integrationstest inkl. Negativfällen. **Dabei zusätzlich
-> nötig**: ein Schreibpfad für `invoices_out.buyer_reference` — E.4.2 legte
-> nur die Spalte an, es existiert bis heute KEIN Weg sie über die API zu
-> befüllen (die Tests aus E.4.3.2 setzen sie direkt per SQL); analog zur in
-> E.3.3.3 nachgezogenen `PATCH /settings/company/datev`-Lücke.
+> Zuletzt abgeschlossen: **E.4.3.3** (HTTP-Wiring
+> `GET /invoices-out/{id}/xrechnung` + Schreibpfad
+> `PATCH /invoices-out/{id}/buyer-reference`, siehe Abschnitt
+> "Epic E, Task E.4" weiter unten). Epic 0 (0.1-0.5) und E.1/E.2/E.3 sind
+> vollständig abgeschlossen; E.4 ist bis einschließlich E.4.3.3 erledigt —
+> **XRechnung ist damit end-to-end nutzbar**, es fehlt nur noch ZUGFeRD.
+> **Nächste Subtask: E.4.3.4** (letzte Subtask von Task E.4) — ZUGFeRD:
+> dieselbe CII-XML unverändert als `factur-x.xml` per
+> `gofpdf.SetAttachments` in die bestehende Rechnungs-PDF einbetten
+> (`buildXRechnungFile` liefert deshalb bereits Bytes statt einer
+> HTTP-Antwort), neuer Endpunkt `GET /invoices-out/{id}/zugferd`
+> (`application/pdf`, Dateiname `zugferd_<Nummer>.pdf`, Permission
+> `invoices_out.read`) + End-to-End-Integrationstest. Bekannte, in ADR 0022
+> offengelegte Einschränkung: formale PDF/A-3-Konformität ist mit `gofpdf`
+> NICHT erreichbar und ausdrücklich nicht Ziel.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -8763,6 +8765,97 @@ aber keinen bestehenden Test beeinflusst.
 Geänderte/neue Dateien:
 `server/internal/accounting/einvoice_query.go` (neu),
 `server/internal/accounting/einvoice_query_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### E.4.3.3 HTTP-Wiring `GET /invoices-out/{id}/xrechnung` + Schreibpfad für `buyer_reference`
+
+Zwei Teile, bewusst in EINER Subtask: der Endpunkt allein wäre nicht
+end-to-end verifizierbar gewesen, weil `invoices_out.buyer_reference` (E.4.2)
+bis dahin gar nicht über die API befüllbar war — dieselbe Lücke und dieselbe
+Entscheidung wie bei `PATCH /settings/company/datev` in E.3.3.3.
+
+**Teil 1 — Schreibpfad.** Neue Funktion `ARService.SetBuyerReference`
+(`server/internal/accounting/ar.go`) und neuer Endpunkt
+`PATCH /invoices-out/{id}/buyer-reference` (Body
+`{"buyer_reference": "..."}`, bestehende Permission `invoices_out.write`).
+Bewusst ein eigener, enger Endpunkt statt einer Erweiterung eines generischen
+Update-Pfads (den es für `invoices_out` ohnehin nicht gibt).
+
+**GoBD-Abwägung, bewusst so entschieden und im Code begründet**: die Änderung
+ist AUCH NACH dem Buchen erlaubt. Eine Rechnung wird in der Praxis häufig
+zuerst gebucht, und die Leitweg-ID wird erst beim Versand als E-Rechnung
+nachgereicht — ein Verbot hätte zur Folge, dass eine bereits gebuchte
+Rechnung NIE mehr als E-Rechnung exportierbar wäre, womit Task E.4 für genau
+den Normalfall unbrauchbar würde. `buyer_reference` ist kein
+wertbestimmendes Feld: kein Betrag, kein Steuerbetrag, kein Konto, kein
+Datum; es verändert weder die Buchung noch die Summen, sondern trägt nur die
+vom Empfänger vorgegebene Zuordnungskennung. Als Gegengewicht wird jede
+Änderung lückenlos im Änderungsprotokoll (Epic 0.3) mit Vorher-/Nachher-Wert
+und Aktion `kaeuferreferenz_geaendert` festgehalten — der Test prüft das
+explizit gegen `entity_change_log`. An stornierten Rechnungen wird die
+Änderung abgelehnt: ein stornierter Beleg ist abgeschlossen.
+
+Die Zeile wird per `SELECT ... FOR UPDATE` in derselben Transaktion gesperrt,
+in der auch protokolliert wird (Muster aus `Book`/`Storno`), damit Statusprüfung
+und Schreiben nicht auseinanderlaufen können.
+
+**Teil 2 — Export-Endpunkt.** Neue Datei
+`server/internal/http/einvoice_export.go` mit `buildXRechnungFile`: reine
+Orchestrierung (Mapping aus E.4.3.2 → Serialisierung aus E.4.3.1 →
+Dateiname), ohne eigene Geschäftslogik. Sie liefert bewusst Bytes statt
+direkt eine HTTP-Antwort zu schreiben, weil E.4.3.4 exakt dieselbe XML
+unverändert als `factur-x.xml` in die Rechnungs-PDF einbetten wird.
+Neuer Endpunkt `GET /invoices-out/{id}/xrechnung` in `v1.go`
+(`application/xml; charset=utf-8`, `Content-Disposition: attachment`,
+Dateiname `xrechnung_<Nummer>.xml`, bestehende Permission
+`invoices_out.read` — kein neues Recht, wie in ADR 0022 entschieden).
+
+`sanitizeFilenamePart` ersetzt alles außer `[A-Za-z0-9._-]` durch `_`:
+Rechnungsnummern sind über `settings.NumberingService` frei konfigurierbar,
+es gibt also keine Garantie für ein im `Content-Disposition`-Header
+unkritisches Format (Pfadtrenner, Anführungszeichen).
+
+**Teil 3 — Fehlerzuordnung.** `classifyDomainError` (`v1.go`) um fünf
+Substrings erweitert, damit die in E.4.3.2/E.4.3.1 formulierten Fehler nicht
+als unklassifizierte 500er herauskommen: `nur gebuchte rechnungen`,
+`kann nicht als e-rechnung exportiert werden`, `hat keine rechnungsnummer`,
+`benoetigt ust-idnr`, `nicht mehr geändert werden` → 400; zusätzlich
+`weicht vom gebuchten` → 409 (der Summen-Abgleich aus E.4.3.2 meldet eine
+inkonsistente Datenlage, nicht eine fehlerhafte Anfrage). Die bereits
+bestehenden Substrings `nicht gefunden` (404) und `erforderlich` (400)
+greifen für die übrigen Fälle unverändert.
+
+**Dabei gefundener und sofort korrigierter eigener Fehler**: der Substring
+war zunächst als `benötigt ust-idnr` (mit Umlaut) eingetragen, die
+Fehlermeldung in `einvoice_cii.go` lautet aber `benoetigt USt-IdNr.`
+(umlautfrei) — der Fall wäre stillschweigend als 500 durchgerutscht.
+Durch Abgleich der tatsächlichen Meldungstexte gegen die Matcher gefunden,
+bevor der Test lief.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf allen
+neuen Dateien clean. Neuer Test
+`server/internal/http/einvoice_export_integration_test.go`
+(`TestXRechnungEndpointEndToEnd`) gegen frische DB — vollständiger Ablauf
+ausschließlich über HTTP: Rechnung anlegen → Export als `draft` abgelehnt
+(400) → buchen → Export ohne Käuferreferenz abgelehnt (400) → leere
+Käuferreferenz abgelehnt (400) → Käuferreferenz NACH dem Buchen setzen (200)
+→ Protokolleintrag in `entity_change_log` nachgewiesen → Export liefert 200
+mit korrektem `Content-Type`/`Content-Disposition` und einer XML, die
+Wurzelelement, XRechnung-3.0-Kennung, Käuferreferenz, Typ-Code 380,
+Käufernamen, aufgelöste Käuferanschrift und Bruttosumme `2975.00`
+(2×1250 netto + 19 %) enthält → unbekannte ID 404 → ungültige ID 400 →
+nach Storno sind sowohl Export als auch Referenzänderung abgelehnt (400).
+Die Serverlogs des Laufs bestätigen Meldung für Meldung, dass jeder
+Negativfall aus dem beabsichtigten Grund scheitert und nicht zufällig.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.443s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/http/einvoice_export.go` (neu),
+`server/internal/http/einvoice_export_integration_test.go` (neu),
+`server/internal/accounting/ar.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte

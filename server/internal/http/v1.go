@@ -66,6 +66,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	apSvc := accounting.NewAPService(pg)
 	ccSvc := accounting.NewCostCenterService(pg)
 	datevExportSvc := accounting.NewDatevExportService(pg)
+	eInvoiceSvc := accounting.NewEInvoiceService(pg, settings.NewCompanyService(pg))
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
 	bankSvc := accounting.NewBankService(pg, paymentSvc)
 	pdfSvc := settings.NewPDFService(pg)
@@ -1324,6 +1325,44 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := arSvc.Get(req.Context(), invoiceID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("invoices_out.read")).Get("/{id}/xrechnung", func(w http.ResponseWriter, req *http.Request) {
+			invoiceID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Rechnungs-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			content, filename, err := buildXRechnungFile(req.Context(), invoiceID, companyID, eInvoiceSvc)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(content)
+		})
+		r.With(requirePermission("invoices_out.write")).Patch("/{id}/buyer-reference", func(w http.ResponseWriter, req *http.Request) {
+			invoiceID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Rechnungs-ID")
+				return
+			}
+			var in struct {
+				BuyerReference string `json:"buyer_reference"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := arSvc.SetBuyerReference(req.Context(), invoiceID, in.BuyerReference, companyID, actorUserIDFromContext(req.Context()))
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -4970,7 +5009,8 @@ func classifyDomainError(err error) (int, string) {
 	switch {
 	case strings.Contains(msg, "nicht gefunden"):
 		return http.StatusNotFound, "not_found"
-	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"):
+	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"),
+		strings.Contains(msg, "weicht vom gebuchten"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5008,6 +5048,11 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "überführt"),
 		strings.Contains(msg, "kann nicht manuell umgestellt werden"),
 		strings.Contains(msg, "unbekanntes oder inaktives steuerkennzeichen"),
+		strings.Contains(msg, "nur gebuchte rechnungen"),
+		strings.Contains(msg, "kann nicht als e-rechnung exportiert werden"),
+		strings.Contains(msg, "hat keine rechnungsnummer"),
+		strings.Contains(msg, "benoetigt ust-idnr"),
+		strings.Contains(msg, "nicht mehr geändert werden"),
 		strings.Contains(msg, "kein umsatzsteuer-konto"),
 		strings.Contains(msg, "bereits gematcht"),
 		strings.Contains(msg, "können bearbeitet werden"),

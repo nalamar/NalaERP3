@@ -395,6 +395,76 @@ func (s *ARService) Book(ctx context.Context, id uuid.UUID, companyID string, ac
 	return &inv, nil
 }
 
+// SetBuyerReference pflegt die Kaeuferreferenz (EN 16931 BT-10, Leitweg-ID
+// bzw. Kundenreferenz) an einer Rechnung. E.4.2 hat die Spalte angelegt,
+// aber bewusst keinen Schreibpfad - dieser wird hier nachgezogen, weil die
+// Kaeuferreferenz sonst gar nicht befuellbar und damit kein
+// E-Rechnungs-Export moeglich waere (Backlog E.4.3.3).
+//
+// GoBD-Abwaegung, bewusst so entschieden: die Aenderung ist AUCH NACH dem
+// Buchen erlaubt. Eine Rechnung wird haeufig erst gebucht und die
+// Leitweg-ID erst beim Versand als E-Rechnung nachgereicht - ein Verbot
+// haette zur Folge, dass eine bereits gebuchte Rechnung NIE mehr als
+// E-Rechnung exportierbar waere. buyer_reference ist kein wertbestimmendes
+// Feld (kein Betrag, kein Steuerbetrag, kein Konto, kein Datum): es
+// veraendert weder die Buchung noch die Summen, sondern traegt nur die vom
+// Empfaenger vorgegebene Zuordnungskennung. Die Aenderung wird dafuer
+// lueckenlos im Aenderungsprotokoll (Epic 0.3) mit Vorher-/Nachher-Wert
+// festgehalten, damit sie nachvollziehbar bleibt.
+//
+// Bei stornierten Rechnungen wird die Aenderung abgelehnt: ein stornierter
+// Beleg ist abgeschlossen und wird nicht mehr angefasst.
+func (s *ARService) SetBuyerReference(ctx context.Context, id uuid.UUID, buyerReference string, companyID string, actorUserID string) (*InvoiceOut, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	buyerReference = strings.TrimSpace(buyerReference)
+	if buyerReference == "" {
+		return nil, errors.New("Käuferreferenz erforderlich")
+	}
+
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	var status string
+	var previous sql.NullString
+	err = tx.QueryRow(ctx, `SELECT status, buyer_reference FROM invoices_out WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&status, &previous)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("Rechnung nicht gefunden")
+		}
+		return nil, err
+	}
+	if status == "storniert" {
+		return nil, errors.New("Käuferreferenz kann an einer stornierten Rechnung nicht mehr geändert werden")
+	}
+
+	if _, err := tx.Exec(ctx, `UPDATE invoices_out SET buyer_reference=$2 WHERE id=$1`, id, buyerReference); err != nil {
+		return nil, err
+	}
+
+	if s.audit != nil {
+		if err := s.audit.Record(ctx, tx, companyID, auditlog.RecordInput{
+			EntityType:  "invoice_out",
+			EntityID:    id.String(),
+			Action:      "kaeuferreferenz_geaendert",
+			ActorUserID: actorUserID,
+			Before:      map[string]any{"buyer_reference": previous.String},
+			After:       map[string]any{"buyer_reference": buyerReference},
+		}); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, companyID)
+}
+
 // Storno storniert eine gebuchte Rechnung GoBD-konform: die urspruengliche
 // Buchung (journal_entry_id) bleibt unveraendert bestehen, stattdessen wird
 // eine neue, vollstaendige Umkehrbuchung (Soll/Haben vertauscht) erzeugt.
