@@ -7,19 +7,18 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.4.3.4** — und damit **Task E.4 (E-Rechnung
-> Ausgang) VOLLSTÄNDIG**: XRechnung (`GET /invoices-out/{id}/xrechnung`)
-> und ZUGFeRD 2.x (`GET /invoices-out/{id}/zugferd`) sind beide nutzbar,
-> siehe Abschnitt "Epic E, Task E.4" weiter unten. Epic 0 (0.1-0.5) und
-> E.1/E.2/E.3/E.4 sind abgeschlossen.
-> **Nächste Subtask: E.5** — E-Rechnung Eingang (mindestens Parsen), letzte
-> offene Task von Epic E. Noch nicht in Subtasks zerlegt; beim Start zuerst
-> zerlegen (§6.3). Vorhandene Bausteine, die dabei helfen: die
-> CII-Strukturkenntnis aus ADR 0022 und die Strukturdefinitionen in
-> `einvoice_cii.go`. **Achtung beim Parsen**: der dort genutzte
-> Präfix-im-Elementnamen-Trick funktioniert nur beim SCHREIBEN — beim Lesen
-> muss über echte Namensräume gematcht werden, die Schreibstructs sind dafür
-> NICHT wiederverwendbar. Zielobjekt ist vermutlich `invoices_in` (080).
+> Zuletzt abgeschlossen: **E.5.1** (ADR 0023: Format-/Umfangsentscheidung
+> E-Rechnung Eingang; E.5 dabei in fünf Subtasks zerlegt), siehe Abschnitt
+> "Epic E, Task E.5" weiter unten. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4
+> sind vollständig abgeschlossen — E-Rechnung AUSGANG (XRechnung + ZUGFeRD)
+> ist nutzbar.
+> **Nächste Subtask: E.5.2** — gemeinsames Zielmodell für geparste
+> Eingangsrechnungen + CII-Eingangsparser (DB-los) + Unit-Tests inkl.
+> Negativfällen. **Achtung**: namensraumbasiert parsen
+> (`xml:"<namespace> <local>"`); die Schreib-Structs aus
+> `einvoice_cii.go` sind dafür NICHT wiederverwendbar, weil der
+> Präfix-im-Elementnamen-Trick nur beim Schreiben funktioniert und
+> Absender beliebige Präfixe wählen dürfen.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -8947,6 +8946,88 @@ Geänderte/neue Dateien:
 `server/internal/pdfgen/renderer.go`,
 `server/internal/http/einvoice_export.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
+
+## Epic E, Task E.5 — E-Rechnung Eingang (mind. Parsen)
+
+### E.5.1 ADR: Format-/Umfangsentscheidung
+
+Erste Subtask der letzten offenen Task von Epic E. `aufgabe.md` §2 fordert
+"Eingang mindestens Parsen". Reine ADR-/Rechercharbeit, kein Produktivcode —
+siehe `docs/adr/0023-e-rechnung-eingang.md`. E.5 wurde dabei in fünf
+Subtasks zerlegt (E.5.2 CII-Parser, E.5.3 UBL-Parser + Formaterkennung,
+E.5.4 ZUGFeRD-PDF, E.5.5 HTTP-Endpunkt).
+
+**Wichtigster Befund: die Syntaxentscheidung aus ADR 0022 ist NICHT
+übertragbar.** Beim Ausgang bestimmen wir die Syntax — deshalb konnte
+ADR 0022 sich auf CII allein festlegen und UBL sparen. Beim Eingang
+bestimmt der Absender. Per Primärquelle belegt statt angenommen: aus der
+KoSIT-Testsuite wurde derselbe Geschäftsfall (01.01a) in BEIDEN Varianten
+im Rohtext geladen und verglichen. Beide tragen dieselbe
+`CustomizationID`/`ProfileID`, sind also nachweislich gleichwertig
+konforme XRechnungen, haben aber keine einzige gemeinsame Elementstruktur
+(UBL: Wurzel `ubl:Invoice`, flache `cbc:`-Felder, `cac:`-Gruppen wie
+`cac:AccountingSupplierParty`/`cac:LegalMonetaryTotal`). Ein Eingangsparser
+nur für CII würde also einen erheblichen Teil vollkommen konformer
+Rechnungen ablehnen — ein funktionaler Mangel, kein Randfall. Entscheidung:
+**beide Syntaxen**, Formaterkennung über den Wurzelelement-Namensraum
+(nicht über Dateiname/-endung — beide sind beim Eingang nicht
+vertrauenswürdig), gemeinsames Zielmodell.
+
+**Zweite Kernentscheidung: beim Lesen wird über echte Namensräume
+gematcht.** Der in `einvoice_cii.go` (E.4.3.1) genutzte Trick, Präfixe fest
+in die Elementnamen zu schreiben, funktioniert ausschließlich beim
+SCHREIBEN. Ein Absender darf beliebige Präfixe wählen (`rsm:`/`ram:` sind
+Konvention, nicht Vorschrift) — die Schreib-Structs sind für das Lesen
+NICHT wiederverwendbar. Das war die naheliegendste Fehlannahme für diese
+Task und ist deshalb ausdrücklich in der ADR festgehalten.
+
+**Werkzeuglücke ZUGFeRD-Eingang.** Eine ZUGFeRD-Rechnung ist eine PDF mit
+eingebetteter CII-XML; das Projekt hat mit `gofpdf` einen PDF-Schreiber,
+aber keinen PDF-LESER (`go.mod` geprüft: keine PDF-lesende Abhängigkeit).
+Gewählt: neue Abhängigkeit `github.com/pdfcpu/pdfcpu`, geprüft statt
+angenommen — Lizenz Apache-2.0 (nach §2 zulässig), aktiv gepflegt
+(v0.14.0/v0.15.0 August 2026, v0.16.0-rc.1 September 2026), und die
+benötigte Funktion im Quellcode `pkg/api/attach.go` mit exakter Signatur
+verifiziert (`ExtractAttachmentsRaw(context.Context, io.ReadSeeker,
+string, []string, *model.Configuration) ([]model.Attachment, error)`).
+
+**Ausdrücklich als Scheinlösung verworfen und in der ADR dokumentiert**:
+der in `zugferd_export_integration_test.go` (E.4.3.4) vorhandene
+Anhang-Extraktor sieht wiederverwendbar aus, ist es aber nicht. Er sucht
+naiv nach `/Type /EmbeddedFile` plus folgendem zlib-Strom und funktioniert
+nur, weil er PDFs prüft, die wir selbst mit `gofpdf` erzeugt haben. Fremde
+PDFs nutzen Objekt-Streams, komprimierte Cross-Reference-Streams,
+abweichende Filter oder Verschlüsselung. Ihn auf Lieferanten-PDFs
+loszulassen hieße, einen Testhelfer als Produktivparser auszugeben.
+
+**Umfangsentscheidung: Parsen und Vorschau, KEINE automatische Anlage.**
+`invoices_in.supplier_id` ist ein Pflicht-Fremdschlüssel auf `contacts`.
+Automatisches Anlegen hieße, Stammdaten aus einer von außen zugestellten
+Datei zu erzeugen, oder die Rechnung einem per Textähnlichkeit geratenen
+Lieferanten zuzuordnen — in einem buchungsrelevanten Kontext beides nicht
+vertretbar. Der Endpunkt liefert die geparsten Daten plus einen
+Lieferanten-Zuordnungs*vorschlag* (USt-IdNr., ersatzweise Name) mit klarer
+Kennzeichnung, ob der Treffer eindeutig ist; bestätigt wird von einem
+Menschen. Das entspricht dem Human-in-the-Loop-Prinzip aus `aufgabe.md` §4,
+das im GAEB-Import bereits durchgängig umgesetzt ist. Die eigentliche
+Übernahme wurde als **neue Backlog-Position E.6** eingetragen statt
+stillschweigend in E.5 hineingezogen zu werden (§7.5).
+
+**Weitere Festlegungen**: keine geparsten Werte nachrechnen oder
+korrigieren — weicht die Positionssumme von der gelieferten Gesamtsumme ab,
+wird das als Hinweis ausgewiesen, nicht repariert (es ist die Rechnung des
+Absenders). Größenbegrenzung des Uploads und Nicht-Auflösen externer
+Entitäten sind im umsetzenden Subtask per Test NACHZUWEISEN — bewusst als
+Nachweispflicht formuliert statt als Behauptung über das Verhalten von
+`encoding/xml`. Neuer Endpunkt `POST /invoices-in/parse-e-invoice` mit der
+bestehenden Permission `invoices_in.write` (kein neues Recht: der Vorgang
+gehört zum Erfassen, nicht zum Ansehen).
+
+Keine Code-Änderung in dieser Subtask — `invoices_in`/`invoice_in_items`/
+`ap.go`/`go.mod` komplett unangetastet.
+
+Geänderte/neue Dateien: `docs/adr/0023-e-rechnung-eingang.md` (neu),
+`docs/open-questions.md`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 

@@ -94,3 +94,14 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   A.1.2/A.1.3 (freier Text funktioniert bis zur Klärung), aber vor einer
   künftigen Enum-Verschärfung oder vor Epic I (GAEB-Systemvorgaben-Erkennung)
   zu klären.
+
+- **E.5.1 (Dateiname des eingebetteten ZUGFeRD-Anhangs)**:
+  `docs/adr/0023-e-rechnung-eingang.md` legt fest, dass ZUGFeRD-PDFs beim
+  Eingang gelesen werden. Verifiziert ist nur der Anhangname `factur-x.xml`
+  (Factur-X/ZUGFeRD 2.1+, den wir im Ausgang selbst schreiben); ältere
+  ZUGFeRD-Stände verwenden abweichende Namen, für die im Repo keine
+  belastbare Quelle vorliegt. Statt eine Namensliste zu raten, wird beim
+  Umsetzen von E.5.4 entschieden, ob überhaupt nach Namen gesucht oder
+  schlicht der erste Anhang genommen wird, der sich als EN-16931-XML parsen
+  lässt. Status: **offen**, kein Blocker — betrifft nur die Auswahlstrategie
+  innerhalb von E.5.4, nicht das Format selbst.
