@@ -245,8 +245,43 @@ func RenderPurchaseOrder(ctx context.Context, mg *mongo.Client, dbName string, p
 	return buf.Bytes(), nil
 }
 
+// Attachment ist eine in das PDF einzubettende Datei. Eigener Typ statt
+// gofpdf.Attachment, damit die PDF-Bibliothek eine Implementierungs-
+// entscheidung dieses Pakets bleibt und Aufrufer sie nicht importieren
+// muessen.
+type Attachment struct {
+	Filename    string
+	Description string
+	Content     []byte
+}
+
+// RenderInvoiceOut rendert eine Rechnung als PDF (unveraendertes Verhalten,
+// alle bisherigen Aufrufer bleiben gueltig).
 func RenderInvoiceOut(ctx context.Context, mg *mongo.Client, dbName string, inv InvoiceOutData, tmpl TemplateOptions, imageDocIDs map[string]string) ([]byte, error) {
+	return RenderInvoiceOutWithAttachments(ctx, mg, dbName, inv, tmpl, imageDocIDs, nil)
+}
+
+// RenderInvoiceOutWithAttachments rendert dieselbe Rechnung, bettet aber
+// zusaetzlich Dateien als PDF-Anhaenge ein (Backlog E.4.3.4: ZUGFeRD
+// verlangt die CII-XML als eingebettete factur-x.xml).
+//
+// WICHTIG, in ADR 0022 offengelegt: das Ergebnis ist eine normale PDF mit
+// eingebetteter Datei, KEINE formal PDF/A-3-konforme Datei - gofpdf bietet
+// weder /AFRelationship noch XMP-Metadaten oder OutputIntent mit
+// ICC-Profil. Hier wird deshalb bewusst keine PDF/A-Konformitaet behauptet.
+func RenderInvoiceOutWithAttachments(ctx context.Context, mg *mongo.Client, dbName string, inv InvoiceOutData, tmpl TemplateOptions, imageDocIDs map[string]string, attachments []Attachment) ([]byte, error) {
 	pdf := gofpdf.New("P", "mm", "A4", "")
+	if len(attachments) > 0 {
+		as := make([]gofpdf.Attachment, 0, len(attachments))
+		for _, a := range attachments {
+			as = append(as, gofpdf.Attachment{
+				Filename:    a.Filename,
+				Description: a.Description,
+				Content:     a.Content,
+			})
+		}
+		pdf.SetAttachments(as)
+	}
 	pdf.SetTitle(fmt.Sprintf("Rechnung %s", inv.Number), false)
 	pdf.SetAuthor("NalaERP3", false)
 	tr := pdf.UnicodeTranslatorFromDescriptor("cp1252")

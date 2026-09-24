@@ -1477,81 +1477,9 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				return
 			}
 			companyID, _ := companyIDFromContext(req.Context())
-			inv, err := arSvc.Get(req.Context(), invoiceID, companyID)
+			pdfBytes, number, err := buildInvoiceOutPDF(req.Context(), invoiceID, companyID, arSvc, pdfSvc, brandingSvc, mg, cfg.MongoDB, nil)
 			if err != nil {
 				writeDomainError(w, req, err)
-				return
-			}
-
-			t, err := pdfSvc.Get(req.Context(), "invoice_out")
-			if err != nil {
-				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
-				return
-			}
-			effectiveTemplate := *t
-			primaryColor := "#1F4B99"
-			accentColor := "#6B7280"
-			if branding, berr := brandingSvc.Get(req.Context()); berr == nil {
-				effectiveTemplate = settings.ApplyBrandingDefaults(effectiveTemplate, branding)
-				primaryColor = branding.PrimaryColor
-				accentColor = branding.AccentColor
-			}
-
-			number := invoiceID.String()
-			if inv.Number != nil && strings.TrimSpace(*inv.Number) != "" {
-				number = *inv.Number
-			}
-			dueDate := ""
-			if inv.DueDate != nil {
-				dueDate = inv.DueDate.Format("02.01.2006")
-			}
-			data := pdfgen.InvoiceOutData{
-				Number:      number,
-				InvoiceDate: inv.InvoiceDate.Format("02.01.2006"),
-				DueDate:     dueDate,
-				Currency:    inv.Currency,
-				Status:      inv.Status,
-				ContactName: inv.ContactName,
-				ContactID:   inv.ContactID,
-				NetAmount:   inv.NetAmount,
-				TaxAmount:   inv.TaxAmount,
-				GrossAmount: inv.GrossAmount,
-				PaidAmount:  inv.PaidAmount,
-				Items:       make([]pdfgen.InvoiceOutItemData, 0, len(inv.Items)),
-			}
-			for idx, it := range inv.Items {
-				data.Items = append(data.Items, pdfgen.InvoiceOutItemData{
-					Pos:         idx + 1,
-					Description: it.Description,
-					Qty:         it.Qty,
-					UnitPrice:   it.UnitPrice,
-					TaxCode:     it.TaxCode,
-					Currency:    inv.Currency,
-				})
-			}
-
-			opts := pdfgen.TemplateOptions{
-				HeaderText:   effectiveTemplate.HeaderText,
-				FooterText:   effectiveTemplate.FooterText,
-				TopFirstMM:   effectiveTemplate.TopFirstMM,
-				TopOtherMM:   effectiveTemplate.TopOtherMM,
-				PrimaryColor: primaryColor,
-				AccentColor:  accentColor,
-			}
-			imgIDs := map[string]string{}
-			if t.LogoDocID != nil {
-				imgIDs["logo"] = *t.LogoDocID
-			}
-			if t.BgFirstDocID != nil {
-				imgIDs["bg_first"] = *t.BgFirstDocID
-			}
-			if t.BgOtherDocID != nil {
-				imgIDs["bg_other"] = *t.BgOtherDocID
-			}
-
-			pdfBytes, err := pdfgen.RenderInvoiceOut(req.Context(), mg, cfg.MongoDB, data, opts, imgIDs)
-			if err != nil {
-				writeHTTPError(w, req, http.StatusInternalServerError, err.Error(), err)
 				return
 			}
 
@@ -1560,6 +1488,25 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(pdfBytes)))
 			if _, err := w.Write(pdfBytes); err != nil {
+				return
+			}
+		})
+		r.With(requirePermission("invoices_out.read")).Get("/{id}/zugferd", func(w http.ResponseWriter, req *http.Request) {
+			invoiceID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Rechnungs-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			content, filename, err := buildZugferdFile(req.Context(), invoiceID, companyID, eInvoiceSvc, arSvc, pdfSvc, brandingSvc, mg, cfg.MongoDB)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.Header().Set("Content-Type", "application/pdf")
+			w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
+			if _, err := w.Write(content); err != nil {
 				return
 			}
 		})

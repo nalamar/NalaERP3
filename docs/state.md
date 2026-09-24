@@ -7,21 +7,19 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.4.3.3** (HTTP-Wiring
-> `GET /invoices-out/{id}/xrechnung` + Schreibpfad
-> `PATCH /invoices-out/{id}/buyer-reference`, siehe Abschnitt
-> "Epic E, Task E.4" weiter unten). Epic 0 (0.1-0.5) und E.1/E.2/E.3 sind
-> vollständig abgeschlossen; E.4 ist bis einschließlich E.4.3.3 erledigt —
-> **XRechnung ist damit end-to-end nutzbar**, es fehlt nur noch ZUGFeRD.
-> **Nächste Subtask: E.4.3.4** (letzte Subtask von Task E.4) — ZUGFeRD:
-> dieselbe CII-XML unverändert als `factur-x.xml` per
-> `gofpdf.SetAttachments` in die bestehende Rechnungs-PDF einbetten
-> (`buildXRechnungFile` liefert deshalb bereits Bytes statt einer
-> HTTP-Antwort), neuer Endpunkt `GET /invoices-out/{id}/zugferd`
-> (`application/pdf`, Dateiname `zugferd_<Nummer>.pdf`, Permission
-> `invoices_out.read`) + End-to-End-Integrationstest. Bekannte, in ADR 0022
-> offengelegte Einschränkung: formale PDF/A-3-Konformität ist mit `gofpdf`
-> NICHT erreichbar und ausdrücklich nicht Ziel.
+> Zuletzt abgeschlossen: **E.4.3.4** — und damit **Task E.4 (E-Rechnung
+> Ausgang) VOLLSTÄNDIG**: XRechnung (`GET /invoices-out/{id}/xrechnung`)
+> und ZUGFeRD 2.x (`GET /invoices-out/{id}/zugferd`) sind beide nutzbar,
+> siehe Abschnitt "Epic E, Task E.4" weiter unten. Epic 0 (0.1-0.5) und
+> E.1/E.2/E.3/E.4 sind abgeschlossen.
+> **Nächste Subtask: E.5** — E-Rechnung Eingang (mindestens Parsen), letzte
+> offene Task von Epic E. Noch nicht in Subtasks zerlegt; beim Start zuerst
+> zerlegen (§6.3). Vorhandene Bausteine, die dabei helfen: die
+> CII-Strukturkenntnis aus ADR 0022 und die Strukturdefinitionen in
+> `einvoice_cii.go`. **Achtung beim Parsen**: der dort genutzte
+> Präfix-im-Elementnamen-Trick funktioniert nur beim SCHREIBEN — beim Lesen
+> muss über echte Namensräume gematcht werden, die Schreibstructs sind dafür
+> NICHT wiederverwendbar. Zielobjekt ist vermutlich `invoices_in` (080).
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -8856,6 +8854,98 @@ Geänderte/neue Dateien:
 `server/internal/http/einvoice_export.go` (neu),
 `server/internal/http/einvoice_export_integration_test.go` (neu),
 `server/internal/accounting/ar.go`, `server/internal/http/v1.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+### E.4.3.4 ZUGFeRD: CII-XML als `factur-x.xml` in die Rechnungs-PDF einbetten
+
+Letzte Subtask von Task E.4. Neuer Endpunkt
+`GET /invoices-out/{id}/zugferd` (`application/pdf`, Dateiname
+`zugferd_<Nummer>.pdf`, bestehende Permission `invoices_out.read`).
+**Damit ist Task E.4 (E-Rechnung Ausgang) vollständig abgeschlossen** —
+XRechnung und ZUGFeRD 2.x aus `aufgabe.md` §2 sind beide bedient.
+
+**Werkzeug-Recherche statt Annahme**: der Quellcode von
+`gofpdf@v1.16.2/attachments.go` wurde gelesen, bevor irgendetwas gebaut
+wurde. Drei Befunde, die den Entwurf bestimmt haben:
+1. `SetAttachments([]Attachment)` muss auf der `Fpdf`-Instanz VOR `Output`
+   gesetzt werden. `RenderInvoiceOut` liefert aber nur fertige Bytes, und
+   gofpdf kann keine bestehende PDF wieder öffnen — ein nachträgliches
+   Anhängen an die vorhandene Ausgabe ist also technisch unmöglich.
+2. Der Anhang wird zlib-komprimiert als `/Type /EmbeddedFile` mit
+   `/Filter /FlateDecode` geschrieben, zusammen mit einer MD5-Prüfsumme
+   und der unkomprimierten Länge. Die XML taucht im PDF also NICHT im
+   Klartext auf — entscheidend für die Testbarkeit (siehe unten).
+3. Bestätigt, was ADR 0022 offenlegt: kein `/AFRelationship`, kein XMP,
+   kein `OutputIntent`. Formale PDF/A-3-Konformität bleibt unerreichbar
+   und wird an keiner Stelle behauptet.
+
+**Zwei additive Erweiterungen statt Änderung bestehender Signaturen:**
+
+- `pdfgen`: neuer Typ `Attachment` (eigener Typ, damit gofpdf eine
+  Implementierungsentscheidung des Pakets bleibt und Aufrufer es nicht
+  importieren müssen) und neue Funktion
+  `RenderInvoiceOutWithAttachments`. Das bisherige `RenderInvoiceOut`
+  bleibt erhalten und delegiert mit `nil` — alle bestehenden Aufrufer
+  bleiben unverändert gültig, keine Umbenennung, keine Entfernung
+  (§7.6, kein ADR nötig).
+- `internal/http`: `buildInvoiceOutPDF` wortgleich aus dem
+  `GET /invoices-out/{id}/pdf`-Handler herausgezogen, damit der
+  ZUGFeRD-Endpunkt dieselbe PDF erzeugen kann, statt rund 70 Zeilen
+  Template-, Branding- und Mapping-Logik zu duplizieren. Verhalten
+  unverändert; der bestehende Handler ruft sie jetzt mit `nil` für die
+  Anhänge auf und schrumpft von ~75 auf ~20 Zeilen. Bewusst NICHT
+  mitgeändert: dass an `pdfgen.InvoiceOutData` weiterhin keine
+  Käuferadresse übergeben wird — vorgefundenes Verhalten, in ADR 0022
+  dokumentiert, ausdrücklich nicht Teil dieser Task.
+
+**Eigene Doppelung wieder entfernt**: das in E.4.3.3 eingeführte
+`sanitizeFilenamePart` war eine Neuschöpfung neben dem im Paket bereits
+etablierten `sanitizeFilename`, das jeder andere Download-Endpunkt nutzt.
+Beim Lesen des PDF-Handlers aufgefallen und ersatzlos entfernt — beide
+E-Rechnungs-Endpunkte nutzen jetzt denselben Helfer wie der Rest des
+Pakets. (Verhaltensunterschied: der etablierte Helfer ersetzt gezielt
+Pfadtrenner/Anführungszeichen/Zeilenumbrüche, statt wie meine Variante
+alles außer `[A-Za-z0-9._-]` zu ersetzen. Einheitlichkeit mit den
+bestehenden Endpunkten wiegt hier schwerer.)
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen geänderten/neuen Dateien clean. Neuer Test
+`server/internal/http/zugferd_export_integration_test.go`
+(`TestZugferdEndpointEndToEnd`) gegen frische DB.
+
+Der Test verlässt sich bewusst NICHT auf eine Marker-Suche im PDF — weil
+der Anhang komprimiert ist, wäre "XML irgendwo enthalten" ohnehin nicht
+prüfbar, und eine reine `/EmbeddedFile`-Prüfung würde nur beweisen, dass
+IRGENDETWAS eingebettet wurde. Stattdessen wird der eingebettete
+Datenstrom tatsächlich aus dem PDF herausgelöst (`/Type /EmbeddedFile` →
+`stream` … `endstream`), mit `compress/zlib` entpackt und **Byte für Byte
+mit der Ausgabe des XRechnung-Endpunkts derselben Rechnung verglichen**.
+Zusätzlich abgesichert über die im PDF stehende MD5-Prüfsumme und die
+unkomprimierte Länge, die beide zur XRechnung-XML passen müssen. Damit
+ist bewiesen, dass beide Endpunkte wirklich dasselbe Dokument liefern und
+ZUGFeRD kein zweiter, potentiell abweichender Pfad ist.
+
+Weiter abgedeckt: `draft` → 400 (noch bevor eine PDF gebaut wird),
+gebucht ohne Käuferreferenz → 400, unbekannte ID → 404, ungültige ID →
+400, korrekter `Content-Type`/`Content-Disposition`/`Content-Length`,
+`%PDF-`-Signatur, sowie inhaltliche Stichproben in der entpackten XML
+(Wurzelelement, Käuferreferenz, Bruttosumme `2380.00` = 2000 + 19 %).
+
+**Regressionsschutz für die Extraktion**: derselbe Test ruft anschließend
+den unveränderten `GET /invoices-out/{id}/pdf` auf und prüft, dass er
+weiterhin eine PDF liefert, den Dateinamen `Rechnung_…` behält und
+**KEINEN** eingebetteten Anhang trägt — genau die Eigenschaft, die die
+Herauslösung von `buildInvoiceOutPDF` hätte kaputtmachen können.
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 28.550s`, `ok nalaerp3/internal/pdfgen 0.486s`),
+keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/http/zugferd_export_integration_test.go` (neu),
+`server/internal/pdfgen/renderer.go`,
+`server/internal/http/einvoice_export.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
