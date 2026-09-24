@@ -1513,6 +1513,37 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	})
 
 	protected.Route("/invoices-in", func(r chi.Router) {
+		r.With(requirePermission("invoices_in.write")).Post("/parse-e-invoice", func(w http.ResponseWriter, req *http.Request) {
+			// Harte Obergrenze VOR dem Parsen des Formulars: ohne sie
+			// wuerde ParseMultipartForm beliebig grosse Uploads
+			// entgegennehmen.
+			req.Body = http.MaxBytesReader(w, req.Body, maxEInvoiceUploadBytes)
+			if err := req.ParseMultipartForm(maxEInvoiceUploadBytes); err != nil {
+				writeAPIError(w, req, http.StatusRequestEntityTooLarge, "validation_error",
+					fmt.Sprintf("Upload fehlgeschlagen oder größer als die zulässigen %d MiB", maxEInvoiceUploadBytes>>20))
+				return
+			}
+			file, _, err := req.FormFile("file")
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Datei fehlt (Feld 'file')")
+				return
+			}
+			defer file.Close()
+
+			data, err := readLimitedUpload(file, maxEInvoiceUploadBytes)
+			if err != nil {
+				writeAPIError(w, req, http.StatusRequestEntityTooLarge, "validation_error", err.Error())
+				return
+			}
+
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := parseInboundEInvoice(req.Context(), data, companyID, apSvc)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(requirePermission("invoices_in.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
 			var in accounting.InvoiceInCreate
 			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
@@ -5000,6 +5031,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "hat keine rechnungsnummer"),
 		strings.Contains(msg, "benoetigt ust-idnr"),
 		strings.Contains(msg, "nicht mehr geändert werden"),
+		strings.Contains(msg, "e-rechnung eingang:"),
 		strings.Contains(msg, "kein umsatzsteuer-konto"),
 		strings.Contains(msg, "bereits gematcht"),
 		strings.Contains(msg, "können bearbeitet werden"),

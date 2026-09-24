@@ -7,19 +7,21 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.5.4** (ZUGFeRD-PDF: Anhang per `pdfcpu`
-> extrahieren und parsen), siehe Abschnitt "Epic E, Task E.5" weiter
-> unten. Damit sind alle drei Eingangswege lesbar: CII-XML, UBL-XML und
-> ZUGFeRD-PDF. Epic 0 (0.1-0.5) und E.1/E.2/E.3/E.4 sind vollständig
-> abgeschlossen.
-> **Nächste Subtask: E.5.5** (letzte Subtask von Task E.5) — HTTP-Endpunkt
-> `POST /invoices-in/parse-e-invoice` (Multipart-Upload, Permission
-> `invoices_in.write`) inkl. Lieferanten-Zuordnungsvorschlag (Abgleich über
-> USt-IdNr., ersatzweise Name, mit Kennzeichnung ob eindeutig),
-> Größenbegrenzung des Uploads und End-to-End-Integrationstest. Der
-> Endpunkt nimmt XML UND PDF an — Weiche über `ExtractEInvoiceFromPDF`
-> bzw. `ParseEInvoiceXML`. **Laut ADR 0023 wird NICHTS persistiert**: die
-> Übernahme nach `invoices_in` ist Backlog E.6, nicht Teil von E.5.
+> Zuletzt abgeschlossen: **E.5.5** — und damit **Task E.5 (E-Rechnung
+> Eingang) VOLLSTÄNDIG**, siehe Abschnitt "Epic E, Task E.5" weiter unten.
+> Zusammen mit E.4 ist der gesamte E-Rechnungs-Teil aus `aufgabe.md` §2
+> erfüllt: Ausgang als XRechnung und ZUGFeRD, Eingang als CII-XML,
+> UBL-XML und ZUGFeRD-PDF über `POST /invoices-in/parse-e-invoice`.
+> **Epic E (Finanzwesen) ist damit bis auf die daraus entstandenen
+> Folgepositionen abgeschlossen** (E.1-E.5 done).
+> **Nächste Subtask: E.6** — Übernahme einer geparsten Eingangs-E-Rechnung
+> nach `invoices_in` (Lieferantenbestätigung, Bestellzuordnung). Aus
+> ADR 0023 bewusst aus E.5 herausgehalten, weil `invoices_in.supplier_id`
+> ein Pflicht-Fremdschlüssel auf `contacts` ist und eine automatische
+> Anlage Stammdaten aus einer fremden Datei erzeugen würde. Die Bausteine
+> stehen: `ParsedEInvoice`, `APService.SuggestSupplier` und
+> `APService.CreateInvoiceIn`. Danach offen: **E.7** (pdfcpu-Workaround bei
+> Versionsanhebung) sowie die Epics F, G, H und I.
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9315,6 +9317,102 @@ Geänderte/neue Dateien:
 `server/internal/accounting/einvoice_parse_pdf_test.go` (neu),
 `server/go.mod`, `server/go.sum`, `docs/backlog.md`,
 `docs/open-questions.md`, `docs/state.md`.
+
+### E.5.5 HTTP-Endpunkt `POST /invoices-in/parse-e-invoice`
+
+Letzte Subtask von Task E.5. **Damit ist Task E.5 (E-Rechnung Eingang)
+vollständig abgeschlossen — und mit E.4 zusammen der gesamte
+E-Rechnungs-Teil aus `aufgabe.md` §2: Ausgang als XRechnung und ZUGFeRD,
+Eingang als CII-XML, UBL-XML und ZUGFeRD-PDF.**
+
+Neue Dateien `server/internal/accounting/einvoice_supplier_match.go`
+(Lieferanten-Zuordnungsvorschlag) und
+`server/internal/http/einvoice_inbound.go` (Upload-Verarbeitung), neue
+Route in `v1.go` mit der bestehenden Permission `invoices_in.write`
+(kein neues Recht — der Vorgang gehört zum Erfassen, nicht zum Ansehen).
+
+**Der Endpunkt persistiert nichts** (ADR 0023). Er liefert die geparste
+Rechnung plus einen Lieferanten-Zuordnungsvorschlag; die Übernahme nach
+`invoices_in` bestätigt ein Mensch und ist Backlog E.6.
+
+**Formaterkennung XML vs. PDF über die Dateisignatur** (`%PDF-`), nicht
+über Dateiname, Endung oder Content-Type — beim Eingang bestimmt der
+Absender alle drei, sie sind also keine verlässliche Aussage über den
+Inhalt. Dieselbe Überlegung wie bei der Syntaxerkennung in E.5.3, die den
+Wurzelelement-Namensraum statt des Dateinamens nutzt. Der Test lädt die
+PDF bewusst unter dem Namen `beliebiger-name.bin` hoch und prüft, dass
+sie trotzdem als PDF erkannt wird.
+
+**Lieferanten-Zuordnung, bewusst zurückhaltend**: zuerst über die
+USt-IdNr., weil sie eine eindeutige Kennung ist; nur wenn darüber nichts
+zu finden ist, über den Namen. Der Vergleich der USt-IdNr. ist
+normalisiert (Großschreibung, ohne Leerzeichen und Bindestriche), weil
+sie in der Praxis mal als `DE123456789` und mal als `DE 123 456 789`
+gepflegt wird — der Test pflegt den Stammdatensatz absichtlich mit
+Leerzeichen.
+
+Zwei Entscheidungen, die verhindern sollen, dass ein Vorschlag mehr
+Sicherheit vortäuscht als vorhanden:
+- **Ein Namenstreffer wird NIE als eindeutig ausgewiesen**, auch wenn es
+  nur einer ist. Gleiche Firmennamen sind häufig, und ein falsch
+  zugeordneter Lieferant fällt später kaum auf.
+- **Bei mehreren Treffern wird KEIN einzelner Vorschlag gesetzt**,
+  sondern nur die Kandidatenliste plus Hinweis. Ein herausgegriffener
+  Erster würde eine Entscheidung vortäuschen, die niemand getroffen hat.
+
+`Eindeutig` ist ein eigenes Feld statt aus der Kandidatenzahl ableitbar:
+die anzeigende Seite soll nicht selbst entscheiden müssen, ab wann ein
+Treffer belastbar ist.
+
+**Größenbegrenzung** auf 24 MiB, doppelt abgesichert:
+`http.MaxBytesReader` vor `ParseMultipartForm` (sonst nähme dieses
+beliebig große Uploads entgegen) und zusätzlich `io.LimitReader` beim
+Lesen der Datei. Antwort ist 413 mit klarer Meldung statt eines
+stillschweigend abgeschnittenen Inhalts, der später an einem
+unverständlichen XML-Fehler scheitern würde.
+
+**Fehlerzuordnung**: ein Substring `"e-rechnung eingang:"` in
+`classifyDomainError` mappt alle Parser-Fehler auf 400 — sie sind
+sämtlich Eingabefehler (unlesbare Datei, unbekanntes Format, PDF ohne
+Anhang), nicht Serverfehler.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen neuen Dateien clean. Neuer Test
+`server/internal/http/einvoice_inbound_integration_test.go` (4 Tests +
+4 Unterfälle) gegen frische DB: XML-Upload liefert Rechnung und
+eindeutigen USt-IdNr.-Treffer trotz abweichender Schreibweise in den
+Stammdaten; PDF-Upload unter irreführendem Dateinamen wird korrekt als
+PDF erkannt und liefert dieselbe Rechnungsnummer (die Test-PDF entsteht
+über dieselbe Renderfunktion wie unser ZUGFeRD-Ausgang, Ein- und Ausgang
+prüfen einander also); unbekannter Lieferant ergibt `kein_treffer` mit
+Hinweis statt eines Fehlers; ein zweiter Kontakt mit derselben USt-IdNr.
+ergibt `mehrdeutig` ohne Einzelvorschlag und mit beiden Kandidaten; vier
+Negativfälle (leere Datei, kein XML, XML ohne Rechnung, PDF ohne
+eingebettete Rechnung); die Größenbegrenzung wird mit einem Upload
+knapp über der Grenze als 413 nachgewiesen (die in ADR 0023 geforderte
+Nachweispflicht, nicht bloß behauptet); und ohne Anmeldung antwortet der
+Endpunkt 401/403.
+
+**Eigener Testfehler, im Gesamtlauf gefunden und richtig behoben**: der
+Nachweis "es wird nichts persistiert" prüfte zunächst
+`count(*) FROM invoices_in == 0`. Isoliert grün, im gemeinsamen Lauf rot
+— andere Tests desselben Pakets legen ebenfalls Eingangsrechnungen an,
+und `testutil` setzt die DB zwischen Tests nicht zurück. Die Absicht war
+richtig, die Messung falsch: eine absolute Zählung ist diesem Endpunkt
+gar nicht zurechenbar. Jetzt wird der Bestand vor dem Upload festgehalten
+und die Differenz geprüft (für `invoices_in` UND `invoice_in_items`) —
+damit ist die Aussage sogar schärfer als vorher. Bewusst NICHT durch
+Absenken der Erwartung "repariert".
+
+Abschließend vollständiger, ungefilterter `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1`-Lauf gegen frisch aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 29.262s`), keine Regression.
+
+Geänderte/neue Dateien:
+`server/internal/accounting/einvoice_supplier_match.go` (neu),
+`server/internal/http/einvoice_inbound.go` (neu),
+`server/internal/http/einvoice_inbound_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
