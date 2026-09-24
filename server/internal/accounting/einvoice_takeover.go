@@ -104,10 +104,22 @@ func (s *APService) TakeOverEInvoice(
 		InvoiceNumber:   parsed.Number,
 		Currency:        parsed.Currency,
 		Note:            buildEInvoiceTakeoverNote(parsed, decision.Note),
+
+		// Summen wie vom Lieferanten ausgewiesen (E.8). Uebernommen, NICHT
+		// nachgerechnet: weicht die Summe von den Positionen ab, ist das
+		// eine Tatsache der Rechnung (ADR 0023). Der Parser hat eine
+		// solche Abweichung bereits als Hinweis vermerkt.
+		NetAmount:   parsed.TaxBasisTotalAmount,
+		TaxAmount:   parsed.TaxTotalAmount,
+		GrossAmount: parsed.GrandTotalAmount,
 	}
 	if !parsed.IssueDate.IsZero() {
 		d := parsed.IssueDate
 		in.InvoiceDate = &d
+	}
+	if parsed.DueDate != nil {
+		d := *parsed.DueDate
+		in.DueDate = &d
 	}
 
 	for _, l := range parsed.Lines {
@@ -116,6 +128,22 @@ func (s *APService) TakeOverEInvoice(
 			Qty:         l.Qty,
 			UnitPrice:   l.NetUnitPrice,
 			Currency:    parsed.Currency,
+			// Beide Seiten sind bereits in PROZENT - hier wird NICHT
+			// umgerechnet (anders als bei tax_codes.rate, das ein
+			// Bruchteil ist).
+			TaxCategory: l.TaxCategoryCode,
+			TaxRate:     l.TaxRatePercent,
+			UnitCode:    l.UnitCode,
+		})
+	}
+
+	for _, t := range parsed.TaxBreakdown {
+		in.Taxes = append(in.Taxes, InvoiceInTaxInput{
+			TaxCategory:      t.CategoryCode,
+			TaxRate:          t.RatePercent,
+			BasisAmount:      t.BasisAmount,
+			CalculatedAmount: t.CalculatedAmount,
+			ExemptionReason:  t.ExemptionReason,
 		})
 	}
 
@@ -127,18 +155,17 @@ func (s *APService) TakeOverEInvoice(
 }
 
 // buildEInvoiceTakeoverNote haelt fest, woher die Rechnung stammt, und
-// rettet die Angaben, die das heutige invoices_in-Datenmodell nicht
-// abbilden kann.
+// gibt die Hinweise weiter, die beim Parsen aufgefallen sind.
 //
-// BEKANNTE LUECKE, bewusst dokumentiert statt verschwiegen:
-// `invoice_in_items` hat weder ein Steuerkennzeichen noch eine
-// Mengeneinheit, und `invoices_in` traegt keine Summenfelder. Die
-// geparste Steueraufschluesselung und die ausgewiesenen Summen gehen bei
-// der Uebernahme daher verloren. Sie hier als Klartext in die Notiz zu
-// schreiben ist eine Notloesung, damit die Information dem Sachbearbeiter
-// wenigstens erhalten bleibt - strukturiert gehoert sie ins Datenmodell
-// (Backlog E.8). Es wird ausdruecklich nichts gerechnet und nichts
-// ergaenzt, nur uebernommen was in der Rechnung steht.
+// Seit E.8 stehen Summen, Faelligkeit, Steuerkategorien und die
+// Steueraufschluesselung in eigenen Spalten (Migration 085). Die in E.6
+// noetige Notloesung, sie als Klartext in die Notiz zu schreiben, wurde
+// deshalb ERSETZT und nicht ergaenzt: stuenden sie doppelt, koennten
+// Notiz und Felder auseinanderlaufen, sobald jemand eine Rechnung
+// korrigiert - und niemand wuesste, welche der beiden Angaben gilt.
+//
+// Was bleibt, ist genau das, was die Felder NICHT ausdruecken: die
+// Herkunft des Belegs und die Plausibilitaetshinweise des Parsers.
 func buildEInvoiceTakeoverNote(parsed *ParsedEInvoice, userNote string) string {
 	var b strings.Builder
 	if n := strings.TrimSpace(userNote); n != "" {
@@ -149,17 +176,6 @@ func buildEInvoiceTakeoverNote(parsed *ParsedEInvoice, userNote string) string {
 	fmt.Fprintf(&b, "Übernommen aus E-Rechnung (%s).", strings.ToUpper(parsed.Format))
 	if v := strings.TrimSpace(parsed.Seller.VatID); v != "" {
 		fmt.Fprintf(&b, " USt-IdNr. des Verkäufers: %s.", v)
-	}
-	if parsed.GrandTotalAmount != 0 {
-		fmt.Fprintf(&b, "\nAusgewiesen: netto %.2f, Steuer %.2f, brutto %.2f %s.",
-			parsed.TaxBasisTotalAmount, parsed.TaxTotalAmount, parsed.GrandTotalAmount, parsed.Currency)
-	}
-	if parsed.DueDate != nil {
-		fmt.Fprintf(&b, "\nFällig am %s.", parsed.DueDate.Format("02.01.2006"))
-	}
-	for _, t := range parsed.TaxBreakdown {
-		fmt.Fprintf(&b, "\nSteuer %s %.2f%%: Basis %.2f, Betrag %.2f.",
-			t.CategoryCode, t.RatePercent, t.BasisAmount, t.CalculatedAmount)
 	}
 	for _, h := range parsed.Hinweise {
 		fmt.Fprintf(&b, "\nHinweis aus der Rechnung: %s", h)

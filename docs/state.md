@@ -7,19 +7,21 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.8.2** (Service-Ebene: Summen, Fälligkeit,
-> Steuerangaben je Position und Steueraufschlüsselung werden geschrieben
-> und gelesen), siehe Abschnitt "Epic E, Task E.8" weiter unten.
-> E.1-E.6 sind abgeschlossen, ebenso Epic 0 (0.1-0.5).
-> **Nächste Subtask: E.8.3** (letzte Subtask von Task E.8) — die Übernahme
-> `TakeOverEInvoice` (E.6) füllt die neuen Felder aus dem Parse-Ergebnis:
-> Summen, Fälligkeit, `TaxCategory`/`TaxRate`/`UnitCode` je Position und
-> die Steueraufschlüsselung. **Dabei die Notiz-Notlösung aus E.6
-> ERSETZEN, nicht ergänzen** — sonst steht dieselbe Information doppelt
-> und kann auseinanderlaufen; die Notiz behält nur noch die Herkunft und
-> die Hinweise aus der Rechnung. `ParsedEInvoice` liefert alles Nötige
-> bereits feldweise. Danach **E.7** (pdfcpu-Wartungspunkt) und die Epics
-> F (HR), G (Fuhrpark), H (Produktion), I (KI-Angebotserzeugung aus GAEB).
+> Zuletzt abgeschlossen: **E.8.3** — und damit **Task E.8 VOLLSTÄNDIG**:
+> die beim Eingang geparsten Steuer- und Summenangaben sind strukturiert
+> abgelegt, die in E.6 dokumentierte Lücke ist geschlossen. Siehe
+> Abschnitt "Epic E, Task E.8" weiter unten.
+> **Epic E ist damit bis auf E.7 abgeschlossen** (E.1-E.6, E.8 done),
+> ebenso Epic 0 (0.1-0.5).
+> **Nächste Subtask: E.7** — kleiner Wartungspunkt: bei einer Anhebung
+> der `pdfcpu`-Version prüfen, ob es inzwischen einen Sentinel-Fehler für
+> "PDF ohne Anhang" gibt, und den Substring-Abgleich in
+> `accounting.isPdfcpuNoAttachmentsError` darauf umstellen. Sehr kleiner
+> Umfang — danach ist Epic E fertig und es folgen die Epics F (HR),
+> G (Fuhrpark), H (Produktionssteuerung) und I (KI-gestützte
+> Angebotserzeugung aus GAEB, laut `aufgabe.md` §1 das erklärte Endziel;
+> Epic I hat die Sonderregeln aus §4 zu beachten, insbesondere
+> deterministisches Parsen vor LLM-Einsatz und ein Evaluationsset ZUERST).
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9656,6 +9658,70 @@ zusammen mit der Ablösung der dortigen Notiz-Notlösung.
 Geänderte/neue Dateien:
 `server/internal/accounting/ap_tax_totals_integration_test.go` (neu),
 `server/internal/accounting/ap.go`, `docs/backlog.md`, `docs/state.md`.
+
+### E.8.3 Übernahme füllt die Felder, Notiz-Notlösung abgelöst
+
+Letzte Subtask von Task E.8. `TakeOverEInvoice`
+(`server/internal/accounting/einvoice_takeover.go`) füllt jetzt die in
+E.8.1/E.8.2 geschaffenen Felder aus dem Parse-Ergebnis: Summen
+(`TaxBasisTotalAmount`/`TaxTotalAmount`/`GrandTotalAmount`),
+Fälligkeit, je Position `TaxCategory`/`TaxRate`/`UnitCode` und die
+komplette Steueraufschlüsselung.
+
+**Keine Umrechnung nötig, und das ist kein Zufall**: `ParsedLine.
+TaxRatePercent` und die neue Spalte `tax_rate` sind beide in PROZENT.
+Nur `tax_codes.rate` ist ein Bruchteil — dieser Unterschied ist an
+beiden Enden kommentiert, weil er in diesem Projekt jetzt an drei
+Stellen nebeneinander existiert.
+
+**Summen werden übernommen, nicht nachgerechnet** (ADR 0023). Weicht
+die ausgewiesene Summe von den Positionen ab, bleibt sie stehen — der
+Parser hat eine solche Abweichung bereits als Hinweis vermerkt, und
+dieser Hinweis landet weiterhin in der Notiz.
+
+**Die Notiz-Notlösung aus E.6 wurde ERSETZT, nicht ergänzt.** Das war
+die eigentliche Aufgabe dieser Subtask: Summen, Fälligkeit und
+Steuerzeilen stehen nicht mehr zusätzlich als Klartext in
+`invoices_in.note`. Stünden sie doppelt, könnten Notiz und Felder
+auseinanderlaufen, sobald jemand eine Rechnung korrigiert — und niemand
+wüsste, welche der beiden Angaben gilt. In der Notiz bleibt genau das,
+was die Felder NICHT ausdrücken: die Herkunft des Belegs, die USt-IdNr.
+des Verkäufers und die Plausibilitätshinweise des Parsers.
+
+**Der Test wurde entsprechend umgestellt, nicht abgeschwächt.** Die
+bisherigen Zusicherungen auf `"brutto 238.00 EUR"` und
+`"Steuer S 19.00%"` in der Notiz mussten fallen — das ist eine
+beabsichtigte Verhaltensänderung. An ihre Stelle treten Prüfungen auf
+die strukturierten Felder, PLUS eine Gegenprobe, dass die Notiz diese
+Angaben nun *nicht mehr* enthält. Damit ist die Ablösung selbst
+abgesichert: würde jemand die alte Notlösung versehentlich
+wiederbeleben, schlägt der Test an.
+
+Das gemeinsame Testdokument `inboundCIIForUpload` wurde um
+`SpecifiedTradePaymentTerms`/`DueDateDateTime` ergänzt, damit der
+Fälligkeits-Pfad überhaupt echt abgedeckt ist — vorher hätte der Test
+nur bewiesen, dass `nil` durchgereicht wird.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+allen geänderten Dateien clean.
+`NALA_INTEGRATION=1 go test ./internal/http/... -run
+"TestTakeOverEInvoice|TestParseEInvoiceEndpoint" -v` gegen frische DB
+grün (bewusst beide Endpunkte zusammen, weil sie sich das Testdokument
+teilen). Abschließend vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1`-Lauf gegen frisch
+aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 29.759s`), keine Regression.
+
+**Damit ist Task E.8 vollständig abgeschlossen** — die beim Eingang
+geparsten Steuer- und Summenangaben sind strukturiert abgelegt,
+auswertbar und für eine Rechnungsprüfung nutzbar; die in E.6
+dokumentierte Lücke ist geschlossen.
+
+Geänderte Dateien:
+`server/internal/accounting/einvoice_takeover.go`,
+`server/internal/http/einvoice_takeover_integration_test.go`,
+`server/internal/http/einvoice_inbound_integration_test.go`,
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 

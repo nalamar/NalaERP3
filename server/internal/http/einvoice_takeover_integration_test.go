@@ -52,20 +52,33 @@ func uploadEInvoiceTakeover(t *testing.T, handler http.Handler, token string, co
 
 type takeoverResult struct {
 	Rechnung struct {
-		ID              string `json:"id"`
-		LieferantID     string `json:"lieferant_id"`
-		BestellungID    string `json:"bestellung_id"`
-		Rechnungsnummer string `json:"rechnungsnummer"`
-		Rechnungsdatum  string `json:"rechnungsdatum"`
-		Waehrung        string `json:"waehrung"`
-		Status          string `json:"status"`
-		Notiz           string `json:"notiz"`
+		ID                     string  `json:"id"`
+		LieferantID            string  `json:"lieferant_id"`
+		BestellungID           string  `json:"bestellung_id"`
+		Rechnungsnummer        string  `json:"rechnungsnummer"`
+		Rechnungsdatum         string  `json:"rechnungsdatum"`
+		Faelligkeitsdatum      string  `json:"faelligkeitsdatum"`
+		Waehrung               string  `json:"waehrung"`
+		Status                 string  `json:"status"`
+		Notiz                  string  `json:"notiz"`
+		Nettobetrag            float64 `json:"nettobetrag"`
+		Steuerbetrag           float64 `json:"steuerbetrag"`
+		Bruttobetrag           float64 `json:"bruttobetrag"`
+		Steueraufschluesselung []struct {
+			Steuerkategorie string  `json:"steuerkategorie"`
+			Steuersatz      float64 `json:"steuersatz"`
+			Nettobetrag     float64 `json:"nettobetrag"`
+			Steuerbetrag    float64 `json:"steuerbetrag"`
+		} `json:"steueraufschluesselung"`
 	} `json:"rechnung"`
 	Positionen []struct {
-		Bezeichnung string  `json:"bezeichnung"`
-		Menge       float64 `json:"menge"`
-		Preis       float64 `json:"preis"`
-		Waehrung    string  `json:"waehrung"`
+		Bezeichnung     string  `json:"bezeichnung"`
+		Menge           float64 `json:"menge"`
+		Preis           float64 `json:"preis"`
+		Waehrung        string  `json:"waehrung"`
+		Steuerkategorie string  `json:"steuerkategorie"`
+		Steuersatz      float64 `json:"steuersatz"`
+		Einheit         string  `json:"einheit"`
 	} `json:"positionen"`
 }
 
@@ -118,16 +131,42 @@ func TestTakeOverEInvoiceEndpointEndToEnd(t *testing.T) {
 		t.Errorf("Position falsch übernommen: %+v", got.Positionen[0])
 	}
 
-	// Die Notiz haelt Herkunft und die nicht abbildbaren Angaben fest.
+	// Seit E.8.3 landen die Steuer- und Summenangaben STRUKTURIERT in
+	// eigenen Feldern statt als Klartext in der Notiz.
+	if got.Rechnung.Nettobetrag != 200 || got.Rechnung.Steuerbetrag != 38 || got.Rechnung.Bruttobetrag != 238 {
+		t.Errorf("Summen nicht strukturiert übernommen: %+v", got.Rechnung)
+	}
+	if !strings.HasPrefix(got.Rechnung.Faelligkeitsdatum, "2026-07-10") {
+		t.Errorf("Fälligkeitsdatum nicht übernommen: %q", got.Rechnung.Faelligkeitsdatum)
+	}
+	if len(got.Rechnung.Steueraufschluesselung) != 1 {
+		t.Fatalf("erwartet 1 Steuergruppe, got %+v", got.Rechnung.Steueraufschluesselung)
+	}
+	if tb := got.Rechnung.Steueraufschluesselung[0]; tb.Steuerkategorie != "S" ||
+		tb.Steuersatz != 19 || tb.Nettobetrag != 200 || tb.Steuerbetrag != 38 {
+		t.Errorf("Steuergruppe falsch übernommen: %+v", tb)
+	}
+	if p := got.Positionen[0]; p.Steuerkategorie != "S" || p.Steuersatz != 19 || p.Einheit != "MTR" {
+		t.Errorf("Steuerangaben der Position nicht übernommen: %+v", p)
+	}
+
+	// Die Notiz haelt nur noch fest, was die Felder NICHT ausdruecken:
+	// Herkunft und Hinweise. Die frueher dort abgelegten Summen und
+	// Steuerzeilen wurden in E.8.3 ERSETZT, nicht ergaenzt - doppelte
+	// Haltung koennte auseinanderlaufen.
 	for _, want := range []string{
 		"Vom Sachbearbeiter geprüft.",
 		"Übernommen aus E-Rechnung (CII)",
 		"DE811122233",
-		"brutto 238.00 EUR",
-		"Steuer S 19.00%",
 	} {
 		if !strings.Contains(got.Rechnung.Notiz, want) {
 			t.Errorf("Notiz enthält %q nicht.\nNotiz: %s", want, got.Rechnung.Notiz)
+		}
+	}
+	for _, unerwuenscht := range []string{"brutto", "Ausgewiesen:", "Fällig am", "Steuer S 19"} {
+		if strings.Contains(got.Rechnung.Notiz, unerwuenscht) {
+			t.Errorf("die Notiz darf %q nicht mehr enthalten - die Angabe steht jetzt strukturiert im Feld.\nNotiz: %s",
+				unerwuenscht, got.Rechnung.Notiz)
 		}
 	}
 

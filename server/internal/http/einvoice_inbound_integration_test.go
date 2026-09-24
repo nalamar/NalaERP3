@@ -91,6 +91,11 @@ const inboundCIIForUpload = `<?xml version="1.0" encoding="UTF-8"?>
                 <ram:CategoryCode>S</ram:CategoryCode>
                 <ram:RateApplicablePercent>19.00</ram:RateApplicablePercent>
             </ram:ApplicableTradeTax>
+            <ram:SpecifiedTradePaymentTerms>
+                <ram:DueDateDateTime>
+                    <udt:DateTimeString format="102">20260710</udt:DateTimeString>
+                </ram:DueDateDateTime>
+            </ram:SpecifiedTradePaymentTerms>
             <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
                 <ram:LineTotalAmount>200.00</ram:LineTotalAmount>
                 <ram:TaxBasisTotalAmount>200.00</ram:TaxBasisTotalAmount>
