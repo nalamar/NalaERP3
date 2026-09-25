@@ -7,21 +7,27 @@
 
 > **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.8.3** — und damit **Task E.8 VOLLSTÄNDIG**:
-> die beim Eingang geparsten Steuer- und Summenangaben sind strukturiert
-> abgelegt, die in E.6 dokumentierte Lücke ist geschlossen. Siehe
-> Abschnitt "Epic E, Task E.8" weiter unten.
-> **Epic E ist damit bis auf E.7 abgeschlossen** (E.1-E.6, E.8 done),
-> ebenso Epic 0 (0.1-0.5).
-> **Nächste Subtask: E.7** — kleiner Wartungspunkt: bei einer Anhebung
-> der `pdfcpu`-Version prüfen, ob es inzwischen einen Sentinel-Fehler für
-> "PDF ohne Anhang" gibt, und den Substring-Abgleich in
-> `accounting.isPdfcpuNoAttachmentsError` darauf umstellen. Sehr kleiner
-> Umfang — danach ist Epic E fertig und es folgen die Epics F (HR),
+> Zuletzt abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
+> VOLLSTÄNDIG**: E.1 Kostenstellen, E.2 Projektcontrolling, E.3
+> DATEV-Export, E.4 E-Rechnung Ausgang, E.5 E-Rechnung Eingang, E.6
+> Übernahme, E.7 pdfcpu-Prüfung, E.8 strukturierte Steuer-/Summenablage.
+> Siehe Abschnitt "Epic E, Task E.7" weiter unten. Epic 0 (0.1-0.5) ist
+> ebenfalls abgeschlossen.
+> **Nächstes Epic: F (Personal & HR)** — laut `aufgabe.md` §1:
+> Stammdaten, Zeiterfassung, Urlaub/Abwesenheit, Weiterbildung/
+> Qualifikationen/Unterweisungen, Asset-Zuordnung. **Vor dem Start
+> zwingend**: `docs/backlog.md` im Abschnitt "Epic F" lesen (dort stehen
+> die bereits formulierten Tasks) und den vorhandenen Ist-Stand in
+> `server/internal/hr` prüfen — es gibt dort schon Employee-Strukturen
+> und offene Befunde aus Epic 0 (u. a. Backlog 0.10: `EmployeeService.
+> Update()` ignoriert unbekannte Patch-Keys still). **Rechtlicher Rahmen
+> beachten** (`aufgabe.md` §2): DSGVO-Zweckbindung und Löschfristen für
+> Personaldaten, keine Personaldaten in Logs, Arbeitszeiterfassung
+> revisionssicher nach ArbZG/BAG-Rechtsprechung. Danach die Epics
 > G (Fuhrpark), H (Produktionssteuerung) und I (KI-gestützte
-> Angebotserzeugung aus GAEB, laut `aufgabe.md` §1 das erklärte Endziel;
-> Epic I hat die Sonderregeln aus §4 zu beachten, insbesondere
-> deterministisches Parsen vor LLM-Einsatz und ein Evaluationsset ZUERST).
+> Angebotserzeugung aus GAEB — das erklärte Endziel, mit den Sonderregeln
+> aus §4: deterministisches Parsen vor LLM-Einsatz, Evaluationsset
+> ZUERST, Preise nie vom Modell).
 > Maßgeblich ist immer `docs/backlog.md`.
 
 
@@ -9721,6 +9727,69 @@ Geänderte Dateien:
 `server/internal/accounting/einvoice_takeover.go`,
 `server/internal/http/einvoice_takeover_integration_test.go`,
 `server/internal/http/einvoice_inbound_integration_test.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+## Epic E, Task E.7 — pdfcpu-Workaround: geprüft, Umstellung nicht möglich
+
+Ergebnis vorweg: **die in E.5.4 geplante Umstellung auf einen
+Sentinel-Fehler ist nicht möglich — nicht „noch nicht gemacht", sondern
+Upstream schlicht nicht vorhanden.** Dafür ist die Absicherung besser
+als in E.5.4 angenommen.
+
+**Recherche (Stand 2026-09-25).** Geprüft wurden alle veröffentlichten
+pdfcpu-Versionen bis `v0.16.0-rc.1` sowie der `master`-Branch. Befund:
+`"EmbeddedFiles name tree: no attachments available"` ist auch dort noch
+ein blankes `errors.New` (`pkg/pdfcpu/model/attach.go`). pdfcpu nutzt
+Sentinel-Fehler durchaus — aber für ANDERE Anhang-Fälle
+(`ErrNoAttachmentAdded`, `ErrNoAttachmentRemoved` in
+`pkg/api/attach.go`) und nicht für „keine Anhänge vorhanden". Der
+Textabgleich in `isPdfcpuNoAttachmentsError` bleibt damit alternativlos.
+
+**Keine Versionsanhebung.** `v0.16.0-rc.1` ist ein Release Candidate;
+E.5.4 hatte bewusst die stabile `v0.15.0` gewählt. Eine Anhebung auf
+einen RC nur für diesen Zweck wäre nicht zu rechtfertigen — zumal sie
+den Workaround ohnehin nicht ablösen würde.
+
+**Korrektur einer eigenen Falschaussage.** Der Kommentar aus E.5.4
+behauptete, ein gebrochener Abgleich bliebe still und hätte nur eine
+unschönere Fehlermeldung zur Folge. Das ist **falsch**, und die
+Gegenprobe zeigt es: `isPdfcpuNoAttachmentsError` wurde versuchsweise auf
+einen nie vorkommenden Text gesetzt, woraufhin
+`TestExtractEInvoiceFromPDFRejectsBrokenInput/"PDF ohne Anhang"` sofort
+fehlschlug — mit einer Meldung, die genau die durchgereichte
+Bibliotheksmeldung zeigt. Der Fall läuft gegen die echte Bibliothek und
+ist damit ein echter Wächter, kein Papiertiger. Der Kommentar wurde
+entsprechend richtiggestellt.
+
+**Umgesetzt** wurde deshalb keine Codeänderung an der Logik, sondern:
+der Kommentar hält jetzt den Recherchestand fest (damit niemand dieselbe
+Suche wiederholt), benennt ausdrücklich, dass eine Anhebung der Version
+an dieser Stelle KEINE Prüfung erfordert, weil der Test es meldet, und
+der Testfall selbst ist als Wächter markiert („Nicht entfernen").
+
+**Warum die Position geschlossen wird**: der Inhalt der Aufgabe war die
+Prüfung, und die ist erfolgt und dokumentiert. Der verbleibende Auslöser
+(„falls Upstream einen Sentinel nachreicht") gehört dorthin, wo ihn
+jemand sieht, der die Version tatsächlich anhebt — in den Code —, nicht
+in eine dauerhaft offene Backlog-Position, die bei jedem Sessionstart
+erneut dieselbe Recherche provoziert.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; `gofmt -l` auf
+beiden geänderten Dateien clean. Die Gegenprobe (Abgleich absichtlich
+gebrochen → Test rot, danach wiederhergestellt → grün) wurde tatsächlich
+ausgeführt. Abschließend vollständiger, ungefilterter
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1`-Lauf gegen frisch
+aufgesetzte DB: durchgehend `ok` (u. a.
+`ok nalaerp3/internal/http 32.364s`), keine Regression.
+
+**Damit ist Epic E (Finanzwesen) vollständig abgeschlossen**: E.1
+Kostenstellen, E.2 Projektcontrolling, E.3 DATEV-Export, E.4 E-Rechnung
+Ausgang, E.5 E-Rechnung Eingang, E.6 Übernahme, E.7 (dieser Punkt) und
+E.8 strukturierte Steuer-/Summenablage.
+
+Geänderte Dateien:
+`server/internal/accounting/einvoice_parse_pdf.go`,
+`server/internal/accounting/einvoice_parse_pdf_test.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte

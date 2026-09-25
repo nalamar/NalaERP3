@@ -147,19 +147,32 @@ var errNoEInvoiceAttachment = errors.New("E-Rechnung Eingang: die PDF enthält k
 // isPdfcpuNoAttachmentsError erkennt, dass pdfcpu eine PDF ganz ohne
 // Anhaenge gemeldet hat.
 //
-// WORKAROUND, bewusst gekennzeichnet (§7.2): pdfcpu v0.15.0 liefert fuer
-// diesen Fall KEINEN typisierten Fehler, sondern
+// WORKAROUND, bewusst gekennzeichnet (§7.2): pdfcpu liefert fuer diesen
+// Fall KEINEN typisierten Fehler, sondern
 // errors.New("EmbeddedFiles name tree: no attachments available")
-// (pkg/pdfcpu/model/attach.go:395, im Quellcode der gepinnten Version
-// nachgesehen). Ein Abgleich auf den Meldungstext ist die einzige
-// Moeglichkeit, diesen Normalfall von einer echt kaputten PDF zu
+// (pkg/pdfcpu/model/attach.go). Ein Abgleich auf den Meldungstext ist die
+// einzige Moeglichkeit, diesen Normalfall von einer echt kaputten PDF zu
 // unterscheiden - ohne ihn bekaeme der Anwender fuer die haeufigste
-// Fehlbedienung eine englische Bibliotheksmeldung statt eines Hinweises.
-// Die saubere Loesung waere ein Sentinel-Fehler in pdfcpu; solange es den
-// nicht gibt, ist dieser Abgleich an die gepinnte Version gebunden und
-// beim Anheben der Version zu pruefen (Backlog E.7). Bricht der Abgleich
-// still, ist die Folge lediglich eine unschoenere Fehlermeldung - kein
-// falsches Ergebnis.
+// Fehlbedienung (eine gewoehnliche Rechnungs-PDF statt einer ZUGFeRD-PDF)
+// eine englische Bibliotheksmeldung statt eines Hinweises.
+//
+// RECHERCHESTAND 2026-09-25 (Backlog E.7): die saubere Loesung waere ein
+// Sentinel-Fehler in pdfcpu - den gibt es NICHT, auch nicht im aktuellen
+// Upstream-Stand. Geprueft wurden alle veroeffentlichten Versionen bis
+// v0.16.0-rc.1 sowie der master-Branch: dort existieren zwar Sentinels
+// fuer ANDERE Anhang-Faelle (ErrNoAttachmentAdded, ErrNoAttachmentRemoved
+// in pkg/api/attach.go), aber fuer "keine Anhaenge vorhanden" weiterhin
+// nur das blanke errors.New. Eine Umstellung ist also nicht moeglich,
+// nicht bloss noch nicht gemacht. Nicht erneut recherchieren, ohne dass
+// sich Upstream bewegt hat.
+//
+// WER DIE pdfcpu-VERSION ANHEBT, muss hier nichts pruefen: ein
+// geaenderter Meldungstext faellt sofort auf, weil
+// TestExtractEInvoiceFromPDFRejectsBrokenInput/"PDF ohne Anhang" gegen
+// die echte Bibliothek laeuft und dann fehlschlaegt. Das wurde
+// experimentell bestaetigt (Abgleich absichtlich gebrochen -> Test rot).
+// Die frueher an dieser Stelle stehende Annahme, ein Bruch bliebe
+// unbemerkt, war falsch.
 func isPdfcpuNoAttachmentsError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "no attachments available")
 }

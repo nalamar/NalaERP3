@@ -161,6 +161,11 @@ func TestExtractEInvoiceFromPDFRejectsBrokenInput(t *testing.T) {
 	}{
 		{"leere Datei", nil, "leere PDF-Datei"},
 		{"keine PDF", []byte("Das ist einfach nur Text."), "PDF konnte nicht gelesen werden"},
+		// Dieser Fall ist zugleich der WAECHTER ueber den Textabgleich in
+		// isPdfcpuNoAttachmentsError (Backlog E.7): er laeuft gegen die
+		// echte Bibliothek. Aendert pdfcpu bei einer Versionsanhebung den
+		// Meldungstext, schlaegt genau hier fehl - der Workaround kann
+		// also nicht unbemerkt brechen. Nicht entfernen.
 		{"PDF ohne Anhang", buildTestPDF(t), "keine eingebettete Rechnungsdatei"},
 		{
 			"PDF mit fremdartigem Anhang",
