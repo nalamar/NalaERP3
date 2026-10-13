@@ -10606,7 +10606,7 @@ aufsetzen, auch wenn die Subtask selbst keine Datenbank anfasst — die
 Tests in `accounting` setzen eine leere DB voraus.
 
 **Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
-internal/hr/` clean. 6 Testfunktionen, 53 Fälle, grün. Gegenprobe mit
+internal/hr/` clean. 6 Testfunktionen, 45 Teilfälle, grün. Gegenprobe mit
 20 Verfälschungen: 19 sofort erkannt, eine nach ergänzten Testfällen.
 Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen
 frische DB: durchgehend `ok`.
