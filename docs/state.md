@@ -7,28 +7,36 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **0.46** (Request-Log ohne Query-Werte, ADR
-> 0026). Der Nutzer hat am 2026-10-13 entschieden, 0.46 und F.9 vor F.2
-> zu erledigen (siehe "Korrekturen"). Davor: Task F.4 und Task F.1
-> vollständig. Siehe Abschnitt "Backlog 0.46" weiter unten.
-> **Nächste Subtask: F.9** — Testlücke Zeiterfassung: `time_entries.read`
-> und `time_entries.write` werden nicht getrennt geprüft. Neuer
-> HTTP-Integrationstest in
-> `server/internal/http/time_entries_integration_test.go` (oder eigener
-> Datei) mit zwei eigens angelegten Rollen, die genau eines der beiden
-> Rechte haben — der Helfer `seedRoleWithPermissions` existiert seit
-> F.4.6 in `leave_requests_integration_test.go`. Zu belegen: nur `read`
-> darf fremde Einträge und Listen lesen, aber nicht anlegen, beenden,
-> stornieren, korrigieren; nur `write` darf das Schreibende, aber
-> fremde Einträge nicht LESEN (Einzelabruf, Liste). Achtung: die
-> Schreibrouten antworten mit dem Eintrag — ob `write` ohne `read`
-> dadurch faktisch lesen kann, ist zu beobachten und zu dokumentieren,
-> nicht stillschweigend zu ändern. Reiner Test, kein Produktivcode;
-> findet der Test einen echten Fehler, diesen benennen und beheben.
-> Gegenprobe über das Skript-Verfahren (jede Route einmal mit dem
-> falschen Recht). **Danach F.2** (Weiterbildung/Qualifikationen/
-> Unterweisungen), beginnend mit Bestandsaufnahme und ADR.
-> **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.9** (Test: `time_entries.read`/`write`
+> getrennt geprüft), davor 0.46. Beide hatte der Nutzer vor F.2
+> gezogen (siehe "Korrekturen"); damit ist diese Vorgabe erledigt.
+> Davor: Task F.4 und Task F.1 vollständig.
+> **Nächste Arbeit: F.2 (Weiterbildung/Qualifikationen/
+> Unterweisungen)**, beginnend mit **F.2.1: Bestandsaufnahme und ADR**
+> (nächste freie ADR-Nummer 0027, nächste Migration 088). Zuerst per
+> Suche bestätigen, dass es im Repo nichts dazu gibt (Begriffe:
+> qualif, schulung, training, unterweis, zertifik, instruction,
+> certificate — in `server/internal`, Migrationen, `client/lib`).
+> Dann entscheiden bzw. als offene Frage stellen:
+> (1) Modell: Katalog von Qualifikationen/Unterweisungsarten als
+> Stammdaten je Mandant gegen Nachweise je Mitarbeiter (erworben am,
+> gültig bis); (2) Wiederholungsfristen und was "fällig"/"abgelaufen"
+> heißt — als berechnete Auswertung beim Lesen, nicht gespeichert
+> (Muster der ArbZG-Hinweise aus F.1.3); (3) ob Nachweise
+> unveränderlich sind (Storno statt Änderung) — Unterweisungsnachweise
+> haben Beweisfunktion gegenüber Berufsgenossenschaft/Aufsicht;
+> (4) Nachweisdokumente (GridFS vorhanden) — in F.2 oder später;
+> (5) Rechte: eigene Nachweise sehen (`self`) gegen alle
+> (`read`/`write`), `resolveOwnOrPermittedEmployee` wiederverwenden;
+> (6) Abgrenzung zu H (Einsatzfähigkeit für Maschinen/Arbeiten prüfen)
+> und G (Führerscheinkontrolle) — nur das Datenmodell so anlegen, dass
+> beide darauf aufsetzen können, nicht deren Logik bauen.
+> **Fachliche Vorgaben fehlen** (welche Unterweisungen, welche
+> Fristen, Unterschrift/Bestätigung des Mitarbeiters): nicht raten,
+> sondern in der ADR als Annahme kennzeichnen oder als Blocker-Frage
+> stellen (§7.10). Rechtsangaben (ArbSchG §12, DGUV Vorschrift 1 §4)
+> nur nennen, soweit sie das Datenmodell bestimmen, und kennzeichnen,
+> dass sie nicht gegen eine Primärquelle geprüft sind.
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10467,6 +10475,39 @@ Geänderte Dateien: `server/internal/http/observability.go`,
 `server/internal/http/observability_test.go` (neu),
 `docs/adr/0026-request-log-ohne-query-werte.md` (neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
+## Backlog F.9 — Test: Lese- und Schreibrecht der Zeiterfassung getrennt
+
+Vom Nutzer vor F.2 gezogen. Reiner Test, kein Produktivcode geändert.
+Neue Datei
+`server/internal/http/time_entries_permissions_integration_test.go`.
+
+**Die Lücke bestand nachweislich:** sechs Verfälschungen (jede Route
+mit dem falschen der beiden Rechte) überlebten die bisherigen acht
+HTTP-Tests der Zeiterfassung vollständig. Der neue Test erkennt alle
+sechs. Der Code selbst war korrekt.
+
+**Allgemeine Lehre (gilt für jedes künftige Modul):** wo zwei Rechte
+getrennt vergeben werden können, gehört ein Test mit je einer Rolle
+dazu, die genau eines davon hat. `seedRoleWithPermissions` in
+`http/leave_requests_integration_test.go` legt solche Rollen an.
+Stand: Mitarbeiterstamm (F.4.4), Urlaubsanträge (F.4.6) und
+Zeiterfassung (F.9) haben diesen Test. **Die älteren Domänen (A–E)
+wurden darauf nicht untersucht.**
+
+**Beobachtung:** Schreibrouten antworten mit dem geschriebenen
+Eintrag. Wer nur `write` hat, sieht also, was er selbst schreibt; ein
+Lesepfad ohne Schreibwirkung entsteht daraus nicht.
+
+**Verifikation.** `go vet ./...`, `gofmt -l` clean. Neuer Test grün.
+Gegenprobe gegen die alten Tests allein (alle sechs überleben) und
+gegen den neuen (alle sechs erkannt). Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien:
+`server/internal/http/time_entries_permissions_integration_test.go`
+(neu), `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
