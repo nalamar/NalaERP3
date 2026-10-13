@@ -84,6 +84,34 @@ func TestQualificationStornoAndListValidateBeforeTouchingDatabase(t *testing.T) 
 	}
 }
 
+func TestQualificationRequirementsAndStandingValidateBeforeTouchingDatabase(t *testing.T) {
+	s := NewQualificationService(nil)
+	ctx := context.Background()
+	emp, typ := uuid.New(), uuid.New()
+
+	if _, err := s.SetRequirements(ctx, emp, []uuid.UUID{typ}, "", " "); err == nil || err.Error() != "Mandant erforderlich" {
+		t.Fatalf("SetRequirements: erwartet 'Mandant erforderlich', bekommen %v", err)
+	}
+	if _, err := s.SetRequirements(ctx, uuid.Nil, []uuid.UUID{typ}, "", "default"); err == nil || err.Error() != "employee_id erforderlich" {
+		t.Fatalf("SetRequirements: erwartet 'employee_id erforderlich', bekommen %v", err)
+	}
+	if _, err := s.SetRequirements(ctx, emp, []uuid.UUID{typ, uuid.Nil}, "", "default"); err == nil || err.Error() != "type_id erforderlich" {
+		t.Fatalf("SetRequirements: erwartet 'type_id erforderlich', bekommen %v", err)
+	}
+	if _, err := s.ListRequirements(ctx, emp, ""); err == nil || err.Error() != "Mandant erforderlich" {
+		t.Fatalf("ListRequirements: erwartet 'Mandant erforderlich', bekommen %v", err)
+	}
+	if _, err := s.ListRequirements(ctx, uuid.Nil, "default"); err == nil || err.Error() != "employee_id erforderlich" {
+		t.Fatalf("ListRequirements: erwartet 'employee_id erforderlich', bekommen %v", err)
+	}
+	if _, err := s.Standing(ctx, emp, time.Now(), 60, ""); err == nil || err.Error() != "Mandant erforderlich" {
+		t.Fatalf("Standing: erwartet 'Mandant erforderlich', bekommen %v", err)
+	}
+	if _, err := s.Standing(ctx, uuid.Nil, time.Now(), 60, "default"); err == nil || err.Error() != "employee_id erforderlich" {
+		t.Fatalf("Standing: erwartet 'employee_id erforderlich', bekommen %v", err)
+	}
+}
+
 func TestUniqueEmployeeIDsDedupesAndSorts(t *testing.T) {
 	a, b, c := uuid.MustParse("00000000-0000-0000-0000-00000000000a"), uuid.MustParse("00000000-0000-0000-0000-00000000000b"), uuid.MustParse("00000000-0000-0000-0000-00000000000c")
 	got := uniqueEmployeeIDs([]uuid.UUID{c, a, b, a, c})

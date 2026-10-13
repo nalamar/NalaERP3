@@ -7,34 +7,36 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.4.2** (Nachweise erfassen, stornieren,
-> lesen), davor F.2.4.1, F.2.3, F.2.2, F.2.1.
-> **Nächste Subtask: F.2.4.3** (letzte von F.2.4) — Anforderungen je
-> Mitarbeiter und der Stand eines Mitarbeiters, in
-> `server/internal/hr/qualifications.go` oder eigener Datei
-> `qualification_requirements.go`:
-> (1) `SetRequirements(ctx, employeeID, typeIDs, actorUserID,
-> companyID)` — ersetzt die Menge der Anforderungen eines
-> Mitarbeiters in einer Transaktion (fehlende einfügen, überzählige
-> entfernen); Mitarbeiter und jede Art müssen zum Mandanten gehören;
-> stillgelegte Arten als NEUE Anforderung ablehnen, bestehende
-> Anforderungen auf später stillgelegte Arten aber nicht stören.
-> Anforderungen sind Planung: INSERT/DELETE hier ist gewollt und
-> betrifft `hr_employee_qualification_requirements`, NICHT die
-> Nachweise — der Wächtertest prüft nur `qualifications.go` auf
-> `hr_employee_qualifications`; bei eigener Datei bleibt er unberührt.
-> (2) `ListRequirements(employeeID, companyID)`.
-> (3) `Standing(ctx, employeeID, today, warnDays, companyID)` — führt
-> zusammen: aktive Nachweise des Mitarbeiters, erforderliche Arten =
-> eigene Anforderungen PLUS `pflicht_fuer_alle`, jeweils nur AKTIVE
-> Arten; `pflicht_fuer_alle` nur für aktive Mitarbeiter; ruft
-> `EvaluateQualifications` und reichert mit Code, Name und Kategorie
-> der Art an; fachlich sortiert (Dringlichkeit: fehlt, abgelaufen,
-> läuft ab, gültig; dann Name).
-> Die betriebsweite Fälligkeitsliste ist F.2.6, nicht hier.
-> Noch KEIN HTTP. Gegenprobe über das Skript-Verfahren; eine
-> überlebende Verfälschung erst als gleichwertig einstufen, wenn das
-> belegt ist (Muster aus F.2.4.2).
+> Zuletzt abgeschlossen: **F.2.4.3** — damit ist **Task F.2.4
+> (Nachweise und Anforderungen im Service) vollständig**. Davor F.2.3,
+> F.2.2, F.2.1.
+> **Nächste Subtask: F.2.5** — HTTP-Anbindung von Katalog, Nachweisen
+> und Anforderungen in neuer Datei
+> `server/internal/http/qualifications.go` (Muster:
+> `http/leave_requests.go`). **Vor dem Start schätzen und
+> voraussichtlich teilen (§6.3)**, z. B. F.2.5.1 Katalog, F.2.5.2
+> Nachweise und Anforderungen. Routen-Vorschlag:
+> `/qualification-types`: `GET /` (`include_inactive`), `POST /`,
+> `GET /{id}`, `PUT /{id}` (vollständiger Ersatz, deshalb PUT, nicht
+> PATCH), `POST /adopt-defaults` — lesen mit einem der drei
+> `qualifications.*`-Rechte, schreiben mit `qualifications.write`.
+> `/qualifications`: `POST /` (Gruppenerfassung, `employee_ids`),
+> `GET /{id}`, `POST /{id}/storno`,
+> `GET /?employee_id=&include_storniert=` — schreiben nur
+> `qualifications.write` (KEIN Selbsteintrag), lesen eigene mit
+> `self`, fremde mit `read` über `resolveOwnOrPermittedEmployee`.
+> `/employees/{id}/qualification-requirements`: `GET`, `PUT` (Liste
+> von `type_ids`) — oder unter `/qualifications/requirements`;
+> beim Umsetzen entscheiden, wo es zur vorhandenen Struktur passt
+> (`/employees` verlangt `employees.*`, hier gelten
+> `qualifications.*`).
+> Datumsfelder als `JJJJ-MM-TT` über eigene Eingabe-Structs.
+> `classifyDomainError`: **"ist stillgelegt" fehlt** (fiele als 500
+> durch); übrige Texte per Test belegen. Neue Query-Parameter
+> (`include_inactive` gibt es schon; ggf. `warn_tage`, `stichtag`) in
+> `loggedQueryKeys` eintragen. Tests mit Rollen, die genau eines der
+> Rechte haben, und mit zweitem Mandanten. Der Stand und die
+> betriebsweite Fälligkeitsliste sind F.2.6.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10671,6 +10673,52 @@ gleichwertig belegt. Vollständiger `NALA_INTEGRATION=1 go test ./...
 Geänderte Dateien: `server/internal/hr/qualifications.go` (neu),
 `server/internal/hr/qualifications_test.go` (neu),
 `server/internal/hr/qualifications_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### F.2.4.3 Anforderungen je Mitarbeiter und Stand (letzte Subtask von F.2.4)
+
+Neue Datei `server/internal/hr/qualification_requirements.go`, drei
+Methoden am `QualificationService`:
+
+- `SetRequirements(employeeID, typeIDs, actorUserID, companyID)` —
+  ersetzt die Menge; liefert die Anforderungen.
+- `ListRequirements(employeeID, companyID)`.
+- `Standing(employeeID, today, warnDays, companyID)` — Stand eines
+  Mitarbeiters, dringendstes zuerst.
+
+**Regeln, die F.2.6 (betriebsweite Liste) übernehmen muss:**
+
+- erforderlich = eigene Anforderungen PLUS (nur für aktive
+  Mitarbeiter) Arten mit `pflicht_fuer_alle`;
+- stillgelegte Arten erscheinen gar nicht;
+- stornierte Nachweise zählen nicht;
+- Reihenfolge: fehlt, abgelaufen, läuft ab, gültig; darin nach Name.
+
+Für die betriebsweite Liste nicht `Standing` in einer Schleife je
+Mitarbeiter aufrufen (je Aufruf vier Abfragen), sondern die Daten
+gesammelt laden und `EvaluateQualifications` je Mitarbeiter anwenden.
+Inaktive Mitarbeiter in der betriebsweiten Liste weglassen.
+
+**Lehre aus der Gegenprobe — ein Test darf nicht vom Tagesdatum
+abhängen, an dem er läuft.** Der Stichtag im Test war `2026-10-13`,
+zufällig das echte Datum; "Stichtag ignoriert, `time.Now()`
+verwendet" fiel deshalb nicht auf. Ein Test, der einen Stichtag als
+Parameter belegen soll, braucht mindestens einen Stichtag, der
+sicher nicht heute ist. (Die Tests der Zeiterfassung verwenden feste
+Daten in der Vergangenheit und sind davon nicht betroffen.)
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 4 neue Testfunktionen grün, Wächtertest der
+Nachweise weiter grün. Gegenprobe mit 25 Verfälschungen: 21 sofort
+erkannt, zwei nach ergänzten Tests, zwei als gleichwertig belegt
+(beide Sicherungen zusammen entfernt → erkannt). Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien:
+`server/internal/hr/qualification_requirements.go` (neu),
+`server/internal/hr/qualification_requirements_integration_test.go`
+(neu), `server/internal/hr/qualifications_test.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
