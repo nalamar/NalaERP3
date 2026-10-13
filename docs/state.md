@@ -7,28 +7,29 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.3** (`EmployeeService` gehärtet,
-> `SetUser`), davor F.4.2 (Migration 087), F.4.1 (ADR 0025). Siehe
-> Abschnitt "Epic F, Task F.4" weiter unten.
-> **Nächste Subtask: F.4.4** — HTTP-Routen `/api/v1/employees` in
-> neuer Datei `server/internal/http/employees.go` (Muster:
-> `http/time_entries.go`, Einhängen über eine `mount…`-Funktion):
-> `GET /` (limit/offset), `POST /` (`hr.EmployeeInput`), `GET /{id}`,
-> `PATCH /{id}` (Patch-Map an `Update`), `PUT /{id}/user` (Body
-> `{"user_id": "..."|null}` an `SetUser`), `GET /teams`. Rechte
-> schlicht über `requirePermission("employees.read"|"employees.write")`
-> — hier gibt es KEIN self-Recht, anders als bei der Zeiterfassung.
-> ACHTUNG Routenreihenfolge: `GET /teams` darf nicht von `GET /{id}`
-> geschluckt werden. `classifyDomainError` um die neuen Texte
-> ergänzen ("ist bereits mit" → 409; "Ungültiger Wert für Feld" und
-> "unbekanntes Feld" prüfen; "existiert bereits" und "nicht gefunden"
-> sind abgedeckt) und im Klassifikationstest je eine Zeile ergänzen.
-> Integrationstests inkl. dem Kernnachweis von F.4: **ein über HTTP
-> angelegter und verknüpfter Mitarbeiter kann danach über
-> `/time-entries` stempeln** — und die Test-Helfer in
-> `http/time_entries_integration_test.go`, die `user_id` per SQL
-> setzen, bleiben wie sie sind (anderer Testzweck). Mandantentrennung
-> über HTTP mit einem Benutzer eines zweiten Mandanten prüfen.
+> Zuletzt abgeschlossen: **F.4.4** (HTTP-Routen `/employees`) — damit
+> ist der erste Teil von F.4 fertig: Mitarbeiter können stempeln,
+> sobald sie angelegt und verknüpft sind. Davor F.4.3, F.4.2, F.4.1.
+> Siehe Abschnitt "Epic F, Task F.4" weiter unten.
+> **Nächste Subtask: F.4.5** — `LeaveService` in
+> `server/internal/hr/service.go` härten (ADR 0025, Befunde 6 und 7):
+> (1) Entscheidung nur im Status `pending` und einmalig — zweiter
+> Versuch abgelehnt, erste Entscheidung bleibt stehen;
+> (2) `decided_by_user_id` (Spalte seit 087) schreiben und in
+> `LeaveRequest` lesen; (3) `approver_id` optional — heute verlangt
+> `Approve(ctx, id, approver uuid.UUID, ...)` ihn zwingend und
+> `uuid.Nil` verletzte den FK; (4) `Approve`/`Decide` sind zwei Namen
+> für dasselbe (`Decide` ruft nur `Approve`) — beim Umbau der Signatur
+> entscheiden, welcher bleibt, und das in der ADR vermerken (§7.6);
+> (5) prüfen, ob `List`/`Create` dieselben HTTP-Fallen haben wie der
+> `EmployeeService` (rohe Fehler, `rows.Err()`, Mandant). Noch KEIN
+> HTTP (F.4.6). Bestehende Tests in `service_test.go` und
+> `service_scoping_integration_test.go` rufen `Approve` mit einem
+> Mitarbeiter als Entscheider auf — umstellen, nicht abschwächen.
+> **Gegenprobe ab jetzt über
+> `scratchpad/mutrun.py`-Verfahren** (Texte aus Datei, meldet nicht
+> angewendete Verfälschungen) — das Skript liegt nicht im Repo, das
+> Verfahren ist im Abschnitt F.4.4 beschrieben.
 > **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10305,6 +10306,54 @@ Geänderte Dateien: `server/internal/hr/service.go`,
 `server/internal/http/time_entries_integration_test.go`,
 `docs/adr/0025-hr-bestand-http-anbindung.md`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.4.4 HTTP-Routen Mitarbeiterstamm
+
+Neue Datei `server/internal/http/employees.go`. Routen unter
+`/api/v1/employees`:
+
+| Route | Zweck | Recht |
+|---|---|---|
+| `GET /` | Liste (`limit` höchstens 500, `offset`) | `employees.read` |
+| `GET /teams` | Teams | `employees.read` |
+| `POST /` | Anlegen | `employees.write` |
+| `GET /{id}` | Einzelabruf | `employees.read` |
+| `PATCH /{id}` | Ändern (Patch) | `employees.write` |
+| `PUT /{id}/user` | mit Login verknüpfen / lösen | `employees.write` |
+
+Kein `self`-Recht. Kein Service-Code geändert.
+
+**Zwei Lehren aus der Gegenprobe, beide verallgemeinerbar:**
+
+1. **Ein "ok" der Gegenprobe ist nur dann ein Ergebnis, wenn die
+   Verfälschung nachweislich angewendet wurde.** Im ersten Durchlauf
+   hat Git Bash Schrägstriche in den Argumenten zu Windows-Pfaden
+   umgeschrieben; sechs Verfälschungen griffen nicht, die Tests liefen
+   gegen unveränderten Code und waren selbstverständlich grün.
+   Verfahren seitdem: die Verfälschungen stehen als Python-Daten in
+   einer Datei; ein Skript wendet jede einzeln an, prüft vorher, dass
+   das Fragment genau einmal vorkommt, lässt die Tests laufen und
+   meldet ausdrücklich "nicht angewendet", "kompiliert nicht",
+   "überlebt" oder "erkannt von <Test>", und stellt die Datei wieder
+   her. Die früheren Gegenproben (F.1.x, F.4.3) sind davon nicht
+   betroffen: dort brach das Hilfsskript bei nicht gefundenem Fragment
+   mit einer Fehlermeldung ab, und solche Abbrüche gab es nur in den
+   jeweils dokumentierten Fällen.
+2. **Getrennte Rechte brauchen einen Test mit einer Rolle, die nur
+   eines davon hat.** Die Systemrollen vergeben `read` und `write`
+   immer zusammen; mit ihnen allein lässt sich eine Verwechslung der
+   beiden nicht entdecken. Für den Mitarbeiterstamm geschlossen
+   (`TestEmployeesReadPermissionDoesNotAllowWriting`), für die
+   Zeiterfassung als Backlog F.9 eingetragen.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` auf den
+neuen Dateien clean. 6 neue Testfunktionen grün. 15 Verfälschungen,
+am Ende alle erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/employees.go` (neu),
+`server/internal/http/employees_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
