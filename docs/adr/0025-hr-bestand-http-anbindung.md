@@ -1,7 +1,7 @@
 # ADR 0025 — HR-Bestand an HTTP anbinden (Mitarbeiterstamm, Urlaubsanträge, Benutzer-Verknüpfung)
 
 Datum: 2026-10-13
-Status: entschieden (Subtask F.4.1), ein Punkt braucht Freigabe (siehe "Offen")
+Status: entschieden (Subtask F.4.1); der offene Punkt wurde am 2026-10-13 freigegeben
 Bezug: Backlog F.4. Vom Nutzer am 2026-10-13 vor F.2/F.3 gezogen.
 
 ## Kontext
@@ -152,7 +152,7 @@ ungefährlich — was global eindeutig war, ist es auch je Mandant.
   Änderbarkeit von Personalnummer/Ein-/Austrittsdatum; Ablösung der
   Freitextfelder `role`/`cost_center`.
 
-## Offen — braucht Freigabe vor F.4.3
+## Freigegeben am 2026-10-13 (war: braucht Freigabe vor F.4.3)
 
 **Befund 9, Standardwert von `active` bei der Anlage.** Heute ist ein
 neuer Mitarbeiter inaktiv, wenn der Aufrufer `active` nicht setzt. Das
@@ -165,6 +165,18 @@ angegeben ist** (entspricht dem Spalten-Default `true` in
 `020_hr_base.sql:21`, den der Service derzeit überschreibt). Das ist
 eine Verhaltensänderung an bestehendem Code und wird deshalb nicht ohne
 Freigabe umgesetzt.
+
+**Entscheidung des Nutzers (2026-10-13): "Ja, neue Mitarbeiter sollten
+aktiv sein."** Umsetzung in F.4.3: ein ohne Angabe angelegter
+Mitarbeiter ist aktiv; wer ausdrücklich `active: false` angibt, bekommt
+einen inaktiven. Dafür muss die Anlage "nicht angegeben" von "false"
+unterscheiden können.
+
+Nachtrag F.4.2 (2026-10-13): die Eindeutigkeit der Personalnummer ist
+als Index auf `(COALESCE(company_id, ''), personalnummer)` umgesetzt,
+nicht als schlichtes `UNIQUE (company_id, personalnummer)` — `company_id`
+ist noch nullable, und NULLs gelten in einem UNIQUE-Index als
+verschieden.
 
 ## Konsequenzen
 

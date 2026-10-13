@@ -7,23 +7,28 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.1** (ADR 0025, HR-Bestand an HTTP).
-> F.4 wurde vom Nutzer am 2026-10-13 vor F.2/F.3 gezogen (siehe
-> "Korrekturen"). Davor: Task F.1 (Zeiterfassung) vollständig. Siehe
-> Abschnitt "Epic F, Task F.4" weiter unten.
-> **Nächste Subtask: F.4.2** — Migration
-> `087_hr_http_permissions_and_hardening.sql`: (1) Permissions
-> `employees.read`/`write` (HR, Admin), `leave_requests.self` (alle
-> acht Systemrollen), `leave_requests.read`/`decide` (HR, Admin);
-> (2) `hr_employees_personalnummer_key` ersetzen durch
-> `UNIQUE (company_id, personalnummer)`; (3)
-> `hr_leave_requests.decided_by_user_id text REFERENCES users(id) ON
-> DELETE SET NULL`. Additiv, reversibel, gegen frische DB verifizieren
-> wie F.1.2. F.4.2 hängt NICHT an der offenen Freigabe.
-> **Offene Freigabe (blockiert nur den `active`-Teil von F.4.3):**
-> Standardwert von `active` bei der Mitarbeiteranlage — Vorschlag
-> "aktiv", am 2026-10-13 gestellt. Antwort in
-> `docs/open-questions.md` und unter "Korrekturen" nachtragen.
+> Zuletzt abgeschlossen: **F.4.2** (Migration 087), davor F.4.1 (ADR
+> 0025). F.4 wurde vom Nutzer vor F.2/F.3 gezogen (siehe
+> "Korrekturen"). Siehe Abschnitt "Epic F, Task F.4" weiter unten.
+> **Nächste Subtask: F.4.3** — `EmployeeService` in
+> `server/internal/hr/service.go` härten und `SetUser` ergänzen:
+> (1) `Get`: `pgx.ErrNoRows` → "Mitarbeiter nicht gefunden";
+> (2) `Update`: `RowsAffected == 0` → "Mitarbeiter nicht gefunden";
+> (3) Vorabprüfung Personalnummer je Mandant in `Create` →
+> "Personalnummer existiert bereits" (trifft den vorhandenen
+> Teilstring "existiert bereits" in `classifyDomainError`);
+> (4) `team_id` muss zum Mandanten gehören, in `Create` und `Update`;
+> (5) **neue Mitarbeiter standardmäßig aktiv — vom Nutzer am
+> 2026-10-13 freigegeben**; "nicht angegeben" muss von `false`
+> unterscheidbar sein (`Employee.Active` ist `bool`; Lösung so wählen,
+> dass bestehende Aufrufer und die JSON-Form der Antwort nicht
+> brechen, z. B. eigenes Eingabe-Struct mit `*bool`);
+> (6) `SetUser(employeeID, userID, companyID)`: Benutzer im selben
+> Mandanten, noch mit keinem anderen Mitarbeiter verknüpft, leerer
+> Wert löst. Noch KEIN HTTP (F.4.4). Die bestehenden Tests in
+> `service_test.go`/`service_scoping_integration_test.go` müssen
+> weiterlaufen; wo sich Verhalten absichtlich ändert (Punkt 5), Test
+> umstellen, nicht abschwächen. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10223,6 +10228,39 @@ per Suche und `git log -S`; ungenutzte Tabellen per Suche über
 Geänderte Dateien: `docs/adr/0025-hr-bestand-http-anbindung.md` (neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
+### F.4.2 Migration 087: Permissions, Personalnummer je Mandant, Entscheider
+
+Neue Datei
+`server/internal/migrate/migrations/087_hr_http_permissions_and_hardening.sql`.
+Kein Go-Code geändert.
+
+**Abweichung von der ADR-Skizze:** die Eindeutigkeit ist ein Index auf
+`(COALESCE(company_id, ''), personalnummer)`, kein schlichtes
+`UNIQUE (company_id, personalnummer)`. Grund: `company_id` ist noch
+nullable, NULLs gelten im UNIQUE-Index als verschieden. In der ADR
+nachgetragen.
+
+**Für F.4.3 merken:** die Vorabprüfung im Service muss dieselbe
+Semantik haben wie der Index (Mandant vergleichen, Nummer vergleichen)
+— sonst meldet der Service "frei" und der Index lehnt ab, mit rohem
+Fehler samt Personalnummer im Log. Der Index heißt
+`idx_hr_employees_company_personalnummer`.
+
+**Downgrade kann scheitern** und das ist im Migrationskommentar
+beschrieben und ausprobiert: haben zwei Mandanten dieselbe Nummer,
+lässt sich die globale Eindeutigkeit nicht wiederherstellen.
+
+**Verifikation.** `go build ./...`, `go vet ./...` clean; Kette
+001-087 auf leerer DB; Schema per Abfrage geprüft; sechs Fälle per SQL
+provoziert; Down-Pfad samt Fehlerfall ausgeführt, danach erneut
+angewendet; vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB durchgehend `ok`.
+
+Geänderte Dateien:
+`server/internal/migrate/migrations/087_hr_http_permissions_and_hardening.sql`
+(neu), `docs/adr/0025-hr-bestand-http-anbindung.md`,
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
 ## Offene Punkte
 
 Siehe `docs/open-questions.md` — Detailfrage zu Mandanten-Scoping-Design
@@ -10253,6 +10291,11 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   stempeln, und F.2/F.3 setzen einen erreichbaren Mitarbeiterstamm
   voraus. Nach F.4 gilt wieder die Backlog-Reihenfolge (F.2, F.3),
   sofern nichts anderes entschieden wird.
+- **2026-10-13 — Standardwert `active` freigegeben.** Auf die Frage aus
+  ADR 0025 hat der Nutzer geantwortet: "Ja, neue Mitarbeiter sollten
+  aktiv sein." Damit ist die seit 0.1.3.1 offene Frage entschieden;
+  Umsetzung in F.4.3. Ausdrücklich angegebenes `active: false` bleibt
+  möglich.
 
 ## Verworfen
 

@@ -139,12 +139,12 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
 
 ## 2026-10-13 — HR-Bestand an HTTP (F.4.1, ADR 0025)
 
-- **F.4.3 (Standardwert `active` bei Mitarbeiteranlage)** — **Freigabe
-  nötig, blockiert den `active`-Teil von F.4.3.** Fortsetzung der seit
-  0.1.3.1 offenen Frage weiter oben: heute ist ein neuer Mitarbeiter
-  inaktiv, wenn `active` nicht ausdrücklich gesetzt wird. Vorschlag:
-  standardmäßig aktiv. Status: **offen**, dem Nutzer am 2026-10-13
-  gestellt.
+- **F.4.3 (Standardwert `active` bei Mitarbeiteranlage)**: Fortsetzung
+  der seit 0.1.3.1 offenen Frage weiter oben — heute ist ein neuer
+  Mitarbeiter inaktiv, wenn `active` nicht ausdrücklich gesetzt wird.
+  Status: **beantwortet** am 2026-10-13. Entscheidung des Nutzers:
+  "Ja, neue Mitarbeiter sollten aktiv sein." → Umsetzung in F.4.3.
+  Damit ist auch die Detailfrage zu 0.1.3.1 erledigt.
 - **F.4 (Löschung von Mitarbeiterdaten nach Ausscheiden)**: Es gibt
   keinen Löschpfad und F.4 baut keinen. Nach welcher Frist und in
   welcher Form (Löschen, Anonymisieren) sollen Stammdaten
