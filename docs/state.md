@@ -7,15 +7,22 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.2** (Migration `086_hr_time_entries.sql`),
-> davor F.1.1 (ADR 0024 Zeiterfassung). Siehe Abschnitt "Epic F, Task
-> F.1" weiter unten.
-> **Nächste Subtask: F.1.3** — Fachregeln ohne Datenbank in
-> `server/internal/hr`: Validierung eines Zeiteintrags (nur Unmögliches
-> ablehnen) und die ArbZG-Tagesauswertung mit den vier Hinweisen
-> `ueber_8h`/`ueber_10h`/`pause_zu_kurz`/`ruhezeit_unterschritten` als
-> reine Funktionen, Tests für jede Regel einschließlich der Grenzwerte
-> (genau 6 h/9 h/10 h/11 h). Kein DB-Zugriff, kein HTTP.
+> Zuletzt abgeschlossen: **F.1.3** (Fachregeln ohne Datenbank,
+> `hr/time_rules.go`), davor F.1.2 (Migration 086) und F.1.1 (ADR 0024).
+> Siehe Abschnitt "Epic F, Task F.1" weiter unten.
+> **Nächste Subtask: F.1.4** — `TimeEntryService` in neuer Datei
+> `server/internal/hr/time_entries.go`: Beginnen (Stempeln), Beenden,
+> Nachtragen, Stornieren, Korrigieren (Storno + Ersatzeintrag in EINER
+> Transaktion), Lesen samt Tagesauswertung. Nutzt `ValidateTimeEntry`,
+> `WorkDateOf` und `EvaluateWorkDays` aus F.1.3. Neu in F.1.4:
+> Überschneidungsprüfung gegen andere aktive Einträge desselben
+> Mitarbeiters und Mandantenprüfung über `hr_employees.company_id`.
+> Integrationstests inkl. Mandantentrennung und dem Nachweis, dass kein
+> Pfad einen abgeschlossenen Eintrag verändert. Noch KEIN HTTP (F.1.5).
+> **Vor dem Start schätzen, ob das §6.3 überschreitet** (sechs
+> Operationen plus Tests) und gegebenenfalls in Schreib- und Lesepfad
+> teilen. **Test-DB vorher frisch aufsetzen** (`docker compose -f
+> docker-compose.test.yml down -v` + `up -d --wait`).
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -9894,6 +9901,47 @@ echte Formatabweichungen, wurde nicht untersucht.
 
 Geänderte Dateien:
 `server/internal/migrate/migrations/086_hr_time_entries.sql` (neu),
+`docs/adr/0024-zeiterfassung.md`, `docs/backlog.md`, `docs/state.md`.
+
+### F.1.3 Fachregeln ohne Datenbank
+
+Neue Dateien `server/internal/hr/time_rules.go` und
+`time_rules_test.go`. Kein bestehender Code geändert.
+
+- `TimeEntry` — Struct passend zu `hr_time_entries`.
+- `WorkDateOf` — Arbeitstag = Kalendertag des Beginns in Europe/Berlin.
+- `ValidateTimeEntry(e, now)` — lehnt nur Unmögliches ab.
+- `EvaluateWorkDays(entries)` — je Arbeitstag Netto- und Pausenminuten,
+  `open` und die vier Hinweise.
+
+**Für F.1.4 und F.1.5 merken:**
+
+- `EvaluateWorkDays` erwartet die Einträge EINES Mitarbeiters. Die
+  Ruhezeit wird gegen den vorhergehenden Tag in der Eingabe geprüft —
+  wer einen Zeitraum auswertet, muss den Tag davor mitladen und dessen
+  Auswertung anschließend wieder weglassen.
+- Die Überschneidungsprüfung fehlt hier absichtlich (braucht die DB).
+- `ValidateTimeEntry` bekommt `now` übergeben. Der Service muss beim
+  Beenden den VOLLSTÄNDIGEN Eintrag (mit Ende und Pause) erneut
+  validieren, nicht nur die neuen Felder.
+- Fehlertexte sind deutsche Klartexte; für F.1.5 prüfen, ob
+  `classifyDomainError` sie als 400 erkennt (bekanntes Muster aus
+  0.29/0.40/0.44: neue Texte fallen sonst als 500 durch).
+
+**Abweichungen von der ADR** (dort als Nachtrag ergänzt): Ende in der
+Zukunft wird abgelehnt; keine Pause an laufendem Eintrag; Lücken erst
+ab 15 Minuten als Ruhepause. Nicht abgebildet: §4 Satz 3 (sechs Stunden
+am Stück) → Backlog F.6.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 6 Testfunktionen, 56 Fälle, grün. Gegenprobe mit
+sieben gezielten Verfälschungen: jede ließ mindestens einen Test
+fehlschlagen; Datei danach byteidentisch wiederhergestellt.
+`go test ./... -count=1` durchgehend `ok`. Kein Integrationslauf, da
+kein Code mit DB-Bezug angefasst wurde.
+
+Geänderte Dateien: `server/internal/hr/time_rules.go` (neu),
+`server/internal/hr/time_rules_test.go` (neu),
 `docs/adr/0024-zeiterfassung.md`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte

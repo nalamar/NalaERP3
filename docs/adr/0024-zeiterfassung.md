@@ -192,6 +192,15 @@ Pause kürzer als die Anwesenheit (bei abgeschlossenem Eintrag) und
 Storno-Konsistenz (`storniert` nur mit Zeitpunkt und nichtleerer
 Begründung, `active` nur ohne beides).
 
+Nachtrag F.1.3 (2026-10-13): drei Präzisierungen beim Umsetzen der
+Regeln. (1) Abgelehnt wird auch ein **Ende** in der Zukunft, nicht nur
+ein Beginn. (2) An einem laufenden Eintrag darf keine Pause stehen; sie
+wird beim Beenden angegeben, weil sie vorher nicht gegen die
+Anwesenheit prüfbar ist. (3) Eine Lücke zwischen zwei Einträgen eines
+Tages zählt erst ab 15 Minuten als Ruhepause (§4 Satz 2). Nicht
+abgebildet bleibt §4 Satz 3 (höchstens sechs Stunden hintereinander
+ohne Pause) → Backlog F.6.
+
 - **`ON DELETE RESTRICT` statt `CASCADE`.** `hr_leave_requests` und
   `hr_absences` hängen mit `CASCADE` an `hr_employees`. Für Zeitdaten
   wäre das falsch: das Löschen eines Mitarbeiters würde
