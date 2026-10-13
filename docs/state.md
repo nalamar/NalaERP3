@@ -7,23 +7,22 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.4.1** (`TimeEntryService`: Anlegen,
-> Beenden, Einzelabruf), davor F.1.3, F.1.2, F.1.1. Siehe Abschnitt
+> Zuletzt abgeschlossen: **F.1.4.2** (`TimeEntryService`: Stornieren,
+> Korrigieren), davor F.1.4.1, F.1.3, F.1.2, F.1.1. Siehe Abschnitt
 > "Epic F, Task F.1" weiter unten.
-> **Nächste Subtask: F.1.4.2** — Stornieren und Korrigieren in
-> `server/internal/hr/time_entries.go`. `Storno(id, reason, actor,
-> company)`: Pflichtbegründung, setzt `status`/`storniert_at`/
-> `storno_reason`/`storniert_by_user_id`, nur einmal möglich.
-> `Correct(id, neue Angaben, reason, actor, company)`: Storno des alten
-> und Anlage des Ersatzeintrags mit `replaces_entry_id` in EINER
-> Transaktion — schlägt der Ersatz fehl (z. B. Überschneidung), darf
-> auch der Storno nicht stehen bleiben. Dafür muss die Anlege-Logik aus
-> `Create` innerhalb einer bestehenden Transaktion nutzbar werden
-> (in eine interne Funktion mit `pgx.Tx` herausziehen, Verhalten von
-> `Create` unverändert). Die Überschneidungsprüfung des Ersatzeintrags
-> darf den gerade stornierten Eintrag nicht mehr sehen. Die beiden
-> Direkt-SQL-Stornos in `time_entries_integration_test.go` auf den
-> Service umstellen. **Test-DB vorher frisch aufsetzen.**
+> **Nächste Subtask: F.1.4.3** (letzte von F.1.4) — Lesen in
+> `server/internal/hr/time_entries.go`: Liste der Einträge eines
+> Mitarbeiters für einen Zeitraum (von/bis als Arbeitstage,
+> mandantengeprüft; stornierte Einträge mitliefern oder ausblenden per
+> Schalter, weil die Korrekturkette nachlesbar sein muss) samt
+> Tagesauswertung über `EvaluateWorkDays`. **Für die Ruhezeit den Tag
+> vor dem Zeitraum mitladen** und dessen Auswertung wieder weglassen —
+> genauer: den letzten Arbeitstag VOR dem Zeitraum, nicht zwingend den
+> Kalendertag davor (nach einem freien Tag gibt es dort nichts, das ist
+> dann unkritisch, weil die Ruhezeit ohnehin eingehalten ist; der
+> Kalendertag davor genügt also). Nur lesend, kein neuer Schreibpfad —
+> der Wächtertest `TestTimeEntryServiceHasNoOtherWritePaths` muss grün
+> bleiben. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -9986,6 +9985,55 @@ durchgehend `ok`.
 Geänderte Dateien: `server/internal/hr/time_entries.go` (neu),
 `server/internal/hr/time_entries_test.go` (neu),
 `server/internal/hr/time_entries_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### F.1.4.2 Stornieren und Korrigieren
+
+`server/internal/hr/time_entries.go` um `Storno` und `Correct`
+erweitert. Dafür die Anlege-Logik aus `Create` nach
+`insertTimeEntryTx` und das Laden-und-Sperren nach `lockTimeEntryTx`
+herausgezogen — ohne Verhaltensänderung, die F.1.4.1-Tests laufen
+unverändert.
+
+**Entscheidungen beim Umsetzen:**
+
+- **Der Mitarbeiter ist nicht korrigierbar.** Eine Korrektur, die den
+  Mitarbeiter wechselt, wäre fachlich ein Storno bei A und eine
+  Neuerfassung bei B; so muss sie auch gebucht werden.
+- **Ein Storno schreibt nur die vier Storno-Spalten.** Das Original
+  bleibt mit seinen Zeiten nachlesbar.
+- **Sperrreihenfolge:** `Correct` sperrt erst den Eintrag, dann den
+  Mitarbeiter. `Create` sperrt nur den Mitarbeiter, `Stop`/`Storno` nur
+  den Eintrag. Kein Pfad sperrt Mitarbeiter→Eintrag; das beim Ergänzen
+  weiterer Pfade beibehalten, sonst droht ein Deadlock.
+
+**Wächtertest** `TestTimeEntryServiceHasNoOtherWritePaths` prüft am
+Quelltext: genau zwei UPDATEs auf `hr_time_entries`, kein DELETE. Wer
+einen dritten Schreibpfad braucht, muss den Test bewusst anpassen und
+begründen.
+
+**Neuer Fehlertext für F.1.5:** "Zeiteintrag ist bereits storniert",
+"Storno-Begründung erforderlich", "Korrektur kann den Mitarbeiter nicht
+ändern".
+
+**Panne beim Arbeiten, ohne Folgen:** ein erstes Umbau-Skript hat die
+Datei nicht geschrieben (Schreibaufruf fehlte); bemerkt, bevor darauf
+aufgebaut wurde, Datei dann vollständig neu geschrieben. Ein zweites
+Skript hat Escape-Sequenzen in einer Testdatei als echte Zeilenumbrüche
+abgelegt; durch `gofmt`/`go vet` sofort aufgefallen und behoben.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 19 Testfunktionen zur Zeiterfassung im Service
+grün. Gegenprobe mit sieben Verfälschungen, darunter "Storno der
+Korrektur in eigener Transaktion" (Atomaritätstest rot): jede ließ
+mindestens einen Test fehlschlagen, Datei danach byteidentisch.
+Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen
+frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/time_entries.go`,
+`server/internal/hr/time_entries_test.go`,
+`server/internal/hr/time_entries_integration_test.go`,
+`server/internal/hr/time_entries_storno_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte

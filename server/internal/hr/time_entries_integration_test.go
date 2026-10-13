@@ -185,8 +185,7 @@ func TestTimeEntryStopRejectsUnknownAndStorniertEntry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stempeln: %v", err)
 	}
-	// Der Storno-Pfad des Service folgt in F.1.4.2; hier direkt gesetzt.
-	if _, err := env.PG.Exec(ctx, `UPDATE hr_time_entries SET status='storniert', storniert_at=now(), storno_reason='Fehlbuchung' WHERE id=$1`, running.ID); err != nil {
+	if _, err := svc.Storno(ctx, running.ID, "Fehlbuchung", "", "default"); err != nil {
 		t.Fatalf("Eintrag stornieren: %v", err)
 	}
 	_, err = svc.Stop(ctx, running.ID, berlin(t, "2026-03-02 16:00"), 0, "default")
@@ -242,7 +241,7 @@ func TestTimeEntryCreateRejectsOverlap(t *testing.T) {
 	}
 
 	// Ein stornierter Eintrag blockiert seinen Zeitraum nicht mehr.
-	if _, err := env.PG.Exec(ctx, `UPDATE hr_time_entries SET status='storniert', storniert_at=now(), storno_reason='Fehlbuchung' WHERE id=$1`, base.ID); err != nil {
+	if _, err := svc.Storno(ctx, base.ID, "Fehlbuchung", "", "default"); err != nil {
 		t.Fatalf("Eintrag stornieren: %v", err)
 	}
 	if _, err := svc.Create(ctx, closed("2026-03-02 08:00", "2026-03-02 12:00"), "", "default"); err != nil {
