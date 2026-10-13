@@ -178,6 +178,12 @@ nicht als schlichtes `UNIQUE (company_id, personalnummer)` — `company_id`
 ist noch nullable, und NULLs gelten in einem UNIQUE-Index als
 verschieden.
 
+Nachtrag F.4.3 (2026-10-13): Befund 4 ist nicht über eine Vorabprüfung
+geschlossen, sondern durch Übersetzen des UNIQUE-Fehlers in die
+fachliche Meldung (ebenso bei der Benutzer-Verknüpfung). Das ist auch
+bei gleichzeitigen Aufrufen richtig. `EmployeeService.Create` nimmt
+jetzt `EmployeeInput` mit `Active *bool`.
+
 ## Konsequenzen
 
 Zerlegung von F.4:

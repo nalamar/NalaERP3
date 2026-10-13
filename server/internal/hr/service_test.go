@@ -18,7 +18,7 @@ import (
 func TestEmployeeCreateRejectsMissingCompanyID(t *testing.T) {
 	s := NewEmployeeService(nil)
 
-	e, err := s.Create(context.Background(), Employee{FirstName: "Max", LastName: "Muster"}, "")
+	e, err := s.Create(context.Background(), EmployeeInput{FirstName: "Max", LastName: "Muster"}, "")
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
@@ -33,11 +33,11 @@ func TestEmployeeCreateRejectsMissingCompanyID(t *testing.T) {
 func TestCreateRejectsMissingNames(t *testing.T) {
 	cases := []struct {
 		name  string
-		input Employee
+		input EmployeeInput
 	}{
-		{"leerer Vor- und Nachname", Employee{}},
-		{"leerer Vorname", Employee{LastName: "Muster"}},
-		{"leerer Nachname", Employee{FirstName: "Max"}},
+		{"leerer Vor- und Nachname", EmployeeInput{}},
+		{"leerer Vorname", EmployeeInput{LastName: "Muster"}},
+		{"leerer Nachname", EmployeeInput{FirstName: "Max"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,6 +97,43 @@ func TestUpdateRejectsPatchWithAnySingleUnknownKey(t *testing.T) {
 	}, "default")
 	if err == nil {
 		t.Fatal("expected error for patch containing an unknown key, got nil")
+	}
+}
+
+// Ein Patch kommt als JSON und kann fuer jedes Feld jeden Typ tragen. Die
+// Typpruefung greift vor jedem DB-Zugriff (nil-Pool) - ohne sie kaeme z. B.
+// "active": "ja" als roher Datenbankfehler zurueck (ADR 0025, F.4.3).
+func TestUpdateRejectsWrongValueTypes(t *testing.T) {
+	cases := []struct {
+		name    string
+		patch   map[string]any
+		wantErr string
+	}{
+		{"active als Text", map[string]any{"active": "ja"}, "Ungültiger Wert für Feld: active"},
+		{"active als Zahl", map[string]any{"active": 1.0}, "Ungültiger Wert für Feld: active"},
+		{"active als null", map[string]any{"active": nil}, "Ungültiger Wert für Feld: active"},
+		{"first_name als Zahl", map[string]any{"first_name": 5.0}, "Ungültiger Wert für Feld: first_name"},
+		{"email als null", map[string]any{"email": nil}, "Ungültiger Wert für Feld: email"},
+		{"team_id kein UUID", map[string]any{"team_id": "kein-uuid"}, "Ungültiger Wert für Feld: team_id"},
+		{"team_id als Zahl", map[string]any{"team_id": 7.0}, "Ungültiger Wert für Feld: team_id"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := NewEmployeeService(nil).Update(context.Background(), uuid.New(), tc.patch, "default")
+			if err == nil || err.Error() != tc.wantErr {
+				t.Fatalf("erwartet %q, bekommen %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestSetUserValidatesBeforeTouchingDatabase(t *testing.T) {
+	s := NewEmployeeService(nil)
+	if err := s.SetUser(context.Background(), uuid.New(), "u-1", " "); err == nil || err.Error() != "Mandant erforderlich" {
+		t.Fatalf("erwartet 'Mandant erforderlich', bekommen %v", err)
+	}
+	if err := s.SetUser(context.Background(), uuid.Nil, "u-1", "default"); err == nil || err.Error() != "Mitarbeiter-ID erforderlich" {
+		t.Fatalf("erwartet 'Mitarbeiter-ID erforderlich', bekommen %v", err)
 	}
 }
 

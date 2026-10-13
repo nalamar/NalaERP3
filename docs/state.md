@@ -7,28 +7,29 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.2** (Migration 087), davor F.4.1 (ADR
-> 0025). F.4 wurde vom Nutzer vor F.2/F.3 gezogen (siehe
-> "Korrekturen"). Siehe Abschnitt "Epic F, Task F.4" weiter unten.
-> **Nächste Subtask: F.4.3** — `EmployeeService` in
-> `server/internal/hr/service.go` härten und `SetUser` ergänzen:
-> (1) `Get`: `pgx.ErrNoRows` → "Mitarbeiter nicht gefunden";
-> (2) `Update`: `RowsAffected == 0` → "Mitarbeiter nicht gefunden";
-> (3) Vorabprüfung Personalnummer je Mandant in `Create` →
-> "Personalnummer existiert bereits" (trifft den vorhandenen
-> Teilstring "existiert bereits" in `classifyDomainError`);
-> (4) `team_id` muss zum Mandanten gehören, in `Create` und `Update`;
-> (5) **neue Mitarbeiter standardmäßig aktiv — vom Nutzer am
-> 2026-10-13 freigegeben**; "nicht angegeben" muss von `false`
-> unterscheidbar sein (`Employee.Active` ist `bool`; Lösung so wählen,
-> dass bestehende Aufrufer und die JSON-Form der Antwort nicht
-> brechen, z. B. eigenes Eingabe-Struct mit `*bool`);
-> (6) `SetUser(employeeID, userID, companyID)`: Benutzer im selben
-> Mandanten, noch mit keinem anderen Mitarbeiter verknüpft, leerer
-> Wert löst. Noch KEIN HTTP (F.4.4). Die bestehenden Tests in
-> `service_test.go`/`service_scoping_integration_test.go` müssen
-> weiterlaufen; wo sich Verhalten absichtlich ändert (Punkt 5), Test
-> umstellen, nicht abschwächen. **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.4.3** (`EmployeeService` gehärtet,
+> `SetUser`), davor F.4.2 (Migration 087), F.4.1 (ADR 0025). Siehe
+> Abschnitt "Epic F, Task F.4" weiter unten.
+> **Nächste Subtask: F.4.4** — HTTP-Routen `/api/v1/employees` in
+> neuer Datei `server/internal/http/employees.go` (Muster:
+> `http/time_entries.go`, Einhängen über eine `mount…`-Funktion):
+> `GET /` (limit/offset), `POST /` (`hr.EmployeeInput`), `GET /{id}`,
+> `PATCH /{id}` (Patch-Map an `Update`), `PUT /{id}/user` (Body
+> `{"user_id": "..."|null}` an `SetUser`), `GET /teams`. Rechte
+> schlicht über `requirePermission("employees.read"|"employees.write")`
+> — hier gibt es KEIN self-Recht, anders als bei der Zeiterfassung.
+> ACHTUNG Routenreihenfolge: `GET /teams` darf nicht von `GET /{id}`
+> geschluckt werden. `classifyDomainError` um die neuen Texte
+> ergänzen ("ist bereits mit" → 409; "Ungültiger Wert für Feld" und
+> "unbekanntes Feld" prüfen; "existiert bereits" und "nicht gefunden"
+> sind abgedeckt) und im Klassifikationstest je eine Zeile ergänzen.
+> Integrationstests inkl. dem Kernnachweis von F.4: **ein über HTTP
+> angelegter und verknüpfter Mitarbeiter kann danach über
+> `/time-entries` stempeln** — und die Test-Helfer in
+> `http/time_entries_integration_test.go`, die `user_id` per SQL
+> setzen, bleiben wie sie sind (anderer Testzweck). Mandantentrennung
+> über HTTP mit einem Benutzer eines zweiten Mandanten prüfen.
+> **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10260,6 +10261,50 @@ Geänderte Dateien:
 `server/internal/migrate/migrations/087_hr_http_permissions_and_hardening.sql`
 (neu), `docs/adr/0025-hr-bestand-http-anbindung.md`,
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
+### F.4.3 EmployeeService härten, SetUser
+
+`server/internal/hr/service.go`. Befunde 1, 2, 4, 5 und 9 der ADR 0025
+geschlossen, `SetUser` ergänzt.
+
+**Was sich für Aufrufer geändert hat:**
+
+- `Create` nimmt `EmployeeInput` (mit `Active *bool`) statt `Employee`.
+  Ohne Angabe ist der Mitarbeiter aktiv.
+- `Get`/`Update`/`SetUser` liefern "Mitarbeiter nicht gefunden".
+- `Employee.UserID` (JSON `user_id`) ist neu und nur lesend.
+
+**Technik, die man kennen muss:** Eindeutigkeit wird über den
+UNIQUE-Fehler des Index erkannt (`isUniqueViolation` mit dem
+Indexnamen als Konstante), nicht über eine Vorabprüfung. Wird ein
+Index umbenannt, muss die Konstante mit — sonst kommt wieder der rohe
+Fehler durch. Die Gegenprobe "falscher Indexname" lässt den Test
+fehlschlagen, der Schutz ist also da.
+
+**Zusätzliche Funde, mitbehoben:** leere Personalnummer wurde als
+leerer String gespeichert; `Update` reichte Patch-Werte ungeprüft an
+Postgres; `List` ohne `rows.Err()`.
+
+**Neue Fehlertexte für F.4.4:** "Personalnummer existiert bereits",
+"Team nicht gefunden", "Benutzer nicht gefunden", "Benutzer ist
+bereits mit einem anderen Mitarbeiter verknüpft", "Mitarbeiter-ID
+erforderlich", "Ungültiger Wert für Feld: …"; bereits vorhanden:
+"unbekanntes Feld: …", "Vor- und Nachname erforderlich".
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 14 Mitarbeiter-Tests grün (7 neu). Gegenprobe mit
+zwölf Verfälschungen: jede ließ einen Test fehlschlagen, Datei danach
+byteidentisch. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/service.go`,
+`server/internal/hr/service_test.go`,
+`server/internal/hr/employee_hardening_integration_test.go` (neu),
+`server/internal/hr/service_scoping_integration_test.go`,
+`server/internal/hr/time_entries_integration_test.go`,
+`server/internal/http/time_entries_integration_test.go`,
+`docs/adr/0025-hr-bestand-http-anbindung.md`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Offene Punkte
 

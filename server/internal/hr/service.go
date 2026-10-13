@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,6 +27,46 @@ type Employee struct {
 	Location    string     `json:"location"`
 	CostCenter  string     `json:"cost_center"`
 	Active      bool       `json:"active"`
+	// UserID ist der verknuepfte Login-Benutzer (siehe SetUser). Er wird
+	// nur gelesen; gesetzt wird er ausschliesslich ueber SetUser.
+	UserID *string `json:"user_id,omitempty"`
+}
+
+// EmployeeInput sind die Angaben fuer die Anlage eines Mitarbeiters.
+//
+// Active ist ein Zeiger, weil "nicht angegeben" und "false" verschiedene
+// Dinge sind: ein neuer Mitarbeiter ist AKTIV, solange nicht ausdruecklich
+// false angegeben wird (ADR 0025, Entscheidung des Nutzers vom
+// 2026-10-13). Mit einem blossen bool waere jeder ohne die Angabe
+// angelegte Mitarbeiter inaktiv gewesen - so war es bis F.4.3.
+type EmployeeInput struct {
+	PersonalNr  *string    `json:"personalnummer,omitempty"`
+	FirstName   string     `json:"first_name"`
+	LastName    string     `json:"last_name"`
+	Email       string     `json:"email"`
+	Phone       string     `json:"phone"`
+	HireDate    *time.Time `json:"hire_date,omitempty"`
+	Termination *time.Time `json:"termination_date,omitempty"`
+	Role        string     `json:"role"`
+	TeamID      *uuid.UUID `json:"team_id,omitempty"`
+	Location    string     `json:"location"`
+	CostCenter  string     `json:"cost_center"`
+	Active      *bool      `json:"active,omitempty"`
+}
+
+// Namen der UNIQUE-Indizes, deren Verletzung in eine fachliche Meldung
+// uebersetzt wird (087 bzw. 086). Die Uebersetzung statt einer
+// Vorabpruefung ist Absicht: sie ist auch dann richtig, wenn zwei Aufrufe
+// gleichzeitig kommen, und der rohe Postgres-Fehler - der im DETAIL die
+// Personalnummer nennt - erreicht so weder den Aufrufer noch das Log.
+const (
+	employeePersonalNrIndex = "idx_hr_employees_company_personalnummer"
+	employeeUserIDIndex     = "idx_hr_employees_user_id"
+)
+
+func isUniqueViolation(err error, index string) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == index
 }
 
 type EmployeeService struct{ pg *pgxpool.Pool }
@@ -60,7 +102,7 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
+	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +113,7 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 		var hire, term *time.Time
 		var teamID *uuid.UUID
 		var pn *string
-		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active); err != nil {
+		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID); err != nil {
 			return nil, err
 		}
 		e.HireDate = hire
@@ -80,24 +122,66 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 		e.PersonalNr = pn
 		out = append(out, e)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
-func (s *EmployeeService) Create(ctx context.Context, e Employee, companyID string) (*Employee, error) {
+// teamBelongsToCompany prueft, dass ein Team zum Mandanten gehoert. Der
+// Fremdschluessel allein genuegt nicht: er wuerde auch ein Team eines
+// anderen Mandanten akzeptieren.
+func (s *EmployeeService) teamBelongsToCompany(ctx context.Context, teamID uuid.UUID, companyID string) error {
+	var owned bool
+	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_teams WHERE id=$1 AND company_id=$2)`, teamID, companyID).Scan(&owned); err != nil {
+		return err
+	}
+	if !owned {
+		return errors.New("Team nicht gefunden")
+	}
+	return nil
+}
+
+func (s *EmployeeService) Create(ctx context.Context, in EmployeeInput, companyID string) (*Employee, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
-	if e.FirstName == "" || e.LastName == "" {
+	if in.FirstName == "" || in.LastName == "" {
 		return nil, errors.New("Vor- und Nachname erforderlich")
 	}
-	id := uuid.New()
+	e := Employee{
+		ID:          uuid.New(),
+		FirstName:   in.FirstName,
+		LastName:    in.LastName,
+		Email:       in.Email,
+		Phone:       in.Phone,
+		HireDate:    in.HireDate,
+		Termination: in.Termination,
+		Role:        in.Role,
+		TeamID:      in.TeamID,
+		Location:    in.Location,
+		CostCenter:  in.CostCenter,
+		Active:      in.Active == nil || *in.Active,
+	}
+	// Eine leere Personalnummer ist "keine Personalnummer". Als leerer
+	// String gespeichert waere sie ein Wert - und der zweite Mitarbeiter
+	// ohne Nummer wuerde an der Eindeutigkeit scheitern.
+	if in.PersonalNr != nil {
+		if pn := strings.TrimSpace(*in.PersonalNr); pn != "" {
+			e.PersonalNr = &pn
+		}
+	}
+	if e.TeamID != nil {
+		if err := s.teamBelongsToCompany(ctx, *e.TeamID, companyID); err != nil {
+			return nil, err
+		}
+	}
 	_, err := s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		id, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID)
+		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID)
 	if err != nil {
+		if isUniqueViolation(err, employeePersonalNrIndex) {
+			return nil, errors.New("Personalnummer existiert bereits")
+		}
 		return nil, err
 	}
-	e.ID = id
 	return &e, nil
 }
 
@@ -106,9 +190,12 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 	var hire, term *time.Time
 	var teamID *uuid.UUID
 	var pn *string
-	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
-		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active)
+	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
+		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("Mitarbeiter nicht gefunden")
+		}
 		return nil, err
 	}
 	e.HireDate = hire
@@ -138,6 +225,32 @@ func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[st
 			return fmt.Errorf("unbekanntes Feld: %s", k)
 		}
 	}
+	// Typen pruefen, bevor die Werte an Postgres gehen: ein Patch kommt
+	// als JSON und kann fuer jedes Feld jeden Typ tragen. Ungeprueft kaeme
+	// z. B. "active": "ja" als roher Datenbankfehler zurueck.
+	for k, v := range patch {
+		switch k {
+		case "active":
+			if _, ok := v.(bool); !ok {
+				return fmt.Errorf("Ungültiger Wert für Feld: %s", k)
+			}
+		case "team_id":
+			teamID, err := patchTeamID(v)
+			if err != nil {
+				return err
+			}
+			if teamID != nil {
+				if err := s.teamBelongsToCompany(ctx, *teamID, companyID); err != nil {
+					return err
+				}
+			}
+			patch[k] = teamID
+		default:
+			if _, ok := v.(string); !ok {
+				return fmt.Errorf("Ungültiger Wert für Feld: %s", k)
+			}
+		}
+	}
 	sets := make([]string, 0, len(patch))
 	args := make([]any, 0, len(patch)+2)
 	i := 1
@@ -147,8 +260,71 @@ func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[st
 		i++
 	}
 	args = append(args, id, companyID)
-	_, err := s.pg.Exec(ctx, `UPDATE hr_employees SET `+strings.Join(sets, ", ")+fmt.Sprintf(" WHERE id=$%d AND company_id=$%d", len(args)-1, len(args)), args...)
-	return err
+	ct, err := s.pg.Exec(ctx, `UPDATE hr_employees SET `+strings.Join(sets, ", ")+fmt.Sprintf(" WHERE id=$%d AND company_id=$%d", len(args)-1, len(args)), args...)
+	if err != nil {
+		return err
+	}
+	// Ohne diese Pruefung meldete eine Aenderung an einem unbekannten oder
+	// fremden Mitarbeiter Erfolg, obwohl nichts geschrieben wurde.
+	if ct.RowsAffected() == 0 {
+		return errors.New("Mitarbeiter nicht gefunden")
+	}
+	return nil
+}
+
+// patchTeamID liest team_id aus einem Patch: nil loest die Zuordnung, sonst
+// eine UUID als Text (so kommt sie aus JSON) oder als uuid.UUID.
+func patchTeamID(v any) (*uuid.UUID, error) {
+	switch t := v.(type) {
+	case nil:
+		return nil, nil
+	case uuid.UUID:
+		return &t, nil
+	case string:
+		id, err := uuid.Parse(t)
+		if err != nil {
+			return nil, errors.New("Ungültiger Wert für Feld: team_id")
+		}
+		return &id, nil
+	default:
+		return nil, errors.New("Ungültiger Wert für Feld: team_id")
+	}
+}
+
+// SetUser verknuepft einen Mitarbeiter mit einem Login-Benutzer oder loest
+// die Verknuepfung (userID leer). Die Verknuepfung entscheidet, wessen
+// Zeiten ein Login mit time_entries.self bucht - deshalb eine eigene, enge
+// Funktion mit eigenen Pruefungen und kein Feld im generischen Patch von
+// Update (ADR 0025, analog projects.SetKostenstelle).
+func (s *EmployeeService) SetUser(ctx context.Context, id uuid.UUID, userID, companyID string) error {
+	if strings.TrimSpace(companyID) == "" {
+		return errors.New("Mandant erforderlich")
+	}
+	if id == uuid.Nil {
+		return errors.New("Mitarbeiter-ID erforderlich")
+	}
+	var link *string
+	if userID = strings.TrimSpace(userID); userID != "" {
+		var userOwned bool
+		if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND company_id=$2)`, userID, companyID).Scan(&userOwned); err != nil {
+			return err
+		}
+		if !userOwned {
+			return errors.New("Benutzer nicht gefunden")
+		}
+		link = &userID
+	}
+	ct, err := s.pg.Exec(ctx, `UPDATE hr_employees SET user_id=$1 WHERE id=$2 AND company_id=$3`, link, id, companyID)
+	if err != nil {
+		if isUniqueViolation(err, employeeUserIDIndex) {
+			return errors.New("Benutzer ist bereits mit einem anderen Mitarbeiter verknüpft")
+		}
+		return err
+	}
+	if ct.RowsAffected() == 0 {
+		return errors.New("Mitarbeiter nicht gefunden")
+	}
+	return nil
 }
 
 type LeaveRequest struct {

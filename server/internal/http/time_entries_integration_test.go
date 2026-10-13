@@ -50,7 +50,7 @@ func seedTimeEntryUser(t *testing.T, env *testutil.IntegrationEnv, handler http.
 
 func seedTimeEntryEmployee(t *testing.T, env *testutil.IntegrationEnv, lastName string) uuid.UUID {
 	t.Helper()
-	emp, err := hr.NewEmployeeService(env.PG).Create(context.Background(), hr.Employee{FirstName: "Zeit", LastName: lastName, Active: true}, "default")
+	emp, err := hr.NewEmployeeService(env.PG).Create(context.Background(), hr.EmployeeInput{FirstName: "Zeit", LastName: lastName}, "default")
 	if err != nil {
 		t.Fatalf("Mitarbeiter anlegen: %v", err)
 	}

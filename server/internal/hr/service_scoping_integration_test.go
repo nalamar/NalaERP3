@@ -22,7 +22,7 @@ func TestEmployeeGetIsScopedToCompany(t *testing.T) {
 		t.Fatalf("seed other company: %v", err)
 	}
 
-	created, err := svc.Create(ctx, Employee{FirstName: "Max", LastName: "Mustermann"}, "default")
+	created, err := svc.Create(ctx, EmployeeInput{FirstName: "Max", LastName: "Mustermann"}, "default")
 	if err != nil {
 		t.Fatalf("create employee: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestEmployeeUpdateAppliesKnownFieldsAndRejectsUnknownKey(t *testing.T) {
 	ctx := context.Background()
 	svc := NewEmployeeService(env.PG)
 
-	created, err := svc.Create(ctx, Employee{FirstName: "Erika", LastName: "Musterfrau", Active: true}, "default")
+	created, err := svc.Create(ctx, EmployeeInput{FirstName: "Erika", LastName: "Musterfrau"}, "default")
 	if err != nil {
 		t.Fatalf("create employee: %v", err)
 	}
@@ -103,7 +103,7 @@ func TestLeaveCreateRejectsEmployeeFromOtherCompany(t *testing.T) {
 		t.Fatalf("seed other company: %v", err)
 	}
 
-	created, err := empSvc.Create(ctx, Employee{FirstName: "Erika", LastName: "Musterfrau"}, "default")
+	created, err := empSvc.Create(ctx, EmployeeInput{FirstName: "Erika", LastName: "Musterfrau"}, "default")
 	if err != nil {
 		t.Fatalf("create employee: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestLeaveCreateComputesDaysForValidDateRange(t *testing.T) {
 	empSvc := NewEmployeeService(env.PG)
 	leaveSvc := NewLeaveService(env.PG)
 
-	emp, err := empSvc.Create(ctx, Employee{FirstName: "Urlaub", LastName: "Testperson"}, "default")
+	emp, err := empSvc.Create(ctx, EmployeeInput{FirstName: "Urlaub", LastName: "Testperson"}, "default")
 	if err != nil {
 		t.Fatalf("create employee: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestLeaveCreateRejectsOverlappingDateRange(t *testing.T) {
 	empSvc := NewEmployeeService(env.PG)
 	leaveSvc := NewLeaveService(env.PG)
 
-	emp, err := empSvc.Create(ctx, Employee{FirstName: "Ueberschneidung", LastName: "Testperson"}, "default")
+	emp, err := empSvc.Create(ctx, EmployeeInput{FirstName: "Ueberschneidung", LastName: "Testperson"}, "default")
 	if err != nil {
 		t.Fatalf("create employee: %v", err)
 	}
