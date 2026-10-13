@@ -7,30 +7,35 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.4.1** (Fachregeln der Qualifikationen
-> ohne Datenbank), davor F.2.3, F.2.2, F.2.1. F.2.4 ist in drei
-> Micro-Subtasks zerlegt.
-> **Nächste Subtask: F.2.4.2** — `QualificationService` in neuer Datei
-> `server/internal/hr/qualifications.go`:
-> `Create(ctx, in, actorUserID, companyID)` mit
-> `QualificationInput{EmployeeIDs []uuid.UUID, TypeID, ErworbenAm,
-> GueltigBis *time.Time, Aussteller, NachweisNr, Note}` — eine
-> Eingabe für Einzel- und Gruppenerfassung (ein Mitarbeiter ist eine
-> Gruppe aus einem), EINE Transaktion, ganz oder gar nicht, je
-> Mitarbeiter ein Nachweis; leere Liste und doppelte IDs abfangen;
-> `gueltig_bis` = angegeben, sonst `QualificationValidUntil` mit der
-> Frist der Art, und gespeichert; `ValidateQualificationDates` mit
-> "heute" als Kalendertag in Europe/Berlin (`WorkDateOf(time.Now())`
-> liefert genau das); Art muss zum Mandanten gehören und aktiv sein;
-> jeder Mitarbeiter muss zum Mandanten gehören.
-> `Storno(ctx, id, reason, actor, companyID)` nach dem Muster
-> `stornoTimeEntryTx` (Zeile sperren, einmalig, nur Storno-Spalten).
-> `Get`, `ListForEmployee(employeeID, includeStorniert, companyID)`.
-> Wächtertest am Quelltext: genau ein UPDATE auf
-> `hr_employee_qualifications`, kein DELETE. Noch KEIN HTTP.
-> Gegenprobe über das Skript-Verfahren.
-> **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen** — nicht nur zu
-> Beginn der Subtask (Panne in F.2.4.1).
+> Zuletzt abgeschlossen: **F.2.4.2** (Nachweise erfassen, stornieren,
+> lesen), davor F.2.4.1, F.2.3, F.2.2, F.2.1.
+> **Nächste Subtask: F.2.4.3** (letzte von F.2.4) — Anforderungen je
+> Mitarbeiter und der Stand eines Mitarbeiters, in
+> `server/internal/hr/qualifications.go` oder eigener Datei
+> `qualification_requirements.go`:
+> (1) `SetRequirements(ctx, employeeID, typeIDs, actorUserID,
+> companyID)` — ersetzt die Menge der Anforderungen eines
+> Mitarbeiters in einer Transaktion (fehlende einfügen, überzählige
+> entfernen); Mitarbeiter und jede Art müssen zum Mandanten gehören;
+> stillgelegte Arten als NEUE Anforderung ablehnen, bestehende
+> Anforderungen auf später stillgelegte Arten aber nicht stören.
+> Anforderungen sind Planung: INSERT/DELETE hier ist gewollt und
+> betrifft `hr_employee_qualification_requirements`, NICHT die
+> Nachweise — der Wächtertest prüft nur `qualifications.go` auf
+> `hr_employee_qualifications`; bei eigener Datei bleibt er unberührt.
+> (2) `ListRequirements(employeeID, companyID)`.
+> (3) `Standing(ctx, employeeID, today, warnDays, companyID)` — führt
+> zusammen: aktive Nachweise des Mitarbeiters, erforderliche Arten =
+> eigene Anforderungen PLUS `pflicht_fuer_alle`, jeweils nur AKTIVE
+> Arten; `pflicht_fuer_alle` nur für aktive Mitarbeiter; ruft
+> `EvaluateQualifications` und reichert mit Code, Name und Kategorie
+> der Art an; fachlich sortiert (Dringlichkeit: fehlt, abgelaufen,
+> läuft ab, gültig; dann Name).
+> Die betriebsweite Fälligkeitsliste ist F.2.6, nicht hier.
+> Noch KEIN HTTP. Gegenprobe über das Skript-Verfahren; eine
+> überlebende Verfälschung erst als gleichwertig einstufen, wenn das
+> belegt ist (Muster aus F.2.4.2).
+> **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10615,6 +10620,58 @@ Geänderte Dateien: `server/internal/hr/qualification_rules.go` (neu),
 `server/internal/hr/qualification_rules_test.go` (neu),
 `docs/adr/0027-qualifikationen-unterweisungen.md`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.2.4.2 Nachweise: erfassen, stornieren, lesen
+
+Neue Datei `server/internal/hr/qualifications.go` mit
+`QualificationService`.
+
+- `Create(in, actorUserID, companyID)` — `in.EmployeeIDs` für einen
+  oder mehrere Mitarbeiter, eine Transaktion, liefert die Nachweise.
+- `Storno(id, reason, actorUserID, companyID)`.
+- `Get(id, companyID)`, `ListForEmployee(employeeID,
+  includeStorniert, companyID)`.
+
+**Technik, die man kennen muss:**
+
+- Es gibt KEINE Eindeutigkeit in der Datenbank für "ein Nachweis je
+  Mitarbeiter, Art und Tag". Die Doppelprüfung ist eine Abfrage, und
+  sie ist nur deshalb sicher, weil vorher die Mitarbeiterzeilen
+  gesperrt werden. Die Sperre nicht entfernen (Gegenprobe: ohne sie
+  schlägt der Gleichzeitigkeitstest an).
+- Gesperrt wird in nach ID sortierter Reihenfolge
+  (`uniqueEmployeeIDs` plus `ORDER BY id`). Wer einen weiteren Pfad
+  ergänzt, der mehrere Mitarbeiter sperrt, muss dieselbe Reihenfolge
+  einhalten.
+- Wächtertest `TestQualificationServiceHasNoOtherWritePaths`: genau
+  ein UPDATE, kein DELETE in `qualifications.go`.
+
+**Neue Fehlertexte für F.2.5** (Klassifikation prüfen):
+"Mindestens ein Mitarbeiter erforderlich", "type_id erforderlich",
+"Nachweis-ID erforderlich", "Erwerbsdatum erforderlich",
+"Erwerbsdatum darf nicht in der Zukunft liegen", "Gültig-bis darf
+nicht vor dem Erwerbsdatum liegen", "Nachweis nicht gefunden",
+"Nachweis für diesen Tag ist bereits erfasst" (trifft "bereits
+erfasst" → 409), "Nachweis ist bereits storniert" (→ 409) —
+**"Qualifikationsart ist stillgelegt" trifft KEINEN vorhandenen
+Teilstring und fiele als 500 durch; in F.2.5 ergänzen.**
+
+**Lehre aus der Gegenprobe:** eine überlebende Verfälschung ist
+entweder eine Testlücke oder gleichwertig. Gleichwertig heißt hier:
+eine zweite Sicherung erzwingt dieselbe Regel. Das wurde nicht
+angenommen, sondern belegt, indem die zweite Sicherung allein und
+beide zusammen entfernt wurden.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 10 neue Testfunktionen grün. Gegenprobe mit 23
+Verfälschungen: 21 sofort erkannt, eine nach ergänztem Test, eine als
+gleichwertig belegt. Vollständiger `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/qualifications.go` (neu),
+`server/internal/hr/qualifications_test.go` (neu),
+`server/internal/hr/qualifications_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
