@@ -178,14 +178,19 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
 
 ## 2026-10-13 — Qualifikationen und Unterweisungen (F.2.1, ADR 0027) — keine blockiert
 
-- **F.2 (Bestätigung durch den Mitarbeiter)**: Muster der
-  Berufsgenossenschaften dokumentieren eine Unterweisung mit
-  Teilnehmerliste und Unterschrift. ADR 0027 nimmt an, dass die
-  Personalabteilung den Nachweis erfasst und der Mitarbeiter im System
-  NICHT bestätigt (die unterschriebene Liste bleibt Papier bzw. später
-  ein hochgeladenes Dokument). Soll der Mitarbeiter eine Unterweisung
-  im System bestätigen können oder müssen? Status: **offen**, dem
-  Nutzer am 2026-10-13 gestellt; → Backlog F.10.
+- **F.2 (Bestätigung durch den Mitarbeiter)**: Status: **beantwortet**
+  am 2026-10-13. Entscheidung des Nutzers: "Die Personalabteilung
+  trägt ein, welche Qualifikationen erreicht sind und wann sie
+  erreicht wurden. Eine anstehende Erneuerung sollte vom System
+  angemahnt werden." → kein Selbsteintrag, keine Bestätigung durch den
+  Mitarbeiter; Anmahnen über Status und Fälligkeitsliste (ADR 0027,
+  Ergänzung).
+- **F.2 ("anmahnen" = aktive Benachrichtigung?)**: Umgesetzt wird der
+  Status `laeuft_ab`/`abgelaufen` und eine Liste der anstehenden
+  Erneuerungen. Eine E-Mail oder andere Zustellung gibt es nicht — das
+  Repo hat dafür keine Infrastruktur. Genügt die Liste (sichtbar,
+  sobald es eine Oberfläche gibt), oder soll das System von sich aus
+  benachrichtigen? Status: **offen**, kein Blocker; → Backlog F.10.
 - **F.2 (Fristen und Umfang des Vorschlagskatalogs)**: Die Fristen
   stammen aus einer Websuche über Sekundärquellen, sechs Themen sind
   gar nicht recherchiert. Vor produktiver Nutzung mit der Fachkraft
@@ -193,8 +198,11 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   Fristen sind je Mandant änderbar; ein falscher Vorschlagswert ist
   also korrigierbar, aber er wäre zunächst unbemerkt im Einsatz.
   Status: **offen**, kein Blocker.
-- **F.2 (Pflicht je Tätigkeit)**: `fehlt` wird nur für Arten
-  ausgewiesen, die für ALLE Mitarbeiter Pflicht sind. Wer z. B. einen
-  Staplerschein haben MUSS, weiß das System nicht. Reicht das bis
-  Epic H, oder soll schon F.2 eine einfache Zuordnung "Art ist Pflicht
-  für diese Mitarbeiter" bekommen? Status: **offen**, kein Blocker.
+- **F.2 (Pflicht je Tätigkeit)**: Status: **beantwortet** am
+  2026-10-13. Entscheidung des Nutzers: "Beim Anlegen eines neuen
+  Mitarbeiters soll die Personalabteilung festlegen können, welche
+  Qualifikationen für die Stelle nötig sind und ob sie schon
+  vorhanden sind." → Anforderungen je Mitarbeiter (Tabelle seit
+  Migration 088), `fehlt` gilt dafür und für `pflicht_fuer_alle`.
+  Über die API in drei Schritten (Mitarbeiter, Anforderungen,
+  Nachweise), die die Oberfläche in einem Dialog zusammenfasst.

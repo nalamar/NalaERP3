@@ -7,30 +7,29 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.1** (ADR 0027 Qualifikationen und
-> Unterweisungen). Davor F.9, 0.46, Task F.4, Task F.1. Siehe
-> Abschnitt "Epic F, Task F.2" weiter unten.
-> **Nächste Subtask: F.2.2** — Migration `088_hr_qualifications.sql`
-> nach ADR 0027:
-> `hr_qualification_types` (id uuid, company_id NOT NULL, code,
-> name, kategorie CHECK in qualifikation/unterweisung/beauftragung,
-> gueltigkeit_monate integer NULL mit CHECK > 0, pflicht_fuer_alle
-> boolean DEFAULT false, aktiv boolean DEFAULT true, hinweis text,
-> created_at; UNIQUE (company_id, code));
-> `hr_employee_qualifications` (id uuid, employee_id → hr_employees
-> RESTRICT, type_id → hr_qualification_types RESTRICT, erworben_am
-> date NOT NULL, gueltig_bis date NULL mit CHECK >= erworben_am,
-> aussteller, nachweis_nr, note, status active/storniert mit denselben
-> Storno-Spalten und demselben Konsistenz-CHECK wie
-> `hr_time_entries` (086), created_by_user_id, created_at);
-> Permissions `qualifications.self` (alle acht Systemrollen),
-> `qualifications.read`/`write` (HR, Admin). Verifizieren wie F.1.2
-> und F.4.2 (frische DB, Schema per Abfrage, Constraints per SQL
-> provozieren, Down-Pfad ausführen, Gesamtlauf).
-> **Der Vorschlagskatalog ist KEINE Migration** — er entsteht in F.2.3
-> als Code und wird je Mandant per Aufruf übernommen.
-> Offene Fragen an den Nutzer (nicht blockierend) stehen in
-> `docs/open-questions.md` unter F.2.
+> Zuletzt abgeschlossen: **F.2.2** (Migration 088), davor F.2.1 (ADR
+> 0027, am 2026-10-13 durch zwei Antworten des Nutzers ergänzt — siehe
+> "Korrekturen" und den Abschnitt "Ergänzung" in der ADR).
+> **Nächste Subtask: F.2.3** — Katalog in neuer Datei
+> `server/internal/hr/qualification_types.go`:
+> `QualificationTypeService` mit `Create`, `Get`, `List` (Standard nur
+> aktive, Schalter für alle), `Update` (Name, Kategorie, Frist,
+> `pflicht_fuer_alle`, `aktiv`, Hinweis — Code NICHT änderbar, er ist
+> der stabile Schlüssel; kein Delete). Muster:
+> `accounting/cost_centers.go`. Doppelter Code → fachliche Meldung
+> über `isUniqueViolation` mit Constraint
+> `hr_qualification_types_company_code_key` (ACHTUNG: das ist ein
+> Constraint, kein Index — prüfen, dass `ConstraintName` passt).
+> **Vorschlagskatalog**: Go-Liste nach der Tabelle in ADR 0027 (für
+> Stapler und Hubarbeitsbühne je drei Arten, für Leitern zwei) plus
+> die sechs nicht recherchierten Themen; `AdoptDefaults(companyID)`
+> legt an, was fehlt (Abgleich über den Code), überschreibt nichts,
+> liefert zurück, was neu angelegt wurde. Arbeitsmedizinische
+> Vorsorge gehört NICHT hinein. Nur `ARBEITSSCHUTZ` ist
+> `pflicht_fuer_alle`. Eine Frist-Änderung an einer Art ändert
+> bestehende Nachweise nicht (das ist F.2.4, aber die Semantik gehört
+> als Kommentar an `Update`). Noch KEIN HTTP. Gegenprobe über das
+> Skript-Verfahren. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10486,6 +10485,47 @@ Geänderte Dateien:
 `docs/adr/0027-qualifikationen-unterweisungen.md` (neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
+### F.2.2 Migration 088: Katalog, Nachweise, Anforderungen, Permissions
+
+Neue Datei
+`server/internal/migrate/migrations/088_hr_qualifications.sql`. Kein
+Go-Code geändert.
+
+**Drei Tabellen statt der in F.2.1 geplanten zwei.** Der Nutzer hat
+zwischen F.2.1 und F.2.2 geantwortet: die Personalabteilung soll je
+Mitarbeiter festlegen, welche Qualifikationen die Stelle verlangt.
+Dafür `hr_employee_qualification_requirements`.
+
+**Unterschiedliche Löschregeln, mit Absicht:**
+
+| Tabelle | vom Mitarbeiter | von der Art | warum |
+|---|---|---|---|
+| Nachweise | RESTRICT | RESTRICT | Beleg mit Beweisfunktion |
+| Anforderungen | CASCADE | RESTRICT | Planung, änderbar |
+
+**Für F.2.3/F.2.4 merken:**
+
+- Eindeutigkeit des Codes ist ein CONSTRAINT
+  (`hr_qualification_types_company_code_key`), nicht ein Index wie
+  bei der Personalnummer.
+- Mandantengleichheit von Mitarbeiter und Art eines Nachweises bzw.
+  einer Anforderung prüft der Service, nicht die Datenbank.
+- `fehlt` = Anforderung des Mitarbeiters ODER `pflicht_fuer_alle`,
+  und kein gültiger aktiver Nachweis.
+- Anforderungen sind änderbar (INSERT/DELETE); der Wächtertest für
+  Unveränderbarkeit gilt nur für die Nachweise.
+
+**Verifikation.** Kette 001-088 auf leerer DB; Schema per Abfrage; 15
+Fälle per SQL provoziert (einer davon gezielt wiederholt, weil er
+zunächst aus dem falschen Grund abgelehnt wurde); Down-Pfad
+ausgeführt und erneut angewendet; vollständiger `NALA_INTEGRATION=1
+go test ./... -p 1 -count=1` gegen frische DB durchgehend `ok`.
+
+Geänderte Dateien:
+`server/internal/migrate/migrations/088_hr_qualifications.sql` (neu),
+`docs/adr/0027-qualifikationen-unterweisungen.md`, `docs/backlog.md`,
+`docs/open-questions.md`, `docs/state.md`.
+
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
 Vom Nutzer vor F.2 gezogen. ADR:
@@ -10597,6 +10637,16 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   Leiterschein. Weitere dürfen recherchiert und vorgeschlagen werden.
   "Die Liste sollte in jedem Fall auch erweiterbar sein." → Katalog
   als Stammdaten je Mandant (ADR 0027).
+- **2026-10-13 — Zwei Antworten zu F.2, ändern das Modell.**
+  (1) "Die Personalabteilung trägt ein, welche Qualifikationen
+  erreicht sind und wann sie erreicht wurden. Eine anstehende
+  Erneuerung sollte vom System angemahnt werden." → kein
+  Selbsteintrag; Anmahnen über Status und Fälligkeitsliste.
+  (2) "Beim Anlegen eines neuen Mitarbeiters soll die
+  Personalabteilung festlegen können, welche Qualifikationen für die
+  Stelle nötig sind und ob sie schon vorhanden sind." → Anforderungen
+  je Mitarbeiter (dritte Tabelle in Migration 088); `fehlt` gilt
+  dafür. In ADR 0027 als "Ergänzung" eingearbeitet.
 
 ## Verworfen
 

@@ -1,7 +1,7 @@
 # ADR 0027 — Weiterbildung, Qualifikationen, Unterweisungen
 
 Datum: 2026-10-13
-Status: entschieden (Subtask F.2.1); Annahmen und offene Fragen sind gekennzeichnet
+Status: entschieden (Subtask F.2.1); am 2026-10-13 durch zwei Antworten des Nutzers ergänzt (siehe "Ergänzung")
 Bezug: Backlog F.2 (Epic F — Personal & HR).
 
 ## Kontext
@@ -176,6 +176,57 @@ Den Katalog (Namen der Arten) darf lesen, wer eines der drei Rechte
 hat. Mitarbeiter erfassen ihre Nachweise nicht selbst: ein Nachweis
 ist eine Aussage des Betriebs, nicht des Mitarbeiters.
 
+## Ergänzung nach Antwort des Nutzers (2026-10-13)
+
+Auf die zwei offenen Fragen hat der Nutzer geantwortet. Beide
+Antworten gehen in das Modell ein, bevor Code entsteht.
+
+**1. Wer erfasst, und was soll das System tun?** "Die
+Personalabteilung trägt ein, welche Qualifikationen erreicht sind und
+wann sie erreicht wurden. Eine anstehende Erneuerung sollte vom System
+angemahnt werden."
+
+Damit ist die Annahme bestätigt: kein Selbsteintrag, keine Bestätigung
+durch den Mitarbeiter. "Anmahnen" wird so umgesetzt: der Status
+`laeuft_ab` (innerhalb der Vorwarnzeit) und `abgelaufen` je Nachweis,
+dazu eine Liste aller anstehenden und überfälligen Erneuerungen des
+Betriebs für die Personalabteilung (F.2.6) und der eigene Stand für
+jeden Mitarbeiter. **Eine aktive Benachrichtigung (E-Mail o. ä.) ist
+damit nicht gebaut**: das Repo hat keine Infrastruktur zum Versenden
+von Nachrichten. Ob "anmahnen" eine solche Zustellung verlangt, ist
+als offene Frage vermerkt (→ Backlog F.10).
+
+**2. Wer braucht was?** "Beim Anlegen eines neuen Mitarbeiters soll die
+Personalabteilung festlegen können, welche Qualifikationen für die
+Stelle nötig sind und ob sie schon vorhanden sind."
+
+Das ändert Entscheidung 5: es gibt **Anforderungen je Mitarbeiter**
+(neue Tabelle `hr_employee_qualification_requirements`: Mitarbeiter,
+Art). `fehlt` gilt damit für jede Art, die dem Mitarbeiter als
+Anforderung zugeordnet ist **oder** für alle Pflicht ist
+(`pflicht_fuer_alle` bleibt, damit die Arbeitsschutzunterweisung nicht
+jedem einzeln zugeordnet werden muss), und für die kein gültiger
+Nachweis vorliegt.
+
+Eine Anforderung ist Planung, kein Beleg: sie ist änderbar und darf
+wieder entfernt werden, wenn sich die Stelle ändert. Deshalb gilt für
+sie — anders als für Nachweise — keine Unveränderbarkeit.
+
+"Beim Anlegen" wird über die API in drei Schritten abgebildet, die
+die Oberfläche in einem Dialog zusammenfasst: Mitarbeiter anlegen
+(`POST /employees`), Anforderungen setzen, vorhandene Nachweise
+erfassen. Die Mitarbeiteranlage selbst bleibt unverändert und kennt
+keine Qualifikationen; so bleibt der Mitarbeiterstamm ohne Kenntnis
+des Katalogs benutzbar. **Bekannte Folge**: die drei Schritte sind
+nicht eine Transaktion; scheitert der zweite, existiert der
+Mitarbeiter ohne Anforderungen. Das ist erkennbar und nachholbar,
+aber nicht atomar.
+
+Eine Anforderungsmatrix je **Stelle oder Tätigkeit** (Vorlagen wie
+"Monteur braucht A, B, C", die man einem neuen Mitarbeiter auf einmal
+zuweist) gibt es weiterhin nicht — Stellen sind im Mitarbeiterstamm
+Freitext (`role`). Das bleibt bei Epic H bzw. Backlog F.10.
+
 ## Annahmen (gekennzeichnet, änderbar)
 
 - Fristen im Vorschlagskatalog wie in der Tabelle; sie sind Vorgaben
@@ -183,7 +234,7 @@ ist eine Aussage des Betriebs, nicht des Mitarbeiters.
 - Vorwarnzeit 60 Tage.
 - Fristen in ganzen Monaten.
 - Ein Nachweis wird von der Personalabteilung erfasst; der Mitarbeiter
-  bestätigt ihn im System **nicht** (siehe offene Fragen).
+  bestätigt ihn im System **nicht** (vom Nutzer am 2026-10-13 bestätigt).
 
 ## Nicht Teil von F.2
 
@@ -213,11 +264,12 @@ ist eine Aussage des Betriebs, nicht des Mitarbeiters.
 Zerlegung von F.2:
 
 - **F.2.2** Migration `088_hr_qualifications.sql`: Katalog, Nachweise,
-  drei Permissions samt Rollenzuordnung.
+  Anforderungen je Mitarbeiter, drei Permissions samt Rollenzuordnung.
 - **F.2.3** Katalog: Service (anlegen, ändern, deaktivieren, lesen),
   Vorschlagskatalog samt Übernahme, Tests.
-- **F.2.4** Nachweise: Service (erfassen einzeln und für eine Gruppe,
-  stornieren, lesen), Statusauswertung als reine Funktion, Tests.
+- **F.2.4** Nachweise und Anforderungen: Service (Nachweise erfassen
+  einzeln und für eine Gruppe, stornieren, lesen; Anforderungen setzen
+  und lesen), Statusauswertung als reine Funktion, Tests.
 - **F.2.5** HTTP-Anbindung Katalog und Nachweise mit Rechteprüfung.
 - **F.2.6** HTTP-Auswertung: Stand je Mitarbeiter, Liste der fälligen
   und fehlenden Nachweise des Betriebs.
