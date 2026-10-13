@@ -7,26 +7,23 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.5.2** — damit ist **TASK F.1
-> (Zeiterfassung) VOLLSTÄNDIG**: F.1.1 ADR 0024, F.1.2 Migration 086,
-> F.1.3 Fachregeln, F.1.4 Service (drei Teile), F.1.5 HTTP (zwei
-> Teile). Siehe Abschnitt "Epic F, Task F.1" weiter unten.
-> **Nächste Arbeit: Reihenfolge ist eine Entscheidung des Nutzers**
-> (am 2026-10-13 gestellt, Antwort abwarten bzw. hier nachtragen):
-> laut Backlog-Reihenfolge käme F.2 (Weiterbildung/Qualifikationen/
-> Unterweisungen). Empfehlung des Agenten: **F.4 vorziehen**
-> (HR-Bestand an HTTP anbinden: Mitarbeiterstamm, Urlaubsanträge,
-> Pflege von `hr_employees.user_id`). Grund: ohne F.4 ist die gerade
-> gebaute Zeiterfassung für Mitarbeiter nicht nutzbar — die
-> Verknüpfung Benutzer↔Mitarbeiter lässt sich nur per Direkt-SQL
-> setzen, `time_entries.self` läuft sonst immer auf 403. Außerdem
-> bauen F.2 und F.3 beide auf einem erreichbaren Mitarbeiterstamm auf.
-> F.4 ist bisher nur eine Zeile im Backlog und muss vor Beginn in
-> Subtasks zerlegt werden (erste Subtask: ADR/Bestandsaufnahme —
-> welche Endpunkte, welche Permissions, wie `user_id` gepflegt wird,
-> Umgang mit dem toten `client/lib/pages/employees_page.dart`).
-> Ohne Antwort des Nutzers: NICHT eigenmächtig umpriorisieren,
-> sondern nachfragen.
+> Zuletzt abgeschlossen: **F.4.1** (ADR 0025, HR-Bestand an HTTP).
+> F.4 wurde vom Nutzer am 2026-10-13 vor F.2/F.3 gezogen (siehe
+> "Korrekturen"). Davor: Task F.1 (Zeiterfassung) vollständig. Siehe
+> Abschnitt "Epic F, Task F.4" weiter unten.
+> **Nächste Subtask: F.4.2** — Migration
+> `087_hr_http_permissions_and_hardening.sql`: (1) Permissions
+> `employees.read`/`write` (HR, Admin), `leave_requests.self` (alle
+> acht Systemrollen), `leave_requests.read`/`decide` (HR, Admin);
+> (2) `hr_employees_personalnummer_key` ersetzen durch
+> `UNIQUE (company_id, personalnummer)`; (3)
+> `hr_leave_requests.decided_by_user_id text REFERENCES users(id) ON
+> DELETE SET NULL`. Additiv, reversibel, gegen frische DB verifizieren
+> wie F.1.2. F.4.2 hängt NICHT an der offenen Freigabe.
+> **Offene Freigabe (blockiert nur den `active`-Teil von F.4.3):**
+> Standardwert von `active` bei der Mitarbeiteranlage — Vorschlag
+> "aktiv", am 2026-10-13 gestellt. Antwort in
+> `docs/open-questions.md` und unter "Korrekturen" nachtragen.
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10183,6 +10180,49 @@ Geänderte Dateien: `server/internal/http/time_entries.go`,
 `server/internal/http/time_entries_flow_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
 
+## Epic F, Task F.4 — HR-Bestand an HTTP anbinden
+
+### F.4.1 ADR: Bestandsaufnahme und Umfangsentscheidung
+
+Reine Recherche-/ADR-Arbeit, kein Produktivcode. Ergebnis:
+`docs/adr/0025-hr-bestand-http-anbindung.md`. F.4 in sechs Subtasks
+zerlegt.
+
+**Kernbefund:** `EmployeeService`/`LeaveService` sind getestet, aber
+nicht HTTP-reif. Die Tests aus Epic 0 prüfen die Regeln, die damals
+gefunden wurden; was erst an einer HTTP-Grenze zum Fehler wird (roher
+`ErrNoRows`, ungeprüftes `RowsAffected`, roher UNIQUE-Fehler), fiel
+ohne HTTP-Anbindung nicht auf. Die elf Befunde stehen mit Datei- und
+Zeilenbeleg in der ADR.
+
+**Für die Folge-Subtasks merken:**
+
+- Erst härten (F.4.3, F.4.5), dann anbinden (F.4.4, F.4.6) — nicht
+  umgekehrt.
+- `employees.read` ist bewusst eng (HR, Admin). Braucht ein anderes
+  Modul Namen, bekommt es einen eigenen schmalen Lesepfad, nicht
+  dieses Recht.
+- `SetUser` als eigene Funktion, NICHT `user_id` in
+  `employeeUpdatableFields` aufnehmen.
+- Die Rechteprüfung "self gegen read/write" und
+  `EmployeeIDForUser` aus F.1.5.1 wiederverwenden. `hasPermission`
+  liegt in `http/time_entries.go`.
+- Neue Fehlertexte brauchen einen Eintrag in `classifyDomainError`
+  und einen Test dafür (Lehre aus F.1.5.1).
+- Was ein Handler aus dem Kontext durchreicht (Akteur, Mandant),
+  braucht einen HTTP-Test (Lehre aus F.1.5.2).
+
+**Verifikation.** Keine Codeänderung, daher kein Build-/Testlauf. Die
+Befunde sind einzeln belegt: Constraint-Namen und -Definitionen per
+Abfrage gegen die Test-DB (`hr_employees_personalnummer_key` ist
+`UNIQUE (personalnummer)`; `hr_leave_requests_approver_id_fkey` zeigt
+auf `hr_employees`); fehlende Client-Methoden und fehlende Historie
+per Suche und `git log -S`; ungenutzte Tabellen per Suche über
+`server/internal`.
+
+Geänderte Dateien: `docs/adr/0025-hr-bestand-http-anbindung.md` (neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
 ## Offene Punkte
 
 Siehe `docs/open-questions.md` — Detailfrage zu Mandanten-Scoping-Design
@@ -10206,7 +10246,13 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
 
 ## Korrekturen
 
-*(noch keine — wird gepflegt, sobald der Nutzer eine Anweisung korrigiert.)*
+- **2026-10-13 — Reihenfolge in Epic F geändert.** Auf Rückfrage nach
+  Abschluss von F.1 hat der Nutzer entschieden: "Ziehe bitte F.4 vor".
+  F.4 (HR-Bestand an HTTP) läuft damit vor F.2 und F.3. Grund laut
+  Vorschlag des Agenten: ohne F.4 kann kein Mitarbeiter selbst
+  stempeln, und F.2/F.3 setzen einen erreichbaren Mitarbeiterstamm
+  voraus. Nach F.4 gilt wieder die Backlog-Reihenfolge (F.2, F.3),
+  sofern nichts anderes entschieden wird.
 
 ## Verworfen
 

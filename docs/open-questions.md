@@ -136,3 +136,23 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
 - **F.1 (Zeitzone)**: ADR 0024 nimmt eine einzige Zeitzone
   (`Europe/Berlin`) für die Zuordnung eines Eintrags zum Arbeitstag an.
   Gibt es Standorte oder Montageeinsätze außerhalb dieser Zeitzone?
+
+## 2026-10-13 — HR-Bestand an HTTP (F.4.1, ADR 0025)
+
+- **F.4.3 (Standardwert `active` bei Mitarbeiteranlage)** — **Freigabe
+  nötig, blockiert den `active`-Teil von F.4.3.** Fortsetzung der seit
+  0.1.3.1 offenen Frage weiter oben: heute ist ein neuer Mitarbeiter
+  inaktiv, wenn `active` nicht ausdrücklich gesetzt wird. Vorschlag:
+  standardmäßig aktiv. Status: **offen**, dem Nutzer am 2026-10-13
+  gestellt.
+- **F.4 (Löschung von Mitarbeiterdaten nach Ausscheiden)**: Es gibt
+  keinen Löschpfad und F.4 baut keinen. Nach welcher Frist und in
+  welcher Form (Löschen, Anonymisieren) sollen Stammdaten
+  ausgeschiedener Mitarbeiter entfernt werden? Hängt mit der offenen
+  Löschfrist für Zeitdaten zusammen (F.1). Status: **offen**, kein
+  Blocker für F.4.
+- **F.4.5 (Entscheidung über den eigenen Urlaubsantrag)**: Darf jemand
+  mit `leave_requests.decide` seinen eigenen Antrag genehmigen? ADR
+  0025 erzwingt dazu nichts, weil keine Vorgabe vorliegt. Status:
+  **offen**, kein Blocker (lässt sich nachträglich als Prüfung
+  ergänzen).
