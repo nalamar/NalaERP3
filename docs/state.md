@@ -7,30 +7,30 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.3** (Katalog-Service und
-> Vorschlagskatalog), davor F.2.2 (Migration 088), F.2.1 (ADR 0027).
-> Auf Wunsch des Nutzers neu im Backlog: **F.11** Vorlagen für
-> Mitarbeiter-Stellen (für später, siehe "Korrekturen").
-> **Nächste Subtask: F.2.4** — Nachweise und Anforderungen im Service.
-> **Vor dem Start schätzen und voraussichtlich teilen (§6.3)**, z. B.:
-> F.2.4.1 Statusauswertung als reine Funktion ohne DB (Muster
-> `hr/time_rules.go`): je Mitarbeiter und Art der jüngste aktive
-> Nachweis → `gueltig`/`laeuft_ab`/`abgelaufen`; `fehlt` für
-> Anforderungen des Mitarbeiters und für `pflicht_fuer_alle`, wenn
-> kein gültiger aktiver Nachweis vorliegt; `gueltig_bis` ist der
-> letzte gültige Tag (einschließlich); Vorwarnzeit Standard 60 Tage,
-> als Parameter; "heute" als Parameter (testbar); Berechnung von
-> `gueltig_bis` aus `erworben_am` plus Monaten (Monatsende beachten:
-> 31.01. + 1 Monat — Verhalten von `AddDate` prüfen und bewusst
-> festlegen, nicht hinnehmen). Grenzwerte testen.
-> F.2.4.2 Nachweise: erfassen (einzeln und für eine Gruppe in EINER
-> Transaktion), stornieren, lesen; Mitarbeiter und Art müssen zum
-> selben Mandanten gehören; Art muss aktiv sein (für NEUE Nachweise);
-> Wächtertest: genau ein UPDATE (Storno), kein DELETE.
-> F.2.4.3 Anforderungen je Mitarbeiter setzen und lesen (änderbar,
-> kein Beleg) und die Zusammenführung zum Stand eines Mitarbeiters.
-> Noch KEIN HTTP (F.2.5/F.2.6). Gegenprobe über das Skript-Verfahren.
-> **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.2.4.1** (Fachregeln der Qualifikationen
+> ohne Datenbank), davor F.2.3, F.2.2, F.2.1. F.2.4 ist in drei
+> Micro-Subtasks zerlegt.
+> **Nächste Subtask: F.2.4.2** — `QualificationService` in neuer Datei
+> `server/internal/hr/qualifications.go`:
+> `Create(ctx, in, actorUserID, companyID)` mit
+> `QualificationInput{EmployeeIDs []uuid.UUID, TypeID, ErworbenAm,
+> GueltigBis *time.Time, Aussteller, NachweisNr, Note}` — eine
+> Eingabe für Einzel- und Gruppenerfassung (ein Mitarbeiter ist eine
+> Gruppe aus einem), EINE Transaktion, ganz oder gar nicht, je
+> Mitarbeiter ein Nachweis; leere Liste und doppelte IDs abfangen;
+> `gueltig_bis` = angegeben, sonst `QualificationValidUntil` mit der
+> Frist der Art, und gespeichert; `ValidateQualificationDates` mit
+> "heute" als Kalendertag in Europe/Berlin (`WorkDateOf(time.Now())`
+> liefert genau das); Art muss zum Mandanten gehören und aktiv sein;
+> jeder Mitarbeiter muss zum Mandanten gehören.
+> `Storno(ctx, id, reason, actor, companyID)` nach dem Muster
+> `stornoTimeEntryTx` (Zeile sperren, einmalig, nur Storno-Spalten).
+> `Get`, `ListForEmployee(employeeID, includeStorniert, companyID)`.
+> Wächtertest am Quelltext: genau ein UPDATE auf
+> `hr_employee_qualifications`, kein DELETE. Noch KEIN HTTP.
+> Gegenprobe über das Skript-Verfahren.
+> **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen** — nicht nur zu
+> Beginn der Subtask (Panne in F.2.4.1).
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10565,6 +10565,56 @@ Geänderte Dateien: `server/internal/hr/qualification_types.go` (neu),
 `server/internal/hr/qualification_types_test.go` (neu),
 `server/internal/hr/qualification_types_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.2.4 Zerlegung in Micro-Subtasks
+
+F.2.4.1 Fachregeln ohne Datenbank, F.2.4.2 Nachweise (erfassen,
+stornieren, lesen), F.2.4.3 Anforderungen und Stand eines
+Mitarbeiters.
+
+### F.2.4.1 Fachregeln ohne Datenbank
+
+Neue Dateien `server/internal/hr/qualification_rules.go` und
+`qualification_rules_test.go`.
+
+- `QualificationValidUntil(erworbenAm, monate)` — letzter gültiger
+  Tag; Monatsende wird auf den letzten Tag des Zielmonats begrenzt.
+- `ValidateQualificationDates(erworbenAm, gueltigBis, today)`.
+- `EvaluateQualifications(records, requiredTypeIDs, today, warnDays)`
+  — für EINEN Mitarbeiter; liefert je Art einen Stand, sortiert nach
+  TypeID.
+
+**Für F.2.4.3 und F.2.6 merken:**
+
+- `requiredTypeIDs` = eigene Anforderungen des Mitarbeiters PLUS
+  Arten mit `pflicht_fuer_alle`, jeweils NUR aktive Arten. Das
+  Zusammenstellen ist Sache des Aufrufers.
+- `pflicht_fuer_alle` gilt für aktive Mitarbeiter; ob ein inaktiver
+  Mitarbeiter überhaupt ausgewertet wird, entscheidet der Aufrufer.
+- "heute" als Kalendertag übergeben; `WorkDateOf(time.Now())` liefert
+  den Tag in Europe/Berlin.
+- Die fachliche Sortierung (nach Name der Art, Dringlichkeit) macht
+  der Aufrufer; die Funktion sortiert nur stabil.
+
+**Lehre aus der Gegenprobe:** ein Test, der "Uhrzeit spielt keine
+Rolle" belegen soll, muss einen Fall enthalten, in dem die Uhrzeit das
+Ergebnis verschieben WÜRDE. Der erste Test tat das nicht (Abschneiden
+rettete das Ergebnis zufällig).
+
+**Lehre aus der Panne:** vor jedem Gesamtlauf die Test-DB frisch
+aufsetzen, auch wenn die Subtask selbst keine Datenbank anfasst — die
+Tests in `accounting` setzen eine leere DB voraus.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 6 Testfunktionen, 53 Fälle, grün. Gegenprobe mit
+20 Verfälschungen: 19 sofort erkannt, eine nach ergänzten Testfällen.
+Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen
+frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/qualification_rules.go` (neu),
+`server/internal/hr/qualification_rules_test.go` (neu),
+`docs/adr/0027-qualifikationen-unterweisungen.md`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

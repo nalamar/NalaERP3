@@ -227,6 +227,18 @@ Eine Anforderungsmatrix je **Stelle oder Tätigkeit** (Vorlagen wie
 zuweist) gibt es weiterhin nicht — Stellen sind im Mitarbeiterstamm
 Freitext (`role`). Das bleibt bei Epic H bzw. Backlog F.10.
 
+Nachtrag F.2.4.1 (2026-10-13): beim Umsetzen der Regeln präzisiert.
+(1) Maßgeblich für den Stand ist je Art der Nachweis, der **am
+längsten gilt**, nicht der zuletzt erworbene (Entscheidung 3 sagte
+"der jüngste aktive Nachweis"). Im Normalfall ist das derselbe; sie
+unterscheiden sich, wenn nach einer lang gültigen Ausbildung eine
+kürzer laufende Auffrischung erfasst wird — dann soll der Mitarbeiter
+nicht als abgelaufen gelten, solange die Ausbildung gilt.
+(2) Bei der Fristberechnung gilt am Monatsende der letzte Tag des
+Zielmonats (31.01. plus ein Monat = 28.02.).
+(3) Der Tag gleichen Datums nach Ablauf der Frist zählt noch als
+gültig. (4) Ein Erwerbsdatum in der Zukunft wird abgelehnt.
+
 ## Annahmen (gekennzeichnet, änderbar)
 
 - Fristen im Vorschlagskatalog wie in der Tabelle; sie sind Vorgaben
