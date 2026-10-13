@@ -156,3 +156,22 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   0025 erzwingt dazu nichts, weil keine Vorgabe vorliegt. Status:
   **offen**, kein Blocker (lässt sich nachträglich als Prüfung
   ergänzen).
+
+## 2026-10-13 — Personaldaten in Logs (0.46, ADR 0026)
+
+- **0.46 (Auslegung "keine Personaldaten in Logs")**: `aufgabe.md` §2
+  verlangt "Keine Personaldaten in Logs". Nach 0.46 stehen keine Werte
+  von Query-Parametern mehr im Request-Log. Weiterhin geloggt werden
+  (a) IDs im Pfad wie `/employees/<uuid>` — pseudonyme technische
+  Bezeichner, ohne die sich ein Fehler keinem Datensatz zuordnen
+  lässt — und (b) `remote_ip` und `user_agent` — die IP ist
+  personenbezogen, aber für die Nachverfolgung von Angriffen der
+  entscheidende Wert. Frage: sind (a) und (b) mit der Vorgabe
+  vereinbar, und wie lange dürfen Logs aufbewahrt werden? Status:
+  **offen**, kein Blocker.
+- **0.46 (bestehende Logdateien)**: Bis zum 2026-10-13 geschriebene
+  Logs enthalten Query-Werte, darunter Suchbegriffe aus der
+  Kontaktsuche (Namen). Sollen vorhandene Logdateien bereinigt oder
+  gelöscht werden? Betriebliche Entscheidung außerhalb des Repos.
+  Status: **offen**, kein Blocker — aber vor einem Produktivbetrieb
+  mit Echtdaten zu klären, falls schon Logs mit Echtdaten existieren.

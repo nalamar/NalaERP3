@@ -7,27 +7,28 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.6** — damit ist **TASK F.4 (HR-Bestand
-> an HTTP) VOLLSTÄNDIG**: F.4.1 ADR 0025, F.4.2 Migration 087, F.4.3
-> und F.4.5 Services gehärtet, F.4.4 und F.4.6 Routen. Davor Task F.1
-> (Zeiterfassung). Siehe Abschnitt "Epic F, Task F.4" weiter unten.
-> **Nächste Arbeit: F.2 (Weiterbildung/Qualifikationen/
-> Unterweisungen)** — nach der Entscheidung des Nutzers vom
-> 2026-10-13 gilt nach F.4 wieder die Backlog-Reihenfolge (F.2, dann
-> F.3). F.2 ist nur eine Zeile im Backlog und beginnt mit einer
-> Bestandsaufnahme und ADR (F.2.1): im Repo gibt es dazu nichts
-> (per Suche vor Beginn bestätigen); zu klären sind u. a.
-> Qualifikation als Stammdatum gegen Nachweis je Mitarbeiter mit
-> Gültigkeit/Ablauf, Unterweisungen mit Wiederholungsfrist (z. B.
-> jährliche Sicherheitsunterweisung, Schweißerprüfungen,
-> Staplerschein), Nachweisdokumente (GridFS ist vorhanden), wer was
-> sehen darf (Zweckbindung wie bei `employees.read`). Fachliche
-> Vorgaben dazu fehlen — was nicht aus `aufgabe.md` oder dem Repo
-> folgt, als offene Frage stellen statt raten (§7.10).
-> **Kleine offene Positionen, die sich vorher anbieten, aber eine
-> Entscheidung des Nutzers brauchen** (nicht eigenmächtig vorziehen):
-> F.9 (Testlücke read/write Zeiterfassung, klein), 0.46 (Query-String
-> im Request-Log).
+> Zuletzt abgeschlossen: **0.46** (Request-Log ohne Query-Werte, ADR
+> 0026). Der Nutzer hat am 2026-10-13 entschieden, 0.46 und F.9 vor F.2
+> zu erledigen (siehe "Korrekturen"). Davor: Task F.4 und Task F.1
+> vollständig. Siehe Abschnitt "Backlog 0.46" weiter unten.
+> **Nächste Subtask: F.9** — Testlücke Zeiterfassung: `time_entries.read`
+> und `time_entries.write` werden nicht getrennt geprüft. Neuer
+> HTTP-Integrationstest in
+> `server/internal/http/time_entries_integration_test.go` (oder eigener
+> Datei) mit zwei eigens angelegten Rollen, die genau eines der beiden
+> Rechte haben — der Helfer `seedRoleWithPermissions` existiert seit
+> F.4.6 in `leave_requests_integration_test.go`. Zu belegen: nur `read`
+> darf fremde Einträge und Listen lesen, aber nicht anlegen, beenden,
+> stornieren, korrigieren; nur `write` darf das Schreibende, aber
+> fremde Einträge nicht LESEN (Einzelabruf, Liste). Achtung: die
+> Schreibrouten antworten mit dem Eintrag — ob `write` ohne `read`
+> dadurch faktisch lesen kann, ist zu beobachten und zu dokumentieren,
+> nicht stillschweigend zu ändern. Reiner Test, kein Produktivcode;
+> findet der Test einen echten Fehler, diesen benennen und beheben.
+> Gegenprobe über das Skript-Verfahren (jede Route einmal mit dem
+> falschen Recht). **Danach F.2** (Weiterbildung/Qualifikationen/
+> Unterweisungen), beginnend mit Bestandsaufnahme und ADR.
+> **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10434,6 +10435,39 @@ Geänderte Dateien: `server/internal/http/leave_requests.go` (neu),
 `server/internal/http/time_entries.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
 
+## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
+
+Vom Nutzer vor F.2 gezogen. ADR:
+`docs/adr/0026-request-log-ohne-query-werte.md`.
+
+**Der Fund war größer als gemeldet.** In F.4.6 hatte ich nur die
+Mitarbeiter-UUIDs der Listenrouten genannt. Tatsächlich loggte die
+Middleware jeden Query-String jeder Route, und die Freitextsuche `q`
+(neun Stellen, u. a. Kontakte) schrieb Namen im Klartext ins Log.
+
+**Umgesetzt:** `query=<Rohtext>` ersetzt durch
+`query_keys="<bekannte Namen>"` und `query_other=<Anzahl>`. Feste
+Namensliste `loggedQueryKeys` in `http/observability.go`.
+
+**Beim Ergänzen neuer Query-Parameter:** Namen in `loggedQueryKeys`
+eintragen, wenn er im Log erscheinen soll. Vergessen ist unschädlich
+(wird gezählt statt genannt).
+
+**Nicht gelöst, bewusst:** IDs im Pfad, `remote_ip`/`user_agent`
+(offene Auslegungsfrage), rohe Datenbankfehler im Fehler-Log (0.47),
+bereits geschriebene Logs.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+3 neue Testfunktionen (DB-los) grün. Gegenprobe mit 9 Verfälschungen:
+alle erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB: durchgehend `ok`. Stichprobe einer echten
+Logzeile bestätigt das neue Format.
+
+Geänderte Dateien: `server/internal/http/observability.go`,
+`server/internal/http/observability_test.go` (neu),
+`docs/adr/0026-request-log-ohne-query-werte.md` (neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
 ## Offene Punkte
 
 Siehe `docs/open-questions.md` — Detailfrage zu Mandanten-Scoping-Design
@@ -10469,6 +10503,10 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   aktiv sein." Damit ist die seit 0.1.3.1 offene Frage entschieden;
   Umsetzung in F.4.3. Ausdrücklich angegebenes `active: false` bleibt
   möglich.
+- **2026-10-13 — 0.46 und F.9 vor F.2.** Auf die Rückfrage nach
+  Abschluss von F.4 hat der Nutzer entschieden: "Arbeite erst die
+  Punkte 0.46 und F.9 ab, eh du zu F.2 kommst." Reihenfolge damit:
+  0.46, F.9, dann F.2, F.3.
 
 ## Verworfen
 
