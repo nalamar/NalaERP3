@@ -7,22 +7,30 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.4.2** (`TimeEntryService`: Stornieren,
-> Korrigieren), davor F.1.4.1, F.1.3, F.1.2, F.1.1. Siehe Abschnitt
-> "Epic F, Task F.1" weiter unten.
-> **Nächste Subtask: F.1.4.3** (letzte von F.1.4) — Lesen in
-> `server/internal/hr/time_entries.go`: Liste der Einträge eines
-> Mitarbeiters für einen Zeitraum (von/bis als Arbeitstage,
-> mandantengeprüft; stornierte Einträge mitliefern oder ausblenden per
-> Schalter, weil die Korrekturkette nachlesbar sein muss) samt
-> Tagesauswertung über `EvaluateWorkDays`. **Für die Ruhezeit den Tag
-> vor dem Zeitraum mitladen** und dessen Auswertung wieder weglassen —
-> genauer: den letzten Arbeitstag VOR dem Zeitraum, nicht zwingend den
-> Kalendertag davor (nach einem freien Tag gibt es dort nichts, das ist
-> dann unkritisch, weil die Ruhezeit ohnehin eingehalten ist; der
-> Kalendertag davor genügt also). Nur lesend, kein neuer Schreibpfad —
-> der Wächtertest `TestTimeEntryServiceHasNoOtherWritePaths` muss grün
-> bleiben. **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.1.4.3** (`TimeEntryService.List` samt
+> Tagesauswertung) — damit ist **Task F.1.4 (Service) vollständig**.
+> Davor F.1.4.2, F.1.4.1, F.1.3, F.1.2, F.1.1. Siehe Abschnitt "Epic F,
+> Task F.1" weiter unten.
+> **Nächste Subtask: F.1.5** (letzte von F.1) — HTTP-Anbindung des
+> `TimeEntryService` in `server/internal/http/v1.go` samt
+> Rechteprüfung. Das ist die ERSTE HTTP-Anbindung des Pakets `hr`
+> überhaupt. Zu klären und zu bauen:
+> (1) Routen für Anlegen, Beenden, Stornieren, Korrigieren, Einzelabruf,
+> Liste mit Auswertung;
+> (2) Rechte: `time_entries.write`/`read` für fremde Zeiten,
+> `time_entries.self` nur für den Mitarbeiter, der über
+> `hr_employees.user_id` mit dem angemeldeten Benutzer verknüpft ist —
+> dafür fehlt noch die Auflösung Benutzer→Mitarbeiter (kleine neue
+> Lesefunktion im Paket `hr`) und es gibt bisher KEINEN Weg,
+> `hr_employees.user_id` zu setzen außer Direkt-SQL (`EmployeeService`
+> hat keinen HTTP-Endpunkt, Backlog F.4; für die Tests per SQL setzen
+> und als offene Lücke benennen, nicht nebenbei F.4 bauen);
+> (3) Fehlertexte auf 400/404 abbilden — `classifyDomainError` prüfen,
+> Liste der neuen Texte steht in den Abschnitten F.1.3 bis F.1.4.3;
+> (4) keine Zeitdaten und keine Namen in Logs.
+> **Vor dem Start Umfang schätzen** — das überschreitet §6.3
+> voraussichtlich (Rechteauflösung, Schreibrouten, Leserouten) und ist
+> dann zu teilen. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10034,6 +10042,43 @@ Geänderte Dateien: `server/internal/hr/time_entries.go`,
 `server/internal/hr/time_entries_test.go`,
 `server/internal/hr/time_entries_integration_test.go`,
 `server/internal/hr/time_entries_storno_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### F.1.4.3 Lesen samt Tagesauswertung (letzte Subtask von F.1.4)
+
+`TimeEntryService.List(employeeID, from, to, includeStorniert,
+companyID)` liefert `TimeSheet{Entries, Days}`. Nur lesend.
+
+- Zeitraum in Arbeitstagen, beide Grenzen einschließlich; es zählt nur
+  das Datum des übergebenen Werts.
+- Der Tag vor dem Zeitraum wird für die Ruhezeit mitgeladen und wieder
+  herausgefiltert.
+- Stornierte Einträge nur auf Wunsch in `Entries`, nie in der
+  Auswertung.
+- Zeitraum auf 366 Tage begrenzt (nicht in der ADR; Schutz, sobald die
+  Liste über HTTP erreichbar ist).
+
+**Neue Fehlertexte für F.1.5:** "Zeitraum (von/bis) erforderlich",
+"Bis-Datum darf nicht vor dem Von-Datum liegen", "Zeitraum darf
+höchstens 366 Tage umfassen".
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 7 neue Testfunktionen grün, Wächtertest weiter
+grün. Gegenprobe mit zehn Verfälschungen: jede ließ mindestens einen
+Test fehlschlagen, Datei danach byteidentisch. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+**Beobachtung ohne Befund:** `internal/hr` brauchte im Gesamtlauf
+einmalig 12,1 s statt 1,7-3 s. In drei Einzelläufen danach nicht
+reproduzierbar, kein Test über 0,2 s. Ursache nicht ermittelt; falls es
+wieder auftritt, zuerst den Gleichzeitigkeitstest
+(`TestTimeEntryConcurrentStartAllowsExactlyOne`) und Sperrwartezeiten
+ansehen.
+
+Geänderte Dateien: `server/internal/hr/time_entries.go`,
+`server/internal/hr/time_entries_test.go`,
+`server/internal/hr/time_entries_list_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte

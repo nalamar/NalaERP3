@@ -361,3 +361,101 @@ func (s *TimeEntryService) Get(ctx context.Context, id uuid.UUID, companyID stri
 	}
 	return entry, nil
 }
+
+// maxTimeSheetDays begrenzt den Zeitraum einer Abfrage. Ein Jahr deckt
+// jede Jahresauswertung ab; ohne Grenze liesse sich mit einem einzigen
+// Aufruf der gesamte Bestand eines Mitarbeiters laden.
+const maxTimeSheetDays = 366
+
+// TimeSheet sind die Eintraege eines Mitarbeiters in einem Zeitraum samt
+// Auswertung je Arbeitstag.
+type TimeSheet struct {
+	Entries []TimeEntry     `json:"entries"`
+	Days    []DayEvaluation `json:"days"`
+}
+
+// List liefert die Eintraege eines Mitarbeiters fuer die Arbeitstage from
+// bis to (beide einschliesslich; es zaehlt nur das Datum) und die
+// Tagesauswertung dazu.
+//
+// Stornierte Eintraege erscheinen nur mit includeStorniert in Entries -
+// die Korrekturkette muss nachlesbar sein, gehoert aber nicht in die
+// Standardansicht. In die Auswertung gehen sie nie ein.
+func (s *TimeEntryService) List(ctx context.Context, employeeID uuid.UUID, from, to time.Time, includeStorniert bool, companyID string) (*TimeSheet, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if employeeID == uuid.Nil {
+		return nil, errors.New("employee_id erforderlich")
+	}
+	if from.IsZero() || to.IsZero() {
+		return nil, errors.New("Zeitraum (von/bis) erforderlich")
+	}
+	from, to = dateOnly(from), dateOnly(to)
+	if to.Before(from) {
+		return nil, errors.New("Bis-Datum darf nicht vor dem Von-Datum liegen")
+	}
+	if to.Sub(from) >= maxTimeSheetDays*24*time.Hour {
+		return nil, errors.New("Zeitraum darf höchstens 366 Tage umfassen")
+	}
+
+	var employeeOwned bool
+	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_employees WHERE id=$1 AND company_id=$2)`, employeeID, companyID).Scan(&employeeOwned); err != nil {
+		return nil, err
+	}
+	if !employeeOwned {
+		return nil, errors.New("Mitarbeiter nicht gefunden")
+	}
+
+	// Geladen wird ab dem Tag VOR dem Zeitraum: die Ruhezeit des ersten
+	// Tages bemisst sich am Ende des Vortags. Ein weiter zurueckliegender
+	// Arbeitstag braucht nicht geladen zu werden - liegt ein ganzer
+	// Kalendertag ohne Eintrag dazwischen, ist die Ruhezeit eingehalten.
+	rows, err := s.pg.Query(ctx, `
+		SELECT `+timeEntryColumns+`
+		  FROM hr_time_entries t
+		 WHERE t.employee_id=$1 AND t.work_date BETWEEN $2 AND $3
+		 ORDER BY t.started_at, t.created_at
+	`, employeeID, from.AddDate(0, 0, -1), to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	loaded := make([]TimeEntry, 0)
+	for rows.Next() {
+		e, err := scanTimeEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		loaded = append(loaded, *e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sheet := &TimeSheet{Entries: make([]TimeEntry, 0, len(loaded)), Days: make([]DayEvaluation, 0)}
+	for _, e := range loaded {
+		if e.WorkDate.Before(from) {
+			continue
+		}
+		if e.Status == TimeEntryStatusStorniert && !includeStorniert {
+			continue
+		}
+		sheet.Entries = append(sheet.Entries, e)
+	}
+	// Der Vortag wurde nur fuer die Ruhezeit mitgeladen; seine eigene
+	// Auswertung gehoert nicht zum angefragten Zeitraum.
+	firstDay := from.Format("2006-01-02")
+	for _, d := range EvaluateWorkDays(loaded) {
+		if d.WorkDate < firstDay {
+			continue
+		}
+		sheet.Days = append(sheet.Days, d)
+	}
+	return sheet, nil
+}
+
+func dateOnly(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}

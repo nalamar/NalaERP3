@@ -105,6 +105,39 @@ func TestTimeEntryStornoAndCorrectValidateBeforeTouchingDatabase(t *testing.T) {
 	}
 }
 
+func TestTimeEntryListValidatesBeforeTouchingDatabase(t *testing.T) {
+	s := NewTimeEntryService(nil)
+	emp := uuid.New()
+	d := func(y int, m time.Month, day int) time.Time { return time.Date(y, m, day, 0, 0, 0, 0, time.UTC) }
+
+	cases := []struct {
+		name      string
+		employee  uuid.UUID
+		from, to  time.Time
+		companyID string
+		wantErr   string
+	}{
+		{"Mandant fehlt", emp, d(2026, 3, 1), d(2026, 3, 2), "", "Mandant erforderlich"},
+		{"Mitarbeiter fehlt", uuid.Nil, d(2026, 3, 1), d(2026, 3, 2), "default", "employee_id erforderlich"},
+		{"Von fehlt", emp, time.Time{}, d(2026, 3, 2), "default", "Zeitraum (von/bis) erforderlich"},
+		{"Bis fehlt", emp, d(2026, 3, 1), time.Time{}, "default", "Zeitraum (von/bis) erforderlich"},
+		{"Bis vor Von", emp, d(2026, 3, 2), d(2026, 3, 1), "default", "Bis-Datum darf nicht vor dem Von-Datum liegen"},
+		// 01.01.2026 bis 02.01.2027 sind 367 Tage.
+		{"367 Tage", emp, d(2026, 1, 1), d(2027, 1, 2), "default", "Zeitraum darf höchstens 366 Tage umfassen"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := s.List(context.Background(), tc.employee, tc.from, tc.to, false, tc.companyID)
+			if got != nil {
+				t.Fatalf("erwartet kein Ergebnis, bekommen %+v", got)
+			}
+			if err == nil || err.Error() != tc.wantErr {
+				t.Fatalf("erwartet %q, bekommen %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 // Waechter fuer die Unveraenderbarkeit (ADR 0024). Nicht entfernen.
 //
 // Der Service darf genau zwei UPDATEs auf hr_time_entries enthalten - das
