@@ -66,6 +66,8 @@ type timeEntryResponse struct {
 	BreakMinutes    int        `json:"break_minutes"`
 	Status          string     `json:"status"`
 	CreatedByUserID *string    `json:"created_by_user_id"`
+
+	StorniertByUserID *string `json:"storniert_by_user_id"`
 }
 
 func decodeTimeEntry(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int) timeEntryResponse {

@@ -174,5 +174,103 @@ func mountTimeEntryRoutes(protected chi.Router, svc *hr.TimeEntryService) {
 			}
 			writeJSON(w, http.StatusOK, entry)
 		})
+
+		// Ersatzlos stornieren (z. B. Fehlstempelung).
+		r.Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			entry, ok := loadAuthorizedTimeEntry(w, req, svc, permTimeEntriesWrite)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Storno(req.Context(), entry.ID, in.Reason, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Korrigieren: storniert den Eintrag und legt den Ersatz an.
+		// Geliefert wird der NEUE Eintrag (201). Anders als beim Stempeln
+		// gibt es hier keine Serverzeit als Vorgabe - eine Korrektur muss
+		// ihre Zeiten nennen.
+		r.Post("/{id}/correct", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				StartedAt    *time.Time `json:"started_at"`
+				EndedAt      *time.Time `json:"ended_at"`
+				BreakMinutes int        `json:"break_minutes"`
+				ProjectID    *uuid.UUID `json:"project_id"`
+				Note         string     `json:"note"`
+				Reason       string     `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			entry, ok := loadAuthorizedTimeEntry(w, req, svc, permTimeEntriesWrite)
+			if !ok {
+				return
+			}
+			replacement := hr.TimeEntryInput{EndedAt: in.EndedAt, BreakMinutes: in.BreakMinutes, ProjectID: in.ProjectID, Note: in.Note}
+			if in.StartedAt != nil {
+				replacement.StartedAt = *in.StartedAt
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Correct(req.Context(), entry.ID, replacement, in.Reason, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Liste samt Tagesauswertung. from/to als JJJJ-MM-TT, beide
+		// einschliesslich. Ohne employee_id der eigene Mitarbeiter.
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			var requested *uuid.UUID
+			if v := q.Get("employee_id"); v != "" {
+				id, err := uuid.Parse(v)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige employee_id")
+					return
+				}
+				requested = &id
+			}
+			var from, to time.Time
+			for _, p := range []struct {
+				name string
+				dst  *time.Time
+			}{{"from", &from}, {"to", &to}} {
+				v := q.Get(p.name)
+				if v == "" {
+					continue // fehlende Grenze meldet der Service
+				}
+				d, err := time.Parse("2006-01-02", v)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges Datum in "+p.name+" (erwartet JJJJ-MM-TT)")
+					return
+				}
+				*p.dst = d
+			}
+			employeeID, ok := resolveTimeEntryEmployee(w, req, svc, requested, permTimeEntriesRead)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.List(req.Context(), employeeID, from, to, q.Get("include_storniert") == "true", companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 	})
 }

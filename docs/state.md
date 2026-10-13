@@ -7,22 +7,26 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.5.1** (HTTP: Rechteprüfung, Anlegen,
-> Beenden, Einzelabruf). Davor F.1.4 (Service, drei Teile), F.1.3,
-> F.1.2, F.1.1. Siehe Abschnitt "Epic F, Task F.1" weiter unten.
-> **Nächste Subtask: F.1.5.2** (letzte von F.1) — in
-> `server/internal/http/time_entries.go` die Routen
-> `POST /time-entries/{id}/storno` (Body `reason`),
-> `POST /time-entries/{id}/correct` (Body: neue Angaben plus `reason`)
-> und `GET /time-entries/?employee_id=&from=&to=&include_storniert=`
-> (Datum als `2006-01-02`; ohne `employee_id` der eigene Mitarbeiter;
-> Lesen fremder Zeiten braucht `time_entries.read`). Rechteprüfung über
-> die vorhandenen `resolveTimeEntryEmployee`/`loadAuthorizedTimeEntry`.
-> Dazu ein End-to-End-Test über den ganzen Ablauf und ein HTTP-Test mit
-> einem Benutzer eines zweiten Mandanten. Danach ist F.1 fertig und es
-> folgt die Entscheidung, ob F.4 (HR-Bestand an HTTP, inkl. Pflege von
-> `hr_employees.user_id`) vor F.2/F.3 gezogen wird — ohne F.4 kann kein
-> Mitarbeiter selbst stempeln. **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.1.5.2** — damit ist **TASK F.1
+> (Zeiterfassung) VOLLSTÄNDIG**: F.1.1 ADR 0024, F.1.2 Migration 086,
+> F.1.3 Fachregeln, F.1.4 Service (drei Teile), F.1.5 HTTP (zwei
+> Teile). Siehe Abschnitt "Epic F, Task F.1" weiter unten.
+> **Nächste Arbeit: Reihenfolge ist eine Entscheidung des Nutzers**
+> (am 2026-10-13 gestellt, Antwort abwarten bzw. hier nachtragen):
+> laut Backlog-Reihenfolge käme F.2 (Weiterbildung/Qualifikationen/
+> Unterweisungen). Empfehlung des Agenten: **F.4 vorziehen**
+> (HR-Bestand an HTTP anbinden: Mitarbeiterstamm, Urlaubsanträge,
+> Pflege von `hr_employees.user_id`). Grund: ohne F.4 ist die gerade
+> gebaute Zeiterfassung für Mitarbeiter nicht nutzbar — die
+> Verknüpfung Benutzer↔Mitarbeiter lässt sich nur per Direkt-SQL
+> setzen, `time_entries.self` läuft sonst immer auf 403. Außerdem
+> bauen F.2 und F.3 beide auf einem erreichbaren Mitarbeiterstamm auf.
+> F.4 ist bisher nur eine Zeile im Backlog und muss vor Beginn in
+> Subtasks zerlegt werden (erste Subtask: ADR/Bestandsaufnahme —
+> welche Endpunkte, welche Permissions, wie `user_id` gepflegt wird,
+> Umgang mit dem toten `client/lib/pages/employees_page.dart`).
+> Ohne Antwort des Nutzers: NICHT eigenmächtig umpriorisieren,
+> sondern nachfragen.
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10129,6 +10133,54 @@ durchgehend `ok`.
 Geänderte Dateien: `server/internal/http/time_entries.go` (neu),
 `server/internal/http/time_entries_integration_test.go` (neu),
 `server/internal/http/v1.go`, `server/internal/hr/time_entries.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+### F.1.5.2 HTTP: Stornieren, Korrigieren, Liste (letzte Subtask von F.1)
+
+`server/internal/http/time_entries.go` um `POST /{id}/storno`,
+`POST /{id}/correct` und `GET /` erweitert. Kein Service-Code geändert.
+
+**Die API der Zeiterfassung im Überblick** (alle unter
+`/api/v1/time-entries`):
+
+| Route | Zweck | Recht für fremde Zeiten |
+|---|---|---|
+| `POST /` | Stempeln (leerer Body) oder Nachtrag | `write` |
+| `POST /{id}/stop` | Beenden | `write` |
+| `POST /{id}/storno` | ersatzlos stornieren | `write` |
+| `POST /{id}/correct` | Storno + Ersatzeintrag | `write` |
+| `GET /{id}` | Einzelabruf | `read` |
+| `GET /?from=&to=` | Liste samt Tagesauswertung | `read` |
+
+Für die eigenen Zeiten genügt überall `time_entries.self`.
+
+**Fund der Gegenprobe:** der Urheber eines Stornos war über HTTP
+ungeprüft (nur auf Service-Ebene). Prüfung ergänzt. Lehre für weitere
+Handler: was der Handler aus dem Request-Kontext in den Service
+reicht (Akteur, Mandant), braucht einen eigenen HTTP-Test — der
+Service-Test belegt nur, dass der Service den Wert speichert, nicht,
+dass der Handler ihn übergibt.
+
+**Offen nach F.1** (alles im Backlog bzw. in `open-questions.md`):
+
+- F.4: kein HTTP-Weg für Mitarbeiterstamm und `user_id` — bis dahin
+  kein Selbst-Stempeln.
+- F.5: keine Client-Oberfläche.
+- F.6: Ausgleichszeitraum, Sonn-/Feiertage, §4 Satz 3, Tarif, JArbSchG.
+- 0.45: DB-seitige Unveränderbarkeit (Trigger).
+- Löschfrist, MiLoG-Einordnung, Zeitzone: Fachfragen offen.
+- Rechtsangaben der ADR 0024 nicht gegen Primärquelle gegengelesen.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+3 neue Testfunktionen grün (insgesamt 9 HTTP-Tests zur
+Zeiterfassung). Gegenprobe mit acht Verfälschungen: sieben sofort
+erkannt, eine nach ergänzter Prüfung. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/time_entries.go`,
+`server/internal/http/time_entries_integration_test.go`,
+`server/internal/http/time_entries_flow_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
