@@ -110,3 +110,29 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   belastbarste Prüfung — ein Anhang, der als gültige CII- oder
   UBL-Rechnung durchgeht, IST die Rechnung, unabhängig vom Dateinamen.
   Damit war keine geratene Namensliste nötig.
+
+## 2026-10-13 — Zeiterfassung (F.1.1, ADR 0024) — alle offen, keine blockiert F.1.2-F.1.5
+
+- **F.1 (Löschfrist für Zeitdaten)**: §16 Abs. 2 ArbZG verlangt
+  mindestens zwei Jahre Aufbewahrung. Dienen die Zeiten zugleich als
+  Grundlage der Lohnabrechnung, gelten für Lohnunterlagen längere
+  Fristen. Welche Frist soll das System anwenden, und soll nach Ablauf
+  gelöscht oder anonymisiert werden? Bis zur Klärung implementiert F.1
+  keinen Löschpfad. Vor produktiver Nutzung zu klären (DSGVO Art. 5
+  Abs. 1 lit. e).
+- **F.1 (MiLoG §17 / Branchenzuordnung)**: Für Betriebe der in §2a
+  SchwarzArbG genannten Branchen (u. a. Baugewerbe) und für
+  geringfügig Beschäftigte müssen Beginn, Ende und Dauer spätestens
+  sieben Tage nach der Arbeitsleistung aufgezeichnet sein. Fällt der
+  Betrieb (insbesondere mit Montage auf Baustellen) darunter? Wenn ja,
+  sollte ein verspäteter Nachtrag als Hinweis ausgewiesen werden
+  (→ Backlog F.6). F.1 speichert `created_at` je Eintrag, die
+  Information geht also nicht verloren.
+- **F.1 (abweichende Regelungen)**: Die Hinweise in F.1 verwenden nur
+  die gesetzlichen Grundwerte (8 h/10 h, 30/45 min, 11 h). Gibt es
+  einen Tarifvertrag oder eine Betriebsvereinbarung mit Abweichungen
+  nach §7 ArbZG, und werden Jugendliche beschäftigt (JArbSchG)?
+  → Backlog F.6.
+- **F.1 (Zeitzone)**: ADR 0024 nimmt eine einzige Zeitzone
+  (`Europe/Berlin`) für die Zuordnung eines Eintrags zum Arbeitstag an.
+  Gibt es Standorte oder Montageeinsätze außerhalb dieser Zeitzone?

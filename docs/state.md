@@ -5,9 +5,22 @@
 
 ## Aktueller Pfad
 
-> **Stand 2026-09-24 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
+> **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
+> Zuletzt abgeschlossen: **F.1.1** (ADR 0024 Zeiterfassung) — erste
+> Subtask von Epic F. Siehe Abschnitt "Epic F, Task F.1" weiter unten.
+> **Nächste Subtask: F.1.2** — Migration `086_hr_time_entries.sql`
+> (Tabelle `hr_time_entries`, Spalte `hr_employees.user_id`, drei
+> Permissions `time_entries.self`/`read`/`write`), exakt nach der
+> Tabelle in ADR 0024. **F.1.2 braucht ein laufendes Docker** für die
+> Verifikation gegen frische DB — am 2026-10-13 lief der Daemon nicht
+> (`docker info`: Named Pipe `dockerDesktopLinuxEngine` nicht gefunden).
+> Läuft er bei Sessionstart weiterhin nicht: F.1.3 (DB-lose Fachregeln)
+> vorziehen, das ist ohne Datenbank vollständig verifizierbar und hängt
+> nicht von F.1.2 ab.
+>
+> *Vorheriger Stand (2026-09-24):*
+> Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
 > VOLLSTÄNDIG**: E.1 Kostenstellen, E.2 Projektcontrolling, E.3
 > DATEV-Export, E.4 E-Rechnung Ausgang, E.5 E-Rechnung Eingang, E.6
 > Übernahme, E.7 pdfcpu-Prüfung, E.8 strukturierte Steuer-/Summenablage.
@@ -9791,6 +9804,58 @@ Geänderte Dateien:
 `server/internal/accounting/einvoice_parse_pdf.go`,
 `server/internal/accounting/einvoice_parse_pdf_test.go`,
 `docs/backlog.md`, `docs/state.md`.
+
+## Epic F, Task F.1 — Zeiterfassung (revisionssicher, ArbZG/BAG-konform)
+
+### F.1.1 ADR: Modell- und Umfangsentscheidung
+
+Reine Recherche-/ADR-Arbeit, kein Produktivcode. Ergebnis:
+`docs/adr/0024-zeiterfassung.md`. F.1 dabei in fünf Subtasks zerlegt
+(F.1.1 ADR, F.1.2 Migration, F.1.3 DB-lose Fachregeln, F.1.4 Service,
+F.1.5 HTTP).
+
+**Recherchebefunde, die über F.1 hinausreichen:**
+
+- Das Paket `hr` ist an keinen HTTP-Handler angebunden. `internal/hr`
+  wird außerhalb des Pakets nirgends importiert, `v1.go` hat keine
+  HR-Route, es gibt keine HR-Permission. Die in Epic 0 getesteten und
+  gehärteten `EmployeeService`/`LeaveService` (0.10-0.12) sind also von
+  außen nicht erreichbar. → Backlog F.4.
+- `client/lib/pages/employees_page.dart:29` ruft `api.listEmployees`
+  auf, das in `client/lib/api.dart` nicht existiert; die Seite wird
+  nirgends eingebunden. → ebenfalls F.4.
+- `users` und `hr_employees` sind unverbunden. F.1.2 führt
+  `hr_employees.user_id` ein.
+
+**Die drei Entscheidungen, die man leicht anders (und falsch) treffen
+würde:**
+
+1. **ArbZG-Verstöße werden gespeichert und ausgewiesen, nicht
+   abgelehnt.** Die naheliegende "Validierung" (mehr als 10 h → Fehler)
+   wäre rechtlich verkehrt: aufzuzeichnen ist die tatsächliche
+   Arbeitszeit. Abgelehnt wird nur, was nicht stimmen kann.
+2. **`ON DELETE RESTRICT` auf `employee_id`**, obwohl die übrigen
+   HR-Kindtabellen `CASCADE` verwenden. Nicht angleichen.
+3. **Kein Trigger.** Unveränderbarkeit im Anwendungscode, wie im
+   restlichen Repo. DB-seitige Absicherung ist als domänenübergreifende
+   Frage ausgelagert (Backlog 0.45), nicht vergessen.
+
+**Rechtliche Angaben in der ADR** (BAG 1 ABR 22/21, EuGH C-55/18, ArbZG
+§§3, 4, 5, 16 Abs. 2) stammen aus dem Wissensstand des Agenten, nicht
+aus einer in dieser Session abgerufenen Primärquelle — anders als bei
+ADR 0021-0023, wo Primärquellen geladen wurden. Die Zahlenwerte
+(8/10 h, 30/45 min, 11 h, 2 Jahre) sind die Grundlage der Tests in
+F.1.3 und sollten vor produktiver Nutzung einmal gegen den
+Gesetzestext gegengelesen werden.
+
+**Verifikation.** Keine Codeänderung, daher kein Build-/Testlauf. Die
+Ist-Stand-Aussagen der ADR sind einzeln per Suche belegt (kein Import
+von `internal/hr` außerhalb des Pakets; kein `CREATE TRIGGER` in den
+Migrationen; kein Treffer für Zeiterfassungsbegriffe; nächste freie
+Migrationsnummer 086, nächste freie Epic-0-Nummer 0.45).
+
+Geänderte Dateien: `docs/adr/0024-zeiterfassung.md` (neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
 ## Offene Punkte
 

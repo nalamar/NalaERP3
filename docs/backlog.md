@@ -1623,6 +1623,7 @@
     Test-Absicherungs-Subtasks 0.1.1.x-0.1.3.x gefundenen Mängel) vollständig abgearbeitet.** Verbleibend im
     numerisch niedrigeren Bereich: 0.13 (Migrationsrunner ohne Down-Migrationen), 0.14 (KRITISCH, Status
     vermutlich veraltet), 0.15 (gofmt), danach die höher nummerierten Funde 0.20-0.38.
+- [ ] 0.45 DB-seitige Unveränderbarkeit (Trigger gegen UPDATE/DELETE) für festgeschriebene Belege und Zeitdaten — todo. Fund aus F.1.1 (ADR 0024, Option 2C): das Repo kennt keinen einzigen Trigger, Unveränderbarkeit ist durchgängig nur im Anwendungscode erzwungen und schützt damit nicht gegen Direkt-SQL. Bewusst NICHT in F.1 für Zeitdaten allein eingeführt (wäre der erste Trigger im Repo und würde Zeitdaten strenger schützen als Rechnungen). Braucht eine eigene, domänenübergreifende ADR.
 
 ## Epic A — Stammdaten
 
@@ -1736,9 +1737,17 @@
 
 ## Epic F — Personal & HR
 
-- [ ] F.1 Zeiterfassung (revisionssicher, ArbZG/BAG-konform) — todo
+- [ ] F.1 Zeiterfassung (revisionssicher, ArbZG/BAG-konform) — wip, in Subtasks zerlegt (§6.3: Entscheidung, Migration, DB-lose Fachregeln, Service und HTTP-Anbindung sind getrennt verifizierbare Schritte)
+  - [x] F.1.1 ADR: Modell- und Umfangsentscheidung — done, siehe `docs/adr/0024-zeiterfassung.md`. Reine Recherche-/ADR-Arbeit, kein Produktivcode. **Recherchebefunde (belegt)**: keine Zeiterfassung im Repo; das Paket `hr` ist an KEINEN HTTP-Handler angebunden und es existiert keine einzige HR-Permission (nur die Rolle `role-hr` ohne Rechte); `users` und `hr_employees` sind unverbunden, das System kann also nicht wissen, für wen ein angemeldeter Benutzer stempelt; das Repo verwendet keine DB-Trigger. **Entscheidungen**: (1) erfasst werden Beginn und Ende als Zeitpunkte plus Pausenminuten, nicht nur eine Tagesdauer — die BAG-Entscheidung 1 ABR 22/21 verlangt Beginn und Ende, und Pausen-/Ruhezeitprüfung sind aus einer Dauer nicht ableitbar; ein Eintrag darf offen sein (Stempeln), derselbe Datensatz deckt den Nachtrag ab. (2) Einträge sind unveränderlich, Korrektur nur durch Storno plus Ersatzeintrag mit `replaces_entry_id` in einer Transaktion; erlaubt sind genau zwei einmalige Übergänge (offen→abgeschlossen, aktiv→storniert). Gegen "frei änderbar + `entity_change_log`" entschieden, weil der Originalwert dann nur noch als JSON im Protokoll läge. (3) **ArbZG-Verstöße werden NICHT abgelehnt, sondern ausgewiesen** — erfasst werden muss die tatsächlich geleistete Zeit; ein System, das einen 11-Stunden-Tag nicht annimmt, erzwingt eine falsche Aufzeichnung. Abgelehnt wird nur Unmögliches (Ende vor Beginn, Pause länger als Anwesenheit, Überschneidung, zweiter offener Eintrag, Beginn in der Zukunft). Vier Hinweise werden beim Lesen berechnet, nicht gespeichert: `ueber_8h`, `ueber_10h`, `pause_zu_kurz`, `ruhezeit_unterschritten`. (4) Neue Spalte `hr_employees.user_id` und drei Permissions `time_entries.self`/`read`/`write`. (5) `project_id` optional mitgeführt (ADR 0020 benennt die fehlende Ist-Lohnseite), aber keinerlei Bewertung in Geld. (6) FK auf `hr_employees` mit `ON DELETE RESTRICT` statt des im HR-Schema sonst üblichen `CASCADE` — sonst würde das Löschen eines Mitarbeiters aufbewahrungspflichtige Aufzeichnungen still mitlöschen. (7) Kein Löschpfad, solange die Löschfrist fachlich offen ist. **Annahme**: eine Zeitzone (`Europe/Berlin`) für das ganze System. Vier neue Fragen in `docs/open-questions.md`, keine davon blockiert F.1.2-F.1.5.
+  - [ ] F.1.2 Migration `086_hr_time_entries.sql`: Tabelle `hr_time_entries` (inkl. CHECKs und partiellem UNIQUE-Index "höchstens ein laufender Eintrag je Mitarbeiter"), Spalte `hr_employees.user_id`, drei Permissions samt Rollenzuordnung (additiv, reversibel) — todo. **Braucht laufendes Docker** für die Verifikation gegen frische DB.
+  - [ ] F.1.3 Fachregeln ohne Datenbank: Validierung eines Eintrags und ArbZG-Tagesauswertung als reine Funktionen, Tests für jede Regel einschließlich der Grenzwerte (genau 6 h/9 h/10 h/11 h) — todo
+  - [ ] F.1.4 `TimeEntryService` in `hr/time_entries.go`: Beginnen, Beenden, Nachtragen, Stornieren, Korrigieren, Lesen; Integrationstests inkl. Mandantentrennung und Nachweis, dass kein Pfad einen abgeschlossenen Eintrag verändert — todo
+  - [ ] F.1.5 HTTP-Anbindung samt Rechteprüfung (`self` gegen `read`/`write`), End-to-End-Integrationstest — todo
 - [ ] F.2 Weiterbildung/Qualifikationen/Unterweisungen — todo
 - [ ] F.3 Asset-Zuordnung (Werkzeuge/IT/PSA) — todo
+- [ ] F.4 HR-Bestand an HTTP anbinden: `EmployeeService`/`LeaveService` haben keinen Endpunkt und keine Permissions — todo. Fund aus F.1.1: `internal/hr` wird außerhalb des Pakets nirgends importiert, `v1.go` hat keine HR-Route. `client/lib/pages/employees_page.dart:29` ruft `api.listEmployees` auf, das es in `client/lib/api.dart` nicht gibt; die Seite wird nirgends eingebunden. Deckt die Domänenpunkte "Stammdaten" und "Urlaub/Abwesenheit" aus `aufgabe.md` §1 ab, die serverseitig vorhanden, aber von außen nicht erreichbar sind.
+- [ ] F.5 Client-Oberfläche für die Zeiterfassung — todo, nach F.1.5
+- [ ] F.6 Erweiterte ArbZG-Auswertung: Ausgleichszeitraum §3 Satz 2, Sonn-/Feiertagsarbeit §9, tarifliche Abweichungen §7, JArbSchG — todo, nach F.1; fachliche Klärung nötig (siehe `docs/open-questions.md`)
 
 ## Epic G — Fuhrpark
 
