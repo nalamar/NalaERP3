@@ -175,3 +175,26 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   gelöscht werden? Betriebliche Entscheidung außerhalb des Repos.
   Status: **offen**, kein Blocker — aber vor einem Produktivbetrieb
   mit Echtdaten zu klären, falls schon Logs mit Echtdaten existieren.
+
+## 2026-10-13 — Qualifikationen und Unterweisungen (F.2.1, ADR 0027) — keine blockiert
+
+- **F.2 (Bestätigung durch den Mitarbeiter)**: Muster der
+  Berufsgenossenschaften dokumentieren eine Unterweisung mit
+  Teilnehmerliste und Unterschrift. ADR 0027 nimmt an, dass die
+  Personalabteilung den Nachweis erfasst und der Mitarbeiter im System
+  NICHT bestätigt (die unterschriebene Liste bleibt Papier bzw. später
+  ein hochgeladenes Dokument). Soll der Mitarbeiter eine Unterweisung
+  im System bestätigen können oder müssen? Status: **offen**, dem
+  Nutzer am 2026-10-13 gestellt; → Backlog F.10.
+- **F.2 (Fristen und Umfang des Vorschlagskatalogs)**: Die Fristen
+  stammen aus einer Websuche über Sekundärquellen, sechs Themen sind
+  gar nicht recherchiert. Vor produktiver Nutzung mit der Fachkraft
+  für Arbeitssicherheit bzw. der Berufsgenossenschaft abgleichen. Die
+  Fristen sind je Mandant änderbar; ein falscher Vorschlagswert ist
+  also korrigierbar, aber er wäre zunächst unbemerkt im Einsatz.
+  Status: **offen**, kein Blocker.
+- **F.2 (Pflicht je Tätigkeit)**: `fehlt` wird nur für Arten
+  ausgewiesen, die für ALLE Mitarbeiter Pflicht sind. Wer z. B. einen
+  Staplerschein haben MUSS, weiß das System nicht. Reicht das bis
+  Epic H, oder soll schon F.2 eine einfache Zuordnung "Art ist Pflicht
+  für diese Mitarbeiter" bekommen? Status: **offen**, kein Blocker.

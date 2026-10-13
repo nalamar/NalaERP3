@@ -7,36 +7,30 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.9** (Test: `time_entries.read`/`write`
-> getrennt geprüft), davor 0.46. Beide hatte der Nutzer vor F.2
-> gezogen (siehe "Korrekturen"); damit ist diese Vorgabe erledigt.
-> Davor: Task F.4 und Task F.1 vollständig.
-> **Nächste Arbeit: F.2 (Weiterbildung/Qualifikationen/
-> Unterweisungen)**, beginnend mit **F.2.1: Bestandsaufnahme und ADR**
-> (nächste freie ADR-Nummer 0027, nächste Migration 088). Zuerst per
-> Suche bestätigen, dass es im Repo nichts dazu gibt (Begriffe:
-> qualif, schulung, training, unterweis, zertifik, instruction,
-> certificate — in `server/internal`, Migrationen, `client/lib`).
-> Dann entscheiden bzw. als offene Frage stellen:
-> (1) Modell: Katalog von Qualifikationen/Unterweisungsarten als
-> Stammdaten je Mandant gegen Nachweise je Mitarbeiter (erworben am,
-> gültig bis); (2) Wiederholungsfristen und was "fällig"/"abgelaufen"
-> heißt — als berechnete Auswertung beim Lesen, nicht gespeichert
-> (Muster der ArbZG-Hinweise aus F.1.3); (3) ob Nachweise
-> unveränderlich sind (Storno statt Änderung) — Unterweisungsnachweise
-> haben Beweisfunktion gegenüber Berufsgenossenschaft/Aufsicht;
-> (4) Nachweisdokumente (GridFS vorhanden) — in F.2 oder später;
-> (5) Rechte: eigene Nachweise sehen (`self`) gegen alle
-> (`read`/`write`), `resolveOwnOrPermittedEmployee` wiederverwenden;
-> (6) Abgrenzung zu H (Einsatzfähigkeit für Maschinen/Arbeiten prüfen)
-> und G (Führerscheinkontrolle) — nur das Datenmodell so anlegen, dass
-> beide darauf aufsetzen können, nicht deren Logik bauen.
-> **Fachliche Vorgaben fehlen** (welche Unterweisungen, welche
-> Fristen, Unterschrift/Bestätigung des Mitarbeiters): nicht raten,
-> sondern in der ADR als Annahme kennzeichnen oder als Blocker-Frage
-> stellen (§7.10). Rechtsangaben (ArbSchG §12, DGUV Vorschrift 1 §4)
-> nur nennen, soweit sie das Datenmodell bestimmen, und kennzeichnen,
-> dass sie nicht gegen eine Primärquelle geprüft sind.
+> Zuletzt abgeschlossen: **F.2.1** (ADR 0027 Qualifikationen und
+> Unterweisungen). Davor F.9, 0.46, Task F.4, Task F.1. Siehe
+> Abschnitt "Epic F, Task F.2" weiter unten.
+> **Nächste Subtask: F.2.2** — Migration `088_hr_qualifications.sql`
+> nach ADR 0027:
+> `hr_qualification_types` (id uuid, company_id NOT NULL, code,
+> name, kategorie CHECK in qualifikation/unterweisung/beauftragung,
+> gueltigkeit_monate integer NULL mit CHECK > 0, pflicht_fuer_alle
+> boolean DEFAULT false, aktiv boolean DEFAULT true, hinweis text,
+> created_at; UNIQUE (company_id, code));
+> `hr_employee_qualifications` (id uuid, employee_id → hr_employees
+> RESTRICT, type_id → hr_qualification_types RESTRICT, erworben_am
+> date NOT NULL, gueltig_bis date NULL mit CHECK >= erworben_am,
+> aussteller, nachweis_nr, note, status active/storniert mit denselben
+> Storno-Spalten und demselben Konsistenz-CHECK wie
+> `hr_time_entries` (086), created_by_user_id, created_at);
+> Permissions `qualifications.self` (alle acht Systemrollen),
+> `qualifications.read`/`write` (HR, Admin). Verifizieren wie F.1.2
+> und F.4.2 (frische DB, Schema per Abfrage, Constraints per SQL
+> provozieren, Down-Pfad ausführen, Gesamtlauf).
+> **Der Vorschlagskatalog ist KEINE Migration** — er entsteht in F.2.3
+> als Code und wird je Mandant per Aufruf übernommen.
+> Offene Fragen an den Nutzer (nicht blockierend) stehen in
+> `docs/open-questions.md` unter F.2.
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10443,6 +10437,55 @@ Geänderte Dateien: `server/internal/http/leave_requests.go` (neu),
 `server/internal/http/time_entries.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
 
+## Epic F, Task F.2 — Weiterbildung, Qualifikationen, Unterweisungen
+
+### F.2.1 ADR: Bestandsaufnahme, Recherche, Modellentscheidung
+
+Reine Recherche-/ADR-Arbeit, kein Produktivcode. Ergebnis:
+`docs/adr/0027-qualifikationen-unterweisungen.md`. F.2 in sechs
+Subtasks zerlegt.
+
+**Vorgabe des Nutzers:** Arbeitsschutz, Erste Hilfe, Staplerschein,
+Scherenbühnenschein, Leiterschein; weitere vorschlagen; erweiterbar.
+
+**Zwei Einsichten aus der Recherche, die das Modell bestimmen:**
+
+1. **"Staplerschein" sind drei Dinge**: Ausbildung (läuft nicht ab),
+   jährliche Unterweisung (läuft ab), schriftliche Beauftragung (bis
+   Widerruf). Deshalb hat jede Art nur eine Frist, und ein Thema
+   besteht aus mehreren Arten.
+2. **Einen "Leiterschein" für Benutzer gibt es nicht**; es gibt die
+   Unterweisung der Benutzer und die befähigte Person, die Leitern
+   prüft. Der Vorschlagskatalog bildet beides ab; dem Nutzer wurde
+   das im Bericht ausdrücklich gesagt.
+
+**Anders als ADR 0024 stützt sich diese ADR auf in der Session
+abgerufene Quellen** — aber überwiegend Sekundärquellen (KomNet,
+Unfallkassen, Bildungsträger), teils ältere Fassungen. Die Fristen
+sind Vorschlagswerte, je Mandant änderbar.
+
+**Für die Folge-Subtasks merken:**
+
+- Vorschlagskatalog als Code plus ausdrückliche Übernahme, keine
+  Migration mit Daten.
+- `gueltig_bis` wird gespeichert, nicht beim Lesen aus der Art
+  berechnet.
+- Status beim Lesen berechnen; `fehlt` nur bei `pflicht_fuer_alle`.
+- Nachweise unveränderlich; nur Storno. Wächtertest wie bei den
+  Zeiteinträgen erwägen (genau ein UPDATE: der Storno).
+- Rechte: `resolveOwnOrPermittedEmployee` wiederverwenden; Test mit
+  Rollen, die genau eines der Rechte haben.
+- Arbeitsmedizinische Vorsorge gehört NICHT in den Katalog
+  (Gesundheitsdaten).
+
+**Verifikation.** Keine Codeänderung, daher kein Build-/Testlauf.
+Bestandsaussage per Suche belegt; Rechercheaussagen mit Quellen in
+der ADR.
+
+Geänderte Dateien:
+`docs/adr/0027-qualifikationen-unterweisungen.md` (neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
 Vom Nutzer vor F.2 gezogen. ADR:
@@ -10548,6 +10591,12 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   Abschluss von F.4 hat der Nutzer entschieden: "Arbeite erst die
   Punkte 0.46 und F.9 ab, eh du zu F.2 kommst." Reihenfolge damit:
   0.46, F.9, dann F.2, F.3.
+- **2026-10-13 — Vorgabe zu F.2.** Der Nutzer nennt als
+  branchenspezifische Unterweisungen bzw. Weiterbildungen:
+  Arbeitsschutz, Erste Hilfe, Staplerschein, Scherenbühnenschein,
+  Leiterschein. Weitere dürfen recherchiert und vorgeschlagen werden.
+  "Die Liste sollte in jedem Fall auch erweiterbar sein." → Katalog
+  als Stammdaten je Mandant (ADR 0027).
 
 ## Verworfen
 
