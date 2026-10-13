@@ -28,6 +28,7 @@ import (
 	"nalaerp3/internal/auth"
 	"nalaerp3/internal/config"
 	"nalaerp3/internal/contacts"
+	"nalaerp3/internal/hr"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/pdfgen"
 	"nalaerp3/internal/projects"
@@ -65,6 +66,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	arSvc := accounting.NewARService(pg, numSvc, journalSvc, auditSvc)
 	apSvc := accounting.NewAPService(pg)
 	ccSvc := accounting.NewCostCenterService(pg)
+	timeEntrySvc := hr.NewTimeEntryService(pg)
 	datevExportSvc := accounting.NewDatevExportService(pg)
 	eInvoiceSvc := accounting.NewEInvoiceService(pg, settings.NewCompanyService(pg))
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
@@ -1711,6 +1713,8 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			writeJSON(w, http.StatusOK, out)
 		})
 	})
+
+	mountTimeEntryRoutes(protected, timeEntrySvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5025,7 +5029,12 @@ func classifyDomainError(err error) (int, string) {
 		return http.StatusNotFound, "not_found"
 	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"),
 		strings.Contains(msg, "weicht vom gebuchten"),
-		strings.Contains(msg, "bereits erfasst"):
+		strings.Contains(msg, "bereits erfasst"),
+		strings.Contains(msg, "läuft bereits"),
+		strings.Contains(msg, "bereits beendet"),
+		strings.Contains(msg, "bereits storniert"),
+		strings.Contains(msg, "ist storniert"),
+		strings.Contains(msg, "überschneidet sich"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5086,7 +5095,12 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "abgeleitet werden"),
 		strings.Contains(msg, "nicht mehr offen"),
 		strings.Contains(msg, "kein eindeutiges gegenkonto"),
-		strings.Contains(msg, "ein angebot abgegeben"):
+		strings.Contains(msg, "ein angebot abgegeben"),
+		strings.Contains(msg, "muss nach dem beginn"),
+		strings.Contains(msg, "muss kürzer sein"),
+		strings.Contains(msg, "kann erst beim beenden"),
+		strings.Contains(msg, "kann den mitarbeiter nicht"),
+		strings.Contains(msg, "darf höchstens"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

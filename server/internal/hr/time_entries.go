@@ -459,3 +459,22 @@ func dateOnly(t time.Time) time.Time {
 	y, m, d := t.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }
+
+// EmployeeIDForUser liefert den Mitarbeiter, der mit einem Login-Benutzer
+// verknuepft ist (hr_employees.user_id). Der zweite Rueckgabewert ist
+// false, wenn der Benutzer mit keinem Mitarbeiter des Mandanten verknuepft
+// ist - das ist kein Fehler, nicht jeder Login ist ein Mitarbeiter.
+func (s *TimeEntryService) EmployeeIDForUser(ctx context.Context, userID, companyID string) (uuid.UUID, bool, error) {
+	if strings.TrimSpace(userID) == "" || strings.TrimSpace(companyID) == "" {
+		return uuid.Nil, false, nil
+	}
+	var id uuid.UUID
+	err := s.pg.QueryRow(ctx, `SELECT id FROM hr_employees WHERE user_id=$1 AND company_id=$2`, userID, companyID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return uuid.Nil, false, nil
+		}
+		return uuid.Nil, false, err
+	}
+	return id, true, nil
+}

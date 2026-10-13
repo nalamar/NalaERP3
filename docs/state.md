@@ -7,30 +7,22 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.4.3** (`TimeEntryService.List` samt
-> Tagesauswertung) — damit ist **Task F.1.4 (Service) vollständig**.
-> Davor F.1.4.2, F.1.4.1, F.1.3, F.1.2, F.1.1. Siehe Abschnitt "Epic F,
-> Task F.1" weiter unten.
-> **Nächste Subtask: F.1.5** (letzte von F.1) — HTTP-Anbindung des
-> `TimeEntryService` in `server/internal/http/v1.go` samt
-> Rechteprüfung. Das ist die ERSTE HTTP-Anbindung des Pakets `hr`
-> überhaupt. Zu klären und zu bauen:
-> (1) Routen für Anlegen, Beenden, Stornieren, Korrigieren, Einzelabruf,
-> Liste mit Auswertung;
-> (2) Rechte: `time_entries.write`/`read` für fremde Zeiten,
-> `time_entries.self` nur für den Mitarbeiter, der über
-> `hr_employees.user_id` mit dem angemeldeten Benutzer verknüpft ist —
-> dafür fehlt noch die Auflösung Benutzer→Mitarbeiter (kleine neue
-> Lesefunktion im Paket `hr`) und es gibt bisher KEINEN Weg,
-> `hr_employees.user_id` zu setzen außer Direkt-SQL (`EmployeeService`
-> hat keinen HTTP-Endpunkt, Backlog F.4; für die Tests per SQL setzen
-> und als offene Lücke benennen, nicht nebenbei F.4 bauen);
-> (3) Fehlertexte auf 400/404 abbilden — `classifyDomainError` prüfen,
-> Liste der neuen Texte steht in den Abschnitten F.1.3 bis F.1.4.3;
-> (4) keine Zeitdaten und keine Namen in Logs.
-> **Vor dem Start Umfang schätzen** — das überschreitet §6.3
-> voraussichtlich (Rechteauflösung, Schreibrouten, Leserouten) und ist
-> dann zu teilen. **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.1.5.1** (HTTP: Rechteprüfung, Anlegen,
+> Beenden, Einzelabruf). Davor F.1.4 (Service, drei Teile), F.1.3,
+> F.1.2, F.1.1. Siehe Abschnitt "Epic F, Task F.1" weiter unten.
+> **Nächste Subtask: F.1.5.2** (letzte von F.1) — in
+> `server/internal/http/time_entries.go` die Routen
+> `POST /time-entries/{id}/storno` (Body `reason`),
+> `POST /time-entries/{id}/correct` (Body: neue Angaben plus `reason`)
+> und `GET /time-entries/?employee_id=&from=&to=&include_storniert=`
+> (Datum als `2006-01-02`; ohne `employee_id` der eigene Mitarbeiter;
+> Lesen fremder Zeiten braucht `time_entries.read`). Rechteprüfung über
+> die vorhandenen `resolveTimeEntryEmployee`/`loadAuthorizedTimeEntry`.
+> Dazu ein End-to-End-Test über den ganzen Ablauf und ein HTTP-Test mit
+> einem Benutzer eines zweiten Mandanten. Danach ist F.1 fertig und es
+> folgt die Entscheidung, ob F.4 (HR-Bestand an HTTP, inkl. Pflege von
+> `hr_employees.user_id`) vor F.2/F.3 gezogen wird — ohne F.4 kann kein
+> Mitarbeiter selbst stempeln. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10079,6 +10071,64 @@ ansehen.
 Geänderte Dateien: `server/internal/hr/time_entries.go`,
 `server/internal/hr/time_entries_test.go`,
 `server/internal/hr/time_entries_list_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### F.1.5 Zerlegung in Micro-Subtasks
+
+Rechteauflösung, sechs Routen, Fehlerklassifikation und
+HTTP-Integrationstests überschreiten §6.3. Zerlegt in F.1.5.1
+(Rechteprüfung, Anlegen, Beenden, Einzelabruf) und F.1.5.2 (Stornieren,
+Korrigieren, Liste, End-to-End-Test).
+
+### F.1.5.1 HTTP: Rechteprüfung, Anlegen, Beenden, Einzelabruf
+
+Erste HTTP-Anbindung des Pakets `hr`. Neue Datei
+`server/internal/http/time_entries.go`; in `v1.go` nur Import,
+Service-Instanz, ein `mountTimeEntryRoutes`-Aufruf und die Ergänzung von
+`classifyDomainError`.
+
+**Rechtemodell (in `resolveTimeEntryEmployee`):**
+
+| Benutzer hat | nennt Mitarbeiter | Ergebnis |
+|---|---|---|
+| `write` bzw. `read` | ja | dieser Mitarbeiter |
+| `write` bzw. `read` | nein | eigener Mitarbeiter; ohne Verknüpfung 400 |
+| nur `self` | nein oder den eigenen | eigener Mitarbeiter |
+| nur `self` | einen anderen | 403 |
+| nur `self`, nicht verknüpft | — | 403 |
+| keines | — | 403 |
+
+Die Routen tragen deshalb kein `requirePermission`. **Jeder neue
+Handler der Zeiterfassung muss `resolveTimeEntryEmployee` oder
+`loadAuthorizedTimeEntry` aufrufen, bevor er den Service anfasst** —
+ein vergessener Aufruf wäre ein ungeschützter Endpunkt.
+
+**Serverzeit:** Stempeln und Beenden ohne Zeitangabe nehmen die Uhr des
+Servers.
+
+**Statuscodes:** Zustandskonflikte 409, Validierung 400, nicht
+gefunden 404.
+
+**Fund:** "Zeitraum darf höchstens 366 Tage umfassen" wäre ein 500
+gewesen; die Annahme aus F.1.4.3, der Text sei abgedeckt, war falsch.
+Der neue DB-lose Test `TestClassifyDomainErrorCoversTimeEntryMessages`
+prüft alle 23 Fehlertexte — **bei jedem neuen Fehlertext der
+Zeiterfassung dort eine Zeile ergänzen.**
+
+**Betriebliche Lücke:** `hr_employees.user_id` ist nur per Direkt-SQL
+setzbar. Bis F.4 kann kein Mitarbeiter selbst stempeln, nur die
+Personalabteilung für andere buchen.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` auf den
+neuen Dateien clean. 6 neue Testfunktionen grün. Gegenprobe mit sieben
+Verfälschungen der Rechteprüfung: jede ließ mindestens einen Test
+fehlschlagen, Datei danach byteidentisch. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/time_entries.go` (neu),
+`server/internal/http/time_entries_integration_test.go` (neu),
+`server/internal/http/v1.go`, `server/internal/hr/time_entries.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
