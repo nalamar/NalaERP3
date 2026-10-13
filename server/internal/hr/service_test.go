@@ -127,6 +127,32 @@ func TestUpdateRejectsWrongValueTypes(t *testing.T) {
 	}
 }
 
+func TestLeaveDecideValidatesBeforeTouchingDatabase(t *testing.T) {
+	s := NewLeaveService(nil)
+	cases := []struct {
+		name      string
+		id        uuid.UUID
+		decider   string
+		companyID string
+		wantErr   string
+	}{
+		{"Mandant fehlt", uuid.New(), "u-1", "", "Mandant erforderlich"},
+		{"ID fehlt", uuid.Nil, "u-1", "default", "Urlaubsantrag-ID erforderlich"},
+		{"Entscheider fehlt", uuid.New(), "  ", "default", "Entscheider erforderlich"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			lr, err := s.Decide(context.Background(), tc.id, true, tc.decider, nil, tc.companyID)
+			if lr != nil {
+				t.Fatalf("erwartet kein Ergebnis, bekommen %+v", lr)
+			}
+			if err == nil || err.Error() != tc.wantErr {
+				t.Fatalf("erwartet %q, bekommen %v", tc.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestSetUserValidatesBeforeTouchingDatabase(t *testing.T) {
 	s := NewEmployeeService(nil)
 	if err := s.SetUser(context.Background(), uuid.New(), "u-1", " "); err == nil || err.Error() != "Mandant erforderlich" {

@@ -337,8 +337,24 @@ type LeaveRequest struct {
 	Days       float64    `json:"days"`
 	Reason     string     `json:"reason"`
 	ApproverID *uuid.UUID `json:"approver_id,omitempty"`
-	DecidedAt  *time.Time `json:"decided_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
+	// DecidedByUserID ist der Login, der entschieden hat (ADR 0025).
+	// ApproverID ist dessen Mitarbeiterdatensatz, sofern er einen hat.
+	DecidedByUserID *string    `json:"decided_by_user_id,omitempty"`
+	DecidedAt       *time.Time `json:"decided_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
+}
+
+// leaveTypes sind die zulaessigen Antragstypen (020_hr_base.sql).
+var leaveTypes = map[string]bool{"vacation": true, "sick": true, "unpaid": true, "other": true}
+
+const leaveRequestColumns = `id, employee_id, typ, status, start_date, end_date, days, COALESCE(reason,''), approver_id, decided_by_user_id, decided_at, created_at`
+
+func scanLeaveRequest(row pgx.Row) (*LeaveRequest, error) {
+	var lr LeaveRequest
+	if err := row.Scan(&lr.ID, &lr.EmployeeID, &lr.Typ, &lr.Status, &lr.StartDate, &lr.EndDate, &lr.Days, &lr.Reason, &lr.ApproverID, &lr.DecidedByUserID, &lr.DecidedAt, &lr.CreatedAt); err != nil {
+		return nil, err
+	}
+	return &lr, nil
 }
 
 type LeaveService struct{ pg *pgxpool.Pool }
@@ -386,8 +402,19 @@ func (s *LeaveService) Create(ctx context.Context, lr LeaveRequest, companyID st
 	if lr.Typ == "" {
 		lr.Typ = "vacation"
 	}
+	if !leaveTypes[lr.Typ] {
+		return nil, errors.New("Ungültiger Antragstyp")
+	}
+	// Ohne Angabe zaehlen die Kalendertage des Zeitraums. Eine Angabe darf
+	// kleiner sein (halbe Tage, Wochenenden abgezogen), aber nicht groesser
+	// als der Zeitraum lang ist - sonst liesse sich fuer zwei Tage ein
+	// beliebiger Wert beantragen.
+	calendarDays := lr.EndDate.Sub(lr.StartDate).Hours()/24 + 1
 	if lr.Days <= 0 {
-		lr.Days = lr.EndDate.Sub(lr.StartDate).Hours()/24 + 1
+		lr.Days = calendarDays
+	}
+	if lr.Days > calendarDays {
+		return nil, errors.New("Tage dürfen die Länge des Zeitraums nicht überschreiten")
 	}
 	lr.ID = uuid.New()
 	lr.Status = "pending"
@@ -400,25 +427,66 @@ func (s *LeaveService) Create(ctx context.Context, lr LeaveRequest, companyID st
 	return &lr, nil
 }
 
-func (s *LeaveService) Approve(ctx context.Context, id uuid.UUID, approver uuid.UUID, approve bool, companyID string) error {
+// Decide genehmigt einen Antrag oder lehnt ihn ab.
+//
+// Die Entscheidung ist einmalig: entschieden werden kann nur ein Antrag im
+// Status pending. Frueher liess sich ein Antrag beliebig oft neu
+// entscheiden, die erste Entscheidung wurde dabei ueberschrieben.
+//
+// deciderUserID ist der Login, der entscheidet - an ihm haengt der
+// Nachweis. approver ist dessen Mitarbeiterdatensatz, falls er einen hat;
+// er ist nicht mehr Voraussetzung (ein Administrator ohne
+// Mitarbeiterdatensatz kann entscheiden).
+func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approve bool, deciderUserID string, approver *uuid.UUID, companyID string) (*LeaveRequest, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if id == uuid.Nil {
+		return nil, errors.New("Urlaubsantrag-ID erforderlich")
+	}
+	if strings.TrimSpace(deciderUserID) == "" {
+		return nil, errors.New("Entscheider erforderlich")
+	}
+	if approver != nil {
+		var approverOwned bool
+		if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_employees WHERE id=$1 AND company_id=$2)`, *approver, companyID).Scan(&approverOwned); err != nil {
+			return nil, err
+		}
+		if !approverOwned {
+			return nil, errors.New("Mitarbeiter nicht gefunden")
+		}
+	}
 	status := "rejected"
 	if approve {
 		status = "approved"
 	}
-	now := time.Now()
-	ct, err := s.pg.Exec(ctx, `UPDATE hr_leave_requests SET status=$2, approver_id=$3, decided_at=$4
-		WHERE id=$1 AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$5)`, id, status, approver, now, companyID)
+	// Die Statuspruefung steht im UPDATE selbst: zwei gleichzeitige
+	// Entscheidungen koennen so nicht beide durchgehen.
+	ct, err := s.pg.Exec(ctx, `UPDATE hr_leave_requests SET status=$2, approver_id=$3, decided_by_user_id=$4, decided_at=now()
+		WHERE id=$1 AND status='pending' AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$5)`, id, status, approver, deciderUserID, companyID)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	lr, err := s.Get(ctx, id, companyID)
+	if err != nil {
+		return nil, err
 	}
 	if ct.RowsAffected() == 0 {
-		return errors.New("Urlaubsantrag nicht gefunden")
+		return nil, errors.New("Urlaubsantrag ist bereits entschieden")
 	}
-	return nil
+	return lr, nil
 }
 
-func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approver uuid.UUID, approve bool, companyID string) error {
-	return s.Approve(ctx, id, approver, approve, companyID)
+func (s *LeaveService) Get(ctx context.Context, id uuid.UUID, companyID string) (*LeaveRequest, error) {
+	lr, err := scanLeaveRequest(s.pg.QueryRow(ctx, `SELECT `+leaveRequestColumns+` FROM hr_leave_requests
+		WHERE id=$1 AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$2)`, id, companyID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("Urlaubsantrag nicht gefunden")
+		}
+		return nil, err
+	}
+	return lr, nil
 }
 
 func (s *LeaveService) List(ctx context.Context, employeeID *uuid.UUID, limit, offset int, companyID string) ([]LeaveRequest, error) {
@@ -442,24 +510,20 @@ func (s *LeaveService) List(ctx context.Context, employeeID *uuid.UUID, limit, o
 		args = append(args, companyID)
 	}
 	args = append(args, limit, offset)
-	rows, err := s.pg.Query(ctx, `SELECT id, employee_id, typ, status, start_date, end_date, days, COALESCE(reason,''), approver_id, decided_at, created_at FROM hr_leave_requests `+where+` ORDER BY created_at DESC LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
+	rows, err := s.pg.Query(ctx, `SELECT `+leaveRequestColumns+` FROM hr_leave_requests `+where+` ORDER BY created_at DESC LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	out := make([]LeaveRequest, 0)
 	for rows.Next() {
-		var lr LeaveRequest
-		var appr *uuid.UUID
-		var decided *time.Time
-		if err := rows.Scan(&lr.ID, &lr.EmployeeID, &lr.Typ, &lr.Status, &lr.StartDate, &lr.EndDate, &lr.Days, &lr.Reason, &appr, &decided, &lr.CreatedAt); err != nil {
+		lr, err := scanLeaveRequest(rows)
+		if err != nil {
 			return nil, err
 		}
-		lr.ApproverID = appr
-		lr.DecidedAt = decided
-		out = append(out, lr)
+		out = append(out, *lr)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func itoa(i int) string {

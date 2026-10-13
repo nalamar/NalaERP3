@@ -7,29 +7,32 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.4** (HTTP-Routen `/employees`) — damit
-> ist der erste Teil von F.4 fertig: Mitarbeiter können stempeln,
-> sobald sie angelegt und verknüpft sind. Davor F.4.3, F.4.2, F.4.1.
-> Siehe Abschnitt "Epic F, Task F.4" weiter unten.
-> **Nächste Subtask: F.4.5** — `LeaveService` in
-> `server/internal/hr/service.go` härten (ADR 0025, Befunde 6 und 7):
-> (1) Entscheidung nur im Status `pending` und einmalig — zweiter
-> Versuch abgelehnt, erste Entscheidung bleibt stehen;
-> (2) `decided_by_user_id` (Spalte seit 087) schreiben und in
-> `LeaveRequest` lesen; (3) `approver_id` optional — heute verlangt
-> `Approve(ctx, id, approver uuid.UUID, ...)` ihn zwingend und
-> `uuid.Nil` verletzte den FK; (4) `Approve`/`Decide` sind zwei Namen
-> für dasselbe (`Decide` ruft nur `Approve`) — beim Umbau der Signatur
-> entscheiden, welcher bleibt, und das in der ADR vermerken (§7.6);
-> (5) prüfen, ob `List`/`Create` dieselben HTTP-Fallen haben wie der
-> `EmployeeService` (rohe Fehler, `rows.Err()`, Mandant). Noch KEIN
-> HTTP (F.4.6). Bestehende Tests in `service_test.go` und
-> `service_scoping_integration_test.go` rufen `Approve` mit einem
-> Mitarbeiter als Entscheider auf — umstellen, nicht abschwächen.
-> **Gegenprobe ab jetzt über
-> `scratchpad/mutrun.py`-Verfahren** (Texte aus Datei, meldet nicht
-> angewendete Verfälschungen) — das Skript liegt nicht im Repo, das
-> Verfahren ist im Abschnitt F.4.4 beschrieben.
+> Zuletzt abgeschlossen: **F.4.5** (`LeaveService` gehärtet), davor
+> F.4.4, F.4.3, F.4.2, F.4.1. Siehe Abschnitt "Epic F, Task F.4"
+> weiter unten.
+> **Nächste Subtask: F.4.6** (letzte von F.4) — HTTP-Routen
+> `/api/v1/leave-requests` in neuer Datei
+> `server/internal/http/leave_requests.go`: `POST /` (Anlegen),
+> `GET /` (Liste, optional `employee_id`), `GET /{id}`,
+> `POST /{id}/decide` (Body `{"approve": true|false}`). Rechte nach dem
+> Muster der Zeiterfassung: `leave_requests.self` für eigene Anträge
+> (über `EmployeeIDForUser`), `leave_requests.read` für fremde Listen
+> und Einzelabrufe, `leave_requests.decide` zum Entscheiden.
+> `resolveTimeEntryEmployee` ist auf die Zeiterfassungsrechte
+> festgelegt (self-Konstante fest verdrahtet) — für die Wiederverwendung
+> das self-Recht zum Parameter machen statt die Funktion zu kopieren;
+> die Zeiterfassungs-Tests müssen danach unverändert grün sein.
+> Entscheiden: `deciderUserID` = angemeldeter Benutzer, `approver` =
+> dessen verknüpfter Mitarbeiter, falls vorhanden. Datumsangaben als
+> `JJJJ-MM-TT` über ein eigenes Eingabe-Struct (`LeaveRequest` erwartet
+> RFC3339). Vom Aufrufer mitgegebene Status-/Entscheidungsfelder dürfen
+> nicht durchgereicht werden. Neue Fehlertexte in
+> `classifyDomainError` plus Testzeile ("bereits entschieden" → 409;
+> "Ungültiger Antragstyp" und "Tage dürfen" sind über "ungültig" bzw.
+> prüfen). **Test mit einer Rolle, die nur `leave_requests.read` hat**
+> (Lehre aus F.4.4), und HTTP-Test mit zweitem Mandanten. Offene
+> Fachfrage "eigenen Antrag selbst entscheiden" bleibt offen und wird
+> NICHT erzwungen. Gegenprobe über das Skript-Verfahren.
 > **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10354,6 +10357,40 @@ am Ende alle erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./...
 Geänderte Dateien: `server/internal/http/employees.go` (neu),
 `server/internal/http/employees_integration_test.go` (neu),
 `server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+### F.4.5 LeaveService härten
+
+`server/internal/hr/service.go`.
+
+- **`Decide` ersetzt `Approve`.** Signatur: `Decide(ctx, id, approve,
+  deciderUserID, approver *uuid.UUID, companyID)`, liefert den Antrag.
+- Entscheidung einmalig (Prüfung im UPDATE), Entscheider-Login Pflicht,
+  `approver` optional.
+- Neu: `Get`.
+- Zusätzlich geprüft: Antragstyp, Tageszahl höchstens Zeitraumlänge.
+
+**Neue Fehlertexte für F.4.6:** "Urlaubsantrag nicht gefunden",
+"Urlaubsantrag ist bereits entschieden", "Urlaubsantrag-ID
+erforderlich", "Entscheider erforderlich", "Ungültiger Antragstyp",
+"Tage dürfen die Länge des Zeitraums nicht überschreiten"; bereits
+vorhanden: "Zeitraum überschneidet sich mit einem bestehenden
+Urlaubsantrag" (seit F.1.5.1 als 409 klassifiziert), "Enddatum darf
+nicht vor Startdatum liegen", "start/end erforderlich", "employee_id
+erforderlich", "Mitarbeiter nicht gefunden".
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 13 Urlaubs-Tests grün (6 neu). Gegenprobe mit 14
+Verfälschungen über das Skript-Verfahren: alle angewendet, alle
+erkannt, Datei danach byteidentisch. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/service.go`,
+`server/internal/hr/service_test.go`,
+`server/internal/hr/service_scoping_integration_test.go`,
+`server/internal/hr/leave_hardening_integration_test.go` (neu),
+`docs/adr/0025-hr-bestand-http-anbindung.md`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Offene Punkte
 

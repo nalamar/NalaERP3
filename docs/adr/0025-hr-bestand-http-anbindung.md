@@ -184,6 +184,13 @@ fachliche Meldung (ebenso bei der Benutzer-Verknüpfung). Das ist auch
 bei gleichzeitigen Aufrufen richtig. `EmployeeService.Create` nimmt
 jetzt `EmployeeInput` mit `Active *bool`.
 
+Nachtrag F.4.5 (2026-10-13): `LeaveService.Approve` ist entfallen,
+`Decide` ist die eine Funktion für Genehmigen und Ablehnen. `Approve`
+hieß so, lehnte aber auch ab; `Decide` rief nur `Approve` auf; es gab
+keinen Aufrufer außerhalb der Tests. Zusätzlich geprüft werden jetzt
+der Antragstyp (vier Werte laut `020_hr_base.sql`) und die Tageszahl
+(höchstens die Länge des Zeitraums).
+
 ## Konsequenzen
 
 Zerlegung von F.4:
