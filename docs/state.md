@@ -7,29 +7,30 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.2** (Migration 088), davor F.2.1 (ADR
-> 0027, am 2026-10-13 durch zwei Antworten des Nutzers ergänzt — siehe
-> "Korrekturen" und den Abschnitt "Ergänzung" in der ADR).
-> **Nächste Subtask: F.2.3** — Katalog in neuer Datei
-> `server/internal/hr/qualification_types.go`:
-> `QualificationTypeService` mit `Create`, `Get`, `List` (Standard nur
-> aktive, Schalter für alle), `Update` (Name, Kategorie, Frist,
-> `pflicht_fuer_alle`, `aktiv`, Hinweis — Code NICHT änderbar, er ist
-> der stabile Schlüssel; kein Delete). Muster:
-> `accounting/cost_centers.go`. Doppelter Code → fachliche Meldung
-> über `isUniqueViolation` mit Constraint
-> `hr_qualification_types_company_code_key` (ACHTUNG: das ist ein
-> Constraint, kein Index — prüfen, dass `ConstraintName` passt).
-> **Vorschlagskatalog**: Go-Liste nach der Tabelle in ADR 0027 (für
-> Stapler und Hubarbeitsbühne je drei Arten, für Leitern zwei) plus
-> die sechs nicht recherchierten Themen; `AdoptDefaults(companyID)`
-> legt an, was fehlt (Abgleich über den Code), überschreibt nichts,
-> liefert zurück, was neu angelegt wurde. Arbeitsmedizinische
-> Vorsorge gehört NICHT hinein. Nur `ARBEITSSCHUTZ` ist
-> `pflicht_fuer_alle`. Eine Frist-Änderung an einer Art ändert
-> bestehende Nachweise nicht (das ist F.2.4, aber die Semantik gehört
-> als Kommentar an `Update`). Noch KEIN HTTP. Gegenprobe über das
-> Skript-Verfahren. **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.2.3** (Katalog-Service und
+> Vorschlagskatalog), davor F.2.2 (Migration 088), F.2.1 (ADR 0027).
+> Auf Wunsch des Nutzers neu im Backlog: **F.11** Vorlagen für
+> Mitarbeiter-Stellen (für später, siehe "Korrekturen").
+> **Nächste Subtask: F.2.4** — Nachweise und Anforderungen im Service.
+> **Vor dem Start schätzen und voraussichtlich teilen (§6.3)**, z. B.:
+> F.2.4.1 Statusauswertung als reine Funktion ohne DB (Muster
+> `hr/time_rules.go`): je Mitarbeiter und Art der jüngste aktive
+> Nachweis → `gueltig`/`laeuft_ab`/`abgelaufen`; `fehlt` für
+> Anforderungen des Mitarbeiters und für `pflicht_fuer_alle`, wenn
+> kein gültiger aktiver Nachweis vorliegt; `gueltig_bis` ist der
+> letzte gültige Tag (einschließlich); Vorwarnzeit Standard 60 Tage,
+> als Parameter; "heute" als Parameter (testbar); Berechnung von
+> `gueltig_bis` aus `erworben_am` plus Monaten (Monatsende beachten:
+> 31.01. + 1 Monat — Verhalten von `AddDate` prüfen und bewusst
+> festlegen, nicht hinnehmen). Grenzwerte testen.
+> F.2.4.2 Nachweise: erfassen (einzeln und für eine Gruppe in EINER
+> Transaktion), stornieren, lesen; Mitarbeiter und Art müssen zum
+> selben Mandanten gehören; Art muss aktiv sein (für NEUE Nachweise);
+> Wächtertest: genau ein UPDATE (Storno), kein DELETE.
+> F.2.4.3 Anforderungen je Mitarbeiter setzen und lesen (änderbar,
+> kein Beleg) und die Zusammenführung zum Stand eines Mitarbeiters.
+> Noch KEIN HTTP (F.2.5/F.2.6). Gegenprobe über das Skript-Verfahren.
+> **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10526,6 +10527,45 @@ Geänderte Dateien:
 `docs/adr/0027-qualifikationen-unterweisungen.md`, `docs/backlog.md`,
 `docs/open-questions.md`, `docs/state.md`.
 
+### F.2.3 Katalog-Service und Vorschlagskatalog
+
+Neue Dateien `server/internal/hr/qualification_types.go` und
+`qualification_defaults.go`, dazu zwei Testdateien.
+
+- `QualificationTypeService`: `Create`, `Get`, `List`, `Update`
+  (vollständiger Ersatz, kein Patch), `AdoptDefaults`. Kein Delete.
+- Code: normalisiert, `A-Z 0-9 _`, nicht änderbar.
+- Vorschlagskatalog: 18 Arten in `DefaultQualificationTypes()`.
+
+**Beim Ändern des Vorschlagskatalogs:** der Test
+`TestDefaultQualificationTypesFollowTheCatalogRules` prüft die Regeln
+(jede Unterweisung mit Frist, keine Beauftragung mit Frist, genau
+`ARBEITSSCHUTZ` Pflicht für alle, Hinweis vorhanden, keine
+Gesundheitsdaten). Eine Änderung an der Vorlage wirkt NICHT auf
+Mandanten, die bereits übernommen haben — `AdoptDefaults` ergänzt nur
+Fehlendes. Soll eine korrigierte Frist bei bestehenden Mandanten
+ankommen, braucht es dafür einen eigenen, ausdrücklichen Weg.
+
+**Fehlertexte für F.2.5:** "Code erforderlich", "Ungültiger Code
+(…)", "Name erforderlich", "Ungültige Kategorie", "Gültigkeit muss
+größer als 0 sein", "Qualifikationsart mit diesem Code existiert
+bereits", "Qualifikationsart nicht gefunden". Nach Durchsicht von
+`classifyDomainError` treffen alle einen vorhandenen Teilstring
+("erforderlich", "ungültig", "muss größer als 0 sein", "existiert
+bereits", "nicht gefunden") — in F.2.5 trotzdem per Test belegen.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 8 neue Testfunktionen grün. Gegenprobe mit 26
+Verfälschungen über das Skript-Verfahren: alle angewendet, alle
+erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/qualification_types.go` (neu),
+`server/internal/hr/qualification_defaults.go` (neu),
+`server/internal/hr/qualification_types_test.go` (neu),
+`server/internal/hr/qualification_types_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
+
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
 Vom Nutzer vor F.2 gezogen. ADR:
@@ -10647,6 +10687,11 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   Stelle nötig sind und ob sie schon vorhanden sind." → Anforderungen
   je Mitarbeiter (dritte Tabelle in Migration 088); `fehlt` gilt
   dafür. In ADR 0027 als "Ergänzung" eingearbeitet.
+- **2026-10-13 — Backlog-Eintrag gewünscht.** "Außerdem lege bitte
+  Backlog-Eintrag für später an, dass wir noch Vorlagen für
+  Mitarbeiter-Stellen generieren, die bestimmte Qualifikationen
+  erfordern." → Backlog F.11, ausdrücklich für später; nicht
+  eigenmächtig vorziehen.
 
 ## Verworfen
 
