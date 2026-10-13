@@ -7,22 +7,23 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.3** (Fachregeln ohne Datenbank,
-> `hr/time_rules.go`), davor F.1.2 (Migration 086) und F.1.1 (ADR 0024).
-> Siehe Abschnitt "Epic F, Task F.1" weiter unten.
-> **Nächste Subtask: F.1.4** — `TimeEntryService` in neuer Datei
-> `server/internal/hr/time_entries.go`: Beginnen (Stempeln), Beenden,
-> Nachtragen, Stornieren, Korrigieren (Storno + Ersatzeintrag in EINER
-> Transaktion), Lesen samt Tagesauswertung. Nutzt `ValidateTimeEntry`,
-> `WorkDateOf` und `EvaluateWorkDays` aus F.1.3. Neu in F.1.4:
-> Überschneidungsprüfung gegen andere aktive Einträge desselben
-> Mitarbeiters und Mandantenprüfung über `hr_employees.company_id`.
-> Integrationstests inkl. Mandantentrennung und dem Nachweis, dass kein
-> Pfad einen abgeschlossenen Eintrag verändert. Noch KEIN HTTP (F.1.5).
-> **Vor dem Start schätzen, ob das §6.3 überschreitet** (sechs
-> Operationen plus Tests) und gegebenenfalls in Schreib- und Lesepfad
-> teilen. **Test-DB vorher frisch aufsetzen** (`docker compose -f
-> docker-compose.test.yml down -v` + `up -d --wait`).
+> Zuletzt abgeschlossen: **F.1.4.1** (`TimeEntryService`: Anlegen,
+> Beenden, Einzelabruf), davor F.1.3, F.1.2, F.1.1. Siehe Abschnitt
+> "Epic F, Task F.1" weiter unten.
+> **Nächste Subtask: F.1.4.2** — Stornieren und Korrigieren in
+> `server/internal/hr/time_entries.go`. `Storno(id, reason, actor,
+> company)`: Pflichtbegründung, setzt `status`/`storniert_at`/
+> `storno_reason`/`storniert_by_user_id`, nur einmal möglich.
+> `Correct(id, neue Angaben, reason, actor, company)`: Storno des alten
+> und Anlage des Ersatzeintrags mit `replaces_entry_id` in EINER
+> Transaktion — schlägt der Ersatz fehl (z. B. Überschneidung), darf
+> auch der Storno nicht stehen bleiben. Dafür muss die Anlege-Logik aus
+> `Create` innerhalb einer bestehenden Transaktion nutzbar werden
+> (in eine interne Funktion mit `pgx.Tx` herausziehen, Verhalten von
+> `Create` unverändert). Die Überschneidungsprüfung des Ersatzeintrags
+> darf den gerade stornierten Eintrag nicht mehr sehen. Die beiden
+> Direkt-SQL-Stornos in `time_entries_integration_test.go` auf den
+> Service umstellen. **Test-DB vorher frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -9943,6 +9944,49 @@ kein Code mit DB-Bezug angefasst wurde.
 Geänderte Dateien: `server/internal/hr/time_rules.go` (neu),
 `server/internal/hr/time_rules_test.go` (neu),
 `docs/adr/0024-zeiterfassung.md`, `docs/backlog.md`, `docs/state.md`.
+
+### F.1.4 Zerlegung in Micro-Subtasks
+
+Sechs Operationen plus Integrationstests gegen echte DB überschreiten
+§6.3. Zerlegt in F.1.4.1 (Anlegen, Beenden, Einzelabruf), F.1.4.2
+(Stornieren, Korrigieren), F.1.4.3 (Liste samt Tagesauswertung).
+
+### F.1.4.1 Anlegen, Beenden, Einzelabruf
+
+Neue Dateien `server/internal/hr/time_entries.go`,
+`time_entries_test.go`, `time_entries_integration_test.go`. Kein
+bestehender Code geändert.
+
+- `Create` — eine Eingabe für Stempeln (ohne Ende) und Nachtrag (mit
+  Ende).
+- `Stop` — beendet einen laufenden Eintrag, einmalig.
+- `Get` — Einzelabruf, mandantengeprüft über den Mitarbeiter.
+
+**Die Zeilensperre auf `hr_employees` ist nachweislich nötig.** In der
+Gegenprobe ohne `FOR UPDATE` schlug der Test mit acht gleichzeitigen
+Stempelungen in 5 von 5 Läufen fehl: der partielle UNIQUE-Index aus
+F.1.2 hält die Daten zwar korrekt, liefert aber einen rohen
+Datenbankfehler statt der fachlichen Meldung. Sperre nicht entfernen.
+
+**Fehlertexte, die F.1.5 auf 400/404 abbilden muss** (neu in dieser
+Subtask): "Mitarbeiter nicht gefunden", "Projekt nicht gefunden",
+"Zeiteintrag nicht gefunden", "Zeiteintrag ist storniert", "Zeiteintrag
+ist bereits beendet", "Es läuft bereits ein Zeiteintrag", "Zeitraum
+überschneidet sich mit einem bestehenden Zeiteintrag",
+"Zeiteintrag-ID erforderlich"; dazu die Texte aus `ValidateTimeEntry`.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 12 neue Testfunktionen grün. Gegenprobe mit sechs
+Verfälschungen (Sperre, Intervallgrenzen, Storno-Filter, Mandantenfilter
+in `Get` und beim Projekt, "bereits beendet"-Prüfung): jede ließ einen
+Test fehlschlagen, Datei danach byteidentisch. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/time_entries.go` (neu),
+`server/internal/hr/time_entries_test.go` (neu),
+`server/internal/hr/time_entries_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 
