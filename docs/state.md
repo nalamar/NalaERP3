@@ -7,33 +7,27 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.4.5** (`LeaveService` gehärtet), davor
-> F.4.4, F.4.3, F.4.2, F.4.1. Siehe Abschnitt "Epic F, Task F.4"
-> weiter unten.
-> **Nächste Subtask: F.4.6** (letzte von F.4) — HTTP-Routen
-> `/api/v1/leave-requests` in neuer Datei
-> `server/internal/http/leave_requests.go`: `POST /` (Anlegen),
-> `GET /` (Liste, optional `employee_id`), `GET /{id}`,
-> `POST /{id}/decide` (Body `{"approve": true|false}`). Rechte nach dem
-> Muster der Zeiterfassung: `leave_requests.self` für eigene Anträge
-> (über `EmployeeIDForUser`), `leave_requests.read` für fremde Listen
-> und Einzelabrufe, `leave_requests.decide` zum Entscheiden.
-> `resolveTimeEntryEmployee` ist auf die Zeiterfassungsrechte
-> festgelegt (self-Konstante fest verdrahtet) — für die Wiederverwendung
-> das self-Recht zum Parameter machen statt die Funktion zu kopieren;
-> die Zeiterfassungs-Tests müssen danach unverändert grün sein.
-> Entscheiden: `deciderUserID` = angemeldeter Benutzer, `approver` =
-> dessen verknüpfter Mitarbeiter, falls vorhanden. Datumsangaben als
-> `JJJJ-MM-TT` über ein eigenes Eingabe-Struct (`LeaveRequest` erwartet
-> RFC3339). Vom Aufrufer mitgegebene Status-/Entscheidungsfelder dürfen
-> nicht durchgereicht werden. Neue Fehlertexte in
-> `classifyDomainError` plus Testzeile ("bereits entschieden" → 409;
-> "Ungültiger Antragstyp" und "Tage dürfen" sind über "ungültig" bzw.
-> prüfen). **Test mit einer Rolle, die nur `leave_requests.read` hat**
-> (Lehre aus F.4.4), und HTTP-Test mit zweitem Mandanten. Offene
-> Fachfrage "eigenen Antrag selbst entscheiden" bleibt offen und wird
-> NICHT erzwungen. Gegenprobe über das Skript-Verfahren.
-> **Test-DB vorher frisch aufsetzen.**
+> Zuletzt abgeschlossen: **F.4.6** — damit ist **TASK F.4 (HR-Bestand
+> an HTTP) VOLLSTÄNDIG**: F.4.1 ADR 0025, F.4.2 Migration 087, F.4.3
+> und F.4.5 Services gehärtet, F.4.4 und F.4.6 Routen. Davor Task F.1
+> (Zeiterfassung). Siehe Abschnitt "Epic F, Task F.4" weiter unten.
+> **Nächste Arbeit: F.2 (Weiterbildung/Qualifikationen/
+> Unterweisungen)** — nach der Entscheidung des Nutzers vom
+> 2026-10-13 gilt nach F.4 wieder die Backlog-Reihenfolge (F.2, dann
+> F.3). F.2 ist nur eine Zeile im Backlog und beginnt mit einer
+> Bestandsaufnahme und ADR (F.2.1): im Repo gibt es dazu nichts
+> (per Suche vor Beginn bestätigen); zu klären sind u. a.
+> Qualifikation als Stammdatum gegen Nachweis je Mitarbeiter mit
+> Gültigkeit/Ablauf, Unterweisungen mit Wiederholungsfrist (z. B.
+> jährliche Sicherheitsunterweisung, Schweißerprüfungen,
+> Staplerschein), Nachweisdokumente (GridFS ist vorhanden), wer was
+> sehen darf (Zweckbindung wie bei `employees.read`). Fachliche
+> Vorgaben dazu fehlen — was nicht aus `aufgabe.md` oder dem Repo
+> folgt, als offene Frage stellen statt raten (§7.10).
+> **Kleine offene Positionen, die sich vorher anbieten, aber eine
+> Entscheidung des Nutzers brauchen** (nicht eigenmächtig vorziehen):
+> F.9 (Testlücke read/write Zeiterfassung, klein), 0.46 (Query-String
+> im Request-Log).
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -10391,6 +10385,54 @@ Geänderte Dateien: `server/internal/hr/service.go`,
 `server/internal/hr/leave_hardening_integration_test.go` (neu),
 `docs/adr/0025-hr-bestand-http-anbindung.md`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.4.6 HTTP-Routen Urlaubsanträge (letzte Subtask von F.4)
+
+Neue Datei `server/internal/http/leave_requests.go`. Routen unter
+`/api/v1/leave-requests`:
+
+| Route | Zweck | eigene | fremde |
+|---|---|---|---|
+| `POST /` | Antrag stellen | `self` | `decide` |
+| `GET /` | Liste | `self` | `read` (ohne `employee_id`: alle) |
+| `GET /{id}` | Einzelabruf | `self` | `read` |
+| `POST /{id}/decide` | genehmigen/ablehnen | — | `decide` |
+
+**Gemeinsame Rechteprüfung:** `resolveOwnOrPermittedEmployee` in
+`http/time_entries.go` (self-Recht als Parameter). Zeiterfassung und
+Urlaubsanträge nutzen dieselbe Funktion; ein drittes Modul mit dem
+Muster "eigene Daten mit self, fremde mit breitem Recht" soll sie
+ebenfalls nutzen statt sie nachzubauen.
+
+**Präzisierung gegenüber ADR 0025:** Antrag für einen anderen
+Mitarbeiter stellen = `leave_requests.decide`.
+
+**Korrektur einer eigenen Falschaussage:** in F.1.5.1 steht, der
+Query-String werde nicht geloggt. Er wird geloggt
+(`requestLoggerMiddleware`). Folge: Mitarbeiter-UUIDs der
+Listenabfragen stehen im Request-Log. Backlog 0.46.
+
+**Stand der HR-API nach F.1 und F.4** (alle unter `/api/v1`):
+`/time-entries` (6 Routen), `/employees` (6 Routen),
+`/leave-requests` (4 Routen). Der Client kennt keine davon (F.5, F.7).
+
+**Offen nach F.4:** F.7 Client Mitarbeiterverwaltung; F.8
+Abwesenheiten, Feiertage, Urlaubskonto, Team-Anlage, Rücknahme
+offener Anträge; F.9 Testlücke; 0.46 Query-String im Log; Fachfragen
+zu Löschfristen und zur Entscheidung über den eigenen Antrag.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+7 neue Testfunktionen grün; die Tests der Zeiterfassung und des
+Mitarbeiterstamms laufen nach dem Umbau der Rechteprüfung
+unverändert. Gegenprobe mit 18 Verfälschungen über das
+Skript-Verfahren: alle angewendet, alle erkannt. Vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/leave_requests.go` (neu),
+`server/internal/http/leave_requests_integration_test.go` (neu),
+`server/internal/http/time_entries.go`, `server/internal/http/v1.go`,
+`docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 

@@ -1,6 +1,7 @@
 package apihttp
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -39,33 +40,41 @@ func hasPermission(req *http.Request, permission string) bool {
 	return false
 }
 
-// resolveTimeEntryEmployee bestimmt, fuer welchen Mitarbeiter ein Aufruf
-// gilt, und prueft zugleich, ob der angemeldete Benutzer das darf.
+// employeeForUser loest einen Login zu seinem Mitarbeiter auf
+// (hr_employees.user_id). hr.TimeEntryService erfuellt das.
+type employeeForUser interface {
+	EmployeeIDForUser(ctx context.Context, userID, companyID string) (uuid.UUID, bool, error)
+}
+
+// resolveOwnOrPermittedEmployee bestimmt, fuer welchen Mitarbeiter ein
+// Aufruf gilt, und prueft zugleich, ob der angemeldete Benutzer das darf.
+// Das Muster "eigene Daten mit self-Recht, fremde mit einem breiten Recht"
+// gilt fuer Zeiteintraege und Urlaubsantraege gleichermassen.
 //
 // requested ist der im Aufruf genannte Mitarbeiter (nil = keiner genannt,
-// gemeint ist der eigene). broadPermission ist das Recht, das den Zugriff
-// auf fremde Zeiten erlaubt (read oder write).
+// gemeint ist der eigene). broadPermission erlaubt den Zugriff auf fremde
+// Daten, selfPermission den auf die eigenen.
 //
 // Bei false ist die Antwort bereits geschrieben.
-func resolveTimeEntryEmployee(w http.ResponseWriter, req *http.Request, svc *hr.TimeEntryService, requested *uuid.UUID, broadPermission string) (uuid.UUID, bool) {
+func resolveOwnOrPermittedEmployee(w http.ResponseWriter, req *http.Request, resolver employeeForUser, requested *uuid.UUID, broadPermission, selfPermission string) (uuid.UUID, bool) {
 	broad := hasPermission(req, broadPermission)
 	if broad && requested != nil {
 		return *requested, true
 	}
-	if !broad && !hasPermission(req, permTimeEntriesSelf) {
+	if !broad && !hasPermission(req, selfPermission) {
 		writeAPIError(w, req, http.StatusForbidden, "forbidden", "Keine Berechtigung")
 		return uuid.Nil, false
 	}
 
 	companyID, _ := companyIDFromContext(req.Context())
-	own, linked, err := svc.EmployeeIDForUser(req.Context(), actorUserIDFromContext(req.Context()), companyID)
+	own, linked, err := resolver.EmployeeIDForUser(req.Context(), actorUserIDFromContext(req.Context()), companyID)
 	if err != nil {
 		writeDomainError(w, req, err)
 		return uuid.Nil, false
 	}
 	if !linked {
 		if broad {
-			// Darf fuer alle buchen, hat aber selbst keinen
+			// Darf fuer alle handeln, hat aber selbst keinen
 			// Mitarbeiterdatensatz: dann muss er sagen, fuer wen.
 			writeAPIError(w, req, http.StatusBadRequest, "validation_error", "employee_id erforderlich")
 			return uuid.Nil, false
@@ -78,6 +87,13 @@ func resolveTimeEntryEmployee(w http.ResponseWriter, req *http.Request, svc *hr.
 		return uuid.Nil, false
 	}
 	return own, true
+}
+
+// resolveTimeEntryEmployee ist resolveOwnOrPermittedEmployee mit den
+// Rechten der Zeiterfassung. broadPermission ist time_entries.read oder
+// time_entries.write.
+func resolveTimeEntryEmployee(w http.ResponseWriter, req *http.Request, svc *hr.TimeEntryService, requested *uuid.UUID, broadPermission string) (uuid.UUID, bool) {
+	return resolveOwnOrPermittedEmployee(w, req, svc, requested, broadPermission, permTimeEntriesSelf)
 }
 
 // loadAuthorizedTimeEntry laedt einen Eintrag und prueft, ob der

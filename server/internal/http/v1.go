@@ -68,6 +68,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	ccSvc := accounting.NewCostCenterService(pg)
 	timeEntrySvc := hr.NewTimeEntryService(pg)
 	employeeSvc := hr.NewEmployeeService(pg)
+	leaveSvc := hr.NewLeaveService(pg)
 	datevExportSvc := accounting.NewDatevExportService(pg)
 	eInvoiceSvc := accounting.NewEInvoiceService(pg, settings.NewCompanyService(pg))
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
@@ -1717,6 +1718,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 
 	mountTimeEntryRoutes(protected, timeEntrySvc)
 	mountEmployeeRoutes(protected, employeeSvc)
+	mountLeaveRequestRoutes(protected, leaveSvc, timeEntrySvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5037,7 +5039,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits storniert"),
 		strings.Contains(msg, "ist storniert"),
 		strings.Contains(msg, "überschneidet sich"),
-		strings.Contains(msg, "bereits mit einem anderen"):
+		strings.Contains(msg, "bereits mit einem anderen"),
+		strings.Contains(msg, "bereits entschieden"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5104,7 +5107,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "kann erst beim beenden"),
 		strings.Contains(msg, "kann den mitarbeiter nicht"),
 		strings.Contains(msg, "darf höchstens"),
-		strings.Contains(msg, "unbekanntes feld"):
+		strings.Contains(msg, "unbekanntes feld"),
+		strings.Contains(msg, "nicht überschreiten"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"
