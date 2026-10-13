@@ -7,17 +7,15 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.1.1** (ADR 0024 Zeiterfassung) — erste
-> Subtask von Epic F. Siehe Abschnitt "Epic F, Task F.1" weiter unten.
-> **Nächste Subtask: F.1.2** — Migration `086_hr_time_entries.sql`
-> (Tabelle `hr_time_entries`, Spalte `hr_employees.user_id`, drei
-> Permissions `time_entries.self`/`read`/`write`), exakt nach der
-> Tabelle in ADR 0024. **F.1.2 braucht ein laufendes Docker** für die
-> Verifikation gegen frische DB — am 2026-10-13 lief der Daemon nicht
-> (`docker info`: Named Pipe `dockerDesktopLinuxEngine` nicht gefunden).
-> Läuft er bei Sessionstart weiterhin nicht: F.1.3 (DB-lose Fachregeln)
-> vorziehen, das ist ohne Datenbank vollständig verifizierbar und hängt
-> nicht von F.1.2 ab.
+> Zuletzt abgeschlossen: **F.1.2** (Migration `086_hr_time_entries.sql`),
+> davor F.1.1 (ADR 0024 Zeiterfassung). Siehe Abschnitt "Epic F, Task
+> F.1" weiter unten.
+> **Nächste Subtask: F.1.3** — Fachregeln ohne Datenbank in
+> `server/internal/hr`: Validierung eines Zeiteintrags (nur Unmögliches
+> ablehnen) und die ArbZG-Tagesauswertung mit den vier Hinweisen
+> `ueber_8h`/`ueber_10h`/`pause_zu_kurz`/`ruhezeit_unterschritten` als
+> reine Funktionen, Tests für jede Regel einschließlich der Grenzwerte
+> (genau 6 h/9 h/10 h/11 h). Kein DB-Zugriff, kein HTTP.
 >
 > *Vorheriger Stand (2026-09-24):*
 > Zuvor abgeschlossen: **E.7** — und damit **EPIC E (Finanzwesen)
@@ -9856,6 +9854,47 @@ Migrationsnummer 086, nächste freie Epic-0-Nummer 0.45).
 
 Geänderte Dateien: `docs/adr/0024-zeiterfassung.md` (neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
+### F.1.2 Migration: `hr_time_entries`, `hr_employees.user_id`, drei Permissions
+
+Neue Datei `server/internal/migrate/migrations/086_hr_time_entries.sql`.
+Kein Go-Code geändert.
+
+**Über die ADR-Tabelle hinaus** zwei CHECKs, die dort bereits
+entschiedene Regeln zusätzlich in der Datenbank absichern (in ADR 0024
+als Nachtrag vermerkt): Pause kürzer als die Anwesenheit, und
+Storno-Konsistenz. `storniert_by_user_id` gehört bewusst nicht zum
+Storno-Check — die Spalte wird per `ON DELETE SET NULL` leer, wenn der
+Benutzer später gelöscht wird, und das darf den Eintrag nicht ungültig
+machen.
+
+**Verifikation (alles tatsächlich ausgeführt, Details im Backlog):**
+
+- `go build ./...`, `go vet ./...` clean.
+- Kette 001-086 auf leerer DB durchgelaufen, Schema per `\d` gegen die
+  ADR geprüft, Rollenzuordnung per SQL bestätigt.
+- 14 Fälle direkt per SQL provoziert. Der wichtigste ist ein
+  Positivfall: ein 11-Stunden-Tag ohne Pause wird angenommen.
+- Down-Pfad wörtlich aus der Datei extrahiert, gegen eine DB mit
+  Zeitdaten ausgeführt, danach Migration erneut angewendet.
+- Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen
+  frische DB: durchgehend `ok`.
+
+**Für F.1.4 merken:** verletzt ein Insert zwei CHECKs zugleich, meldet
+Postgres den alphabetisch ersten Constraint-Namen — "Ende vor Beginn"
+erscheint als `hr_time_entries_break_within_presence`. Fehlertexte also
+nie aus dem Constraint-Namen ableiten; die Service-Validierung muss
+vorher greifen, die CHECKs sind nur das Netz darunter.
+
+**Nicht Teil dieser Subtask, nur beobachtet:** `gofmt -l ./internal`
+listet eine Reihe bestehender Dateien (u. a. `accounting/ar.go`,
+mehrere `http/*_integration_test.go`). Keine davon wurde hier
+angefasst; ob das das bereits dokumentierte CRLF-Artefakt ist oder
+echte Formatabweichungen, wurde nicht untersucht.
+
+Geänderte Dateien:
+`server/internal/migrate/migrations/086_hr_time_entries.sql` (neu),
+`docs/adr/0024-zeiterfassung.md`, `docs/backlog.md`, `docs/state.md`.
 
 ## Offene Punkte
 

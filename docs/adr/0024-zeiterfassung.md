@@ -186,6 +186,12 @@ partieller UNIQUE-Index auf `(employee_id) WHERE ended_at IS NULL AND
 status='active'` (höchstens ein laufender Eintrag je Mitarbeiter, von
 der Datenbank garantiert, nicht nur vom Code).
 
+Nachtrag F.1.2 (2026-10-13): zwei weitere CHECKs sichern Regeln, die
+oben bereits entschieden sind, zusätzlich in der Datenbank ab —
+Pause kürzer als die Anwesenheit (bei abgeschlossenem Eintrag) und
+Storno-Konsistenz (`storniert` nur mit Zeitpunkt und nichtleerer
+Begründung, `active` nur ohne beides).
+
 - **`ON DELETE RESTRICT` statt `CASCADE`.** `hr_leave_requests` und
   `hr_absences` hängen mit `CASCADE` an `hr_employees`. Für Zeitdaten
   wäre das falsch: das Löschen eines Mitarbeiters würde
