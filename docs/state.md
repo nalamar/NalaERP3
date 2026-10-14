@@ -7,35 +7,28 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.5.2** — damit ist **Task F.2.5 (HTTP
-> für Katalog, Nachweise, Anforderungen) vollständig**. Davor F.2.4,
-> F.2.3, F.2.2, F.2.1.
-> **Nächste Subtask: F.2.6** (letzte von F.2) — HTTP-Auswertung
-> "anmahnen" (Vorgabe des Nutzers: "Eine anstehende Erneuerung sollte
-> vom System angemahnt werden"):
-> (1) Stand eines Mitarbeiters: `GET /qualifications/standing`
-> (ohne `employee_id` der eigene; `self`/`read` wie die Nachweise) über
-> `QualificationService.Standing`, Stichtag = heute in Europe/Berlin
-> (`hr.WorkDateOf(time.Now())`), Vorwarnzeit per Query-Parameter mit
-> Standard `hr.DefaultQualificationWarnDays`.
-> (2) Betriebsweite Fälligkeitsliste für die Personalabteilung
-> (`read`): alle AKTIVEN Mitarbeiter mit allem, was fehlt, abgelaufen
-> ist oder abläuft — gültige weglassen. Daten GESAMMELT laden (Arten,
-> Anforderungen, aktive Nachweise des Mandanten je eine Abfrage) und
-> `EvaluateQualifications` je Mitarbeiter anwenden, NICHT `Standing` in
-> einer Schleife (vier Abfragen je Mitarbeiter). Dafür eine neue
-> Service-Funktion im Paket `hr` mit eigenen Tests; dieselben Regeln
-> wie `Standing` (siehe F.2.4.3) — am besten beide auf eine gemeinsame
-> Hilfsfunktion stützen, damit sie nicht auseinanderlaufen.
-> Sortierung: Dringlichkeit, dann Tage bis Ablauf, dann Name.
-> Neue Query-Parameter in `loggedQueryKeys` eintragen. Tests dürfen
-> nicht vom echten Tagesdatum abhängen — die HTTP-Route nimmt "heute";
-> deshalb Testdaten so wählen, dass das Ergebnis an jedem Tag der
-> nächsten Jahre gleich ist (z. B. längst abgelaufene und weit in der
-> Zukunft liegende Nachweise, plus ein Nachweis, dessen Ablauf relativ
-> zu heute berechnet wird), oder den Stichtag als optionalen
-> Parameter zulassen und dokumentieren.
-> Danach ist F.2 fertig; es folgt nach Backlog-Reihenfolge F.3
+> Zuletzt abgeschlossen: **F.2.6.1** (betriebsweite Liste im Service,
+> gemeinsame Regelbasis mit dem Stand eines Mitarbeiters). F.2.6 ist
+> in zwei Micro-Subtasks zerlegt. Davor F.2.5, F.2.4, F.2.3, F.2.2,
+> F.2.1.
+> **Nächste Subtask: F.2.6.2** (letzte von F.2) — zwei Routen in
+> `server/internal/http/qualifications.go`:
+> (1) `GET /qualifications/standing?employee_id=&warn_tage=` — Stand
+> eines Mitarbeiters (`Standing`), ohne `employee_id` der eigene,
+> `self`/`read` über `resolveOwnOrPermittedEmployee`;
+> (2) `GET /qualifications/due?warn_tage=` — betriebsweite Liste
+> (`DueList`), NUR `qualifications.read` (enthält Namen aller
+> Mitarbeiter). Beide Routen VOR `/{id}` bzw. als statische Pfade
+> (chi bevorzugt statische Pfade, im Test belegen).
+> Stichtag = `hr.WorkDateOf(time.Now())`; `warn_tage` optional,
+> Standard `hr.DefaultQualificationWarnDays`, ungültig/negativ → 400.
+> `warn_tage` in `loggedQueryKeys` eintragen. **Tests dürfen nicht vom
+> echten Tagesdatum abhängen**: Nachweise so wählen, dass das Ergebnis
+> an jedem Tag gleich ist (lange abgelaufen, unbefristet, fehlend),
+> und für "läuft ab" das Erwerbsdatum relativ zu heute berechnen
+> (z. B. heute minus 11 Monate bei 12-Monats-Frist → läuft in etwa
+> 30 Tagen ab). Rollen mit genau einem Recht, zweiter Mandant.
+> Danach ist F.2 fertig; nach Backlog-Reihenfolge folgt F.3
 > (Asset-Zuordnung).
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
@@ -10794,6 +10787,43 @@ erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
 Geänderte Dateien: `server/internal/http/qualifications.go`,
 `server/internal/http/qualifications_integration_test.go` (neu),
 `server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+### F.2.6 Zerlegung in Micro-Subtasks
+
+F.2.6.1 Service (betriebsweite Liste, gemeinsame Regelbasis),
+F.2.6.2 HTTP.
+
+### F.2.6.1 Betriebsweite Liste und gemeinsame Regelbasis
+
+Neue Datei `server/internal/hr/qualification_due.go`:
+
+- `QualificationService.DueList(today, warnDays, companyID)` —
+  offene Punkte aller aktiven Mitarbeiter, vier Abfragen.
+- `qualificationCatalog.evaluateEmployeeStanding(…)` — die Regeln an
+  EINER Stelle; `Standing` ist darauf umgestellt.
+
+**Wächter:** `TestQualificationDueListMatchesStanding` prüft, dass
+Liste und Einzelstand übereinstimmen. Wer eine Regel ändert, ändert
+sie in `evaluateEmployeeStanding` — dann gilt sie für beide.
+
+**Lehre aus der Gegenprobe:** um eine doppelt gesicherte Regel als
+gleichwertig zu belegen, muss der Test den Fall überhaupt enthalten.
+Ohne stornierten Nachweis im Testbetrieb wäre auch das Entfernen
+beider Sicherungen unbemerkt geblieben — "gleichwertig" wäre dann
+eine Behauptung gewesen, kein Beleg.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l
+internal/hr/` clean. 3 neue Testfunktionen grün, die Tests zum Stand
+eines Mitarbeiters unverändert grün. Gegenprobe mit 16
+Verfälschungen: 13 sofort erkannt, eine nach ergänztem Testfall, zwei
+als gleichwertig belegt. Vollständiger `NALA_INTEGRATION=1 go test
+./... -p 1 -count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/qualification_due.go` (neu),
+`server/internal/hr/qualification_due_integration_test.go` (neu),
+`server/internal/hr/qualification_requirements.go`,
+`server/internal/hr/qualifications_test.go`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

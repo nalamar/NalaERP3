@@ -112,6 +112,12 @@ func TestQualificationRequirementsAndStandingValidateBeforeTouchingDatabase(t *t
 	}
 }
 
+func TestQualificationDueListValidatesBeforeTouchingDatabase(t *testing.T) {
+	if _, err := NewQualificationService(nil).DueList(context.Background(), time.Now(), 60, " "); err == nil || err.Error() != "Mandant erforderlich" {
+		t.Fatalf("erwartet 'Mandant erforderlich', bekommen %v", err)
+	}
+}
+
 func TestUniqueEmployeeIDsDedupesAndSorts(t *testing.T) {
 	a, b, c := uuid.MustParse("00000000-0000-0000-0000-00000000000a"), uuid.MustParse("00000000-0000-0000-0000-00000000000b"), uuid.MustParse("00000000-0000-0000-0000-00000000000c")
 	got := uniqueEmployeeIDs([]uuid.UUID{c, a, b, a, c})

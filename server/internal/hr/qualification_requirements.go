@@ -3,7 +3,6 @@ package hr
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 	"time"
 
@@ -205,13 +204,8 @@ func qualificationStandRank(status string) int {
 // ein Eintrag - das Dringendste zuerst (fehlt, abgelaufen, laeuft ab,
 // gueltig), darin nach Name.
 //
-// Erforderlich ist, was dem Mitarbeiter als Anforderung zugeordnet ist,
-// und - fuer AKTIVE Mitarbeiter - was fuer alle Pflicht ist.
-//
-// Stillgelegte Arten erscheinen nicht: weder ihre Nachweise noch
-// Anforderungen auf sie. Eine Art, die der Betrieb nicht mehr fuehrt, soll
-// nicht mehr angemahnt werden. Die Nachweise selbst bleiben ueber
-// ListForEmployee nachlesbar.
+// Die Regeln (was erforderlich ist, was nicht zaehlt) stehen in
+// evaluateEmployeeStanding und gelten gleich fuer DueList.
 func (s *QualificationService) Standing(ctx context.Context, employeeID uuid.UUID, today time.Time, warnDays int, companyID string) ([]EmployeeQualificationStanding, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
@@ -227,30 +221,12 @@ func (s *QualificationService) Standing(ctx context.Context, employeeID uuid.UUI
 		return nil, err
 	}
 
-	// Die aktiven Arten des Mandanten - sie bestimmen, was ueberhaupt
-	// betrachtet wird, und liefern die Namen.
-	types := make(map[uuid.UUID]QualificationType)
-	required := make([]uuid.UUID, 0)
-	typeRows, err := s.pg.Query(ctx, `SELECT `+qualificationTypeColumns+` FROM hr_qualification_types WHERE company_id=$1 AND aktiv`, companyID)
+	catalog, err := s.loadActiveCatalog(ctx, companyID)
 	if err != nil {
 		return nil, err
 	}
-	for typeRows.Next() {
-		qt, err := scanQualificationType(typeRows)
-		if err != nil {
-			typeRows.Close()
-			return nil, err
-		}
-		types[qt.ID] = *qt
-		if qt.PflichtFuerAlle && employeeActive {
-			required = append(required, qt.ID)
-		}
-	}
-	typeRows.Close()
-	if err := typeRows.Err(); err != nil {
-		return nil, err
-	}
 
+	ownRequirements := make([]uuid.UUID, 0)
 	reqRows, err := s.pg.Query(ctx, `SELECT type_id FROM hr_employee_qualification_requirements WHERE employee_id=$1`, employeeID)
 	if err != nil {
 		return nil, err
@@ -261,41 +237,16 @@ func (s *QualificationService) Standing(ctx context.Context, employeeID uuid.UUI
 			reqRows.Close()
 			return nil, err
 		}
-		if _, ok := types[id]; ok {
-			required = append(required, id)
-		}
+		ownRequirements = append(ownRequirements, id)
 	}
 	reqRows.Close()
 	if err := reqRows.Err(); err != nil {
 		return nil, err
 	}
 
-	all, err := s.ListForEmployee(ctx, employeeID, false, companyID)
+	records, err := s.ListForEmployee(ctx, employeeID, false, companyID)
 	if err != nil {
 		return nil, err
 	}
-	records := make([]EmployeeQualification, 0, len(all))
-	for _, r := range all {
-		if _, ok := types[r.TypeID]; ok {
-			records = append(records, r)
-		}
-	}
-
-	standings := EvaluateQualifications(records, required, today, warnDays)
-	out := make([]EmployeeQualificationStanding, 0, len(standings))
-	for _, st := range standings {
-		qt := types[st.TypeID]
-		out = append(out, EmployeeQualificationStanding{QualificationStanding: st, Code: qt.Code, Name: qt.Name, Kategorie: qt.Kategorie})
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		ri, rj := qualificationStandRank(out[i].Status), qualificationStandRank(out[j].Status)
-		if ri != rj {
-			return ri < rj
-		}
-		if out[i].Name != out[j].Name {
-			return out[i].Name < out[j].Name
-		}
-		return out[i].Code < out[j].Code
-	})
-	return out, nil
+	return catalog.evaluateEmployeeStanding(employeeActive, ownRequirements, records, today, warnDays), nil
 }
