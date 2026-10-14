@@ -3,6 +3,7 @@ package apihttp
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -165,6 +166,198 @@ func mountQualificationTypeRoutes(protected chi.Router, svc *hr.QualificationTyp
 			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.Update(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+}
+
+// parseOptionalDate liest ein Datum im Format JJJJ-MM-TT. Ein leerer Wert
+// ergibt nil. Bei false ist die Antwort bereits geschrieben.
+func parseOptionalDate(w http.ResponseWriter, req *http.Request, name, value string) (*time.Time, bool) {
+	if value == "" {
+		return nil, true
+	}
+	d, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges Datum in "+name+" (erwartet JJJJ-MM-TT)")
+		return nil, false
+	}
+	return &d, true
+}
+
+// optionalEmployeeID liest den Query-Parameter employee_id. Bei false ist
+// die Antwort bereits geschrieben.
+func optionalEmployeeID(w http.ResponseWriter, req *http.Request) (*uuid.UUID, bool) {
+	v := req.URL.Query().Get("employee_id")
+	if v == "" {
+		return nil, true
+	}
+	id, err := uuid.Parse(v)
+	if err != nil {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige employee_id")
+		return nil, false
+	}
+	return &id, true
+}
+
+// mountQualificationRoutes haengt Nachweise und Anforderungen ein.
+//
+// Nachweise erfasst und storniert nur, wer qualifications.write hat - es
+// gibt keinen Selbsteintrag (Vorgabe des Nutzers vom 2026-10-13: "Die
+// Personalabteilung traegt ein, welche Qualifikationen erreicht sind").
+// Lesen nach dem Muster der Zeiterfassung: eigene mit self, fremde mit
+// read (resolveOwnOrPermittedEmployee).
+func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService, resolver employeeForUser) {
+	write := requirePermission(permQualificationsWrite)
+
+	protected.Route("/qualifications", func(r chi.Router) {
+		// Einen Nachweis fuer einen oder mehrere Mitarbeiter erfassen -
+		// ganz oder gar nicht. Liefert je Mitarbeiter den erfassten Nachweis.
+		r.With(write).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				EmployeeIDs []uuid.UUID `json:"employee_ids"`
+				TypeID      uuid.UUID   `json:"type_id"`
+				ErworbenAm  string      `json:"erworben_am"`
+				GueltigBis  string      `json:"gueltig_bis"`
+				Aussteller  string      `json:"aussteller"`
+				NachweisNr  string      `json:"nachweis_nr"`
+				Note        string      `json:"note"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			erworben, ok := parseOptionalDate(w, req, "erworben_am", in.ErworbenAm)
+			if !ok {
+				return
+			}
+			gueltigBis, ok := parseOptionalDate(w, req, "gueltig_bis", in.GueltigBis)
+			if !ok {
+				return
+			}
+			input := hr.QualificationInput{EmployeeIDs: in.EmployeeIDs, TypeID: in.TypeID, GueltigBis: gueltigBis, Aussteller: in.Aussteller, NachweisNr: in.NachweisNr, Note: in.Note}
+			if erworben != nil {
+				input.ErworbenAm = *erworben // fehlt es, meldet der Service "Erwerbsdatum erforderlich"
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Create(req.Context(), input, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Nachweise eines Mitarbeiters; ohne employee_id die eigenen.
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			employeeID, ok := resolveOwnOrPermittedEmployee(w, req, resolver, requested, permQualificationsRead, permQualificationsSelf)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListForEmployee(req.Context(), employeeID, req.URL.Query().Get("include_storniert") == "true", companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Anforderungen eines Mitarbeiters: was seine Stelle verlangt.
+		// Lesen wie die Nachweise; ohne employee_id die eigenen.
+		r.Get("/requirements", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			employeeID, ok := resolveOwnOrPermittedEmployee(w, req, resolver, requested, permQualificationsRead, permQualificationsSelf)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListRequirements(req.Context(), employeeID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Anforderungen setzen: ersetzt die Menge vollstaendig. Die
+		// employee_id ist hier Pflicht - geaendert wird nie "die eigene"
+		// Stelle, sondern immer ausdruecklich die eines Mitarbeiters.
+		r.With(write).Put("/requirements", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			if requested == nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "employee_id erforderlich")
+				return
+			}
+			var in struct {
+				TypeIDs *[]uuid.UUID `json:"type_ids"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			// Eine fehlende Liste ist nicht dasselbe wie eine leere: ein
+			// vergessenes Feld wuerde sonst alle Anforderungen entfernen.
+			if in.TypeIDs == nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Feld erforderlich: type_ids")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.SetRequirements(req.Context(), *requested, *in.TypeIDs, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachweis-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Get(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			if _, ok := resolveOwnOrPermittedEmployee(w, req, resolver, &out.EmployeeID, permQualificationsRead, permQualificationsSelf); !ok {
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(write).Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachweis-ID")
+				return
+			}
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Storno(req.Context(), id, in.Reason, actorUserIDFromContext(req.Context()), companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return

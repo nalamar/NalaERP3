@@ -7,32 +7,36 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.5.1** (HTTP-Routen Katalog). F.2.5 ist
-> in zwei Micro-Subtasks zerlegt. Davor Task F.2.4 (Service)
-> vollständig, F.2.3, F.2.2, F.2.1.
-> **Nächste Subtask: F.2.5.2** — HTTP-Routen Nachweise und
-> Anforderungen in `server/internal/http/qualifications.go`:
-> `/qualifications`: `POST /` (Eingabe-Struct mit `employee_ids`,
-> `type_id`, `erworben_am` und optional `gueltig_bis` als
-> `JJJJ-MM-TT`, `aussteller`, `nachweis_nr`, `note`; NUR
-> `qualifications.write` — kein Selbsteintrag, Vorgabe des Nutzers),
-> `GET /{id}` und `GET /?employee_id=&include_storniert=` (eigene mit
-> `self`, fremde mit `read`; `resolveOwnOrPermittedEmployee` und für
-> den Einzelabruf das Muster `loadAuthorizedTimeEntry`),
-> `POST /{id}/storno` (nur `write`).
-> Anforderungen: `GET` und `PUT` (Liste `type_ids`) — Pfad beim
-> Umsetzen festlegen; NICHT unter `/employees/…`, weil dort
-> `employees.*` gilt, hier `qualifications.*`. Vorschlag:
-> `/qualifications/requirements?employee_id=` bzw.
-> `/qualifications/requirements/{employeeID}`; ACHTUNG
-> Routenreihenfolge gegen `/qualifications/{id}`.
-> `classifyDomainError`: "ist stillgelegt" ergänzen, plus Testzeile;
-> neue Query-Parameter in `loggedQueryKeys` eintragen
-> (`employee_id`, `include_storniert` sind schon drin).
-> Tests mit Rollen, die genau eines der Rechte haben
-> (`seedRoleWithPermissions`), und mit zweitem Mandanten; Mandanten
-> wie in F.2.5.1 je Test frisch anlegen (`newCatalogTenant`).
-> Stand je Mitarbeiter und betriebsweite Liste sind F.2.6.
+> Zuletzt abgeschlossen: **F.2.5.2** — damit ist **Task F.2.5 (HTTP
+> für Katalog, Nachweise, Anforderungen) vollständig**. Davor F.2.4,
+> F.2.3, F.2.2, F.2.1.
+> **Nächste Subtask: F.2.6** (letzte von F.2) — HTTP-Auswertung
+> "anmahnen" (Vorgabe des Nutzers: "Eine anstehende Erneuerung sollte
+> vom System angemahnt werden"):
+> (1) Stand eines Mitarbeiters: `GET /qualifications/standing`
+> (ohne `employee_id` der eigene; `self`/`read` wie die Nachweise) über
+> `QualificationService.Standing`, Stichtag = heute in Europe/Berlin
+> (`hr.WorkDateOf(time.Now())`), Vorwarnzeit per Query-Parameter mit
+> Standard `hr.DefaultQualificationWarnDays`.
+> (2) Betriebsweite Fälligkeitsliste für die Personalabteilung
+> (`read`): alle AKTIVEN Mitarbeiter mit allem, was fehlt, abgelaufen
+> ist oder abläuft — gültige weglassen. Daten GESAMMELT laden (Arten,
+> Anforderungen, aktive Nachweise des Mandanten je eine Abfrage) und
+> `EvaluateQualifications` je Mitarbeiter anwenden, NICHT `Standing` in
+> einer Schleife (vier Abfragen je Mitarbeiter). Dafür eine neue
+> Service-Funktion im Paket `hr` mit eigenen Tests; dieselben Regeln
+> wie `Standing` (siehe F.2.4.3) — am besten beide auf eine gemeinsame
+> Hilfsfunktion stützen, damit sie nicht auseinanderlaufen.
+> Sortierung: Dringlichkeit, dann Tage bis Ablauf, dann Name.
+> Neue Query-Parameter in `loggedQueryKeys` eintragen. Tests dürfen
+> nicht vom echten Tagesdatum abhängen — die HTTP-Route nimmt "heute";
+> deshalb Testdaten so wählen, dass das Ergebnis an jedem Tag der
+> nächsten Jahre gleich ist (z. B. längst abgelaufene und weit in der
+> Zukunft liegende Nachweise, plus ein Nachweis, dessen Ablauf relativ
+> zu heute berechnet wird), oder den Stichtag als optionalen
+> Parameter zulassen und dokumentieren.
+> Danach ist F.2 fertig; es folgt nach Backlog-Reihenfolge F.3
+> (Asset-Zuordnung).
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10755,6 +10759,40 @@ angewendet, alle erkannt. Vollständiger `NALA_INTEGRATION=1 go test
 
 Geänderte Dateien: `server/internal/http/qualifications.go` (neu),
 `server/internal/http/qualification_types_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
+
+### F.2.5.2 HTTP-Routen Nachweise und Anforderungen (letzte Subtask von F.2.5)
+
+`server/internal/http/qualifications.go` um `mountQualificationRoutes`
+erweitert. Routen unter `/api/v1/qualifications`:
+
+| Route | Zweck | eigene | fremde |
+|---|---|---|---|
+| `POST /` | Nachweis für einen oder mehrere erfassen | — | `write` |
+| `GET /` | Nachweise eines Mitarbeiters | `self` | `read` |
+| `GET /{id}` | Einzelabruf | `self` | `read` |
+| `POST /{id}/storno` | stornieren | — | `write` |
+| `GET /requirements` | Anforderungen lesen | `self` | `read` |
+| `PUT /requirements?employee_id=` | Anforderungen ersetzen | — | `write` |
+
+**Kein Selbsteintrag.** Auch für den eigenen Mitarbeiter braucht
+Erfassen `write`.
+
+**PUT der Anforderungen:** `employee_id` Pflicht; `type_ids` Pflicht
+(fehlend ≠ leer). Eine leere Liste entfernt alle.
+
+**Stand der HR-API nach F.1, F.4 und F.2.5** (alle unter `/api/v1`):
+`/time-entries` (6 Routen), `/employees` (6), `/leave-requests` (4),
+`/qualification-types` (5), `/qualifications` (6). Der Client kennt
+keine davon (F.5, F.7).
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+5 neue Testfunktionen grün. Gegenprobe mit 16 Verfälschungen: alle
+erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/qualifications.go`,
+`server/internal/http/qualifications_integration_test.go` (neu),
 `server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
