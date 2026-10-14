@@ -7,36 +7,32 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.4.3** — damit ist **Task F.2.4
-> (Nachweise und Anforderungen im Service) vollständig**. Davor F.2.3,
-> F.2.2, F.2.1.
-> **Nächste Subtask: F.2.5** — HTTP-Anbindung von Katalog, Nachweisen
-> und Anforderungen in neuer Datei
-> `server/internal/http/qualifications.go` (Muster:
-> `http/leave_requests.go`). **Vor dem Start schätzen und
-> voraussichtlich teilen (§6.3)**, z. B. F.2.5.1 Katalog, F.2.5.2
-> Nachweise und Anforderungen. Routen-Vorschlag:
-> `/qualification-types`: `GET /` (`include_inactive`), `POST /`,
-> `GET /{id}`, `PUT /{id}` (vollständiger Ersatz, deshalb PUT, nicht
-> PATCH), `POST /adopt-defaults` — lesen mit einem der drei
-> `qualifications.*`-Rechte, schreiben mit `qualifications.write`.
-> `/qualifications`: `POST /` (Gruppenerfassung, `employee_ids`),
-> `GET /{id}`, `POST /{id}/storno`,
-> `GET /?employee_id=&include_storniert=` — schreiben nur
-> `qualifications.write` (KEIN Selbsteintrag), lesen eigene mit
-> `self`, fremde mit `read` über `resolveOwnOrPermittedEmployee`.
-> `/employees/{id}/qualification-requirements`: `GET`, `PUT` (Liste
-> von `type_ids`) — oder unter `/qualifications/requirements`;
-> beim Umsetzen entscheiden, wo es zur vorhandenen Struktur passt
-> (`/employees` verlangt `employees.*`, hier gelten
-> `qualifications.*`).
-> Datumsfelder als `JJJJ-MM-TT` über eigene Eingabe-Structs.
-> `classifyDomainError`: **"ist stillgelegt" fehlt** (fiele als 500
-> durch); übrige Texte per Test belegen. Neue Query-Parameter
-> (`include_inactive` gibt es schon; ggf. `warn_tage`, `stichtag`) in
-> `loggedQueryKeys` eintragen. Tests mit Rollen, die genau eines der
-> Rechte haben, und mit zweitem Mandanten. Der Stand und die
-> betriebsweite Fälligkeitsliste sind F.2.6.
+> Zuletzt abgeschlossen: **F.2.5.1** (HTTP-Routen Katalog). F.2.5 ist
+> in zwei Micro-Subtasks zerlegt. Davor Task F.2.4 (Service)
+> vollständig, F.2.3, F.2.2, F.2.1.
+> **Nächste Subtask: F.2.5.2** — HTTP-Routen Nachweise und
+> Anforderungen in `server/internal/http/qualifications.go`:
+> `/qualifications`: `POST /` (Eingabe-Struct mit `employee_ids`,
+> `type_id`, `erworben_am` und optional `gueltig_bis` als
+> `JJJJ-MM-TT`, `aussteller`, `nachweis_nr`, `note`; NUR
+> `qualifications.write` — kein Selbsteintrag, Vorgabe des Nutzers),
+> `GET /{id}` und `GET /?employee_id=&include_storniert=` (eigene mit
+> `self`, fremde mit `read`; `resolveOwnOrPermittedEmployee` und für
+> den Einzelabruf das Muster `loadAuthorizedTimeEntry`),
+> `POST /{id}/storno` (nur `write`).
+> Anforderungen: `GET` und `PUT` (Liste `type_ids`) — Pfad beim
+> Umsetzen festlegen; NICHT unter `/employees/…`, weil dort
+> `employees.*` gilt, hier `qualifications.*`. Vorschlag:
+> `/qualifications/requirements?employee_id=` bzw.
+> `/qualifications/requirements/{employeeID}`; ACHTUNG
+> Routenreihenfolge gegen `/qualifications/{id}`.
+> `classifyDomainError`: "ist stillgelegt" ergänzen, plus Testzeile;
+> neue Query-Parameter in `loggedQueryKeys` eintragen
+> (`employee_id`, `include_storniert` sind schon drin).
+> Tests mit Rollen, die genau eines der Rechte haben
+> (`seedRoleWithPermissions`), und mit zweitem Mandanten; Mandanten
+> wie in F.2.5.1 je Test frisch anlegen (`newCatalogTenant`).
+> Stand je Mitarbeiter und betriebsweite Liste sind F.2.6.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10720,6 +10716,46 @@ Geänderte Dateien:
 `server/internal/hr/qualification_requirements_integration_test.go`
 (neu), `server/internal/hr/qualifications_test.go`,
 `docs/backlog.md`, `docs/state.md`.
+
+### F.2.5 Zerlegung in Micro-Subtasks
+
+F.2.5.1 Katalog, F.2.5.2 Nachweise und Anforderungen.
+
+### F.2.5.1 HTTP-Routen Katalog
+
+Neue Datei `server/internal/http/qualifications.go`. Routen unter
+`/api/v1/qualification-types`:
+
+| Route | Zweck | Recht |
+|---|---|---|
+| `GET /` | Katalog (`include_inactive`) | eines der drei |
+| `GET /{id}` | Einzelabruf | eines der drei |
+| `POST /` | Art anlegen | `write` |
+| `PUT /{id}` | Art vollständig ersetzen | `write` |
+| `POST /adopt-defaults` | Vorschlagskatalog übernehmen | `write` |
+
+**Neue Middleware `requireAnyPermission(…)`** in
+`http/qualifications.go` — für F.2.5.2 und später wiederverwenden.
+
+**PUT ist streng:** alle sechs Felder Pflicht, kein `code`, keine
+unbekannten Felder (`decodeQualificationTypeUpdate`). Ein Client, der
+eine Art ändern will, muss sie also vollständig senden; das ist
+beabsichtigt.
+
+**Testhilfe `newCatalogTenant`** in
+`http/qualification_types_integration_test.go`: legt einen frischen
+Mandanten an und meldet Benutzer mit beliebiger Rolle darin an. Für
+alle Tests nutzen, die mandantenweite Kataloge zählen oder den
+Vorschlag übernehmen.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+4 neue Testfunktionen grün. Gegenprobe mit 14 Verfälschungen: alle
+angewendet, alle erkannt. Vollständiger `NALA_INTEGRATION=1 go test
+./... -p 1 -count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/qualifications.go` (neu),
+`server/internal/http/qualification_types_integration_test.go` (neu),
+`server/internal/http/v1.go`, `docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

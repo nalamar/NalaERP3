@@ -69,6 +69,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	timeEntrySvc := hr.NewTimeEntryService(pg)
 	employeeSvc := hr.NewEmployeeService(pg)
 	leaveSvc := hr.NewLeaveService(pg)
+	qualificationTypeSvc := hr.NewQualificationTypeService(pg)
 	datevExportSvc := accounting.NewDatevExportService(pg)
 	eInvoiceSvc := accounting.NewEInvoiceService(pg, settings.NewCompanyService(pg))
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
@@ -1719,6 +1720,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountTimeEntryRoutes(protected, timeEntrySvc)
 	mountEmployeeRoutes(protected, employeeSvc)
 	mountLeaveRequestRoutes(protected, leaveSvc, timeEntrySvc)
+	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
