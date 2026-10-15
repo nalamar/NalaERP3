@@ -7,17 +7,17 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.4** (Ausgabe und Rücknahme als Service).
-> Davor F.3.3 (Asset-Stamm), F.3.2 (Migration 089), ADR 0028 entschieden.
-> **Nächste Arbeit: F.3.5** Prüfungen und Fälligkeit: Fachregeln ohne DB
-> (nächste Prüfung aus Prüfintervall, Monatsende-Regel wie
-> `hr.QualificationValidUntil`; Status `geprueft`/`faellig_bald`/
-> `ueberfaellig`/`nie_geprueft`/`gesperrt`, maßgeblich die letzte
-> nicht stornierte Prüfung), Service (erfassen, stornieren, lesen),
-> betriebsweite Fälligkeitsliste, **Ausgabe bei `gesperrt` ablehnen**
-> (in `Issue` nach der Sperre der Asset-Zeile), Hinweis bei überfällig.
-> Voraussichtlich zu teilen (§6.3). Danach F.3.6 HTTP. Nächste freie
-> Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.5.1** (Prüfregeln ohne DB und Service
+> für Prüfungen). Davor F.3.4 (Ausgabe), F.3.3 (Stamm), F.3.2 (Migration).
+> **Nächste Arbeit: F.3.5.2** — `InspectionStanding` je Asset aus der DB
+> (lädt Prüfungen und Intervall, ruft `EvaluateInspections` — die EINE
+> Stelle für die Regeln), betriebsweite Fälligkeitsliste (ohne
+> ausgemusterte; Wächtertest Liste gegen Einzelstand wie F.2.6.1),
+> **in `Issue` nach der Sperre der Asset-Zeile `gesperrt` ablehnen**,
+> Hinweise (überfällig, nie geprüft, Mängel) an der Ausgabe mitliefern.
+> Danach F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
+> Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
+> F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
 > F.8, F.10, F.11, F.12 (Verbrauchs-PSA), 0.45, 0.47.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
@@ -10964,6 +10964,31 @@ Geänderte Dateien: `server/internal/assets/assignments.go`,
 `server/internal/assets/assignments_test.go`,
 `server/internal/assets/assignments_integration_test.go` (alle neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.3.5.1 Prüfregeln und Prüfungs-Service
+
+`inspection_rules.go` (ohne DB) und `inspections.go` (Service). F.3.5
+geteilt: F.3.5.2 bringt Stand aus der DB, Liste und die Sperre in
+`Issue`.
+
+**Maßgeblich ist die jüngste Prüfung**, nicht die am längsten gültige
+(Unterschied zu den Qualifikationen, im Code begründet).
+
+**Annahmen, offen beim Nutzer:** "Mängel" sperrt nicht; Vorwarnzeit 30.
+
+**Gegenprobe-Befund:** zwei Testlücken (Zeitzone, "heute" mit Uhrzeit)
+geschlossen.
+
+**Verifikation.** `go build`, `go vet` clean; 8 neue Testfunktionen
+grün; Gegenprobe 46 + 1 Verfälschungen, alle erkannt oder gleichwertig
+belegt; vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1`
+gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/assets/inspection_rules.go`,
+`server/internal/assets/inspection_rules_test.go`,
+`server/internal/assets/inspections.go`,
+`server/internal/assets/inspections_integration_test.go` (alle neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

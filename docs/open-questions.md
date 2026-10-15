@@ -224,3 +224,13 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
 - **F.3 (Empfangsbestätigung)**: Vorschlag wie F.2 — die ausgebende
   Stelle erfasst, keine Bestätigung im System. Status: **beantwortet** —
   "Nein, keine Bestätigung vorerst."
+
+## 2026-10-15 — Prüfungen der Betriebsmittel (F.3.5.1) — keine blockiert
+
+- **F.3.5 (Ergebnis "Mängel")**: Annahme im Code — ein Stück mit dem
+  Prüfergebnis "Mängel" bleibt ausgebbar und wird nur als Hinweis
+  angezeigt; gesperrt ist nur "nicht bestanden". Soll "Mängel" ebenfalls
+  sperren? Status: **offen**, nicht blockierend.
+- **F.3.5 (Vorwarnzeit)**: Annahme 30 Tage für "Prüfung bald fällig"
+  (Qualifikationen: 60). Der Wert ist beim Abruf änderbar. Passt 30?
+  Status: **offen**, nicht blockierend.
