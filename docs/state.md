@@ -7,17 +7,17 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.3** (Asset-Stamm als Service, neues Paket
-> `internal/assets`). Davor F.3.2 (Migration 089), ADR 0028 entschieden.
-> **Nächste Arbeit: F.3.4** Ausgabe und Rücknahme als Service (Ausgabe
-> an Mitarbeiter desselben Mandanten; **zuerst die Asset-Zeile `FOR
-> UPDATE` sperren** wie `Retire`, dann prüfen: nicht ausgemustert, keine
-> offene Ausgabe — letzteres garantiert zusätzlich
-> `idx_asset_assignments_one_open`, Verletzung fachlich übersetzen;
-> Rückgabe einmalig mit Zustand, nicht vor der Ausgabe; Storno mit
-> Begründung; Wächtertest am Quelltext für Unveränderlichkeit). Die
-> Sperre bei `nicht_bestanden` kommt erst mit F.3.5 dazu. Danach F.3.5,
-> F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.4** (Ausgabe und Rücknahme als Service).
+> Davor F.3.3 (Asset-Stamm), F.3.2 (Migration 089), ADR 0028 entschieden.
+> **Nächste Arbeit: F.3.5** Prüfungen und Fälligkeit: Fachregeln ohne DB
+> (nächste Prüfung aus Prüfintervall, Monatsende-Regel wie
+> `hr.QualificationValidUntil`; Status `geprueft`/`faellig_bald`/
+> `ueberfaellig`/`nie_geprueft`/`gesperrt`, maßgeblich die letzte
+> nicht stornierte Prüfung), Service (erfassen, stornieren, lesen),
+> betriebsweite Fälligkeitsliste, **Ausgabe bei `gesperrt` ablehnen**
+> (in `Issue` nach der Sperre der Asset-Zeile), Hinweis bei überfällig.
+> Voraussichtlich zu teilen (§6.3). Danach F.3.6 HTTP. Nächste freie
+> Migration 090, ADR 0029.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
 > F.8, F.10, F.11, F.12 (Verbrauchs-PSA), 0.45, 0.47.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
@@ -10936,6 +10936,33 @@ frische DB: durchgehend `ok`.
 Geänderte Dateien: `server/internal/assets/assets.go`,
 `server/internal/assets/assets_test.go`,
 `server/internal/assets/assets_integration_test.go` (alle neu),
+`docs/backlog.md`, `docs/state.md`.
+
+### F.3.4 Ausgabe und Rücknahme: Service
+
+`server/internal/assets/assignments.go`: `Issue`, `Return`,
+`StornoAssignment`, `GetAssignment`, `ListAssignments`.
+
+**Sperrreihenfolge:** `Issue` und `Retire` sperren zuerst die
+Asset-Zeile; `Return` und `StornoAssignment` sperren nur die Ausgabe.
+Belegt durch einen Nebenläufigkeitstest (Ausgabe gegen Ausmusterung,
+10 Durchläufe), der ohne die Sperre fehlschlägt.
+
+**Fachlich festgelegt (ohne Rückfrage, weil zwingend):** Ausgabe nur
+an aktive Mitarbeiter; keine Überschneidung mit früheren Ausgaben
+desselben Stücks — sonst wäre "wer hatte es am Tag X" nicht eindeutig.
+
+**Gegenprobe-Befund:** eine Bedingung in der Überschneidungsabfrage
+war wirkungslos und wurde entfernt (Begründung im Code).
+
+**Verifikation.** `go build`, `go vet` clean; 9 neue Testfunktionen
+grün; Gegenprobe 39 + 6 Verfälschungen, alle erkannt oder als
+gleichwertig belegt; vollständiger `NALA_INTEGRATION=1 go test ./...
+-p 1 -count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/assets/assignments.go`,
+`server/internal/assets/assignments_test.go`,
+`server/internal/assets/assignments_integration_test.go` (alle neu),
 `docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
