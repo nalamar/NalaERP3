@@ -1727,6 +1727,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
 	mountAssetRoutes(protected, assetSvc)
 	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
+	mountAssetInspectionRoutes(protected, assetSvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5114,6 +5115,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "keine priorisierte preisquelle"),
 		strings.Contains(msg, "ungueltiger freigabeentscheid"),
 		strings.Contains(msg, "existiert bereits"),
+		strings.Contains(msg, "keine nächste prüfung"),
+		strings.Contains(msg, "muss nach dem prüfdatum"),
 		strings.Contains(msg, "abgeleitet werden"),
 		strings.Contains(msg, "nicht mehr offen"),
 		strings.Contains(msg, "kein eindeutiges gegenkonto"),

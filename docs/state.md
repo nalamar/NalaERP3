@@ -7,27 +7,22 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.6.2** (HTTP für Ausgaben,
-> `/api/v1/asset-assignments`). Davor F.3.6.1 (Bestand).
-> **Nächste Arbeit: F.3.6.3** — letzte Subtask von F.3: HTTP für
-> Prüfungen (`POST /asset-inspections`, `GET ?asset_id=` mit
-> `include_storniert`, `GET /{id}`, `POST /{id}/storno`; Datum
-> `geprueft_am`, optional `naechste_pruefung_am`), Prüfstand eines
-> Assets (`GET /assets/{id}/inspection-standing`, Stichtag heute in
-> Europe/Berlin, `warn_tage` Standard 30) und Fälligkeitsliste
-> (`GET /asset-inspections/due`) — alles mit `assets.read` bzw.
-> `assets.write`; `self` nicht (Prüfungen betreffen das Stück, nicht
-> die Person). `parseWarnDays` ist auf den Qualifikations-Standard 60
-> festgelegt — für Assets eigenen Standard übergeben. Meldungen der
-> Prüfungen klassifizieren ("Ungültiges Prüfergebnis", "keine nächste
-> Prüfung", "muss nach dem Prüfdatum liegen" → 400; "Prüfung ist
-> bereits storniert" ist schon 409). Danach F.3 abschließen und
-> nächste Arbeit beim Nutzer erfragen. Nächste freie Migration 090,
-> ADR 0029.
+> Zuletzt abgeschlossen: **F.3.6.3** — damit ist **TASK F.3
+> (Asset-Zuordnung: Werkzeuge/IT/PSA) VOLLSTÄNDIG**: ADR 0028, Migration
+> 089, Paket `internal/assets` (Bestand, Ausgaben, Prüfungen, Prüfstand,
+> Fälligkeitsliste, Sperre bei nicht bestandener Prüfung), alles über
+> HTTP (`/assets`, `/asset-assignments`, `/asset-inspections`).
+> **Nächste Arbeit: beim Nutzer erfragen.** Die Backlog-Reihenfolge
+> aus der Entscheidung vom 2026-10-13 (F.4, F.2, F.3) ist abgearbeitet.
+> Offen und vom Nutzer nicht priorisiert: F.5 (Client Zeiterfassung),
+> F.6 (erweiterte ArbZG-Auswertung), F.7 (Client Mitarbeiterverwaltung),
+> F.8 (Abwesenheiten, Urlaubskonto), F.10 (Qualifikationen:
+> Nachweisdokumente, aktive Benachrichtigung), F.11 (Stellen-Vorlagen,
+> ausdrücklich "für später"), F.12 (Verbrauchs-PSA, für später), 0.45,
+> 0.47, Epics G/H/I. Der Client kennt keine der HR- und Asset-APIs.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
-> **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
-> F.8, F.10, F.11, F.12 (Verbrauchs-PSA), 0.45, 0.47.
+> Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -11061,6 +11056,33 @@ durchgehend `ok`.
 Geänderte Dateien: `server/internal/http/assets.go`,
 `server/internal/http/asset_assignments_integration_test.go` (neu),
 `server/internal/http/v1.go`, `server/internal/http/observability.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+### F.3.6.3 HTTP: Prüfungen, Prüfstand, Fälligkeitsliste (letzte Subtask von F.3)
+
+| Route | Recht |
+|---|---|
+| `POST /asset-inspections`, `POST .../{id}/storno` | `assets.write` |
+| `GET /asset-inspections?asset_id=`, `GET .../{id}`, `GET .../due`, `GET /assets/{id}/inspection-standing` | `assets.read` |
+
+`warn_tage` Standard 30; `parseWarnDays` nimmt den Standard jetzt als
+Parameter.
+
+**Asset-API insgesamt (F.3 vollständig):** `/assets` (6 Routen),
+`/asset-assignments` (5), `/asset-inspections` (5). Der Client kennt
+keine davon.
+
+**Gegenprobe-Befund:** der Standard der Vorwarnzeit war ungetestet
+(Testfall lag unter beiden Grenzen) — Stück mit 45 Tagen ergänzt.
+
+**Verifikation.** `go build`, `go vet` clean; 5 neue Testfunktionen
+grün; Gegenprobe 28 + 3 Verfälschungen, alle erkannt; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/assets.go`,
+`server/internal/http/asset_inspections_integration_test.go` (neu),
+`server/internal/http/qualifications.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern

@@ -333,7 +333,7 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 			if !ok {
 				return
 			}
-			warnDays, ok := parseWarnDays(w, req)
+			warnDays, ok := parseWarnDays(w, req, hr.DefaultQualificationWarnDays)
 			if !ok {
 				return
 			}
@@ -356,7 +356,7 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 		// 2026-10-13). Enthaelt die Namen aller Mitarbeiter und braucht
 		// deshalb qualifications.read; self genuegt nicht.
 		r.With(requirePermission(permQualificationsRead)).Get("/due", func(w http.ResponseWriter, req *http.Request) {
-			warnDays, ok := parseWarnDays(w, req)
+			warnDays, ok := parseWarnDays(w, req, hr.DefaultQualificationWarnDays)
 			if !ok {
 				return
 			}
@@ -411,12 +411,14 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 	})
 }
 
-// parseWarnDays liest die Vorwarnzeit in Tagen (warn_tage); ohne Angabe der
-// Standard. Bei false ist die Antwort bereits geschrieben.
-func parseWarnDays(w http.ResponseWriter, req *http.Request) (int, bool) {
+// parseWarnDays liest die Vorwarnzeit in Tagen (warn_tage); ohne Angabe
+// defaultDays - der Standard des jeweiligen Bereichs (Qualifikationen 60,
+// Pruefungen der Betriebsmittel 30). Bei false ist die Antwort bereits
+// geschrieben.
+func parseWarnDays(w http.ResponseWriter, req *http.Request, defaultDays int) (int, bool) {
 	v := req.URL.Query().Get("warn_tage")
 	if v == "" {
-		return hr.DefaultQualificationWarnDays, true
+		return defaultDays, true
 	}
 	n, err := strconv.Atoi(v)
 	if err != nil || n < 0 {

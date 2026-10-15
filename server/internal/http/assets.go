@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"nalaerp3/internal/assets"
+	"nalaerp3/internal/hr"
 )
 
 // HTTP-Anbindung der Betriebsmittel (ADR 0028, Backlog F.3.6).
@@ -185,6 +186,26 @@ func mountAssetRoutes(protected chi.Router, svc *assets.Service) {
 			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.Update(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Pruefstand eines Assets heute (Europe/Berlin). Vorwarnzeit ueber
+		// warn_tage, Standard assets.DefaultInspectionWarnDays.
+		r.With(read).Get("/{id}/inspection-standing", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseAssetID(w, req)
+			if !ok {
+				return
+			}
+			warnDays, ok := parseWarnDays(w, req, assets.DefaultInspectionWarnDays)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.InspectionStandingOf(req.Context(), id, hr.WorkDateOf(time.Now()), warnDays, companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -395,4 +416,133 @@ func mountAssetAssignmentRoutes(protected chi.Router, svc *assets.Service, resol
 			writeJSON(w, http.StatusOK, out)
 		})
 	})
+}
+
+// mountAssetInspectionRoutes haengt die Pruefungen und die
+// Faelligkeitsliste ein (Backlog F.3.6.3). Nur assets.read bzw.
+// assets.write: eine Pruefung betrifft das Stueck, nicht die Person -
+// assets.self gibt hier nichts.
+func mountAssetInspectionRoutes(protected chi.Router, svc *assets.Service) {
+	read := requirePermission(permAssetsRead)
+	write := requirePermission(permAssetsWrite)
+
+	protected.Route("/asset-inspections", func(r chi.Router) {
+		// Pruefung erfassen. Ohne naechste_pruefung_am wird sie aus dem
+		// Pruefintervall des Assets berechnet (bei nicht_bestanden: keine).
+		r.With(write).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				AssetID            uuid.UUID  `json:"asset_id"`
+				GeprueftAm         string     `json:"geprueft_am"`
+				Ergebnis           string     `json:"ergebnis"`
+				NaechstePruefungAm string     `json:"naechste_pruefung_am"`
+				PrueferName        string     `json:"pruefer_name"`
+				PrueferEmployeeID  *uuid.UUID `json:"pruefer_employee_id"`
+				Notiz              string     `json:"notiz"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			geprueft, ok := parseOptionalDate(w, req, "geprueft_am", in.GeprueftAm)
+			if !ok {
+				return
+			}
+			naechste, ok := parseOptionalDate(w, req, "naechste_pruefung_am", in.NaechstePruefungAm)
+			if !ok {
+				return
+			}
+			input := assets.InspectionInput{AssetID: in.AssetID, Ergebnis: in.Ergebnis, NaechstePruefungAm: naechste,
+				PrueferName: in.PrueferName, PrueferEmployeeID: in.PrueferEmployeeID, Notiz: in.Notiz}
+			if geprueft != nil {
+				input.GeprueftAm = *geprueft // fehlt es, meldet der Service "Prüfdatum erforderlich"
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.RecordInspection(req.Context(), input, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Pruefungen EINES Assets, die juengste zuerst; asset_id ist
+		// Pflicht. include_storniert=true zeigt auch stornierte.
+		r.With(read).Get("/", func(w http.ResponseWriter, req *http.Request) {
+			assetID, ok := optionalQueryUUID(w, req, "asset_id")
+			if !ok {
+				return
+			}
+			if assetID == nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "asset_id erforderlich")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListInspections(req.Context(), *assetID, req.URL.Query().Get("include_storniert") == "true", companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Betriebsweite Liste: gesperrt, ueberfaellig, nie geprueft, bald
+		// faellig - Stichtag heute (Europe/Berlin), Vorwarnzeit warn_tage.
+		r.With(read).Get("/due", func(w http.ResponseWriter, req *http.Request) {
+			warnDays, ok := parseWarnDays(w, req, assets.DefaultInspectionWarnDays)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.DueList(req.Context(), hr.WorkDateOf(time.Now()), warnDays, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(read).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseInspectionID(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.GetInspection(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(write).Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseInspectionID(w, req)
+			if !ok {
+				return
+			}
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.StornoInspection(req.Context(), id, in.Reason, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+}
+
+func parseInspectionID(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(chi.URLParam(req, "id"))
+	if err != nil {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Prüfungs-ID")
+		return uuid.Nil, false
+	}
+	return id, true
 }
