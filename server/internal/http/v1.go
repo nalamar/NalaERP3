@@ -1726,6 +1726,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
 	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
 	mountAssetRoutes(protected, assetSvc)
+	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5050,7 +5051,12 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits entschieden"),
 		strings.Contains(msg, "ist stillgelegt"),
 		strings.Contains(msg, "bereits ausgemustert"),
-		strings.Contains(msg, "noch ausgegeben"):
+		strings.Contains(msg, "noch ausgegeben"),
+		strings.Contains(msg, "ist ausgemustert"),
+		strings.Contains(msg, "bereits ausgegeben"),
+		strings.Contains(msg, "asset ist gesperrt"),
+		strings.Contains(msg, "bereits zurückgegeben"),
+		strings.Contains(msg, "mitarbeiter ist nicht aktiv"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),

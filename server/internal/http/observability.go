@@ -96,11 +96,11 @@ func requestLoggerMiddleware(next http.Handler) http.Handler {
 // Fehlt hier ein neuer Parameter, ist das kein Leck, nur weniger Auskunft:
 // er wird dann unter query_other mitgezaehlt statt genannt.
 var loggedQueryKeys = map[string]bool{
-	"action": true, "bestellung_id": true, "bis": true, "contact_id": true, "datum": true,
+	"action": true, "asset_id": true, "bestellung_id": true, "bis": true, "contact_id": true, "datum": true,
 	"employee_id": true, "format": true, "from": true, "include_ausgemustert": true, "include_inactive": true,
 	"include_storniert": true, "invoice_type": true, "kategorie": true, "kind": true,
 	"lieferant_id": true, "limit": true, "material_id": true, "menge": true,
-	"min_length_mm": true, "offset": true, "path": true, "project_id": true, "q": true,
+	"min_length_mm": true, "nur_offen": true, "offset": true, "path": true, "project_id": true, "q": true,
 	"quote_id": true, "rolle": true, "source_sales_order_id": true, "status": true,
 	"summary": true, "supplier_id": true, "to": true, "typ": true, "von": true,
 	"warehouse_id": true, "warn_tage": true,

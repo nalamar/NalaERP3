@@ -225,3 +225,174 @@ func mountAssetRoutes(protected chi.Router, svc *assets.Service) {
 		})
 	})
 }
+
+func parseAssignmentID(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
+	id, err := uuid.Parse(chi.URLParam(req, "id"))
+	if err != nil {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Ausgabe-ID")
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// optionalQueryUUID liest einen optionalen UUID-Parameter. Bei false ist
+// die Antwort bereits geschrieben.
+func optionalQueryUUID(w http.ResponseWriter, req *http.Request, name string) (*uuid.UUID, bool) {
+	v := req.URL.Query().Get(name)
+	if v == "" {
+		return nil, true
+	}
+	id, err := uuid.Parse(v)
+	if err != nil {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige "+name)
+		return nil, false
+	}
+	return &id, true
+}
+
+// mountAssetAssignmentRoutes haengt die Ausgaben ein (Backlog F.3.6.2).
+//
+// Lesen: mit assets.read alle Ausgaben des Mandanten; mit assets.self nur
+// die eigenen ("was habe ich bekommen?"). Schreiben (ausgeben,
+// zuruecknehmen, stornieren) nur mit assets.write - eine Ausgabe ist eine
+// Aussage des Betriebs, keine Selbstauskunft.
+func mountAssetAssignmentRoutes(protected chi.Router, svc *assets.Service, resolver employeeForUser) {
+	write := requirePermission(permAssetsWrite)
+
+	protected.Route("/asset-assignments", func(r chi.Router) {
+		// Ausgeben. Die Antwort enthaelt "hinweise" (Pruefung ueberfaellig,
+		// nie geprueft, Maengel); ein gesperrtes Stueck wird abgelehnt.
+		r.With(write).Post("/", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				AssetID      uuid.UUID `json:"asset_id"`
+				EmployeeID   uuid.UUID `json:"employee_id"`
+				AusgegebenAm string    `json:"ausgegeben_am"`
+				Notiz        string    `json:"notiz"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			datum, ok := parseOptionalDate(w, req, "ausgegeben_am", in.AusgegebenAm)
+			if !ok {
+				return
+			}
+			input := assets.IssueInput{AssetID: in.AssetID, EmployeeID: in.EmployeeID, Notiz: in.Notiz}
+			if datum != nil {
+				input.AusgegebenAm = *datum // fehlt es, meldet der Service "Ausgabedatum erforderlich"
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Issue(req.Context(), input, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Liste, die neuesten zuerst. Filter: asset_id, employee_id,
+		// nur_offen=true, include_storniert=true. Ohne assets.read nur die
+		// eigenen - eine fremde employee_id ist dann verboten.
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			assetID, ok := optionalQueryUUID(w, req, "asset_id")
+			if !ok {
+				return
+			}
+			employeeID, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			if !hasPermission(req, permAssetsRead) {
+				own, ok := resolveOwnOrPermittedEmployee(w, req, resolver, employeeID, permAssetsRead, permAssetsSelf)
+				if !ok {
+					return
+				}
+				employeeID = &own
+			}
+			q := req.URL.Query()
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListAssignments(req.Context(), companyID, assets.AssignmentFilter{
+				AssetID: assetID, EmployeeID: employeeID,
+				NurOffen: q.Get("nur_offen") == "true", IncludeStorniert: q.Get("include_storniert") == "true",
+			})
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseAssignmentID(w, req)
+			if !ok {
+				return
+			}
+			if !hasPermission(req, permAssetsRead) && !hasPermission(req, permAssetsSelf) {
+				writeAPIError(w, req, http.StatusForbidden, "forbidden", "Keine Berechtigung")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.GetAssignment(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			if _, ok := resolveOwnOrPermittedEmployee(w, req, resolver, &out.EmployeeID, permAssetsRead, permAssetsSelf); !ok {
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Zuruecknehmen: einmalig, mit Datum und optionalem Zustand.
+		r.With(write).Post("/{id}/return", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseAssignmentID(w, req)
+			if !ok {
+				return
+			}
+			var in struct {
+				Datum   string `json:"datum"`
+				Zustand string `json:"zustand"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			datum, ok := parseOptionalDate(w, req, "datum", in.Datum)
+			if !ok {
+				return
+			}
+			var d time.Time
+			if datum != nil {
+				d = *datum // fehlt es, meldet der Service "Rückgabedatum erforderlich"
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Return(req.Context(), id, d, in.Zustand, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(write).Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseAssignmentID(w, req)
+			if !ok {
+				return
+			}
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.StornoAssignment(req.Context(), id, in.Reason, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+	})
+}

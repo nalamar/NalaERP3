@@ -7,20 +7,23 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.6.1** (HTTP für den Asset-Bestand,
-> `/api/v1/assets`). F.3.6 geteilt in .1 Bestand, .2 Ausgaben,
-> .3 Prüfungen/Stand/Liste.
-> **Nächste Arbeit: F.3.6.2** HTTP für Ausgaben — Vorschlag: `POST
-> /asset-assignments` (write; Antwort mit `hinweise`), `POST
-> /asset-assignments/{id}/return`, `POST .../{id}/storno` (write),
-> `GET /asset-assignments` (Filter `asset_id`, `employee_id`,
-> `nur_offen`, `include_storniert`; ohne `employee_id` nur mit `read`,
-> mit eigener `employee_id` bzw. "meine" mit `self` über
-> `resolveOwnOrPermittedEmployee`), `GET .../{id}` (eigene mit `self`).
-> Meldungen in `classifyDomainError` ergänzen: "ist ausgemustert",
-> "bereits ausgegeben", "ist gesperrt", "bereits zurückgegeben" (409),
-> "nicht aktiv" (entscheiden, Vorschlag 409). Neue Query-Keys in
-> `loggedQueryKeys`. Nächste freie Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.6.2** (HTTP für Ausgaben,
+> `/api/v1/asset-assignments`). Davor F.3.6.1 (Bestand).
+> **Nächste Arbeit: F.3.6.3** — letzte Subtask von F.3: HTTP für
+> Prüfungen (`POST /asset-inspections`, `GET ?asset_id=` mit
+> `include_storniert`, `GET /{id}`, `POST /{id}/storno`; Datum
+> `geprueft_am`, optional `naechste_pruefung_am`), Prüfstand eines
+> Assets (`GET /assets/{id}/inspection-standing`, Stichtag heute in
+> Europe/Berlin, `warn_tage` Standard 30) und Fälligkeitsliste
+> (`GET /asset-inspections/due`) — alles mit `assets.read` bzw.
+> `assets.write`; `self` nicht (Prüfungen betreffen das Stück, nicht
+> die Person). `parseWarnDays` ist auf den Qualifikations-Standard 60
+> festgelegt — für Assets eigenen Standard übergeben. Meldungen der
+> Prüfungen klassifizieren ("Ungültiges Prüfergebnis", "keine nächste
+> Prüfung", "muss nach dem Prüfdatum liegen" → 400; "Prüfung ist
+> bereits storniert" ist schon 409). Danach F.3 abschließen und
+> nächste Arbeit beim Nutzer erfragen. Nächste freie Migration 090,
+> ADR 0029.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
@@ -11037,6 +11040,26 @@ durchgehend `ok`.
 
 Geänderte Dateien: `server/internal/http/assets.go`,
 `server/internal/http/assets_integration_test.go` (beide neu),
+`server/internal/http/v1.go`, `server/internal/http/observability.go`,
+`docs/backlog.md`, `docs/state.md`.
+
+### F.3.6.2 HTTP: Ausgaben
+
+| Route | Recht |
+|---|---|
+| `POST /asset-assignments`, `POST .../{id}/return`, `POST .../{id}/storno` | `assets.write` |
+| `GET /asset-assignments`, `GET .../{id}` | `assets.read` alle; `assets.self` nur eigene |
+
+**Kein Informationsleck:** ohne jedes Leserecht ist auch eine
+unbekannte ID 403, nicht 404 — im Test geprüft.
+
+**Verifikation.** `go build`, `go vet` clean; 4 neue Testfunktionen
+grün; Gegenprobe 27 Verfälschungen, alle erkannt; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/assets.go`,
+`server/internal/http/asset_assignments_integration_test.go` (neu),
 `server/internal/http/v1.go`, `server/internal/http/observability.go`,
 `docs/backlog.md`, `docs/state.md`.
 
