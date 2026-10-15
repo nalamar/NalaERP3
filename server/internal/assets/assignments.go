@@ -20,8 +20,8 @@ import (
 // Unfalltag?" bleibt vollstaendig.
 //
 // Ausgegeben wird an Mitarbeiter, ohne Empfangsbestaetigung (Entscheidung
-// des Nutzers vom 2026-10-15). Die Sperre bei nicht bestandener Pruefung
-// kommt mit F.3.5 dazu.
+// des Nutzers vom 2026-10-15). Ein Stueck, dessen letzte Pruefung nicht
+// bestanden ist, wird nicht ausgegeben (F.3.5.2).
 
 const (
 	AssignmentActive    = "active"
@@ -50,6 +50,9 @@ type Assignment struct {
 	AusgegebenByUserID      *string    `json:"ausgegeben_by_user_id"`
 	ZurueckgenommenByUserID *string    `json:"zurueckgenommen_by_user_id"`
 	CreatedAt               time.Time  `json:"created_at"`
+	// Hinweise nur in der Antwort auf eine Ausgabe: Pruefung ueberfaellig,
+	// nie geprueft, Maengel. Sie verhindern die Ausgabe nicht.
+	Hinweise []string `json:"hinweise,omitempty"`
 }
 
 type IssueInput struct {
@@ -152,8 +155,9 @@ func (s *Service) Issue(ctx context.Context, in IssueInput, actorUserID, company
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	var ausgemustertAm, anschaffungsdatum *time.Time
-	if err := tx.QueryRow(ctx, `SELECT ausgemustert_am, anschaffungsdatum FROM assets WHERE id=$1 AND company_id=$2 FOR UPDATE`, in.AssetID, companyID).
-		Scan(&ausgemustertAm, &anschaffungsdatum); err != nil {
+	var intervall *int
+	if err := tx.QueryRow(ctx, `SELECT ausgemustert_am, anschaffungsdatum, pruefintervall_monate FROM assets WHERE id=$1 AND company_id=$2 FOR UPDATE`, in.AssetID, companyID).
+		Scan(&ausgemustertAm, &anschaffungsdatum, &intervall); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Asset nicht gefunden")
 		}
@@ -166,6 +170,18 @@ func (s *Service) Issue(ctx context.Context, in IssueInput, actorUserID, company
 		return nil, err
 	}
 	ausgegebenAm := dateOnly(in.AusgegebenAm)
+
+	// Pruefstand am Ausgabetag (F.3.5.2): durchgefallen = gesperrt
+	// (Entscheidung des Nutzers vom 2026-10-15). Gelesen unter der Sperre
+	// der Asset-Zeile, die auch RecordInspection nimmt.
+	inspections, err := loadActiveInspections(ctx, tx, in.AssetID)
+	if err != nil {
+		return nil, err
+	}
+	standing := standingAt(inspections, intervall, ausgegebenAm, DefaultInspectionWarnDays)
+	if standing.Status == PruefstandGesperrt {
+		return nil, errors.New("Asset ist gesperrt: letzte Prüfung nicht bestanden")
+	}
 
 	var active bool
 	if err := tx.QueryRow(ctx, `SELECT active FROM hr_employees WHERE id=$1 AND company_id=$2`, in.EmployeeID, companyID).Scan(&active); err != nil {
@@ -215,7 +231,12 @@ func (s *Service) Issue(ctx context.Context, in IssueInput, actorUserID, company
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return s.GetAssignment(ctx, id, companyID)
+	x, err := s.GetAssignment(ctx, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	x.Hinweise = issueHints(standing)
+	return x, nil
 }
 
 // lockAssignment sperrt eine Ausgabe des Mandanten und liefert Status,

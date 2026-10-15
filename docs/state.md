@@ -7,15 +7,20 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.5.1** (Prüfregeln ohne DB und Service
-> für Prüfungen). Davor F.3.4 (Ausgabe), F.3.3 (Stamm), F.3.2 (Migration).
-> **Nächste Arbeit: F.3.5.2** — `InspectionStanding` je Asset aus der DB
-> (lädt Prüfungen und Intervall, ruft `EvaluateInspections` — die EINE
-> Stelle für die Regeln), betriebsweite Fälligkeitsliste (ohne
-> ausgemusterte; Wächtertest Liste gegen Einzelstand wie F.2.6.1),
-> **in `Issue` nach der Sperre der Asset-Zeile `gesperrt` ablehnen**,
-> Hinweise (überfällig, nie geprüft, Mängel) an der Ausgabe mitliefern.
-> Danach F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.5.2** — damit ist **F.3.5 (Prüfungen und
+> Fälligkeit) fertig**. Davor F.3.5.1, F.3.4, F.3.3, F.3.2.
+> **Nächste Arbeit: F.3.6** HTTP-Anbindung des Pakets `internal/assets`
+> (voraussichtlich zu teilen: Stamm; Ausgaben; Prüfungen, Stand und
+> Liste). Rechte nach ADR 0028: `assets.read`/`write` (nur HR und
+> Admin), `assets.self` für "meine Betriebsmittel" (eigene Ausgaben über
+> `resolveOwnOrPermittedEmployee`). Neue Meldungen in
+> `classifyDomainError`: "ist ausgemustert", "bereits ausgegeben", "ist
+> gesperrt", "bereits zurückgegeben", "bereits ausgemustert", "noch
+> ausgegeben" (409), "nicht aktiv" (409 oder 400 — entscheiden), mit
+> `TestClassifyDomainErrorCoversAssets`. `hinweise` in der Antwort der
+> Ausgabe. Stichtag der Liste: heute in Europe/Berlin, `warn_tage`
+> (Standard `DefaultInspectionWarnDays` = 30) in `loggedQueryKeys`.
+> Nächste freie Migration 090, ADR 0029.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
@@ -10989,6 +10994,30 @@ Geänderte Dateien: `server/internal/assets/inspection_rules.go`,
 `server/internal/assets/inspections.go`,
 `server/internal/assets/inspections_integration_test.go` (alle neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
+
+### F.3.5.2 Prüfstand, Fälligkeitsliste, Sperre bei der Ausgabe
+
+`inspection_due.go`: `standingAt` (eine Stelle für den Stand),
+`InspectionStandingOf`, `DueList`. `Issue` lehnt `gesperrt` ab und
+liefert `Hinweise`.
+
+**Fachlich festgelegt (ohne Rückfrage, zwingend):** maßgeblich ist der
+Stand am Ausgabetag. Sonst würde eine spätere durchgefallene Prüfung
+eine korrekte frühere Ausgabe nachträglich unmöglich machen.
+
+**Gegenprobe-Befund:** drei Testlücken in der Liste geschlossen
+(Halter, Rangfolge, Gleichstand).
+
+**Verifikation.** `go build`, `go vet` clean; 7 neue Testfunktionen
+grün; Gegenprobe 28 + 4 Verfälschungen, alle erkannt oder gleichwertig
+belegt; vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1`
+gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/assets/inspection_due.go`,
+`server/internal/assets/inspection_due_test.go`,
+`server/internal/assets/inspection_due_integration_test.go` (alle neu),
+`server/internal/assets/assignments.go`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
