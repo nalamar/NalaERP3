@@ -103,7 +103,7 @@ var loggedQueryKeys = map[string]bool{
 	"min_length_mm": true, "offset": true, "path": true, "project_id": true, "q": true,
 	"quote_id": true, "rolle": true, "source_sales_order_id": true, "status": true,
 	"summary": true, "supplier_id": true, "to": true, "typ": true, "von": true,
-	"warehouse_id": true,
+	"warehouse_id": true, "warn_tage": true,
 }
 
 // loggableQueryKeys liefert fuer das Request-Log die bekannten

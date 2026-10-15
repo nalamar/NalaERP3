@@ -3,6 +3,7 @@ package apihttp
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -325,6 +326,49 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 			writeJSON(w, http.StatusOK, out)
 		})
 
+		// Stand eines Mitarbeiters - ohne employee_id der eigene: was fehlt,
+		// abgelaufen ist, ablaeuft oder gilt, das Dringendste zuerst.
+		r.Get("/standing", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			warnDays, ok := parseWarnDays(w, req)
+			if !ok {
+				return
+			}
+			employeeID, ok := resolveOwnOrPermittedEmployee(w, req, resolver, requested, permQualificationsRead, permQualificationsSelf)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Standing(req.Context(), employeeID, hr.WorkDateOf(time.Now()), warnDays, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Betriebsweite Liste: alles, was bei aktiven Mitarbeitern fehlt,
+		// abgelaufen ist oder ablaeuft - die Arbeitsliste der
+		// Personalabteilung zum Anmahnen (Vorgabe des Nutzers vom
+		// 2026-10-13). Enthaelt die Namen aller Mitarbeiter und braucht
+		// deshalb qualifications.read; self genuegt nicht.
+		r.With(requirePermission(permQualificationsRead)).Get("/due", func(w http.ResponseWriter, req *http.Request) {
+			warnDays, ok := parseWarnDays(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.DueList(req.Context(), hr.WorkDateOf(time.Now()), warnDays, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 			id, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
@@ -365,4 +409,19 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 			writeJSON(w, http.StatusOK, out)
 		})
 	})
+}
+
+// parseWarnDays liest die Vorwarnzeit in Tagen (warn_tage); ohne Angabe der
+// Standard. Bei false ist die Antwort bereits geschrieben.
+func parseWarnDays(w http.ResponseWriter, req *http.Request) (int, bool) {
+	v := req.URL.Query().Get("warn_tage")
+	if v == "" {
+		return hr.DefaultQualificationWarnDays, true
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Vorwarnzeit (warn_tage: ganze Zahl ab 0)")
+		return 0, false
+	}
+	return n, true
 }

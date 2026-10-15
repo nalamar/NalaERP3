@@ -7,29 +7,28 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.6.1** (betriebsweite Liste im Service,
-> gemeinsame Regelbasis mit dem Stand eines Mitarbeiters). F.2.6 ist
-> in zwei Micro-Subtasks zerlegt. Davor F.2.5, F.2.4, F.2.3, F.2.2,
-> F.2.1.
-> **Nächste Subtask: F.2.6.2** (letzte von F.2) — zwei Routen in
-> `server/internal/http/qualifications.go`:
-> (1) `GET /qualifications/standing?employee_id=&warn_tage=` — Stand
-> eines Mitarbeiters (`Standing`), ohne `employee_id` der eigene,
-> `self`/`read` über `resolveOwnOrPermittedEmployee`;
-> (2) `GET /qualifications/due?warn_tage=` — betriebsweite Liste
-> (`DueList`), NUR `qualifications.read` (enthält Namen aller
-> Mitarbeiter). Beide Routen VOR `/{id}` bzw. als statische Pfade
-> (chi bevorzugt statische Pfade, im Test belegen).
-> Stichtag = `hr.WorkDateOf(time.Now())`; `warn_tage` optional,
-> Standard `hr.DefaultQualificationWarnDays`, ungültig/negativ → 400.
-> `warn_tage` in `loggedQueryKeys` eintragen. **Tests dürfen nicht vom
-> echten Tagesdatum abhängen**: Nachweise so wählen, dass das Ergebnis
-> an jedem Tag gleich ist (lange abgelaufen, unbefristet, fehlend),
-> und für "läuft ab" das Erwerbsdatum relativ zu heute berechnen
-> (z. B. heute minus 11 Monate bei 12-Monats-Frist → läuft in etwa
-> 30 Tagen ab). Rollen mit genau einem Recht, zweiter Mandant.
-> Danach ist F.2 fertig; nach Backlog-Reihenfolge folgt F.3
-> (Asset-Zuordnung).
+> Zuletzt abgeschlossen: **F.2.6.2** — damit ist **TASK F.2
+> (Weiterbildung/Qualifikationen/Unterweisungen) VOLLSTÄNDIG**: ADR
+> 0027, Migration 088, Katalog samt Vorschlagskatalog, Nachweise,
+> Anforderungen je Mitarbeiter, Stand und betriebsweite Liste, alles
+> über HTTP. Davor Task F.4, Task F.1, 0.46, F.9.
+> **Nächste Arbeit: F.3 (Asset-Zuordnung: Werkzeuge/IT/PSA)** — nach
+> der Backlog-Reihenfolge (Entscheidung des Nutzers vom 2026-10-13:
+> nach F.4 wieder F.2, F.3). F.3 ist nur eine Zeile im Backlog und
+> beginnt mit Bestandsaufnahme und ADR (F.3.1, nächste ADR 0028,
+> nächste Migration 089). Zuerst per Suche prüfen, was es gibt (u. a.
+> `project_assets` existiert — das sind PROJEKT-Dateien, nicht
+> Betriebsmittel; nicht verwechseln). Zu klären u. a.: Ausgabe und
+> Rücknahme an Mitarbeiter mit Nachweis (Unterschrift?), Seriennummer,
+> Zustand, Prüffristen von Arbeitsmitteln (z. B. Leitern, Elektro —
+> Schnittstelle zu ADR 0027, dort ausdrücklich ausgeklammert),
+> PSA-Größen, Bezug zu Lager (Epic C) und Kostenstellen (E.1).
+> Fachliche Vorgaben fehlen — als offene Fragen stellen statt raten.
+> **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5 (Client
+> Zeiterfassung), F.6 (erweiterte ArbZG-Auswertung), F.7 (Client
+> Mitarbeiterverwaltung), F.8 (Abwesenheiten, Urlaubskonto), F.10
+> (Qualifikationen: Nachweisdokumente, aktive Benachrichtigung),
+> F.11 (Stellen-Vorlagen, ausdrücklich "für später"), 0.45, 0.47.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10823,6 +10822,43 @@ Geänderte Dateien: `server/internal/hr/qualification_due.go` (neu),
 `server/internal/hr/qualification_due_integration_test.go` (neu),
 `server/internal/hr/qualification_requirements.go`,
 `server/internal/hr/qualifications_test.go`, `docs/backlog.md`,
+`docs/state.md`.
+
+### F.2.6.2 HTTP: Stand und betriebsweite Liste (letzte Subtask von F.2)
+
+Zwei Routen in `server/internal/http/qualifications.go`:
+
+| Route | Zweck | eigene | fremde |
+|---|---|---|---|
+| `GET /qualifications/standing` | Stand eines Mitarbeiters | `self` | `read` |
+| `GET /qualifications/due` | Liste aller offenen Punkte | — | nur `read` |
+
+Beide mit `warn_tage` (Standard 60). Stichtag ist heute in
+Europe/Berlin.
+
+**Stand der Qualifikations-API (F.2 vollständig):**
+`/qualification-types` (5 Routen), `/qualifications` (8 Routen).
+
+**HR-API insgesamt nach F.1, F.2, F.4** (unter `/api/v1`):
+`/time-entries` (6), `/employees` (6), `/leave-requests` (4),
+`/qualification-types` (5), `/qualifications` (8). Der Client kennt
+keine davon (F.5, F.7). "Anmahnen" heißt bisher: der Stand und die
+Liste sind abrufbar — eine aktive Benachrichtigung gibt es nicht
+(F.10, offene Frage an den Nutzer).
+
+**Testtechnik für Routen, die "heute" verwenden:** Daten so wählen,
+dass der Zustand nicht vom Datum abhängt, plus höchstens einen Fall
+relativ zu heute, dessen Spannweite (hier 28 bis 33 Tage) für alle
+Monatslängen durchgerechnet ist.
+
+**Verifikation.** `go build ./...`, `go vet ./...`, `gofmt -l` clean.
+3 neue Testfunktionen grün. Gegenprobe mit 13 Verfälschungen: alle
+erkannt. Vollständiger `NALA_INTEGRATION=1 go test ./... -p 1
+-count=1` gegen frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/qualifications.go`,
+`server/internal/http/qualification_standing_integration_test.go`
+(neu), `server/internal/http/observability.go`, `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
