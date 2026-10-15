@@ -7,16 +7,17 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.2** (Migration 089: `assets`,
-> `asset_assignments`, `asset_inspections`, `assets.self/read/write`).
-> ADR 0028 ist entschieden (Antworten des Nutzers vom 2026-10-15, unter
-> "Korrekturen"). **Nächste Arbeit: F.3.3** Asset-Stamm als Service im
-> neuen Paket `internal/assets` (anlegen, ändern, ausmustern, lesen;
-> Inventarnummer eindeutig je Mandant → fachliche Meldung über
-> `isUniqueViolation`; Kostenstelle muss zum Mandanten gehören;
-> Ausmustern bei offener Ausgabe ablehnen). Danach F.3.4 Ausgabe,
-> F.3.5 Prüfungen (Sperre bei `nicht_bestanden`, Hinweis bei
-> überfällig), F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.3** (Asset-Stamm als Service, neues Paket
+> `internal/assets`). Davor F.3.2 (Migration 089), ADR 0028 entschieden.
+> **Nächste Arbeit: F.3.4** Ausgabe und Rücknahme als Service (Ausgabe
+> an Mitarbeiter desselben Mandanten; **zuerst die Asset-Zeile `FOR
+> UPDATE` sperren** wie `Retire`, dann prüfen: nicht ausgemustert, keine
+> offene Ausgabe — letzteres garantiert zusätzlich
+> `idx_asset_assignments_one_open`, Verletzung fachlich übersetzen;
+> Rückgabe einmalig mit Zustand, nicht vor der Ausgabe; Storno mit
+> Begründung; Wächtertest am Quelltext für Unveränderlichkeit). Die
+> Sperre bei `nicht_bestanden` kommt erst mit F.3.5 dazu. Danach F.3.5,
+> F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
 > F.8, F.10, F.11, F.12 (Verbrauchs-PSA), 0.45, 0.47.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
@@ -10910,6 +10911,32 @@ in der Arbeitskopie (Index LF) — vorbestehend, nicht Teil von F.3.2.
 Geänderte Dateien: `server/internal/migrate/migrations/089_assets.sql`
 (neu), `docs/adr/0028-asset-zuordnung.md`, `docs/backlog.md`,
 `docs/open-questions.md`, `docs/state.md`.
+
+### F.3.3 Asset-Stamm: Service
+
+Neues Paket `server/internal/assets`. `Service`: `Create`, `Get`,
+`List`, `Update` (vollständiger Ersatz), `Retire`. Das Paket importiert
+`hr` nur für `hr.WorkDateOf` (Kalendertag Europe/Berlin); `hr`
+importiert `assets` nicht.
+
+**Merken für F.3.4:** `Retire` sperrt die Asset-Zeile und prüft dann
+auf offene Ausgaben. Die Ausgabe muss dieselbe Zeile zuerst sperren,
+sonst kann zwischen Prüfung und Ausmusterung eine Ausgabe entstehen.
+
+**Gleichwertige Verfälschungen (belegt):** Mandant im UPDATE der
+Ausmusterung (die Sperrabfrage prüft ihn); Kürzen des Datums vor dem
+Speichern (der Treiber speichert den Kalendertag in der Zone des
+Werts).
+
+**Verifikation.** `go build`, `go vet` clean; 9 neue Testfunktionen
+grün; Gegenprobe 35 Verfälschungen, 33 erkannt, 2 gleichwertig belegt;
+vollständiger `NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen
+frische DB: durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/assets/assets.go`,
+`server/internal/assets/assets_test.go`,
+`server/internal/assets/assets_integration_test.go` (alle neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
