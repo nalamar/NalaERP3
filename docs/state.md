@@ -7,20 +7,20 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.5.2** — damit ist **F.3.5 (Prüfungen und
-> Fälligkeit) fertig**. Davor F.3.5.1, F.3.4, F.3.3, F.3.2.
-> **Nächste Arbeit: F.3.6** HTTP-Anbindung des Pakets `internal/assets`
-> (voraussichtlich zu teilen: Stamm; Ausgaben; Prüfungen, Stand und
-> Liste). Rechte nach ADR 0028: `assets.read`/`write` (nur HR und
-> Admin), `assets.self` für "meine Betriebsmittel" (eigene Ausgaben über
-> `resolveOwnOrPermittedEmployee`). Neue Meldungen in
-> `classifyDomainError`: "ist ausgemustert", "bereits ausgegeben", "ist
-> gesperrt", "bereits zurückgegeben", "bereits ausgemustert", "noch
-> ausgegeben" (409), "nicht aktiv" (409 oder 400 — entscheiden), mit
-> `TestClassifyDomainErrorCoversAssets`. `hinweise` in der Antwort der
-> Ausgabe. Stichtag der Liste: heute in Europe/Berlin, `warn_tage`
-> (Standard `DefaultInspectionWarnDays` = 30) in `loggedQueryKeys`.
-> Nächste freie Migration 090, ADR 0029.
+> Zuletzt abgeschlossen: **F.3.6.1** (HTTP für den Asset-Bestand,
+> `/api/v1/assets`). F.3.6 geteilt in .1 Bestand, .2 Ausgaben,
+> .3 Prüfungen/Stand/Liste.
+> **Nächste Arbeit: F.3.6.2** HTTP für Ausgaben — Vorschlag: `POST
+> /asset-assignments` (write; Antwort mit `hinweise`), `POST
+> /asset-assignments/{id}/return`, `POST .../{id}/storno` (write),
+> `GET /asset-assignments` (Filter `asset_id`, `employee_id`,
+> `nur_offen`, `include_storniert`; ohne `employee_id` nur mit `read`,
+> mit eigener `employee_id` bzw. "meine" mit `self` über
+> `resolveOwnOrPermittedEmployee`), `GET .../{id}` (eigene mit `self`).
+> Meldungen in `classifyDomainError` ergänzen: "ist ausgemustert",
+> "bereits ausgegeben", "ist gesperrt", "bereits zurückgegeben" (409),
+> "nicht aktiv" (entscheiden, Vorschlag 409). Neue Query-Keys in
+> `loggedQueryKeys`. Nächste freie Migration 090, ADR 0029.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
 > **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
@@ -11018,6 +11018,27 @@ Geänderte Dateien: `server/internal/assets/inspection_due.go`,
 `server/internal/assets/inspection_due_integration_test.go` (alle neu),
 `server/internal/assets/assignments.go`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.3.6.1 HTTP: Asset-Bestand
+
+| Route | Recht |
+|---|---|
+| `GET /assets`, `GET /assets/{id}` | `assets.read` |
+| `POST /assets`, `PUT /assets/{id}`, `POST /assets/{id}/retire` | `assets.write` |
+
+PUT verlangt alle zwölf Felder. Das Lager (`role-inventory`) hat nur
+`assets.self` und kommt an den Bestand nicht heran — im Rechtetest
+ausdrücklich geprüft.
+
+**Verifikation.** `go build`, `go vet` clean; 4 neue Testfunktionen
+grün; Gegenprobe 19 Verfälschungen, alle erkannt; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/http/assets.go`,
+`server/internal/http/assets_integration_test.go` (beide neu),
+`server/internal/http/v1.go`, `server/internal/http/observability.go`,
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

@@ -24,6 +24,7 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/gridfs"
 	"nalaerp3/internal/accounting"
+	"nalaerp3/internal/assets"
 	"nalaerp3/internal/auditlog"
 	"nalaerp3/internal/auth"
 	"nalaerp3/internal/config"
@@ -71,6 +72,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	leaveSvc := hr.NewLeaveService(pg)
 	qualificationTypeSvc := hr.NewQualificationTypeService(pg)
 	qualificationSvc := hr.NewQualificationService(pg)
+	assetSvc := assets.NewService(pg)
 	datevExportSvc := accounting.NewDatevExportService(pg)
 	eInvoiceSvc := accounting.NewEInvoiceService(pg, settings.NewCompanyService(pg))
 	paymentSvc := accounting.NewPaymentService(pg, journalSvc)
@@ -1723,6 +1725,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountLeaveRequestRoutes(protected, leaveSvc, timeEntrySvc)
 	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
 	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
+	mountAssetRoutes(protected, assetSvc)
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5045,7 +5048,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "überschneidet sich"),
 		strings.Contains(msg, "bereits mit einem anderen"),
 		strings.Contains(msg, "bereits entschieden"),
-		strings.Contains(msg, "ist stillgelegt"):
+		strings.Contains(msg, "ist stillgelegt"),
+		strings.Contains(msg, "bereits ausgemustert"),
+		strings.Contains(msg, "noch ausgegeben"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),

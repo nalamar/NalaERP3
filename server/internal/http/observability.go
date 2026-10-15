@@ -97,7 +97,7 @@ func requestLoggerMiddleware(next http.Handler) http.Handler {
 // er wird dann unter query_other mitgezaehlt statt genannt.
 var loggedQueryKeys = map[string]bool{
 	"action": true, "bestellung_id": true, "bis": true, "contact_id": true, "datum": true,
-	"employee_id": true, "format": true, "from": true, "include_inactive": true,
+	"employee_id": true, "format": true, "from": true, "include_ausgemustert": true, "include_inactive": true,
 	"include_storniert": true, "invoice_type": true, "kategorie": true, "kind": true,
 	"lieferant_id": true, "limit": true, "material_id": true, "menge": true,
 	"min_length_mm": true, "offset": true, "path": true, "project_id": true, "q": true,
