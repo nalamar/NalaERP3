@@ -7,28 +7,14 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.2.6.2** — damit ist **TASK F.2
-> (Weiterbildung/Qualifikationen/Unterweisungen) VOLLSTÄNDIG**: ADR
-> 0027, Migration 088, Katalog samt Vorschlagskatalog, Nachweise,
-> Anforderungen je Mitarbeiter, Stand und betriebsweite Liste, alles
-> über HTTP. Davor Task F.4, Task F.1, 0.46, F.9.
-> **Nächste Arbeit: F.3 (Asset-Zuordnung: Werkzeuge/IT/PSA)** — nach
-> der Backlog-Reihenfolge (Entscheidung des Nutzers vom 2026-10-13:
-> nach F.4 wieder F.2, F.3). F.3 ist nur eine Zeile im Backlog und
-> beginnt mit Bestandsaufnahme und ADR (F.3.1, nächste ADR 0028,
-> nächste Migration 089). Zuerst per Suche prüfen, was es gibt (u. a.
-> `project_assets` existiert — das sind PROJEKT-Dateien, nicht
-> Betriebsmittel; nicht verwechseln). Zu klären u. a.: Ausgabe und
-> Rücknahme an Mitarbeiter mit Nachweis (Unterschrift?), Seriennummer,
-> Zustand, Prüffristen von Arbeitsmitteln (z. B. Leitern, Elektro —
-> Schnittstelle zu ADR 0027, dort ausdrücklich ausgeklammert),
-> PSA-Größen, Bezug zu Lager (Epic C) und Kostenstellen (E.1).
-> Fachliche Vorgaben fehlen — als offene Fragen stellen statt raten.
-> **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5 (Client
-> Zeiterfassung), F.6 (erweiterte ArbZG-Auswertung), F.7 (Client
-> Mitarbeiterverwaltung), F.8 (Abwesenheiten, Urlaubskonto), F.10
-> (Qualifikationen: Nachweisdokumente, aktive Benachrichtigung),
-> F.11 (Stellen-Vorlagen, ausdrücklich "für später"), 0.45, 0.47.
+> Zuletzt abgeschlossen: **F.3.1** (ADR 0028 Asset-Zuordnung, Status
+> vorgeschlagen). Davor Task F.2 (Qualifikationen) vollständig.
+> **BLOCKIERT: F.3.2 (Migration) wartet auf vier Antworten des Nutzers**
+> (ADR 0028 "Offen", `docs/open-questions.md` unter F.3): Prüfungen der
+> Arbeitsmittel in F.3; Verbrauchs-PSA; wer gibt aus; Empfangsbestätigung.
+> Antworten unter "Korrekturen" festhalten, ADR 0028 auf "entschieden"
+> setzen und anpassen, dann F.3.2. Ohne Antwort NICHT mit dem
+> vorgeschlagenen Umfang beginnen.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10860,6 +10846,35 @@ Geänderte Dateien: `server/internal/http/qualifications.go`,
 `server/internal/http/qualification_standing_integration_test.go`
 (neu), `server/internal/http/observability.go`, `docs/backlog.md`,
 `docs/state.md`.
+
+## Epic F, Task F.3 — Asset-Zuordnung
+
+### F.3.1 ADR: Bestandsaufnahme, Recherche, Modellvorschlag
+
+Reine Recherche-/ADR-Arbeit. Ergebnis:
+`docs/adr/0028-asset-zuordnung.md`, Status **vorgeschlagen** — anders
+als ADR 0024/0025/0027 nicht "entschieden", weil vier Fragen das
+Schema bestimmen.
+
+**Verwechslungsfalle:** `project_assets` sind Projektdateien, keine
+Betriebsmittel.
+
+**Kernbefund der Recherche:** die Gegenstände, die ausgegeben werden
+(Elektrowerkzeug, Leiter, Auffanggurt), haben Prüfpflichten. Ohne
+Prüffristen bliebe die Frage "war das Werkzeug geprüft?" offen.
+
+**Für F.3.2 ff. merken (bei Freigabe wie vorgeschlagen):** Muster
+aus F.1 (unveränderliche Ausgabe mit Rückgabe/Storno, partieller
+eindeutiger Index für "höchstens eine offene Ausgabe") und F.2
+(gespeicherte nächste Fälligkeit, Status beim Lesen, betriebsweite
+Liste, Wächtertest Liste gegen Einzelstand) wiederverwenden. Neues
+Paket `internal/assets`.
+
+**Verifikation.** Keine Codeänderung, kein Build-/Testlauf.
+Bestandsaussage per Suche belegt; Recherche mit Quellen in der ADR.
+
+Geänderte Dateien: `docs/adr/0028-asset-zuordnung.md` (neu),
+`docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
