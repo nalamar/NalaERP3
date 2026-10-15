@@ -1,8 +1,8 @@
 # ADR 0028 — Asset-Zuordnung (Werkzeuge, IT, PSA)
 
 Datum: 2026-10-15
-Status: vorgeschlagen (Subtask F.3.1) — **vier Punkte brauchen Freigabe,
-bevor F.3.2 (Migration) beginnt**, siehe "Offen"
+Status: entschieden (vorgeschlagen in F.3.1; die vier offenen Punkte hat
+der Nutzer am 2026-10-15 beantwortet, siehe "Entscheidungen des Nutzers")
 Bezug: Backlog F.3 (Epic F — Personal & HR). Nach F.2 gemäß
 Backlog-Reihenfolge (Entscheidung des Nutzers vom 2026-10-13).
 
@@ -132,8 +132,13 @@ Neue Permissions nach dem bekannten Muster:
 - `assets.write` — Assets pflegen, ausgeben, zurücknehmen, Prüfungen
   erfassen, stornieren.
 
-Vorschlag für `read`/`write`: `role-hr`, `role-inventory` (Lager — dort
-liegt das Werkzeug) und `role-admin`.
+~~Vorschlag für `read`/`write`: `role-hr`, `role-inventory` und
+`role-admin`.~~ **Entschieden: `read`/`write` nur an `role-hr`** (und
+`role-admin` wie in allen HR-Migrationen; er hat ohnehin
+`admin.superuser`). Das Lager kann später aufgenommen werden; das ist
+eine Zuordnung in `role_permissions`. Eine Oberfläche, um Rechte von
+Rollen zu ändern, gibt es bisher nicht (nur Rollen je Benutzer), also
+geht das über eine kleine Migration.
 
 ### 7. Ort im Code
 
@@ -142,7 +147,7 @@ nicht nur Personalthema; Fuhrpark (G) und Produktion (H) werden darauf
 aufsetzen. Der Bezug zum Mitarbeiter läuft über `hr_employees` in SQL
 und über die vorhandene Auflösung Benutzer→Mitarbeiter.
 
-## Offen — Freigabe des Nutzers nötig vor F.3.2
+## Offen — Freigabe des Nutzers nötig vor F.3.2 (erledigt, siehe unten)
 
 1. **Prüfungen in F.3?** Vorschlag: ja, als eigene Subtasks nach
    Stamm und Ausgabe, mit Anmahnen wie bei den Qualifikationen; dazu
@@ -160,7 +165,25 @@ und über die vorhandene Auflösung Benutzer→Mitarbeiter.
    unterschriebene Ausgabeliste bleibt Papier bzw. später ein
    hochgeladenes Dokument.
 
-## Konsequenzen (bei Freigabe wie vorgeschlagen)
+## Entscheidungen des Nutzers (2026-10-15)
+
+1. Prüfungen: "Ja, soll Teil von F.3 sein" — wie vorgeschlagen,
+   einschließlich Sperre bei `nicht_bestanden` und Hinweis bei
+   überfälliger Prüfung.
+2. Verbrauchs-PSA: "Vorschlag umsetzen" — nicht in F.3; eigener
+   Backlog-Eintrag F.12 (Lager mit Bezug zum Empfänger).
+3. Wer gibt aus: "Erstmal nur Personalabteilung, später eventuell dem
+   Lager das Recht aber einräumen können." — siehe Abschnitt 6.
+4. Empfangsbestätigung: "Nein, keine Bestätigung vorerst."
+
+**Abweichung von Abschnitt 1 bei der Umsetzung (F.3.2):** der Status
+eines Assets wird **nicht gespeichert**, sondern abgeleitet —
+"ausgegeben" aus einer offenen Ausgabe, "ausgemustert" aus
+`ausgemustert_am`, "gesperrt"/"überfällig" aus den Prüfungen. Eine
+gespeicherte Kopie könnte auseinanderlaufen. "In Reparatur" war nicht
+gefordert und entfällt; bei Bedarf als eigene Erweiterung.
+
+## Konsequenzen
 
 - **F.3.2** Migration `089_assets.sql`: `assets`, `asset_assignments`,
   `asset_inspections`, drei Permissions.

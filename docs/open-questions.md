@@ -207,17 +207,20 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   Über die API in drei Schritten (Mitarbeiter, Anforderungen,
   Nachweise), die die Oberfläche in einem Dialog zusammenfasst.
 
-## 2026-10-15 — Asset-Zuordnung (F.3.1, ADR 0028) — blockieren F.3.2
+## 2026-10-15 — Asset-Zuordnung (F.3.1, ADR 0028) — alle beantwortet am 2026-10-15
 
 - **F.3 (Prüfungen der Arbeitsmittel)**: Sollen Prüffristen (DGUV
   Vorschrift 3 für Elektrowerkzeug, Leitern, PSA gegen Absturz) Teil
   von F.3 sein, mit Anmahnen wie bei den Qualifikationen? Vorschlag:
   ja; nicht bestandene Prüfung sperrt die Ausgabe, überfällige Prüfung
-  gibt nur einen Hinweis. Status: **offen**, gestellt am 2026-10-15.
+  gibt nur einen Hinweis. Status: **beantwortet** — "Ja, soll Teil von F.3 sein".
 - **F.3 (Verbrauchs-PSA)**: Handschuhe, Brillen, Schuhe ohne Rückgabe
   — in F.3 oder später über das Lager? Vorschlag: später über das
-  Lager; F.3 nur Einzelstücke mit Inventarnummer. Status: **offen**.
+  Lager; F.3 nur Einzelstücke mit Inventarnummer. Status: **beantwortet** —
+  "Vorschlag umsetzen" → Backlog F.12.
 - **F.3 (wer gibt aus)**: Vorschlag Personalabteilung, Lager,
-  Administrator. Status: **offen**.
+  Administrator. Status: **beantwortet** — "Erstmal nur Personalabteilung,
+  später eventuell dem Lager das Recht aber einräumen können."
 - **F.3 (Empfangsbestätigung)**: Vorschlag wie F.2 — die ausgebende
-  Stelle erfasst, keine Bestätigung im System. Status: **offen**.
+  Stelle erfasst, keine Bestätigung im System. Status: **beantwortet** —
+  "Nein, keine Bestätigung vorerst."

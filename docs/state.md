@@ -7,14 +7,18 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.1** (ADR 0028 Asset-Zuordnung, Status
-> vorgeschlagen). Davor Task F.2 (Qualifikationen) vollständig.
-> **BLOCKIERT: F.3.2 (Migration) wartet auf vier Antworten des Nutzers**
-> (ADR 0028 "Offen", `docs/open-questions.md` unter F.3): Prüfungen der
-> Arbeitsmittel in F.3; Verbrauchs-PSA; wer gibt aus; Empfangsbestätigung.
-> Antworten unter "Korrekturen" festhalten, ADR 0028 auf "entschieden"
-> setzen und anpassen, dann F.3.2. Ohne Antwort NICHT mit dem
-> vorgeschlagenen Umfang beginnen.
+> Zuletzt abgeschlossen: **F.3.2** (Migration 089: `assets`,
+> `asset_assignments`, `asset_inspections`, `assets.self/read/write`).
+> ADR 0028 ist entschieden (Antworten des Nutzers vom 2026-10-15, unter
+> "Korrekturen"). **Nächste Arbeit: F.3.3** Asset-Stamm als Service im
+> neuen Paket `internal/assets` (anlegen, ändern, ausmustern, lesen;
+> Inventarnummer eindeutig je Mandant → fachliche Meldung über
+> `isUniqueViolation`; Kostenstelle muss zum Mandanten gehören;
+> Ausmustern bei offener Ausgabe ablehnen). Danach F.3.4 Ausgabe,
+> F.3.5 Prüfungen (Sperre bei `nicht_bestanden`, Hinweis bei
+> überfällig), F.3.6 HTTP. Nächste freie Migration 090, ADR 0029.
+> **Ebenfalls offen und vom Nutzer nicht priorisiert:** F.5, F.6, F.7,
+> F.8, F.10, F.11, F.12 (Verbrauchs-PSA), 0.45, 0.47.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
@@ -10876,6 +10880,37 @@ Bestandsaussage per Suche belegt; Recherche mit Quellen in der ADR.
 Geänderte Dateien: `docs/adr/0028-asset-zuordnung.md` (neu),
 `docs/backlog.md`, `docs/open-questions.md`, `docs/state.md`.
 
+### F.3.2 Migration 089
+
+Vorab die vier Antworten des Nutzers in ADR 0028 eingearbeitet
+(Status entschieden). Neue Datei
+`server/internal/migrate/migrations/089_assets.sql`, kein Go-Code.
+
+| Tabelle | Kern |
+|---|---|
+| `assets` | Einzelstück je Mandant, Inventarnummer eindeutig je Mandant, Kategorie per CHECK, Ausmusterung nur mit Datum und Grund, **keine Status-Spalte** |
+| `asset_assignments` | Ausgabe an Mitarbeiter, tagesgenau, einmalige Rückgabe, Storno; `idx_asset_assignments_one_open` |
+| `asset_inspections` | Prüfung mit Ergebnis und gespeicherter nächster Fälligkeit, Prüfername Pflicht, Storno |
+
+**Rechte:** `assets.self` an alle Rollen; `read`/`write` nur HR und
+Admin. Das Lager später aufzunehmen = kleine Migration, die
+`role-inventory` in `role_permissions` einträgt.
+
+**Für F.3.3 ff.:** Mandantengleichheit von Asset, Mitarbeiter und
+Kostenstelle prüft der Service (die DB kann es nicht). Unveränderlichkeit
+von Ausgaben und Prüfungen wie bisher per Wächtertest am Quelltext.
+
+**Verifikation.** Kette 001–089 auf leerer DB; 16 Fälle per SQL
+provoziert, alle wie erwartet; Down-Pfad ausgeführt und erneut
+angewendet; `go build`, `go vet` clean; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`. `gofmt -l` meldet 28 unberührte Dateien mit CRLF
+in der Arbeitskopie (Index LF) — vorbestehend, nicht Teil von F.3.2.
+
+Geänderte Dateien: `server/internal/migrate/migrations/089_assets.sql`
+(neu), `docs/adr/0028-asset-zuordnung.md`, `docs/backlog.md`,
+`docs/open-questions.md`, `docs/state.md`.
+
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
 Vom Nutzer vor F.2 gezogen. ADR:
@@ -11002,6 +11037,14 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   Mitarbeiter-Stellen generieren, die bestimmte Qualifikationen
   erfordern." → Backlog F.11, ausdrücklich für später; nicht
   eigenmächtig vorziehen.
+
+- **2026-10-15 — Antworten zu F.3 (ADR 0028).** (1) Prüfungen der
+  Arbeitsmittel: "Ja, soll Teil von F.3 sein." (2) Verbrauchs-PSA:
+  "Vorschlag umsetzen" → nicht in F.3, Backlog F.12. (3) Wer gibt
+  aus: "Erstmal nur Personalabteilung, später eventuell dem Lager das
+  Recht aber einräumen können." → `assets.read`/`write` nur an
+  `role-hr` (und `role-admin`). (4) "Nein, keine Bestätigung
+  vorerst." ADR 0028 damit entschieden.
 
 ## Verworfen
 
