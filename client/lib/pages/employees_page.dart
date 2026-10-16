@@ -2,6 +2,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
 
+// Mitarbeiterverwaltung (Backlog F.7.1) auf den Routen aus F.4.4:
+// /api/v1/employees. Lesen mit employees.read, anlegen und aendern mit
+// employees.write. Die Liste enthaelt auch inaktive (ausgeschiedene)
+// Mitarbeiter; sie sind gekennzeichnet und koennen reaktiviert werden.
 class EmployeesPage extends StatefulWidget {
   const EmployeesPage({super.key, required this.api});
   final ApiClient api;
@@ -10,12 +14,51 @@ class EmployeesPage extends StatefulWidget {
   State<EmployeesPage> createState() => _EmployeesPageState();
 }
 
+String employeeDisplayName(Map<String, dynamic> e) {
+  final name = '${e['first_name'] ?? ''} ${e['last_name'] ?? ''}'.trim();
+  return name.isEmpty ? (e['id']?.toString() ?? '') : name;
+}
+
+// buildEmployeeCreateBody baut den Body fuer POST /employees. Leere
+// optionale Angaben werden weggelassen statt als "" gesendet; "active"
+// fehlt bewusst - neue Mitarbeiter sind auf dem Server standardmaessig
+// aktiv (ADR 0025).
+Map<String, dynamic> buildEmployeeCreateBody({
+  required String firstName,
+  required String lastName,
+  String personalNr = '',
+  String email = '',
+  String phone = '',
+  String role = '',
+  String? teamId,
+}) {
+  final body = <String, dynamic>{
+    'first_name': firstName.trim(),
+    'last_name': lastName.trim(),
+  };
+  void put(String key, String value) {
+    if (value.trim().isNotEmpty) body[key] = value.trim();
+  }
+
+  put('personalnummer', personalNr);
+  put('email', email);
+  put('phone', phone);
+  put('role', role);
+  if (teamId != null && teamId.isNotEmpty) body['team_id'] = teamId;
+  return body;
+}
+
 class _EmployeesPageState extends State<EmployeesPage> {
   List<dynamic> items = [];
+  Map<String, String> teamNames = {};
+  List<dynamic> teams = [];
   Map<String, dynamic>? selected;
   bool loading = false;
+  String? loadError;
   int limit = 50;
   int offset = 0;
+
+  bool get _canWrite => widget.api.hasPermission('employees.write');
 
   @override
   void initState() {
@@ -24,204 +67,209 @@ class _EmployeesPageState extends State<EmployeesPage> {
   }
 
   Future<void> _load() async {
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      loadError = null;
+    });
     try {
       final list = await widget.api.listEmployees(limit: limit, offset: offset);
-      setState(() => items = list);
+      List<dynamic> loadedTeams = const [];
+      try {
+        loadedTeams = await widget.api.listTeams();
+      } catch (_) {
+        // Ohne Teams bleibt die Seite benutzbar; angezeigt wird dann die ID.
+      }
+      if (!mounted) return;
+      setState(() {
+        items = list;
+        teams = loadedTeams;
+        teamNames = {
+          for (final t in loadedTeams)
+            (t as Map<String, dynamic>)['id'].toString():
+                t['name']?.toString() ?? t['id'].toString(),
+        };
+      });
+    } catch (e) {
+      if (mounted) setState(() => loadError = 'Mitarbeiter konnten nicht geladen werden: $e');
     } finally {
       if (mounted) setState(() => loading = false);
     }
   }
 
+  void _showError(Object e) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+  }
+
+  List<DropdownMenuItem<String?>> _teamItems() => [
+        const DropdownMenuItem<String?>(value: null, child: Text('Kein Team')),
+        ...teams.map((t) {
+          final m = t as Map<String, dynamic>;
+          final id = m['id'].toString();
+          return DropdownMenuItem<String?>(value: id, child: Text(m['name']?.toString() ?? id));
+        }),
+      ];
+
   Future<void> _createDialog() async {
+    final personalNrCtrl = TextEditingController();
     final firstCtrl = TextEditingController();
     final lastCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
     final roleCtrl = TextEditingController();
     String? teamId;
-    List<dynamic> teams = [];
-    try {
-      teams = await widget.api.listTeams();
-    } catch (_) {}
-    await showDialog(
+    final created = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Mitarbeiter anlegen'),
-        content: SizedBox(
-          width: 400,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: firstCtrl,
-                  decoration: const InputDecoration(labelText: 'Vorname')),
-              TextField(
-                  controller: lastCtrl,
-                  decoration: const InputDecoration(labelText: 'Nachname')),
-              TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: 'E-Mail')),
-              TextField(
-                  controller: roleCtrl,
-                  decoration: const InputDecoration(labelText: 'Rolle')),
-              DropdownButtonFormField<String>(
-                initialValue: teamId,
-                decoration: const InputDecoration(labelText: 'Team (optional)'),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Kein Team')),
-                  ...teams.map((t) {
-                    final m = t as Map<String, dynamic>;
-                    return DropdownMenuItem(
-                        value: m['id'].toString(),
-                        child:
-                            Text(m['name']?.toString() ?? m['id'].toString()));
-                  })
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Mitarbeiter anlegen'),
+          content: SizedBox(
+            width: 400,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: personalNrCtrl, decoration: const InputDecoration(labelText: 'Personalnummer (optional)')),
+                  TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Vorname')),
+                  TextField(controller: lastCtrl, decoration: const InputDecoration(labelText: 'Nachname')),
+                  TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'E-Mail')),
+                  TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon')),
+                  TextField(controller: roleCtrl, decoration: const InputDecoration(labelText: 'Stelle / Rolle')),
+                  DropdownButtonFormField<String?>(
+                    initialValue: teamId,
+                    decoration: const InputDecoration(labelText: 'Team (optional)'),
+                    items: _teamItems(),
+                    onChanged: (v) => setStateDialog(() => teamId = v),
+                  ),
                 ],
-                onChanged: (v) => teamId = v,
               ),
-            ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Abbrechen')),
-          FilledButton(
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(
               onPressed: () async {
                 try {
-                  final body = {
-                    'first_name': firstCtrl.text.trim(),
-                    'last_name': lastCtrl.text.trim(),
-                    'email': emailCtrl.text.trim(),
-                    'role': roleCtrl.text.trim(),
-                    'team_id': teamId,
-                    'active': true,
-                  };
-                  final emp = await widget.api.createEmployee(body);
-                  if (mounted) {
-                    Navigator.of(ctx).pop();
-                    setState(() {
-                      items.insert(0, emp);
-                      selected = emp;
-                    });
-                  }
+                  final emp = await widget.api.createEmployee(buildEmployeeCreateBody(
+                    firstName: firstCtrl.text,
+                    lastName: lastCtrl.text,
+                    personalNr: personalNrCtrl.text,
+                    email: emailCtrl.text,
+                    phone: phoneCtrl.text,
+                    role: roleCtrl.text,
+                    teamId: teamId,
+                  ));
+                  if (ctx.mounted) Navigator.of(ctx).pop(emp);
                 } catch (e) {
-                  if (mounted)
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                  _showError(e);
                 }
               },
-              child: const Text('Anlegen')),
-        ],
+              child: const Text('Anlegen'),
+            ),
+          ],
+        ),
       ),
     );
+    if (created == null || !mounted) return;
+    setState(() => selected = created);
+    await _load();
   }
 
   Future<void> _loadDetail(String id) async {
     try {
       final emp = await widget.api.getEmployee(id);
       if (mounted) setState(() => selected = emp);
-    } catch (_) {}
+    } catch (e) {
+      _showError(e);
+    }
   }
 
-  Future<void> _deactivateSelected() async {
+  Future<void> _setActive(bool active) async {
     final id = selected?['id']?.toString();
     if (id == null) return;
     try {
-      await widget.api.updateEmployee(id, {'active': false});
-      await _loadDetail(id);
+      final emp = await widget.api.updateEmployee(id, {'active': active});
+      if (!mounted) return;
+      setState(() => selected = emp);
       await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Mitarbeiter deaktiviert')));
+            SnackBar(content: Text(active ? 'Mitarbeiter reaktiviert' : 'Mitarbeiter deaktiviert')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-      }
+      _showError(e);
     }
   }
 
   Future<void> _editSelected() async {
     final emp = selected;
     if (emp == null) return;
-    final emailCtrl =
-        TextEditingController(text: emp['email']?.toString() ?? '');
+    final firstCtrl = TextEditingController(text: emp['first_name']?.toString() ?? '');
+    final lastCtrl = TextEditingController(text: emp['last_name']?.toString() ?? '');
+    final emailCtrl = TextEditingController(text: emp['email']?.toString() ?? '');
+    final phoneCtrl = TextEditingController(text: emp['phone']?.toString() ?? '');
     final roleCtrl = TextEditingController(text: emp['role']?.toString() ?? '');
+    final locationCtrl = TextEditingController(text: emp['location']?.toString() ?? '');
     String? teamId = emp['team_id']?.toString();
-    List<dynamic> teams = [];
-    try {
-      teams = await widget.api.listTeams();
-    } catch (_) {}
-    await showDialog(
+    if (teamId != null && !teamNames.containsKey(teamId)) teamId = null;
+    final updated = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Mitarbeiter bearbeiten'),
           content: SizedBox(
             width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: emailCtrl,
-                    decoration: const InputDecoration(labelText: 'E-Mail')),
-                TextField(
-                    controller: roleCtrl,
-                    decoration: const InputDecoration(labelText: 'Rolle')),
-                DropdownButtonFormField<String>(
-                  initialValue: teamId,
-                  decoration:
-                      const InputDecoration(labelText: 'Team (optional)'),
-                  items: [
-                    const DropdownMenuItem(
-                        value: null, child: Text('Kein Team')),
-                    ...teams.map((t) {
-                      final m = t as Map<String, dynamic>;
-                      final id = m['id']?.toString();
-                      return DropdownMenuItem(
-                          value: id,
-                          child: Text(m['name']?.toString() ?? id ?? ''));
-                    })
-                  ],
-                  onChanged: (v) => setStateDialog(() => teamId = v),
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Vorname')),
+                  TextField(controller: lastCtrl, decoration: const InputDecoration(labelText: 'Nachname')),
+                  TextField(controller: emailCtrl, decoration: const InputDecoration(labelText: 'E-Mail')),
+                  TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon')),
+                  TextField(controller: roleCtrl, decoration: const InputDecoration(labelText: 'Stelle / Rolle')),
+                  TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Standort')),
+                  DropdownButtonFormField<String?>(
+                    initialValue: teamId,
+                    decoration: const InputDecoration(labelText: 'Team (optional)'),
+                    items: _teamItems(),
+                    onChanged: (v) => setStateDialog(() => teamId = v),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
-            TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Abbrechen')),
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
             FilledButton(
-                onPressed: () async {
-                  try {
-                    final patch = {
-                      'email': emailCtrl.text.trim(),
-                      'role': roleCtrl.text.trim(),
-                      'team_id': teamId,
-                    };
-                    await widget.api
-                        .updateEmployee(emp['id'].toString(), patch);
-                    if (mounted) Navigator.of(ctx).pop();
-                    await _loadDetail(emp['id'].toString());
-                    await _load();
-                  } catch (e) {
-                    if (mounted)
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text('Fehler: $e')));
-                  }
-                },
-                child: const Text('Speichern')),
+              onPressed: () async {
+                try {
+                  final result = await widget.api.updateEmployee(emp['id'].toString(), {
+                    'first_name': firstCtrl.text.trim(),
+                    'last_name': lastCtrl.text.trim(),
+                    'email': emailCtrl.text.trim(),
+                    'phone': phoneCtrl.text.trim(),
+                    'role': roleCtrl.text.trim(),
+                    'location': locationCtrl.text.trim(),
+                    'team_id': teamId,
+                  });
+                  if (ctx.mounted) Navigator.of(ctx).pop(result);
+                } catch (e) {
+                  _showError(e);
+                }
+              },
+              child: const Text('Speichern'),
+            ),
           ],
         ),
       ),
     );
+    if (updated == null || !mounted) return;
+    setState(() => selected = updated);
+    await _load();
   }
 
-  Widget _glassPanel(Widget child,
-      {EdgeInsets padding = const EdgeInsets.all(12)}) {
+  Widget _glassPanel(Widget child, {EdgeInsets padding = const EdgeInsets.all(12)}) {
     final scheme = Theme.of(context).colorScheme;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -231,28 +279,69 @@ class _EmployeesPageState extends State<EmployeesPage> {
           padding: padding,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.12),
-                Colors.white.withValues(alpha: 0.04)
-              ],
+              colors: [Colors.white.withValues(alpha: 0.12), Colors.white.withValues(alpha: 0.04)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
             boxShadow: [
-              BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 24,
-                  offset: const Offset(0, 16)),
-              BoxShadow(
-                  color: scheme.primary.withValues(alpha: 0.16),
-                  blurRadius: 28,
-                  offset: const Offset(-10, -8)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 24, offset: const Offset(0, 16)),
+              BoxShadow(color: scheme.primary.withValues(alpha: 0.16), blurRadius: 28, offset: const Offset(-10, -8)),
             ],
           ),
           child: child,
         ),
+      ),
+    );
+  }
+
+  String _teamLabel(Map<String, dynamic> e) {
+    final id = e['team_id']?.toString();
+    if (id == null || id.isEmpty) return '';
+    return teamNames[id] ?? id;
+  }
+
+  Widget _detail(Map<String, dynamic> sel) {
+    final active = sel['active'] != false;
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(employeeDisplayName(sel), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 6),
+          Text('Status: ${active ? 'aktiv' : 'inaktiv'}'),
+          Text('Personalnummer: ${sel['personalnummer'] ?? ''}'),
+          Text('E-Mail: ${sel['email'] ?? ''}'),
+          Text('Telefon: ${sel['phone'] ?? ''}'),
+          Text('Stelle / Rolle: ${sel['role'] ?? ''}'),
+          Text('Team: ${_teamLabel(sel)}'),
+          Text('Standort: ${sel['location'] ?? ''}'),
+          Text('Kostenstelle: ${sel['cost_center'] ?? ''}'),
+          Text('Login verknüpft: ${sel['user_id'] != null ? 'ja' : 'nein'}'),
+          const SizedBox(height: 12),
+          if (_canWrite)
+            Row(
+              children: [
+                FilledButton.tonal(onPressed: _editSelected, child: const Text('Bearbeiten')),
+                const SizedBox(width: 8),
+                if (active)
+                  FilledButton.icon(
+                    onPressed: () => _setActive(false),
+                    icon: const Icon(Icons.remove_circle_outline),
+                    style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+                    label: const Text('Deaktivieren'),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: () => _setActive(true),
+                    icon: const Icon(Icons.restart_alt),
+                    label: const Text('Reaktivieren'),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -263,13 +352,12 @@ class _EmployeesPageState extends State<EmployeesPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Personal'),
-        actions: [
-          IconButton(onPressed: _load, icon: const Icon(Icons.refresh))
-        ],
+        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Neu laden')],
         backgroundColor: Colors.transparent,
       ),
-      floatingActionButton: FloatingActionButton(
-          onPressed: _createDialog, child: const Icon(Icons.add)),
+      floatingActionButton: _canWrite
+          ? FloatingActionButton(onPressed: _createDialog, tooltip: 'Mitarbeiter anlegen', child: const Icon(Icons.add))
+          : null,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
@@ -282,31 +370,37 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     children: [
                       Row(
                         children: [
-                          const Text('Mitarbeiter',
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold)),
-                          const Spacer(),
-                          Text(
-                              'Zeile ${offset + 1} - ${offset + items.length} (Limit $limit)'),
+                          const Expanded(
+                            child: Text('Mitarbeiter',
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          ),
+                          Text('${items.length} Einträge'),
                         ],
                       ),
                       if (loading) const LinearProgressIndicator(minHeight: 2),
+                      if (loadError != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text(loadError!, style: const TextStyle(color: Color(0xFFB00020))),
+                        ),
                       const SizedBox(height: 8),
                       Expanded(
                         child: ListView.separated(
                           itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1, color: Colors.white24),
+                          separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white24),
                           itemBuilder: (ctx, i) {
                             final it = items[i] as Map<String, dynamic>;
                             final id = it['id']?.toString() ?? '';
-                            final name =
-                                '${it['first_name'] ?? ''} ${it['last_name'] ?? ''}'
-                                    .trim();
+                            final active = it['active'] != false;
+                            final subtitle = [
+                              if ((it['role']?.toString() ?? '').isNotEmpty) it['role'].toString(),
+                              if (!active) 'inaktiv',
+                            ].join(' · ');
                             return ListTile(
                               selected: sel != null && sel['id'] == id,
-                              title: Text(name.isEmpty ? id : name),
-                              subtitle: Text(it['role']?.toString() ?? ''),
+                              title: Text(employeeDisplayName(it)),
+                              subtitle: subtitle.isEmpty ? null : Text(subtitle),
                               onTap: () {
                                 setState(() => selected = it);
                                 _loadDetail(id);
@@ -324,47 +418,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
               Expanded(
                 flex: 7,
                 child: _glassPanel(
-                  sel == null
-                      ? const Center(
-                          child: Text('Bitte Mitarbeiter auswaehlen'))
-                      : Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                '${sel['first_name'] ?? ''} ${sel['last_name'] ?? ''}'
-                                    .trim(),
-                                style: const TextStyle(
-                                    fontSize: 20, fontWeight: FontWeight.bold),
-                              ),
-                              const SizedBox(height: 6),
-                              Text('E-Mail: ${sel['email'] ?? ''}'),
-                              Text('Rolle: ${sel['role'] ?? ''}'),
-                              Text('Team: ${sel['team_id'] ?? ''}'),
-                              Text('Standort: ${sel['location'] ?? ''}'),
-                              Text('Kostenstelle: ${sel['cost_center'] ?? ''}'),
-                              const SizedBox(height: 12),
-                              Row(
-                                children: [
-                                  FilledButton.tonal(
-                                      onPressed: _editSelected,
-                                      child: const Text('Bearbeiten')),
-                                  const SizedBox(width: 8),
-                                  FilledButton.icon(
-                                      onPressed: (sel['active'] == false)
-                                          ? null
-                                          : _deactivateSelected,
-                                      icon: const Icon(
-                                          Icons.remove_circle_outline),
-                                      style: FilledButton.styleFrom(
-                                          backgroundColor: Colors.redAccent),
-                                      label: const Text('Deaktivieren')),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
+                  sel == null ? const Center(child: Text('Bitte einen Mitarbeiter auswählen')) : _detail(sel),
                 ),
               ),
             ],

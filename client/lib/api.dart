@@ -2029,6 +2029,53 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
 
+  // -------- Personal (Backlog F.7, Server-Routen aus F.4.4) --------
+  // Der Mitarbeiterstamm ist der Personalabteilung vorbehalten
+  // (employees.read / employees.write). Die Liste enthaelt auch inaktive
+  // (ausgeschiedene) Mitarbeiter; sortiert nach Nachname, Vorname.
+  Future<List<dynamic>> listEmployees({int? limit, int? offset}) {
+    final qp = <String, String>{};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/employees/', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> getEmployee(String id) =>
+      _getJson('/api/v1/employees/$id');
+
+  Future<List<dynamic>> listTeams() => _getList('/api/v1/employees/teams');
+
+  // Neue Mitarbeiter sind aktiv, solange nicht ausdruecklich
+  // "active": false mitgegeben wird (ADR 0025).
+  Future<Map<String, dynamic>> createEmployee(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/employees/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Aendert nur die genannten Felder (PATCH). Zulaessig sind first_name,
+  // last_name, email, phone, role, location, cost_center, active und
+  // team_id; jedes andere Feld lehnt der Server ab. Liefert den
+  // Mitarbeiter nach der Aenderung.
+  Future<Map<String, dynamic>> updateEmployee(
+      String id, Map<String, dynamic> patch) async {
+    final r = await _sendWithAuth(
+      (headers) => http.patch(
+        _u('/api/v1/employees/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(patch),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

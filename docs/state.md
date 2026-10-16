@@ -7,21 +7,27 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.6.3** — damit ist **TASK F.3
-> (Asset-Zuordnung: Werkzeuge/IT/PSA) VOLLSTÄNDIG**: ADR 0028, Migration
-> 089, Paket `internal/assets` (Bestand, Ausgaben, Prüfungen, Prüfstand,
-> Fälligkeitsliste, Sperre bei nicht bestandener Prüfung), alles über
-> HTTP (`/assets`, `/asset-assignments`, `/asset-inspections`).
-> **Nächste Arbeit: beim Nutzer erfragen.** Die Backlog-Reihenfolge
-> aus der Entscheidung vom 2026-10-13 (F.4, F.2, F.3) ist abgearbeitet.
-> Offen und vom Nutzer nicht priorisiert: F.5 (Client Zeiterfassung),
-> F.6 (erweiterte ArbZG-Auswertung), F.7 (Client Mitarbeiterverwaltung),
-> F.8 (Abwesenheiten, Urlaubskonto), F.10 (Qualifikationen:
-> Nachweisdokumente, aktive Benachrichtigung), F.11 (Stellen-Vorlagen,
-> ausdrücklich "für später"), F.12 (Verbrauchs-PSA, für später), 0.45,
-> 0.47, Epics G/H/I. Der Client kennt keine der HR- und Asset-APIs.
+> Zuletzt abgeschlossen: **F.7.1** (Client: Mitarbeiter-API, Seite
+> lauffähig, Dashboard-Karte "Personal"). F.7 vom Agenten gewählt: der
+> Nutzer antwortete auf "F.5 oder F.7?" mit "fortsetzen" — F.7 zuerst,
+> weil Stempeln einen verknüpften Mitarbeiter voraussetzt. Davor Task F.3
+> vollständig.
+> **Nächste Arbeit: F.7.2** Login-Verknüpfung und Kostenstelle. Vorher
+> klären: die Auswahl der Logins — `GET /users` verlangt `users.manage`,
+> das hat `role-hr` nicht; Optionen: eigene schmale Route für HR,
+> Eingabe der E-Mail des Logins, oder Recht ergänzen. Eine Frage an den
+> Nutzer, falls nicht aus dem Code entscheidbar.
+> **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
+> `sales_order_context_pages_test.dart` schlagen schon ohne Änderung
+> fehl. Für Client-Arbeit: fehlschlagende Tests VOR und NACH der Änderung
+> namentlich vergleichen (`git stash push -u -- lib test`, `flutter test
+> --reporter expanded`, `[E]`-Zeilen). Neue Widget-Tests mit
+> `splashFactory: InkRipple.splashFactory` und Desktop-Fenstergröße.
+> API-Methoden testbar über `http.runWithClient` + `MockClient`.
+> Gegenprobe im Client: `scratchpad/mutrun_flutter.py`.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
+> **Ebenfalls offen:** F.5, F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
@@ -11084,6 +11090,31 @@ Geänderte Dateien: `server/internal/http/assets.go`,
 `server/internal/http/asset_inspections_integration_test.go` (neu),
 `server/internal/http/qualifications.go`, `server/internal/http/v1.go`,
 `docs/backlog.md`, `docs/state.md`.
+
+## Epic F, Task F.7 — Client: Mitarbeiterverwaltung
+
+### F.7.1 API-Methoden, Mitarbeiterseite, Dashboard-Karte
+
+Erste Client-Arbeit dieser Sitzung. `client/lib/api.dart` um fünf
+Methoden ergänzt; `client/lib/pages/employees_page.dart` (war verwaist
+und rief nicht vorhandene Methoden auf) überarbeitet; Karte "Personal"
+im Dashboard mit `employees.read`.
+
+**Befund:** die Client-Testsuite war schon vorher rot (12 von 90) —
+Backlog 0.48. Regressionsnachweis deshalb über den namentlichen
+Vergleich der fehlschlagenden Tests: identisch.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+gesamt 9 → 2 Fehler. 15 neue Tests grün. Gegenprobe 25 Verfälschungen,
+alle erkannt. `flutter test`: 78/12 → 93/12, fehlschlagende identisch.
+Server nicht berührt.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/employees_page.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/test/employees_page_test.dart`,
+`client/test/employees_api_test.dart` (beide neu), `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

@@ -4,6 +4,7 @@ import '../commercial_destinations.dart';
 import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
+import 'employees_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -103,6 +104,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ContactsScreen(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('employees.read'))
+        _DashCard(
+          title: 'Personal',
+          icon: Icons.badge_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => EmployeesPage(api: api),
               ),
             );
           },
