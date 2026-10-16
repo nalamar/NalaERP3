@@ -327,6 +327,50 @@ func (s *EmployeeService) SetUser(ctx context.Context, id uuid.UUID, userID, com
 	return nil
 }
 
+// LoginUser ist ein Login des Mandanten, wie ihn die Personalabteilung zum
+// Verknuepfen mit einem Mitarbeiter braucht (Backlog F.7.2.1). Bewusst
+// schmal: keine Rollen, keine Rechte, kein Anmeldestatus - die
+// Benutzerverwaltung (users.manage) bleibt der Administration vorbehalten.
+type LoginUser struct {
+	UserID string `json:"user_id"`
+	Email  string `json:"email"`
+	Name   string `json:"name"`
+	// EmployeeID ist der Mitarbeiter, mit dem der Login bereits verknuepft
+	// ist; nil = frei.
+	EmployeeID *uuid.UUID `json:"employee_id,omitempty"`
+}
+
+// ListLoginUsers liefert die AKTIVEN Logins des Mandanten, nach E-Mail
+// sortiert, jeweils mit dem bereits verknuepften Mitarbeiter. Deaktivierte
+// Logins erscheinen nicht - mit ihnen kann niemand stempeln. Gesperrte
+// (zu viele Fehlversuche) erscheinen: die Sperre ist voruebergehend.
+func (s *EmployeeService) ListLoginUsers(ctx context.Context, companyID string) ([]LoginUser, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	rows, err := s.pg.Query(ctx, `
+		SELECT u.id, u.email,
+		       COALESCE(NULLIF(btrim(u.display_name), ''), btrim(u.first_name || ' ' || u.last_name)),
+		       e.id
+		  FROM users u
+		  LEFT JOIN hr_employees e ON e.user_id = u.id AND e.company_id = $1
+		 WHERE u.company_id = $1 AND u.is_active
+		 ORDER BY lower(u.email), u.id`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]LoginUser, 0)
+	for rows.Next() {
+		var u LoginUser
+		if err := rows.Scan(&u.UserID, &u.Email, &u.Name, &u.EmployeeID); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 type LeaveRequest struct {
 	ID         uuid.UUID  `json:"id"`
 	EmployeeID uuid.UUID  `json:"employee_id"`

@@ -7,16 +7,19 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.1** (Client: Mitarbeiter-API, Seite
-> lauffähig, Dashboard-Karte "Personal"). F.7 vom Agenten gewählt: der
-> Nutzer antwortete auf "F.5 oder F.7?" mit "fortsetzen" — F.7 zuerst,
-> weil Stempeln einen verknüpften Mitarbeiter voraussetzt. Davor Task F.3
-> vollständig.
-> **Nächste Arbeit: F.7.2** Login-Verknüpfung und Kostenstelle. Vorher
-> klären: die Auswahl der Logins — `GET /users` verlangt `users.manage`,
-> das hat `role-hr` nicht; Optionen: eigene schmale Route für HR,
-> Eingabe der E-Mail des Logins, oder Recht ergänzen. Eine Frage an den
-> Nutzer, falls nicht aus dem Code entscheidbar.
+> Zuletzt abgeschlossen: **F.7.2.1** (Server: `GET /employees/login-users`
+> für die Personalabteilung, `employees.write`). Davor F.7.1 (Client:
+> Mitarbeiterseite lauffähig).
+> **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** auf die Frage
+> zur Login-Auswahl (eigene Route / E-Mail eingeben / `users.manage` für
+> HR) antwortete der Nutzer am 2026-10-16 mit "fortsetzen"; gewertet als
+> Zustimmung zur Empfehlung "eigene schmale Route". Ebenso F.7 vor F.5.
+> Widerspricht der Nutzer, unter "Korrekturen" festhalten.
+> **Nächste Arbeit: F.7.2.2** Client — in der Mitarbeiterseite Login
+> verknüpfen/lösen (`PUT /employees/{id}/user`, Auswahl der freien Logins
+> aus `login-users`, aktuelle Verknüpfung mit E-Mail), Kostenstelle
+> (Freitext `cost_center`, per PATCH) bearbeiten. Danach F.7.3
+> Qualifikationen am Mitarbeiter.
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart` schlagen schon ohne Änderung
 > fehl. Für Client-Arbeit: fehlschlagende Tests VOR und NACH der Änderung
@@ -11115,6 +11118,23 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/test/employees_page_test.dart`,
 `client/test/employees_api_test.dart` (beide neu), `docs/backlog.md`,
 `docs/state.md`.
+
+### F.7.2.1 Server: Auswahlliste der Logins
+
+`GET /api/v1/employees/login-users` mit `employees.write`: aktive
+Logins des Mandanten mit `user_id`, `email`, `name`, `employee_id`.
+Bewusst schmal — die Benutzerverwaltung (`/users`, `users.manage`)
+bleibt der Administration.
+
+**Verifikation.** `go build`, `go vet` clean; 2 neue Testfunktionen
+grün; Gegenprobe 9 Verfälschungen, alle erkannt; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/hr/service.go`,
+`server/internal/http/employees.go`,
+`server/internal/http/employee_login_users_integration_test.go` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

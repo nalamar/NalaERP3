@@ -62,6 +62,20 @@ func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService) {
 			writeJSON(w, http.StatusOK, out)
 		})
 
+		// Logins des Mandanten zur Auswahl beim Verknuepfen (Backlog
+		// F.7.2.1). employees.write wie das Verknuepfen selbst; die volle
+		// Benutzerliste unter /users verlangt users.manage, das die
+		// Personalabteilung nicht hat und nicht braucht.
+		r.With(requirePermission("employees.write")).Get("/login-users", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListLoginUsers(req.Context(), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(requirePermission("employees.write")).Post("/", func(w http.ResponseWriter, req *http.Request) {
 			var in hr.EmployeeInput
 			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
