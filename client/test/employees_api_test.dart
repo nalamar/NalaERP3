@@ -95,6 +95,27 @@ void main() {
     expect(out['active'], false);
   });
 
+  test('listLoginUsers: GET auf die Auswahlliste', () async {
+    final calls = <_Recorded>[];
+    final out = await _withMock(calls, (_) => _json([
+          {'user_id': 'u1', 'email': 'a@x', 'name': 'A'}
+        ], 200), () => api.listLoginUsers());
+    expect('${calls.single.method} ${calls.single.url.path}', 'GET /api/v1/employees/login-users');
+    expect(out.single['user_id'], 'u1');
+  });
+
+  test('setEmployeeUser: PUT mit user_id bzw. null, liefert den Mitarbeiter', () async {
+    final calls = <_Recorded>[];
+    final linked = await _withMock(calls, (_) => _json({'id': 'e1', 'user_id': 'u1'}, 200), () => api.setEmployeeUser('e1', 'u1'));
+    await _withMock(calls, (_) => _json({'id': 'e1'}, 200), () => api.setEmployeeUser('e1', null));
+    expect(calls.map((c) => '${c.method} ${c.url.path}'), ['PUT /api/v1/employees/e1/user', 'PUT /api/v1/employees/e1/user']);
+    expect(calls.first.contentType, startsWith('application/json'));
+    expect(jsonDecode(calls[0].body), {'user_id': 'u1'});
+    // Loesen sendet ausdruecklich null - ein fehlendes Feld waere etwas anderes.
+    expect(calls[1].body, '{"user_id":null}');
+    expect(linked['user_id'], 'u1');
+  });
+
   test('Fehlerantworten werden zur ApiException mit Meldung und Code', () async {
     Future<ApiException> caught(Future<Object?> Function() call) async {
       try {
@@ -111,6 +132,8 @@ void main() {
       () => api.listTeams(),
       () => api.createEmployee({'first_name': 'A'}),
       () => api.updateEmployee('e1', {'activ': true}),
+      () => api.listLoginUsers(),
+      () => api.setEmployeeUser('e1', 'u1'),
     ]) {
       final e = await caught(call);
       expect(e.statusCode, 400);

@@ -2076,6 +2076,27 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Logins des Mandanten zur Auswahl beim Verknuepfen (F.7.2.1): user_id,
+  // email, name und - falls schon verknuepft - employee_id. Verlangt
+  // employees.write.
+  Future<List<dynamic>> listLoginUsers() =>
+      _getList('/api/v1/employees/login-users');
+
+  // Verknuepft einen Mitarbeiter mit einem Login (userId) oder loest die
+  // Verknuepfung (userId == null). Liefert den Mitarbeiter danach.
+  Future<Map<String, dynamic>> setEmployeeUser(
+      String employeeId, String? userId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/employees/$employeeId/user'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'user_id': userId}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

@@ -7,27 +7,29 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.2.1** (Server: `GET /employees/login-users`
-> für die Personalabteilung, `employees.write`). Davor F.7.1 (Client:
-> Mitarbeiterseite lauffähig).
-> **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** auf die Frage
-> zur Login-Auswahl (eigene Route / E-Mail eingeben / `users.manage` für
-> HR) antwortete der Nutzer am 2026-10-16 mit "fortsetzen"; gewertet als
-> Zustimmung zur Empfehlung "eigene schmale Route". Ebenso F.7 vor F.5.
-> Widerspricht der Nutzer, unter "Korrekturen" festhalten.
-> **Nächste Arbeit: F.7.2.2** Client — in der Mitarbeiterseite Login
-> verknüpfen/lösen (`PUT /employees/{id}/user`, Auswahl der freien Logins
-> aus `login-users`, aktuelle Verknüpfung mit E-Mail), Kostenstelle
-> (Freitext `cost_center`, per PATCH) bearbeiten. Danach F.7.3
-> Qualifikationen am Mitarbeiter.
+> Zuletzt abgeschlossen: **F.7.2.2** — damit **F.7.2 fertig**: die
+> Personalabteilung verknüpft im Client einen Mitarbeiter mit einem freien
+> Login (Voraussetzung für Stempeln und Selbstauskunft) und pflegt die
+> Kostenstelle. Davor F.7.2.1 (Server-Route), F.7.1 (Seite lauffähig).
+> **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
+> 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
+> schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
+> **Nächste Arbeit: F.7.3** Qualifikationen am Mitarbeiter im Client —
+> Vorgabe des Nutzers vom 2026-10-13: "Beim Anlegen eines neuen
+> Mitarbeiters soll die Personalabteilung festlegen können, welche
+> Qualifikationen für die Stelle nötig sind und ob sie schon vorhanden
+> sind." Server-Routen vorhanden (F.2.5): `GET/PUT
+> /qualifications/requirements?employee_id=`, `POST /qualifications`
+> (Gruppe), `GET /qualifications/standing`, Katalog
+> `/qualification-types`. Voraussichtlich zu teilen (Stand und
+> Anforderungen am Mitarbeiter; Nachweis erfassen; im Anlege-Dialog).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
-> `sales_order_context_pages_test.dart` schlagen schon ohne Änderung
-> fehl. Für Client-Arbeit: fehlschlagende Tests VOR und NACH der Änderung
-> namentlich vergleichen (`git stash push -u -- lib test`, `flutter test
-> --reporter expanded`, `[E]`-Zeilen). Neue Widget-Tests mit
-> `splashFactory: InkRipple.splashFactory` und Desktop-Fenstergröße.
-> API-Methoden testbar über `http.runWithClient` + `MockClient`.
-> Gegenprobe im Client: `scratchpad/mutrun_flutter.py`.
+> `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
+> Tests vor/nach namentlich vergleichen (Referenz:
+> `scratchpad/fail_before.txt`); Stand nach F.7.2.2: 100 / 12.
+> Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
+> Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
+> `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
 > **Ebenfalls offen:** F.5, F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
@@ -11135,6 +11137,24 @@ Geänderte Dateien: `server/internal/hr/service.go`,
 `server/internal/http/employees.go`,
 `server/internal/http/employee_login_users_integration_test.go` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.7.2.2 Client: Login verknüpfen, Kostenstelle
+
+Mitarbeiterseite: Login verknüpfen (nur freie Logins) und lösen,
+Anzeige "Name <E-Mail>"; Kostenstelle im Bearbeiten-Dialog.
+
+**Gegenprobe-Befund:** mit nur einem freien Login im Test fiel nicht
+auf, ob der gewählte verknüpft wird — zweiten freien Login ergänzt.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+7 neue Tests grün; Gegenprobe 16 Verfälschungen, alle erkannt;
+`flutter test` 100 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/employees_page.dart`,
+`client/test/employees_page_test.dart`,
+`client/test/employees_api_test.dart`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

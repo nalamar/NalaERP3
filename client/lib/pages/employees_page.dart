@@ -48,10 +48,25 @@ Map<String, dynamic> buildEmployeeCreateBody({
   return body;
 }
 
+// freeLoginUsers sind die Logins, die noch mit keinem Mitarbeiter
+// verknuepft sind - nur sie kommen fuer eine neue Verknuepfung in Frage.
+List<Map<String, dynamic>> freeLoginUsers(List<dynamic> loginUsers) => [
+      for (final u in loginUsers)
+        if ((u as Map<String, dynamic>)['employee_id'] == null) u,
+    ];
+
+String loginUserLabel(Map<String, dynamic> u) {
+  final name = u['name']?.toString().trim() ?? '';
+  final email = u['email']?.toString() ?? '';
+  return name.isEmpty ? email : '$name <$email>';
+}
+
 class _EmployeesPageState extends State<EmployeesPage> {
   List<dynamic> items = [];
   Map<String, String> teamNames = {};
   List<dynamic> teams = [];
+  // Logins zur Verknuepfung - nur mit employees.write geladen.
+  List<dynamic> loginUsers = [];
   Map<String, dynamic>? selected;
   bool loading = false;
   String? loadError;
@@ -79,10 +94,19 @@ class _EmployeesPageState extends State<EmployeesPage> {
       } catch (_) {
         // Ohne Teams bleibt die Seite benutzbar; angezeigt wird dann die ID.
       }
+      List<dynamic> loadedLogins = const [];
+      if (_canWrite) {
+        try {
+          loadedLogins = await widget.api.listLoginUsers();
+        } catch (_) {
+          // Ohne die Liste bleibt die Seite benutzbar; Verknuepfen geht dann nicht.
+        }
+      }
       if (!mounted) return;
       setState(() {
         items = list;
         teams = loadedTeams;
+        loginUsers = loadedLogins;
         teamNames = {
           for (final t in loadedTeams)
             (t as Map<String, dynamic>)['id'].toString():
@@ -210,6 +234,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
     final phoneCtrl = TextEditingController(text: emp['phone']?.toString() ?? '');
     final roleCtrl = TextEditingController(text: emp['role']?.toString() ?? '');
     final locationCtrl = TextEditingController(text: emp['location']?.toString() ?? '');
+    final costCenterCtrl = TextEditingController(text: emp['cost_center']?.toString() ?? '');
     String? teamId = emp['team_id']?.toString();
     if (teamId != null && !teamNames.containsKey(teamId)) teamId = null;
     final updated = await showDialog<Map<String, dynamic>>(
@@ -229,6 +254,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                   TextField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Telefon')),
                   TextField(controller: roleCtrl, decoration: const InputDecoration(labelText: 'Stelle / Rolle')),
                   TextField(controller: locationCtrl, decoration: const InputDecoration(labelText: 'Standort')),
+                  TextField(controller: costCenterCtrl, decoration: const InputDecoration(labelText: 'Kostenstelle')),
                   DropdownButtonFormField<String?>(
                     initialValue: teamId,
                     decoration: const InputDecoration(labelText: 'Team (optional)'),
@@ -251,6 +277,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     'phone': phoneCtrl.text.trim(),
                     'role': roleCtrl.text.trim(),
                     'location': locationCtrl.text.trim(),
+                    'cost_center': costCenterCtrl.text.trim(),
                     'team_id': teamId,
                   });
                   if (ctx.mounted) Navigator.of(ctx).pop(result);
@@ -296,6 +323,71 @@ class _EmployeesPageState extends State<EmployeesPage> {
     );
   }
 
+  String _loginLabel(Map<String, dynamic> e) {
+    final userId = e['user_id']?.toString();
+    if (userId == null || userId.isEmpty) return 'kein Login';
+    for (final u in loginUsers) {
+      final m = u as Map<String, dynamic>;
+      if (m['user_id'] == userId) return loginUserLabel(m);
+    }
+    return 'verknüpft';
+  }
+
+  Future<void> _setLogin(String? userId) async {
+    final id = selected?['id']?.toString();
+    if (id == null) return;
+    try {
+      final emp = await widget.api.setEmployeeUser(id, userId);
+      if (!mounted) return;
+      setState(() => selected = emp);
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(userId == null ? 'Verknüpfung gelöst' : 'Login verknüpft')));
+      }
+    } catch (e) {
+      _showError(e);
+    }
+  }
+
+  Future<void> _linkDialog() async {
+    final free = freeLoginUsers(loginUsers);
+    if (free.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Kein freier Login vorhanden. Logins legt die Benutzerverwaltung an.')));
+      return;
+    }
+    String? chosen;
+    final userId = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Login verknüpfen'),
+          content: SizedBox(
+            width: 400,
+            child: DropdownButtonFormField<String>(
+              initialValue: chosen,
+              decoration: const InputDecoration(labelText: 'Login'),
+              items: [
+                for (final u in free)
+                  DropdownMenuItem<String>(value: u['user_id'].toString(), child: Text(loginUserLabel(u))),
+              ],
+              onChanged: (v) => setStateDialog(() => chosen = v),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(
+              onPressed: chosen == null ? null : () => Navigator.of(ctx).pop(chosen),
+              child: const Text('Verknüpfen'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (userId != null) await _setLogin(userId);
+  }
+
   String _teamLabel(Map<String, dynamic> e) {
     final id = e['team_id']?.toString();
     if (id == null || id.isEmpty) return '';
@@ -319,13 +411,14 @@ class _EmployeesPageState extends State<EmployeesPage> {
           Text('Team: ${_teamLabel(sel)}'),
           Text('Standort: ${sel['location'] ?? ''}'),
           Text('Kostenstelle: ${sel['cost_center'] ?? ''}'),
-          Text('Login verknüpft: ${sel['user_id'] != null ? 'ja' : 'nein'}'),
+          Text('Login: ${_loginLabel(sel)}'),
           const SizedBox(height: 12),
           if (_canWrite)
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 FilledButton.tonal(onPressed: _editSelected, child: const Text('Bearbeiten')),
-                const SizedBox(width: 8),
                 if (active)
                   FilledButton.icon(
                     onPressed: () => _setActive(false),
@@ -338,6 +431,18 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     onPressed: () => _setActive(true),
                     icon: const Icon(Icons.restart_alt),
                     label: const Text('Reaktivieren'),
+                  ),
+                if (sel['user_id'] == null)
+                  OutlinedButton.icon(
+                    onPressed: _linkDialog,
+                    icon: const Icon(Icons.link),
+                    label: const Text('Login verknüpfen'),
+                  )
+                else
+                  OutlinedButton.icon(
+                    onPressed: () => _setLogin(null),
+                    icon: const Icon(Icons.link_off),
+                    label: const Text('Verknüpfung lösen'),
                   ),
               ],
             ),

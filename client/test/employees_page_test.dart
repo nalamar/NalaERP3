@@ -17,13 +17,18 @@ class _FakeEmployeeApi extends ApiClient {
     this.teams = const [],
     this.permissions = const {'employees.read'},
     this.listError,
+    List<Map<String, dynamic>>? loginUsers,
   })  : employees = employees ?? [],
+        loginUsers = loginUsers ?? [],
         super(baseUrl: 'http://localhost:8080');
 
   final List<Map<String, dynamic>> employees;
   final List<dynamic> teams;
   final Set<String> permissions;
   final Object? listError;
+  final List<Map<String, dynamic>> loginUsers;
+  final List<MapEntry<String, String?>> userLinks = [];
+  int loginListCalls = 0;
 
   final List<Map<String, dynamic>> createdBodies = [];
   final List<MapEntry<String, Map<String, dynamic>>> patches = [];
@@ -52,6 +57,28 @@ class _FakeEmployeeApi extends ApiClient {
     final created = <String, dynamic>{'id': 'neu-1', 'active': true, ...body};
     employees.add(created);
     return created;
+  }
+
+  @override
+  Future<List<dynamic>> listLoginUsers() async {
+    loginListCalls++;
+    return loginUsers.map((u) => Map<String, dynamic>.from(u)).toList();
+  }
+
+  @override
+  Future<Map<String, dynamic>> setEmployeeUser(String employeeId, String? userId) async {
+    userLinks.add(MapEntry(employeeId, userId));
+    final e = employees.firstWhere((e) => e['id'] == employeeId);
+    for (final u in loginUsers) {
+      if (u['employee_id'] == employeeId) u.remove('employee_id');
+    }
+    if (userId == null) {
+      e.remove('user_id');
+    } else {
+      e['user_id'] = userId;
+      loginUsers.firstWhere((u) => u['user_id'] == userId)['employee_id'] = employeeId;
+    }
+    return Map<String, dynamic>.from(e);
   }
 
   @override
@@ -225,6 +252,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.widgetWithText(TextField, 'Telefon'), ' 0151 ');
     await tester.enterText(find.widgetWithText(TextField, 'Standort'), 'Halle 2');
+    await tester.enterText(find.widgetWithText(TextField, 'Kostenstelle'), ' KST 4711 ');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
 
@@ -235,9 +263,11 @@ void main() {
       'phone': '0151',
       'role': 'Monteurin',
       'location': 'Halle 2',
+      'cost_center': 'KST 4711',
       'team_id': null,
     });
     expect(find.text('Standort: Halle 2'), findsOneWidget);
+    expect(find.text('Kostenstelle: KST 4711'), findsOneWidget);
   });
 
   testWidgets('zeigt einen Ladefehler an', (tester) async {
@@ -262,5 +292,99 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(EmployeesPage), findsOneWidget);
     expect(find.text('Anna Berg'), findsOneWidget);
+  });
+
+  group('Login-Auswahl', () {
+    test('freeLoginUsers liefert nur Logins ohne Mitarbeiter', () {
+      final free = freeLoginUsers([
+        {'user_id': 'u1', 'email': 'a@x', 'name': 'A'},
+        {'user_id': 'u2', 'email': 'b@x', 'name': 'B', 'employee_id': 'e9'},
+      ]);
+      expect(free.map((u) => u['user_id']), ['u1']);
+    });
+
+    test('loginUserLabel mit und ohne Namen', () {
+      expect(loginUserLabel({'email': 'a@x', 'name': 'Anna'}), 'Anna <a@x>');
+      expect(loginUserLabel({'email': 'a@x', 'name': ' '}), 'a@x');
+    });
+  });
+
+  testWidgets('verknuepft einen freien Login und loest die Verknuepfung wieder', (tester) async {
+    await _desktop(tester);
+    final api = _FakeEmployeeApi(
+      employees: [_emp('e1', 'Anna', 'Berg'), _emp('e2', 'Bert', 'Belegt')..['user_id'] = 'u2'],
+      permissions: const {'employees.read', 'employees.write'},
+      loginUsers: [
+        {'user_id': 'u1', 'email': 'anna@firma.de', 'name': 'Anna B.'},
+        {'user_id': 'u2', 'email': 'bert@firma.de', 'name': 'Bert', 'employee_id': 'e2'},
+        // Zweiter freier Login: verknuepft werden muss der GEWAEHLTE.
+        {'user_id': 'u3', 'email': 'zeta@firma.de', 'name': 'Zeta'},
+      ],
+    );
+    await tester.pumpWidget(_wrap(EmployeesPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anna Berg'));
+    await tester.pumpAndSettle();
+    expect(find.text('Login: kein Login'), findsOneWidget);
+    expect(find.text('Verknüpfung lösen'), findsNothing);
+
+    await tester.tap(find.text('Login verknüpfen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    // Der schon verknuepfte Login wird nicht angeboten.
+    expect(find.text('Bert <bert@firma.de>'), findsNothing);
+    await tester.tap(find.text('Anna B. <anna@firma.de>').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Verknüpfen'));
+    await tester.pumpAndSettle();
+
+    expect(api.userLinks.length, 1);
+    expect(api.userLinks.single.key, 'e1');
+    expect(api.userLinks.single.value, 'u1');
+    expect(find.text('Login: Anna B. <anna@firma.de>'), findsOneWidget);
+
+    await tester.tap(find.text('Verknüpfung lösen'));
+    await tester.pumpAndSettle();
+    expect(api.userLinks.last.key, 'e1');
+    expect(api.userLinks.last.value, isNull);
+    expect(find.text('Login: kein Login'), findsOneWidget);
+  });
+
+  testWidgets('ohne freien Login kein Dialog, sondern ein Hinweis', (tester) async {
+    await _desktop(tester);
+    final api = _FakeEmployeeApi(
+      employees: [_emp('e1', 'Anna', 'Berg')],
+      permissions: const {'employees.read', 'employees.write'},
+      loginUsers: [
+        {'user_id': 'u2', 'email': 'bert@firma.de', 'name': 'Bert', 'employee_id': 'e2'},
+      ],
+    );
+    await tester.pumpWidget(_wrap(EmployeesPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anna Berg'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Login verknüpfen'));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Kein freier Login vorhanden. Logins legt die Benutzerverwaltung an.'), findsOneWidget);
+    expect(api.userLinks, isEmpty);
+  });
+
+  testWidgets('nur mit Leserecht: keine Login-Liste, Verknuepfung nur als "verknuepft"', (tester) async {
+    await _desktop(tester);
+    final api = _FakeEmployeeApi(
+      employees: [_emp('e1', 'Anna', 'Berg')..['user_id'] = 'u1'],
+      loginUsers: [
+        {'user_id': 'u1', 'email': 'anna@firma.de', 'name': 'Anna B.', 'employee_id': 'e1'},
+      ],
+    );
+    await tester.pumpWidget(_wrap(EmployeesPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anna Berg'));
+    await tester.pumpAndSettle();
+    expect(api.loginListCalls, 0);
+    expect(find.text('Login: verknüpft'), findsOneWidget);
+    expect(find.text('Verknüpfung lösen'), findsNothing);
   });
 }
