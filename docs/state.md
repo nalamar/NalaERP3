@@ -7,26 +7,23 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.2.2** — damit **F.7.2 fertig**: die
-> Personalabteilung verknüpft im Client einen Mitarbeiter mit einem freien
-> Login (Voraussetzung für Stempeln und Selbstauskunft) und pflegt die
-> Kostenstelle. Davor F.7.2.1 (Server-Route), F.7.1 (Seite lauffähig).
+> Zuletzt abgeschlossen: **F.7.3.1** (Client: Qualifikationsstand und
+> Anforderungen der Stelle am Mitarbeiter). F.7.3 geteilt: .1 Stand und
+> Anforderungen, .2 Nachweise erfassen/stornieren, .3 im Anlegen-Dialog.
 > **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
 > 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
 > schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
-> **Nächste Arbeit: F.7.3** Qualifikationen am Mitarbeiter im Client —
-> Vorgabe des Nutzers vom 2026-10-13: "Beim Anlegen eines neuen
-> Mitarbeiters soll die Personalabteilung festlegen können, welche
-> Qualifikationen für die Stelle nötig sind und ob sie schon vorhanden
-> sind." Server-Routen vorhanden (F.2.5): `GET/PUT
-> /qualifications/requirements?employee_id=`, `POST /qualifications`
-> (Gruppe), `GET /qualifications/standing`, Katalog
-> `/qualification-types`. Voraussichtlich zu teilen (Stand und
-> Anforderungen am Mitarbeiter; Nachweis erfassen; im Anlege-Dialog).
+> **Nächste Arbeit: F.7.3.2** Nachweise am Mitarbeiter: `POST
+> /qualifications` (`employee_ids`, `type_id`, `erworben_am` JJJJ-MM-TT,
+> optional `gueltig_bis`, `aussteller`, `nachweis_nr`, `note`; liefert je
+> Mitarbeiter den Nachweis), `GET /qualifications?employee_id=` (mit
+> `include_storniert`), `POST /qualifications/{id}/storno` (`reason`).
+> Erwerbsdatum nicht in der Zukunft; Frist der Art bestimmt gueltig_bis,
+> wenn nicht angegeben. Danach F.7.3.3 (Anlegen-Dialog).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.7.2.2: 100 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.7.3.1: 109 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
@@ -11155,6 +11152,22 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/test/employees_page_test.dart`,
 `client/test/employees_api_test.dart`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.7.3.1 Client: Qualifikationsstand und Anforderungen
+
+Neues Widget `employee_qualifications_section.dart` in der
+Detailansicht. Anforderungen auf stillgelegte Arten bleiben beim
+Speichern erhalten (vollständiger Ersatz per PUT).
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+9 neue Tests grün; Gegenprobe 22 Verfälschungen, alle erkannt;
+`flutter test` 109 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/employees_page.dart`,
+`client/lib/pages/employee_qualifications_section.dart` (neu),
+`client/test/employee_qualifications_test.dart` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

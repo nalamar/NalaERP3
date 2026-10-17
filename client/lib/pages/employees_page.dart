@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
+import 'employee_qualifications_section.dart';
 
 // Mitarbeiterverwaltung (Backlog F.7.1) auf den Routen aus F.4.4:
 // /api/v1/employees. Lesen mit employees.read, anlegen und aendern mit
@@ -396,7 +397,8 @@ class _EmployeesPageState extends State<EmployeesPage> {
 
   Widget _detail(Map<String, dynamic> sel) {
     final active = sel['active'] != false;
-    return Padding(
+    final id = sel['id']?.toString() ?? '';
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,6 +448,12 @@ class _EmployeesPageState extends State<EmployeesPage> {
                   ),
               ],
             ),
+          if (widget.api.hasPermission('qualifications.read') && id.isNotEmpty) ...[
+            const Divider(height: 32),
+            // Key je Mitarbeiter: beim Wechsel wird der Abschnitt neu
+            // aufgebaut und laedt den Stand des neuen Mitarbeiters.
+            EmployeeQualificationsSection(key: ValueKey('quals-$id'), api: widget.api, employeeId: id),
+          ],
         ],
       ),
     );

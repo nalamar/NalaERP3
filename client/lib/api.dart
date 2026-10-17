@@ -2097,6 +2097,38 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Qualifikationen (Backlog F.7.3, Server-Routen aus F.2.5) --------
+  // Katalog der Arten; ohne includeInactive nur die aktiven.
+  Future<List<dynamic>> listQualificationTypes({bool includeInactive = false}) =>
+      _getList('/api/v1/qualification-types/',
+          includeInactive ? {'include_inactive': 'true'} : null);
+
+  // Stand eines Mitarbeiters: je Art fehlt / abgelaufen / laeuft_ab /
+  // gueltig, das Dringendste zuerst. Fremde Mitarbeiter mit
+  // qualifications.read.
+  Future<List<dynamic>> getQualificationStanding(String employeeId) =>
+      _getList('/api/v1/qualifications/standing', {'employee_id': employeeId});
+
+  // Anforderungen der Stelle eines Mitarbeiters (auch auf inzwischen
+  // stillgelegte Arten, type_aktiv=false).
+  Future<List<dynamic>> listQualificationRequirements(String employeeId) =>
+      _getList('/api/v1/qualifications/requirements', {'employee_id': employeeId});
+
+  // Ersetzt die Anforderungen VOLLSTAENDIG durch typeIds (leere Liste =
+  // keine). Liefert die Anforderungen danach.
+  Future<List<dynamic>> setQualificationRequirements(
+      String employeeId, List<String> typeIds) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/qualifications/requirements', {'employee_id': employeeId}),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'type_ids': typeIds}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http
