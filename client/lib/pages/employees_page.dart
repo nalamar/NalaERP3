@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
 import 'employee_qualifications_section.dart';
+import 'employee_assets_section.dart';
 import 'initial_qualifications_dialog.dart';
 
 // Mitarbeiterverwaltung (Backlog F.7.1) auf den Routen aus F.4.4:
@@ -461,6 +462,10 @@ class _EmployeesPageState extends State<EmployeesPage> {
             // Key je Mitarbeiter: beim Wechsel wird der Abschnitt neu
             // aufgebaut und laedt den Stand des neuen Mitarbeiters.
             EmployeeQualificationsSection(key: ValueKey('quals-$id'), api: widget.api, employeeId: id),
+          ],
+          if (widget.api.hasPermission('assets.read') && id.isNotEmpty) ...[
+            const Divider(height: 32),
+            EmployeeAssetsSection(key: ValueKey('assets-$id'), api: widget.api, employeeId: id),
           ],
         ],
       ),

@@ -7,32 +7,28 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.3.3** — damit **F.7.3 fertig**: die
-> Vorgabe des Nutzers vom 2026-10-13 ("beim Anlegen festlegen, welche
-> Qualifikationen für die Stelle nötig sind und ob sie schon vorhanden
-> sind"; "anstehende Erneuerung anmahnen") ist im Client umgesetzt:
-> Anlegen mit zweitem Schritt, Stand, Anforderungen, Nachweise am
-> Mitarbeiter. Davor F.7.1, F.7.2.
+> Zuletzt abgeschlossen: **F.7.4** — damit ist **TASK F.7 (Client:
+> Mitarbeiterverwaltung) VOLLSTÄNDIG**: Mitarbeiter anlegen (mit
+> Qualifikationen der Stelle und vorhandenen Nachweisen), bearbeiten,
+> deaktivieren/reaktivieren, mit Login verknüpfen; Qualifikationsstand,
+> Anforderungen, Nachweise; ausgegebene Betriebsmittel.
 > **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
 > 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
 > schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
-> **Nächste Arbeit: F.7.4** (optional) ausgegebene Betriebsmittel am
-> Mitarbeiter (`GET /asset-assignments?employee_id=`, `assets.read`) —
-> danach F.7 abschließen. Danach Vorschlag: F.5 (Zeiterfassung im
-> Client) — der Mitarbeiter kann jetzt angelegt und verknüpft werden.
-> Die betriebsweite Fälligkeitsliste der Qualifikationen (`GET
-> /qualifications/due`) hat im Client noch keine Seite — Kandidat für
-> eine eigene Subtask (Anmahnen sichtbar machen).
+> **Nächste Arbeit: beim Nutzer erfragen.** Vorschlag F.5 (Zeiterfassung
+> im Client: Kommen/Gehen, eigene Zeiten; Server-Routen aus F.1). Weitere
+> Kandidaten: F.13 (Betriebsmittel-Oberfläche, Fälligkeitslisten,
+> Katalog der Qualifikationen), 0.48 (Client-Testsuite rot), F.8, F.6,
+> F.10, 0.45, 0.47; F.11, F.12 ausdrücklich für später.
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.7.3.3: 128 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.7.4: 133 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
-> **Ebenfalls offen:** F.5, F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
@@ -11205,6 +11201,22 @@ Geänderte Dateien: `client/lib/pages/employees_page.dart`,
 `client/lib/pages/initial_qualifications_dialog.dart` (neu),
 `client/test/initial_qualifications_test.dart` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.7.4 Client: ausgegebene Betriebsmittel am Mitarbeiter (letzte Subtask von F.7)
+
+Lesender Abschnitt in der Detailansicht, nur mit `assets.read`. Neuer
+Backlog-Punkt F.13 für die fehlende Betriebsmittel-Oberfläche und die
+betriebsweiten Fälligkeitslisten.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+5 neue Tests grün; Gegenprobe 11 Verfälschungen, alle erkannt;
+`flutter test` 133 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/employees_page.dart`,
+`client/lib/pages/employee_assets_section.dart` (neu),
+`client/test/employee_assets_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

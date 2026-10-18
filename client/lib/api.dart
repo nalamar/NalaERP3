@@ -2167,6 +2167,23 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Betriebsmittel (Backlog F.7.4, Server-Routen aus F.3.6.2) --------
+  // Ausgaben von Betriebsmitteln, die neuesten zuerst. Mit assets.read alle,
+  // mit assets.self nur die eigenen.
+  Future<List<dynamic>> listAssetAssignments({
+    String? assetId,
+    String? employeeId,
+    bool nurOffen = false,
+    bool includeStorniert = false,
+  }) {
+    final qp = <String, String>{};
+    if (assetId != null && assetId.isNotEmpty) qp['asset_id'] = assetId;
+    if (employeeId != null && employeeId.isNotEmpty) qp['employee_id'] = employeeId;
+    if (nurOffen) qp['nur_offen'] = 'true';
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getList('/api/v1/asset-assignments/', qp.isEmpty ? null : qp);
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http
