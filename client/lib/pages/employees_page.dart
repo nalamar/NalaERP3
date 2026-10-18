@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
 import 'employee_qualifications_section.dart';
+import 'initial_qualifications_dialog.dart';
 
 // Mitarbeiterverwaltung (Backlog F.7.1) auf den Routen aus F.4.4:
 // /api/v1/employees. Lesen mit employees.read, anlegen und aendern mit
@@ -196,6 +197,13 @@ class _EmployeesPageState extends State<EmployeesPage> {
       ),
     );
     if (created == null || !mounted) return;
+    // Zweiter Schritt: Anforderungen der Stelle und vorhandene Nachweise
+    // (F.7.3.3). Erst danach auswaehlen - sonst zeigte der Abschnitt
+    // "Qualifikationen" den Stand von vor dem Speichern.
+    if (widget.api.hasPermission('qualifications.write')) {
+      await showInitialQualificationsDialog(context, widget.api, created['id'].toString(), employeeDisplayName(created));
+      if (!mounted) return;
+    }
     setState(() => selected = created);
     await _load();
   }

@@ -7,24 +7,26 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.3.2** (Client: Nachweise am Mitarbeiter
-> erfassen und stornieren). Davor F.7.3.1 (Stand und Anforderungen).
+> Zuletzt abgeschlossen: **F.7.3.3** — damit **F.7.3 fertig**: die
+> Vorgabe des Nutzers vom 2026-10-13 ("beim Anlegen festlegen, welche
+> Qualifikationen für die Stelle nötig sind und ob sie schon vorhanden
+> sind"; "anstehende Erneuerung anmahnen") ist im Client umgesetzt:
+> Anlegen mit zweitem Schritt, Stand, Anforderungen, Nachweise am
+> Mitarbeiter. Davor F.7.1, F.7.2.
 > **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
 > 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
 > schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
-> **Nächste Arbeit: F.7.3.3** im Anlegen-Dialog der Mitarbeiterseite
-> gleich die Anforderungen der Stelle und vorhandene Nachweise erfassen
-> (Vorgabe des Nutzers vom 2026-10-13). Server kennt keinen atomaren
-> Aufruf (Backlog F.10 nennt "Mitarbeiteranlage mit Anforderungen und
-> Nachweisen als EIN atomarer Aufruf" für später) — im Client also
-> nacheinander: anlegen, Anforderungen setzen, Nachweise erfassen; bei
-> einem Fehler nach dem Anlegen klar melden, was angelegt ist und was
-> nicht. Bausteine vorhanden: `requirementChoices`, `parseDateInput`,
-> `buildQualificationBody`.
+> **Nächste Arbeit: F.7.4** (optional) ausgegebene Betriebsmittel am
+> Mitarbeiter (`GET /asset-assignments?employee_id=`, `assets.read`) —
+> danach F.7 abschließen. Danach Vorschlag: F.5 (Zeiterfassung im
+> Client) — der Mitarbeiter kann jetzt angelegt und verknüpft werden.
+> Die betriebsweite Fälligkeitsliste der Qualifikationen (`GET
+> /qualifications/due`) hat im Client noch keine Seite — Kandidat für
+> eine eigene Subtask (Anmahnen sichtbar machen).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.7.3.2: 119 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.7.3.3: 128 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
@@ -11185,6 +11187,24 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/employee_qualifications_section.dart`,
 `client/test/employee_qualifications_test.dart`, `docs/backlog.md`,
 `docs/state.md`.
+
+### F.7.3.3 Client: Qualifikationen beim Anlegen
+
+Zweiter Schritt nach dem Anlegen (`initial_qualifications_dialog.dart`):
+erforderlich / vorhanden seit. Nacheinander gespeichert, Eingaben vorab
+geprüft, Teilerfolg als Dialog mit Zeile je Schritt.
+
+**Gegenprobe-Befund:** Sortierung nach Name war ungetestet —
+Positionsvergleich ergänzt.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+9 neue Tests grün; Gegenprobe 15 Verfälschungen, alle erkannt;
+`flutter test` 128 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/pages/employees_page.dart`,
+`client/lib/pages/initial_qualifications_dialog.dart` (neu),
+`client/test/initial_qualifications_test.dart` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
