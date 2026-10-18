@@ -71,6 +71,65 @@ List<Map<String, dynamic>> requirementChoices(List<dynamic> activeTypes, List<dy
   return out;
 }
 
+// parseDateInput liest ein Datum als TT.MM.JJJJ (auch T.M.JJJJ) oder
+// JJJJ-MM-TT und liefert es als JJJJ-MM-TT; null bei leerer oder
+// ungueltiger Eingabe (z. B. 31.02.2026).
+String? parseDateInput(String input) {
+  final t = input.trim();
+  int? y, m, d;
+  final de = RegExp(r'^(\d{1,2})\.(\d{1,2})\.(\d{4})$').firstMatch(t);
+  final iso = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(t);
+  if (de != null) {
+    d = int.parse(de.group(1)!);
+    m = int.parse(de.group(2)!);
+    y = int.parse(de.group(3)!);
+  } else if (iso != null) {
+    y = int.parse(iso.group(1)!);
+    m = int.parse(iso.group(2)!);
+    d = int.parse(iso.group(3)!);
+  } else {
+    return null;
+  }
+  final dt = DateTime.utc(y, m, d);
+  if (dt.year != y || dt.month != m || dt.day != d) return null;
+  String two(int v) => v.toString().padLeft(2, '0');
+  return '${dt.year.toString().padLeft(4, '0')}-${two(dt.month)}-${two(dt.day)}';
+}
+
+// buildQualificationBody baut den Body fuer POST /qualifications. Leere
+// optionale Angaben werden weggelassen; fehlt gueltig_bis, setzt der
+// Server es aus der Frist der Art.
+Map<String, dynamic> buildQualificationBody({
+  required String employeeId,
+  required String typeId,
+  required String erworbenAm,
+  String? gueltigBis,
+  String aussteller = '',
+  String nachweisNr = '',
+  String note = '',
+}) {
+  final body = <String, dynamic>{
+    'employee_ids': [employeeId],
+    'type_id': typeId,
+    'erworben_am': erworbenAm,
+  };
+  if (gueltigBis != null && gueltigBis.isNotEmpty) body['gueltig_bis'] = gueltigBis;
+  if (aussteller.trim().isNotEmpty) body['aussteller'] = aussteller.trim();
+  if (nachweisNr.trim().isNotEmpty) body['nachweis_nr'] = nachweisNr.trim();
+  if (note.trim().isNotEmpty) body['note'] = note.trim();
+  return body;
+}
+
+// qualificationRecordLabel beschreibt einen Nachweis in einer Zeile.
+String qualificationRecordLabel(Map<String, dynamic> r) {
+  final parts = <String>['erworben ${_date(r['erworben_am']?.toString())}'];
+  final bis = _date(r['gueltig_bis']?.toString());
+  parts.add(bis.isEmpty ? 'unbefristet' : 'gültig bis $bis');
+  final aussteller = r['aussteller']?.toString() ?? '';
+  if (aussteller.isNotEmpty) parts.add(aussteller);
+  return parts.join(' · ');
+}
+
 class EmployeeQualificationsSection extends StatefulWidget {
   const EmployeeQualificationsSection({super.key, required this.api, required this.employeeId});
   final ApiClient api;
@@ -82,6 +141,10 @@ class EmployeeQualificationsSection extends StatefulWidget {
 
 class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSection> {
   List<dynamic> standing = [];
+  // Aktive Nachweise, die juengsten zuerst (fuer Anzeige und Storno).
+  List<dynamic> records = [];
+  // Namen aller Arten, auch stillgelegter - die Nachweise tragen nur die ID.
+  Map<String, String> typeNames = {};
   bool loading = false;
   String? error;
 
@@ -100,7 +163,24 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
     });
     try {
       final st = await widget.api.getQualificationStanding(widget.employeeId);
-      if (mounted) setState(() => standing = st);
+      final recs = await widget.api.listEmployeeQualifications(widget.employeeId);
+      Map<String, String> names = typeNames;
+      try {
+        final types = await widget.api.listQualificationTypes(includeInactive: true);
+        names = {
+          for (final t in types)
+            (t as Map<String, dynamic>)['id'].toString(): t['name']?.toString() ?? t['id'].toString(),
+        };
+      } catch (_) {
+        // Ohne Katalog bleibt die Liste benutzbar; angezeigt wird dann die ID.
+      }
+      if (mounted) {
+        setState(() {
+          standing = st;
+          records = recs;
+          typeNames = names;
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => error = 'Qualifikationen konnten nicht geladen werden: $e');
     } finally {
@@ -171,24 +251,180 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
     }
   }
 
+  void _snack(String text) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _recordDialog() async {
+    List<dynamic> types;
+    try {
+      types = await widget.api.listQualificationTypes();
+    } catch (e) {
+      _snack('Fehler: $e');
+      return;
+    }
+    if (!mounted) return;
+    if (types.isEmpty) {
+      _snack('Der Katalog ist leer. Arten legt die Personalabteilung im Qualifikationskatalog an.');
+      return;
+    }
+    String? typeId;
+    String? dialogError;
+    final erworbenCtrl = TextEditingController();
+    final bisCtrl = TextEditingController();
+    final ausstellerCtrl = TextEditingController();
+    final nrCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    final body = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Nachweis erfassen'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    initialValue: typeId,
+                    decoration: const InputDecoration(labelText: 'Qualifikation / Unterweisung'),
+                    items: [
+                      for (final t in types)
+                        DropdownMenuItem<String>(
+                          value: (t as Map<String, dynamic>)['id'].toString(),
+                          child: Text(t['name']?.toString() ?? t['id'].toString()),
+                        ),
+                    ],
+                    onChanged: (v) => setStateDialog(() => typeId = v),
+                  ),
+                  TextField(controller: erworbenCtrl, decoration: const InputDecoration(labelText: 'Erworben am (TT.MM.JJJJ)')),
+                  TextField(
+                      controller: bisCtrl,
+                      decoration: const InputDecoration(labelText: 'Gültig bis (TT.MM.JJJJ, leer = nach Frist der Art)')),
+                  TextField(controller: ausstellerCtrl, decoration: const InputDecoration(labelText: 'Aussteller')),
+                  TextField(controller: nrCtrl, decoration: const InputDecoration(labelText: 'Nachweis-Nr.')),
+                  TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'Notiz')),
+                  if (dialogError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(
+              onPressed: () {
+                final erworben = parseDateInput(erworbenCtrl.text);
+                final bisText = bisCtrl.text.trim();
+                final bis = bisText.isEmpty ? null : parseDateInput(bisText);
+                String? problem;
+                if (typeId == null) {
+                  problem = 'Bitte eine Qualifikation auswählen.';
+                } else if (erworben == null) {
+                  problem = 'Bitte das Erwerbsdatum als TT.MM.JJJJ angeben.';
+                } else if (bisText.isNotEmpty && bis == null) {
+                  problem = 'Bitte "Gültig bis" als TT.MM.JJJJ angeben oder leer lassen.';
+                }
+                if (problem != null) {
+                  setStateDialog(() => dialogError = problem);
+                  return;
+                }
+                Navigator.of(ctx).pop(buildQualificationBody(
+                  employeeId: widget.employeeId,
+                  typeId: typeId!,
+                  erworbenAm: erworben!,
+                  gueltigBis: bis,
+                  aussteller: ausstellerCtrl.text,
+                  nachweisNr: nrCtrl.text,
+                  note: noteCtrl.text,
+                ));
+              },
+              child: const Text('Erfassen'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (body == null) return;
+    try {
+      await widget.api.createQualification(body);
+      _snack('Nachweis erfasst');
+      await _load();
+    } catch (e) {
+      _snack('Fehler: $e');
+    }
+  }
+
+  Future<void> _stornoDialog(Map<String, dynamic> record) async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Nachweis stornieren'),
+          content: SizedBox(
+            width: 420,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${typeNames[record['type_id']?.toString()] ?? record['type_id']} – ${qualificationRecordLabel(record)}'),
+                const SizedBox(height: 8),
+                const Text('Ein Nachweis wird nicht gelöscht, sondern mit Begründung storniert.'),
+                TextField(
+                  controller: reasonCtrl,
+                  decoration: const InputDecoration(labelText: 'Begründung'),
+                  onChanged: (_) => setStateDialog(() {}),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(
+              onPressed: reasonCtrl.text.trim().isEmpty ? null : () => Navigator.of(ctx).pop(reasonCtrl.text.trim()),
+              child: const Text('Stornieren'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (reason == null) return;
+    try {
+      await widget.api.stornoQualification(record['id'].toString(), reason);
+      _snack('Nachweis storniert');
+      await _load();
+    } catch (e) {
+      _snack('Fehler: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Text('Qualifikationen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-            if (_canWrite)
+        const Text('Qualifikationen', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        if (_canWrite)
+          Wrap(
+            spacing: 8,
+            children: [
+              TextButton.icon(
+                onPressed: _recordDialog,
+                icon: const Icon(Icons.add_task),
+                label: const Text('Nachweis erfassen'),
+              ),
               TextButton.icon(
                 onPressed: _editRequirements,
                 icon: const Icon(Icons.checklist),
                 label: const Text('Anforderungen festlegen'),
               ),
-          ],
-        ),
+            ],
+          ),
         if (loading) const LinearProgressIndicator(minHeight: 2),
         if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
         if (!loading && error == null && standing.isEmpty)
@@ -209,6 +445,27 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
               ],
             ),
           ),
+        if (records.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          const Text('Nachweise', style: TextStyle(fontWeight: FontWeight.bold)),
+          for (final r in records)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${typeNames[(r as Map<String, dynamic>)['type_id']?.toString()] ?? r['type_id']}: ${qualificationRecordLabel(r)}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_canWrite)
+                  IconButton(
+                    tooltip: 'Stornieren',
+                    icon: const Icon(Icons.block, size: 18),
+                    onPressed: () => _stornoDialog(r),
+                  ),
+              ],
+            ),
+        ],
       ],
     );
   }

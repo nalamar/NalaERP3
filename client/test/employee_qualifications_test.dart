@@ -19,7 +19,11 @@ class _FakeQualApi extends ApiClient {
     List<dynamic>? requirements,
     this.standingError,
     this.employees = const [],
+    Map<String, List<dynamic>>? records,
+    this.allTypes,
+    this.createError,
   })  : standing = standing ?? {},
+        records = records ?? {},
         requirements = requirements ?? [],
         super(baseUrl: 'http://localhost:8080');
 
@@ -29,6 +33,12 @@ class _FakeQualApi extends ApiClient {
   List<dynamic> requirements;
   final Object? standingError;
   final List<Map<String, dynamic>> employees;
+  final Map<String, List<dynamic>> records;
+  // Katalog inklusive stillgelegter (nur fuer Namen); null = wie types.
+  final List<dynamic>? allTypes;
+  final Object? createError;
+  final List<Map<String, dynamic>> created = [];
+  final List<MapEntry<String, String>> stornos = [];
 
   final List<String> standingCalls = [];
   final List<MapEntry<String, List<String>>> setCalls = [];
@@ -44,7 +54,27 @@ class _FakeQualApi extends ApiClient {
   }
 
   @override
-  Future<List<dynamic>> listQualificationTypes({bool includeInactive = false}) async => types;
+  Future<List<dynamic>> listQualificationTypes({bool includeInactive = false}) async =>
+      includeInactive ? (allTypes ?? types) : types;
+
+  @override
+  Future<List<dynamic>> listEmployeeQualifications(String employeeId, {bool includeStorniert = false}) async =>
+      records[employeeId] ?? const [];
+
+  @override
+  Future<List<dynamic>> createQualification(Map<String, dynamic> body) async {
+    if (createError != null) throw createError!;
+    created.add(body);
+    return [
+      {'id': 'neu', ...body}
+    ];
+  }
+
+  @override
+  Future<Map<String, dynamic>> stornoQualification(String id, String reason) async {
+    stornos.add(MapEntry(id, reason));
+    return {'id': id, 'status': 'storniert'};
+  }
 
   @override
   Future<List<dynamic>> listQualificationRequirements(String employeeId) async => requirements;
@@ -282,6 +312,257 @@ void main() {
       await expectLater(
         mock({'error': {'code': 'validation_error', 'message': 'Qualifikationsart nicht gefunden'}}, () => api.setQualificationRequirements('e1', ['x']), status: 404),
         throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Qualifikationsart nicht gefunden')),
+      );
+    });
+  });
+
+  group('parseDateInput', () {
+    test('deutsches und ISO-Format, ungueltige Tage abgelehnt', () {
+      expect(parseDateInput('15.03.2026'), '2026-03-15');
+      expect(parseDateInput(' 5.3.2026 '), '2026-03-05');
+      expect(parseDateInput('2026-03-15'), '2026-03-15');
+      expect(parseDateInput('29.02.2028'), '2028-02-29');
+      expect(parseDateInput('29.02.2026'), isNull);
+      expect(parseDateInput('31.04.2026'), isNull);
+      expect(parseDateInput('13.13.2026'), isNull);
+      expect(parseDateInput('2026-3-15'), isNull);
+      expect(parseDateInput('15.03.26'), isNull);
+      expect(parseDateInput(''), isNull);
+    });
+  });
+
+  group('buildQualificationBody', () {
+    test('Pflichtangaben und nur gefuellte optionale', () {
+      expect(buildQualificationBody(employeeId: 'e1', typeId: 't1', erworbenAm: '2026-03-15', aussteller: ' ', note: ' x '), {
+        'employee_ids': ['e1'],
+        'type_id': 't1',
+        'erworben_am': '2026-03-15',
+        'note': 'x',
+      });
+      expect(
+        buildQualificationBody(
+            employeeId: 'e1', typeId: 't1', erworbenAm: '2026-03-15', gueltigBis: '2027-03-15', aussteller: ' DRK ', nachweisNr: ' N-1 '),
+        {
+          'employee_ids': ['e1'],
+          'type_id': 't1',
+          'erworben_am': '2026-03-15',
+          'gueltig_bis': '2027-03-15',
+          'aussteller': 'DRK',
+          'nachweis_nr': 'N-1',
+        },
+      );
+    });
+
+    test('qualificationRecordLabel', () {
+      expect(qualificationRecordLabel({'erworben_am': '2026-03-15T00:00:00Z', 'gueltig_bis': '2028-03-15T00:00:00Z', 'aussteller': 'DRK'}),
+          'erworben 15.03.2026 · gültig bis 15.03.2028 · DRK');
+      expect(qualificationRecordLabel({'erworben_am': '2026-03-15T00:00:00Z', 'aussteller': ''}), 'erworben 15.03.2026 · unbefristet');
+    });
+  });
+
+  testWidgets('listet Nachweise mit Namen aus dem Katalog, auch stillgelegter Arten', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      standing: {'e1': [_st('Erste Hilfe', 'gueltig', bis: '2028-03-15')]},
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+      ],
+      allTypes: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+        {'id': 't9', 'name': 'Alter Kurs', 'aktiv': false},
+      ],
+      records: {
+        'e1': [
+          {'id': 'q1', 'type_id': 't1', 'erworben_am': '2026-03-15T00:00:00Z', 'gueltig_bis': '2028-03-15T00:00:00Z', 'aussteller': 'DRK'},
+          {'id': 'q2', 'type_id': 't9', 'erworben_am': '2020-01-10T00:00:00Z'},
+        ],
+      },
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Nachweise'), findsOneWidget);
+    expect(find.text('Erste Hilfe: erworben 15.03.2026 · gültig bis 15.03.2028 · DRK'), findsOneWidget);
+    expect(find.text('Alter Kurs: erworben 10.01.2020 · unbefristet'), findsOneWidget);
+    // Ohne Schreibrecht weder Erfassen noch Storno.
+    expect(find.text('Nachweis erfassen'), findsNothing);
+    expect(find.byTooltip('Stornieren'), findsNothing);
+  });
+
+  testWidgets('erfasst einen Nachweis; ungueltige Eingaben bleiben im Dialog', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+        {'id': 't2', 'name': 'Staplerschein'},
+      ],
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+    final loadsBefore = api.standingCalls.length;
+
+    await tester.tap(find.text('Nachweis erfassen'));
+    await tester.pumpAndSettle();
+    // Ohne Auswahl.
+    await tester.tap(find.text('Erfassen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte eine Qualifikation auswählen.'), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Staplerschein').last);
+    await tester.pumpAndSettle();
+    // Ungueltiges Erwerbsdatum.
+    await tester.enterText(find.widgetWithText(TextField, 'Erworben am (TT.MM.JJJJ)'), '31.02.2026');
+    await tester.tap(find.text('Erfassen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte das Erwerbsdatum als TT.MM.JJJJ angeben.'), findsOneWidget);
+    // Ungueltiges Gueltig-bis.
+    await tester.enterText(find.widgetWithText(TextField, 'Erworben am (TT.MM.JJJJ)'), '15.03.2026');
+    await tester.enterText(find.widgetWithText(TextField, 'Gültig bis (TT.MM.JJJJ, leer = nach Frist der Art)'), 'bald');
+    await tester.tap(find.text('Erfassen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte "Gültig bis" als TT.MM.JJJJ angeben oder leer lassen.'), findsOneWidget);
+    expect(api.created, isEmpty);
+
+    await tester.enterText(find.widgetWithText(TextField, 'Gültig bis (TT.MM.JJJJ, leer = nach Frist der Art)'), '');
+    await tester.enterText(find.widgetWithText(TextField, 'Aussteller'), 'BG Holz und Metall');
+    await tester.tap(find.text('Erfassen'));
+    await tester.pumpAndSettle();
+    expect(api.created, [
+      {
+        'employee_ids': ['e1'],
+        'type_id': 't2',
+        'erworben_am': '2026-03-15',
+        'aussteller': 'BG Holz und Metall',
+      }
+    ]);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(api.standingCalls.length, greaterThan(loadsBefore));
+    expect(find.text('Nachweis erfasst'), findsOneWidget);
+  });
+
+  testWidgets('Fehler des Servers beim Erfassen wird angezeigt', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+      ],
+      createError: const ApiException(statusCode: 400, message: 'Erwerbsdatum darf nicht in der Zukunft liegen'),
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Nachweis erfassen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(DropdownButtonFormField<String>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Erste Hilfe').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Erworben am (TT.MM.JJJJ)'), '01.01.2099');
+    await tester.tap(find.text('Erfassen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fehler: Erwerbsdatum darf nicht in der Zukunft liegen'), findsOneWidget);
+  });
+
+  testWidgets('storniert einen Nachweis nur mit Begruendung', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      standing: {'e1': [_st('Erste Hilfe', 'gueltig')]},
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+      ],
+      records: {
+        'e1': [
+          {'id': 'q1', 'type_id': 't1', 'erworben_am': '2026-03-15T00:00:00Z'},
+          {'id': 'q2', 'type_id': 't1', 'erworben_am': '2024-03-15T00:00:00Z'},
+        ],
+      },
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+    final loadsBefore = api.standingCalls.length;
+
+    // Den zweiten (aelteren) Nachweis stornieren.
+    await tester.tap(find.byTooltip('Stornieren').at(1));
+    await tester.pumpAndSettle();
+    final button = find.widgetWithText(FilledButton, 'Stornieren');
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.enterText(find.widgetWithText(TextField, 'Begründung'), '  ');
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(button).onPressed, isNull);
+    await tester.enterText(find.widgetWithText(TextField, 'Begründung'), ' falsches Datum ');
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+
+    expect(api.stornos.single.key, 'q2');
+    expect(api.stornos.single.value, 'falsches Datum');
+    expect(api.standingCalls.length, greaterThan(loadsBefore));
+  });
+
+  testWidgets('Abbrechen beim Storno storniert nichts', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      standing: {'e1': [_st('Erste Hilfe', 'gueltig')]},
+      records: {
+        'e1': [
+          {'id': 'q1', 'type_id': 't1', 'erworben_am': '2026-03-15T00:00:00Z'},
+        ],
+      },
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stornieren'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Begründung'), 'x');
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.stornos, isEmpty);
+  });
+
+  group('API-Methoden der Nachweise', () {
+    final api = ApiClient(baseUrl: 'http://api.test');
+    late List<http.Request> calls;
+
+    Future<T> mock<T>(Object body, Future<T> Function() call, {int status = 200}) {
+      final client = MockClient((req) async {
+        calls.add(req);
+        return http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json'});
+      });
+      return http.runWithClient(call, () => client);
+    }
+
+    setUp(() => calls = []);
+
+    test('Nachweise lesen, erfassen, stornieren', () async {
+      await mock([], () => api.listEmployeeQualifications('e1'));
+      await mock([], () => api.listEmployeeQualifications('e1', includeStorniert: true));
+      final created = await mock([
+        {'id': 'q1'}
+      ], () => api.createQualification({'employee_ids': ['e1'], 'type_id': 't1', 'erworben_am': '2026-03-15'}), status: 201);
+      final storno = await mock({'id': 'q1', 'status': 'storniert'}, () => api.stornoQualification('q1', 'falsch'));
+      expect(calls.map((c) => '${c.method} ${c.url.path}?${c.url.query}'), [
+        'GET /api/v1/qualifications/?employee_id=e1',
+        'GET /api/v1/qualifications/?employee_id=e1&include_storniert=true',
+        'POST /api/v1/qualifications/?',
+        'POST /api/v1/qualifications/q1/storno?',
+      ]);
+      expect(jsonDecode(calls[2].body), {'employee_ids': ['e1'], 'type_id': 't1', 'erworben_am': '2026-03-15'});
+      expect(jsonDecode(calls[3].body), {'reason': 'falsch'});
+      expect(calls[2].headers['content-type'], startsWith('application/json'));
+      expect(calls[3].headers['content-type'], startsWith('application/json'));
+      expect(created.single['id'], 'q1');
+      expect(storno['status'], 'storniert');
+    });
+
+    test('Erfassen erwartet 201, Fehler werden zur ApiException', () async {
+      await expectLater(mock([], () => api.createQualification({}), status: 200), throwsA(isA<ApiException>()));
+      await expectLater(
+        mock({'error': {'code': 'conflict', 'message': 'Nachweis ist bereits storniert'}}, () => api.stornoQualification('q1', 'x'), status: 409),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Nachweis ist bereits storniert')),
       );
     });
   });

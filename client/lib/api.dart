@@ -2129,6 +2129,44 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
 
+  // Nachweise eines Mitarbeiters, die juengsten zuerst; stornierte nur auf
+  // Wunsch. Die Nachweise tragen nur die type_id - den Namen liefert der
+  // Katalog (auch stillgelegte Arten).
+  Future<List<dynamic>> listEmployeeQualifications(String employeeId,
+      {bool includeStorniert = false}) {
+    final qp = <String, String>{'employee_id': employeeId};
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getList('/api/v1/qualifications/', qp);
+  }
+
+  // Erfasst einen Nachweis fuer einen oder mehrere Mitarbeiter (body:
+  // employee_ids, type_id, erworben_am JJJJ-MM-TT, optional gueltig_bis,
+  // aussteller, nachweis_nr, note). Liefert je Mitarbeiter den Nachweis.
+  Future<List<dynamic>> createQualification(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualifications/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
+  // Storniert einen Nachweis (einmalig, mit Begruendung).
+  Future<Map<String, dynamic>> stornoQualification(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualifications/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

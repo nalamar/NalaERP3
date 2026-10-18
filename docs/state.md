@@ -7,23 +7,24 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.3.1** (Client: Qualifikationsstand und
-> Anforderungen der Stelle am Mitarbeiter). F.7.3 geteilt: .1 Stand und
-> Anforderungen, .2 Nachweise erfassen/stornieren, .3 im Anlegen-Dialog.
+> Zuletzt abgeschlossen: **F.7.3.2** (Client: Nachweise am Mitarbeiter
+> erfassen und stornieren). Davor F.7.3.1 (Stand und Anforderungen).
 > **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
 > 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
 > schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
-> **Nächste Arbeit: F.7.3.2** Nachweise am Mitarbeiter: `POST
-> /qualifications` (`employee_ids`, `type_id`, `erworben_am` JJJJ-MM-TT,
-> optional `gueltig_bis`, `aussteller`, `nachweis_nr`, `note`; liefert je
-> Mitarbeiter den Nachweis), `GET /qualifications?employee_id=` (mit
-> `include_storniert`), `POST /qualifications/{id}/storno` (`reason`).
-> Erwerbsdatum nicht in der Zukunft; Frist der Art bestimmt gueltig_bis,
-> wenn nicht angegeben. Danach F.7.3.3 (Anlegen-Dialog).
+> **Nächste Arbeit: F.7.3.3** im Anlegen-Dialog der Mitarbeiterseite
+> gleich die Anforderungen der Stelle und vorhandene Nachweise erfassen
+> (Vorgabe des Nutzers vom 2026-10-13). Server kennt keinen atomaren
+> Aufruf (Backlog F.10 nennt "Mitarbeiteranlage mit Anforderungen und
+> Nachweisen als EIN atomarer Aufruf" für später) — im Client also
+> nacheinander: anlegen, Anforderungen setzen, Nachweise erfassen; bei
+> einem Fehler nach dem Anlegen klar melden, was angelegt ist und was
+> nicht. Bausteine vorhanden: `requirementChoices`, `parseDateInput`,
+> `buildQualificationBody`.
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.7.3.1: 109 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.7.3.2: 119 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
@@ -11168,6 +11169,22 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/employee_qualifications_section.dart` (neu),
 `client/test/employee_qualifications_test.dart` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.7.3.2 Client: Nachweise erfassen und stornieren
+
+Abschnitt "Qualifikationen" um Nachweis-Liste, Erfassen (TT.MM.JJJJ,
+ungültige Kalendertage im Dialog abgefangen) und Storno mit
+Pflicht-Begründung erweitert. Namen der Arten aus dem Katalog inkl.
+stillgelegter.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+10 neue Tests grün; Gegenprobe 26 Verfälschungen, alle erkannt;
+`flutter test` 119 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/employee_qualifications_section.dart`,
+`client/test/employee_qualifications_test.dart`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
