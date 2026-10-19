@@ -7,11 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.4.2** (Krankmeldungen: Personalabteilung
-> und Selbstmeldung, Attest, Bestätigen, Storno, Liste neue
-> Krankmeldungen, §9-Rückbuchung im Konto; Urlaubsanträge vom Typ `sick`
-> abgelehnt; Migration 094). Davor F.8.4.1, F.8.2, F.8.3.
-> **Nächste Arbeit: F.8.4.3** (Abwesenheitsübersicht `GET /absences`).
+> Zuletzt abgeschlossen: **F.8.4.3** — damit **F.8.4 vollständig**
+> (Abwesenheit aus Genehmigung, Zurückziehen/Storno, Krankmeldungen mit
+> §9-Rückbuchung, Übersicht `GET /absences`). F.8.2, F.8.3 ebenfalls
+> vollständig — **die Server-Seite von F.8 ist bis auf Teams fertig**.
+> **Nächste Arbeit: F.8.5** (Teams anlegen/ändern, Teamleiter setzen —
+> ohne Rechtewirkung). Danach F.8.6 Client (Urlaub, Konto, Genehmigung,
+> Krankmeldung, Übersicht, Teams; wird geteilt).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als

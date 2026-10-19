@@ -77,6 +77,57 @@ func mountAbsenceRoutes(protected chi.Router, svc *hr.AbsenceService, resolver e
 			writeJSON(w, http.StatusCreated, out)
 		})
 
+		// Uebersicht "wer fehlt wann" (F.8.4.3). Mit leave_requests.read
+		// alle Mitarbeiter (optional employee_id, team_id); sonst nur die
+		// eigenen Abwesenheiten (leave_requests.self). Kollegen sehen sich
+		// gegenseitig nicht (ADR 0029, Entscheidung des Nutzers).
+		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
+			q := req.URL.Query()
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			var teamID *uuid.UUID
+			if v := q.Get("team_id"); v != "" {
+				id, err := uuid.Parse(v)
+				if err != nil {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige team_id")
+					return
+				}
+				teamID = &id
+			}
+			from, ok := parseOptionalDate(w, req, "from", q.Get("from"))
+			if !ok {
+				return
+			}
+			to, ok := parseOptionalDate(w, req, "to", q.Get("to"))
+			if !ok {
+				return
+			}
+			filter := hr.AbsenceFilter{EmployeeID: requested, TeamID: teamID, IncludeStorniert: q.Get("include_storniert") == "true"}
+			if from != nil {
+				filter.From = *from
+			}
+			if to != nil {
+				filter.To = *to
+			}
+			// Mit Leserecht bleibt der Filter wie angefragt (auch keiner).
+			if !hasPermission(req, permLeaveRequestsRead) {
+				employeeID, ok := resolveOwnOrPermittedEmployee(w, req, resolver, requested, permLeaveRequestsRead, permLeaveRequestsSelf)
+				if !ok {
+					return
+				}
+				filter.EmployeeID = &employeeID
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.List(req.Context(), filter, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(requirePermission(permLeaveRequestsRead)).Get("/sick/new", func(w http.ResponseWriter, req *http.Request) {
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.ListNewSick(req.Context(), companyID)

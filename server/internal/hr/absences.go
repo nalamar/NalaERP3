@@ -226,3 +226,77 @@ func (s *AbsenceService) ListNewSick(ctx context.Context, companyID string) ([]A
 	}
 	return out, rows.Err()
 }
+
+// AbsenceEntry ist eine Zeile der Abwesenheitsuebersicht: die Abwesenheit
+// mit dem Namen des Mitarbeiters.
+type AbsenceEntry struct {
+	Absence
+	PersonalNr *string `json:"personalnummer,omitempty"`
+	FirstName  string  `json:"first_name"`
+	LastName   string  `json:"last_name"`
+}
+
+// AbsenceFilter waehlt die Abwesenheiten der Uebersicht. From und To sind
+// Pflicht (beide einschliesslich); gezeigt wird jede Abwesenheit, die den
+// Zeitraum beruehrt.
+type AbsenceFilter struct {
+	From, To         time.Time
+	EmployeeID       *uuid.UUID
+	TeamID           *uuid.UUID
+	IncludeStorniert bool
+}
+
+// maxAbsenceRangeDays begrenzt die Uebersicht auf ein Jahr - genug fuer
+// jede Planung, und eine Abfrage ueber Jahrzehnte bleibt aus.
+const maxAbsenceRangeDays = 366
+
+// List liefert die Abwesenheiten im Zeitraum, nach Beginn und Namen
+// sortiert. Welche Mitarbeiter der Aufrufer sehen darf, entscheidet die
+// Route (eigene mit leave_requests.self, alle mit .read).
+func (s *AbsenceService) List(ctx context.Context, f AbsenceFilter, companyID string) ([]AbsenceEntry, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if f.From.IsZero() || f.To.IsZero() {
+		return nil, errors.New("from/to erforderlich")
+	}
+	from, to := dateOnly(f.From), dateOnly(f.To)
+	if to.Before(from) {
+		return nil, errors.New("Enddatum darf nicht vor Startdatum liegen")
+	}
+	if to.Sub(from).Hours()/24+1 > maxAbsenceRangeDays {
+		return nil, errors.New("Ungültiger Zeitraum: höchstens 366 Tage")
+	}
+	where := `e.company_id=$1 AND a.start_date <= $3 AND a.end_date >= $2`
+	args := []any{companyID, from, to}
+	if !f.IncludeStorniert {
+		where += ` AND a.status='approved'`
+	}
+	if f.EmployeeID != nil {
+		args = append(args, *f.EmployeeID)
+		where += ` AND a.employee_id=$` + itoa(len(args))
+	}
+	if f.TeamID != nil {
+		args = append(args, *f.TeamID)
+		where += ` AND e.team_id=$` + itoa(len(args))
+	}
+	rows, err := s.pg.Query(ctx, `SELECT `+absenceColumns+`, e.personalnummer, e.first_name, e.last_name
+		FROM hr_absences a JOIN hr_employees e ON e.id = a.employee_id
+		WHERE `+where+` ORDER BY a.start_date, e.last_name, e.first_name, a.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AbsenceEntry{}
+	for rows.Next() {
+		var x AbsenceEntry
+		a := &x.Absence
+		if err := rows.Scan(&a.ID, &a.EmployeeID, &a.Typ, &a.StartDate, &a.EndDate, &a.Status, &a.SourceRequestID, &a.Attest, &a.GemeldetVon,
+			&a.GemeldetByUserID, &a.BestaetigtAt, &a.BestaetigtByUserID, &a.StorniertAt, &a.StorniertByUserID, &a.StornoReason, &a.CreatedAt,
+			&x.PersonalNr, &x.FirstName, &x.LastName); err != nil {
+			return nil, err
+		}
+		out = append(out, x)
+	}
+	return out, rows.Err()
+}

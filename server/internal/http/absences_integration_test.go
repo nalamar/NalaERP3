@@ -98,3 +98,53 @@ func TestSickReportsHTTP(t *testing.T) {
 	wantAPIError(t, doAuthedRequest(t, handler, hrToken, http.MethodGet, path+"kein-uuid", ""), http.StatusBadRequest, "validation_error", "Ungültige Abwesenheits-ID")
 	wantAPIError(t, doAuthedRequest(t, handler, hrToken, http.MethodGet, path+uuid.NewString(), ""), http.StatusNotFound, "not_found", "Abwesenheit nicht gefunden")
 }
+
+func TestAbsenceOverviewHTTP(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	tenant := newCatalogTenant(t, env, handler)
+	seedRoleWithPermissions(t, env, "liste-self", "leave_requests.self")
+	seedRoleWithPermissions(t, env, "liste-read", "leave_requests.read")
+	worker := tenant.linkedUser("liste-self", "Eigen")
+	colleague := tenant.linkedUser("liste-self", "Kollege")
+	reader := tenant.user("liste-read")
+	hrToken := tenant.user("hr")
+	const path = "/api/v1/absences/"
+	for _, emp := range []string{worker.EmployeeID.String(), colleague.EmployeeID.String()} {
+		wantStatus(t, doAuthedRequest(t, handler, hrToken, http.MethodPost, path+"sick", `{"employee_id":"`+emp+`","start_date":"2026-06-10","end_date":"2026-06-11"}`), http.StatusCreated)
+	}
+	type entry struct {
+		EmployeeID uuid.UUID `json:"employee_id"`
+		LastName   string    `json:"last_name"`
+		Typ        string    `json:"typ"`
+	}
+	june := "?from=2026-06-01&to=2026-06-30"
+
+	// Ohne Leserecht nur die eigenen - auch ohne employee_id.
+	var list []entry
+	decodeJSONStatus(t, doAuthedRequest(t, handler, worker.Token, http.MethodGet, path+june, ""), http.StatusOK, &list)
+	if len(list) != 1 || list[0].EmployeeID != worker.EmployeeID || list[0].LastName != "Eigen" {
+		t.Fatalf("eigene: %+v", list)
+	}
+	wantStatus(t, doAuthedRequest(t, handler, worker.Token, http.MethodGet, path+june+"&employee_id="+colleague.EmployeeID.String(), ""), http.StatusForbidden)
+	// Mit Leserecht alle, optional gefiltert.
+	list = nil
+	decodeJSONStatus(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+june, ""), http.StatusOK, &list)
+	if len(list) != 2 {
+		t.Fatalf("alle: %+v", list)
+	}
+	list = nil
+	decodeJSONStatus(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+june+"&employee_id="+colleague.EmployeeID.String(), ""), http.StatusOK, &list)
+	if len(list) != 1 || list[0].EmployeeID != colleague.EmployeeID {
+		t.Fatalf("Kollege: %+v", list)
+	}
+	list = nil
+	decodeJSONStatus(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+june+"&team_id="+uuid.NewString(), ""), http.StatusOK, &list)
+	if len(list) != 0 {
+		t.Fatalf("unbekanntes Team: %+v", list)
+	}
+	wantAPIError(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+june+"&team_id=x", ""), http.StatusBadRequest, "validation_error", "Ungültige team_id")
+	wantAPIError(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+"?from=01.06.2026&to=2026-06-30", ""), http.StatusBadRequest, "validation_error", "Ungültiges Datum in from (erwartet JJJJ-MM-TT)")
+	wantAPIError(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+"?to=2026-06-30", ""), http.StatusBadRequest, "validation_error", "from/to erforderlich")
+	wantAPIError(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+"?from=2026-01-01&to=2027-06-30", ""), http.StatusBadRequest, "validation_error", "Ungültiger Zeitraum: höchstens 366 Tage")
+}
