@@ -6,6 +6,7 @@ import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
 import 'my_time_page.dart';
+import 'qualification_catalog_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -131,6 +132,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => EmployeesPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('qualifications.read'))
+        _DashCard(
+          title: 'Qualifikationskatalog',
+          icon: Icons.workspace_premium_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => QualificationCatalogPage(api: api),
               ),
             );
           },

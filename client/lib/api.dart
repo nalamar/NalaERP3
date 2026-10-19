@@ -2297,6 +2297,50 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Qualifikationskatalog pflegen (Backlog F.13.1, Routen F.2.5.1) --------
+  // Neue Art: code, name, kategorie, gueltigkeit_monate (null =
+  // unbefristet), pflicht_fuer_alle, hinweis. Erwartet 201.
+  Future<Map<String, dynamic>> createQualificationType(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualification-types/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ersetzt eine Art VOLLSTAENDIG. Der Server verlangt alle sechs Felder
+  // (name, kategorie, gueltigkeit_monate, pflicht_fuer_alle, aktiv,
+  // hinweis); der Code ist nicht aenderbar.
+  Future<Map<String, dynamic>> updateQualificationType(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/qualification-types/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Uebernimmt den Vorschlagskatalog; liefert die NEU angelegten Arten
+  // (bereits vorhandene Codes bleiben unberuehrt).
+  Future<List<dynamic>> adoptDefaultQualificationTypes() async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualification-types/adopt-defaults'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(<String, dynamic>{}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

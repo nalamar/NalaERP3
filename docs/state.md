@@ -7,32 +7,32 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.5.3** — damit ist **TASK F.5 (Client:
-> Zeiterfassung) VOLLSTÄNDIG**: Kommen/Gehen, eigene Woche mit
-> ArbZG-Hinweisen, Nachtragen/Korrigieren/Stornieren, Zeiten anderer für
-> die Personalabteilung. Davor F.3.7, F.7.
+> Zuletzt abgeschlossen: **F.13.1** (Client: Qualifikationskatalog —
+> anlegen, ändern, stilllegen, Vorschlagskatalog übernehmen). F.13 vom
+> Nutzer am 2026-10-19 beauftragt ("Dann setze mit F.13 fort"). Davor
+> Task F.5 vollständig.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: Empfehlung F.13**, beginnend mit dem
-> Qualifikationskatalog im Client (Arten anlegen/ändern/stilllegen,
-> Vorschlagskatalog übernehmen — `/qualification-types`, F.2.5.1) und
-> der betriebsweiten Fälligkeitsliste der Qualifikationen
-> (`/qualifications/due`). Begründung: ohne Katalog-Oberfläche ist der
-> Katalog leer, und die Qualifikationsfunktionen aus F.7.3 bieten nichts
-> zur Auswahl an. Danach Betriebsmittel-Oberfläche (Bestand, Ausgabe,
-> Prüfungen, Fälligkeitsliste). Alternativen: 0.48 (Client-Tests
-> reparieren), F.8, F.6, F.10, 0.45, 0.47. Bloßes "fortsetzen" =
-> Empfehlung (Memory).
+> **Nächste Arbeit: F.13.2** betriebsweite Fälligkeitsliste der
+> Qualifikationen (`GET /qualifications/due`, `warn_tage` Standard 60;
+> Einträge mit employee_id, personalnummer, first_name, last_name, Art
+> (code/name/kategorie), status fehlt/abgelaufen/laeuft_ab,
+> gueltig_bis, tage_bis_ablauf; nur `qualifications.read`). Vorschlag:
+> eigene Seite mit Karte "Fällige Qualifikationen" oder Einstieg aus dem
+> Katalog; Statustexte aus `qualificationStatusLabel` (F.7.3.1)
+> wiederverwenden. Danach F.13.3/F.13.4 Betriebsmittel.
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.5.3: 158 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.13.1: 168 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
-> `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
+> `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
+> Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen
+> (`pump(5 s)`), die MaterialApp bleibt beim Neuaufbau erhalten.
 > Keine offenen Fragen an den Nutzer.
-> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, F.13, 0.45, 0.47, 0.48.
+> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
@@ -11289,6 +11289,24 @@ Geänderte Dateien: `client/lib/pages/my_time_page.dart`,
 `client/lib/pages/employees_page.dart`,
 `client/test/employee_time_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
+
+## Epic F, Task F.13 — Client: Betriebsmittel, Fälligkeitslisten, Katalog
+
+### F.13.1 Qualifikationskatalog
+
+Seite `qualification_catalog_page.dart`, Karte mit
+`qualifications.read`. Anlegen, Bearbeiten (Code gesperrt, PUT mit allen
+sechs Feldern), Stilllegen, Vorschlagskatalog übernehmen.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+10 neue Tests grün; Gegenprobe 27 Verfälschungen, alle erkannt;
+`flutter test` 168 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/lib/pages/qualification_catalog_page.dart` (neu),
+`client/test/qualification_catalog_test.dart` (neu),
+`docs/backlog.md`, `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
