@@ -40,7 +40,8 @@ var Bundeslaender = map[string]string{
 }
 
 // ErrUnknownBundesland meldet ein unbekanntes Laenderkuerzel.
-var ErrUnknownBundesland = errors.New("Unbekanntes Bundesland")
+// Die Meldung enthaelt "Ungültig", damit sie ueber HTTP als 400 ankommt.
+var ErrUnknownBundesland = errors.New("Ungültiges Bundesland")
 
 // Holiday ist ein Feiertag; Date ist ein reines Datum (00:00 UTC wie
 // dateOnly).
@@ -101,17 +102,13 @@ func inLand(land string, lands ...string) bool {
 	return false
 }
 
-// PublicHolidays liefert die gesetzlichen Feiertage eines Jahres in einem
-// Bundesland, nach Datum sortiert. Ostersonntag und Pfingstsonntag sind
-// nur in Brandenburg ausdruecklich gesetzliche Feiertage und erscheinen
-// nur dort.
-func PublicHolidays(year int, land string, opt HolidayOptions) ([]Holiday, error) {
-	if _, ok := Bundeslaender[land]; !ok {
-		return nil, ErrUnknownBundesland
-	}
+// NationwideHolidays liefert die neun Feiertage, die in allen Laendern
+// gelten - nach Datum sortiert. Sie gelten auch, solange fuer einen
+// Mandanten noch kein Bundesland eingestellt ist.
+func NationwideHolidays(year int) []Holiday {
 	easter := EasterSunday(year)
 	rel := func(days int) time.Time { return easter.AddDate(0, 0, days) }
-	out := []Holiday{
+	return []Holiday{
 		{calendarDay(year, time.January, 1), "Neujahr"},
 		{rel(-2), "Karfreitag"},
 		{rel(1), "Ostermontag"},
@@ -122,6 +119,19 @@ func PublicHolidays(year int, land string, opt HolidayOptions) ([]Holiday, error
 		{calendarDay(year, time.December, 25), "1. Weihnachtsfeiertag"},
 		{calendarDay(year, time.December, 26), "2. Weihnachtsfeiertag"},
 	}
+}
+
+// PublicHolidays liefert die gesetzlichen Feiertage eines Jahres in einem
+// Bundesland, nach Datum sortiert. Ostersonntag und Pfingstsonntag sind
+// nur in Brandenburg ausdruecklich gesetzliche Feiertage und erscheinen
+// nur dort.
+func PublicHolidays(year int, land string, opt HolidayOptions) ([]Holiday, error) {
+	if _, ok := Bundeslaender[land]; !ok {
+		return nil, ErrUnknownBundesland
+	}
+	easter := EasterSunday(year)
+	rel := func(days int) time.Time { return easter.AddDate(0, 0, days) }
+	out := NationwideHolidays(year)
 	add := func(d time.Time, name string) { out = append(out, Holiday{d, name}) }
 	if inLand(land, "BW", "BY", "ST") {
 		add(calendarDay(year, time.January, 6), "Heilige Drei Könige")

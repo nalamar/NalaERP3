@@ -198,6 +198,17 @@ Mandanten-Einstellung Bundesland gehört zu `settings.manage`.
   Genehmigen, Krankmeldung, Abwesenheitsübersicht, Teams (weiter
   geteilt).
 
+## Abweichung bei der Umsetzung (F.8.2.2, 2026-10-19)
+
+Die betrieblichen Zusatztage stehen nicht in `hr_holidays` (mit neuer
+`company_id`), sondern in der eigenen Tabelle `hr_company_days`
+(Migration 090). Grund: ADR 0002 hat `hr_holidays` ausdrücklich als
+mandantenfreien Feiertagskalender je Land festgelegt; mit
+`company_id` hätte dieselbe Tabelle zwei Bedeutungen. `hr_holidays`
+bleibt ungenutzt. Das Bundesland steht in `hr_calendar_settings`, nicht
+in `company_profiles` — die Firmenstammdaten werden vollständig per
+Upsert ersetzt und gehören zu Rechnung und Briefkopf.
+
 ## Konsequenzen
 
 - Migrationen ab 090 (Bundesland, Konto, `hr_holidays.company_id`,

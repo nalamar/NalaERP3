@@ -1728,6 +1728,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountAssetRoutes(protected, assetSvc)
 	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
 	mountAssetInspectionRoutes(protected, assetSvc)
+	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {

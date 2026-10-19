@@ -7,14 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.2.1** (Feiertage je Bundesland und
-> Arbeitstage-Zählung, rein, `internal/hr/holidays.go`). ADR 0029 ist
-> **entschieden** (Antworten des Nutzers 2026-10-19: wie empfohlen, außer
-> Urlaubsvorgabe 20 Tage, abweichend am Mitarbeiter; Genehmigung nur
-> Personalabteilung/Geschäftsführung, Teamleiter vorbereiten).
-> **Nächste Arbeit: F.8.2.2** (Bundesland am Mandanten/Mitarbeiter,
-> betriebliche Zusatztage, Arbeitstage-Muster, Zählung in Anträgen;
-> Migration 090).
+> Zuletzt abgeschlossen: **F.8.2.2** (Bundesland am Mandanten,
+> betriebliche Zusatztage, `GET /holidays`; Migration 090). Davor F.8.2.1
+> (Feiertagsberechnung). ADR 0029 entschieden (Urlaubsvorgabe 20 Tage,
+> abweichend am Mitarbeiter; Genehmigung nur Personalabteilung/
+> Geschäftsführung, Teamleiter vorbereiten).
+> **Nächste Arbeit: F.8.2.3** (Bundesland und Arbeitstage-Muster am
+> Mitarbeiter, Zählung neuer Anträge in Arbeitstagen; Migration 091).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
@@ -40,7 +39,7 @@
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
 > (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
 > Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
-> Nächste freie Migration 090, ADR 0030.
+> Nächste freie Migration 091, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
