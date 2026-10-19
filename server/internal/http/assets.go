@@ -282,7 +282,8 @@ func mountAssetAssignmentRoutes(protected chi.Router, svc *assets.Service, resol
 
 	protected.Route("/asset-assignments", func(r chi.Router) {
 		// Ausgeben. Die Antwort enthaelt "hinweise" (Pruefung ueberfaellig,
-		// nie geprueft, Maengel); ein gesperrtes Stueck wird abgelehnt.
+		// nie geprueft); ein gesperrtes Stueck (nicht bestanden oder Maengel)
+		// wird abgelehnt.
 		r.With(write).Post("/", func(w http.ResponseWriter, req *http.Request) {
 			var in struct {
 				AssetID      uuid.UUID `json:"asset_id"`

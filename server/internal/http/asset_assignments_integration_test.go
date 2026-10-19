@@ -326,6 +326,7 @@ func TestClassifyDomainErrorCoversAssetAssignmentMessages(t *testing.T) {
 		"Mitarbeiter ist nicht aktiv":                                         http.StatusConflict,
 		"Asset ist bereits ausgegeben":                                        http.StatusConflict,
 		"Asset ist gesperrt: letzte Prüfung nicht bestanden":                  http.StatusConflict,
+		"Asset ist gesperrt: letzte Prüfung mit Mängeln":                      http.StatusConflict,
 		"Ausgabe überschneidet sich mit einer früheren Ausgabe dieses Assets": http.StatusConflict,
 		"Ausgabe ist storniert":                                               http.StatusConflict,
 		"Asset wurde bereits zurückgegeben":                                   http.StatusConflict,

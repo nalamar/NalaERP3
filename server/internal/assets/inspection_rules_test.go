@@ -104,7 +104,10 @@ func TestEvaluateInspectionsStatus(t *testing.T) {
 		{"einen Tag ueberfaellig", []Inspection{insp(d(2026, 4, 1), ErgebnisBestanden, datePtr(2026, 10, 14), t0)}, intPtr(6), 30, PruefstandUeberfaellig, intPtr(-1), false},
 		{"Vorwarnzeit 0, morgen faellig", []Inspection{insp(d(2026, 6, 1), ErgebnisBestanden, datePtr(2026, 10, 16), t0)}, intPtr(6), 0, PruefstandGeprueft, intPtr(1), false},
 		{"negative Vorwarnzeit wie 0", []Inspection{insp(d(2026, 6, 1), ErgebnisBestanden, datePtr(2026, 10, 15), t0)}, intPtr(6), -5, PruefstandFaelligBald, intPtr(0), false},
-		{"Maengel bleibt geprueft, mit Hinweis", []Inspection{insp(d(2026, 6, 1), ErgebnisMaengel, datePtr(2027, 6, 1), t0)}, intPtr(12), 30, PruefstandGeprueft, intPtr(229), true},
+		// Maengel sperren - auch mit einem Folgetermin weit in der Zukunft
+		// (Entscheidung des Nutzers vom 2026-10-19).
+		{"Maengel sperrt, auch mit Folgetermin", []Inspection{insp(d(2026, 6, 1), ErgebnisMaengel, datePtr(2027, 6, 1), t0)}, intPtr(12), 30, PruefstandGesperrt, nil, true},
+		{"nicht bestanden ist kein Maengel-Fall", []Inspection{insp(d(2026, 6, 1), ErgebnisNichtBestanden, nil, t0)}, intPtr(12), 30, PruefstandGesperrt, nil, false},
 		{"nicht bestanden sperrt", []Inspection{insp(d(2026, 6, 1), ErgebnisNichtBestanden, nil, t0)}, intPtr(12), 30, PruefstandGesperrt, nil, false},
 	}
 	// "Heute" mit Uhrzeit zaehlt als Kalendertag: morgen faellig ist
@@ -172,6 +175,17 @@ func TestEvaluateInspectionsPicksLatest(t *testing.T) {
 	got = EvaluateInspections([]Inspection{ok, failed, repaired}, intPtr(12), today, 30)
 	if got.Status != PruefstandNieGeprueft || got.InspectionID != nil {
 		t.Fatalf("alles storniert = nie geprueft: %+v", got)
+	}
+
+	// Nach Maengeln und Reparatur: die bestandene Wiederholung hebt die
+	// Sperre auf.
+	defekt := insp(d(2026, 8, 1), ErgebnisMaengel, datePtr(2027, 8, 1), t0)
+	repariert := insp(d(2026, 8, 20), ErgebnisBestanden, datePtr(2027, 8, 20), t0)
+	if got := EvaluateInspections([]Inspection{defekt}, intPtr(12), today, 30); got.Status != PruefstandGesperrt || !got.Maengel {
+		t.Fatalf("Maengel muss sperren: %+v", got)
+	}
+	if got := EvaluateInspections([]Inspection{defekt, repariert}, intPtr(12), today, 30); got.Status != PruefstandGeprueft || got.Maengel {
+		t.Fatalf("Wiederholung nach Maengeln muss die Sperre aufheben: %+v", got)
 	}
 
 	// Gleicher Pruefungstag: die zuletzt erfasste zaehlt.

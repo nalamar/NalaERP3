@@ -230,7 +230,9 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
 - **F.3.5 (Ergebnis "Mängel")**: Annahme im Code — ein Stück mit dem
   Prüfergebnis "Mängel" bleibt ausgebbar und wird nur als Hinweis
   angezeigt; gesperrt ist nur "nicht bestanden". Soll "Mängel" ebenfalls
-  sperren? Status: **offen**, nicht blockierend.
+  sperren? Status: **beantwortet** am 2026-10-19 — "ja, Mängel sollen
+  Ausgabe sperren" → umgesetzt in F.3.7.
 - **F.3.5 (Vorwarnzeit)**: Annahme 30 Tage für "Prüfung bald fällig"
   (Qualifikationen: 60). Der Wert ist beim Abruf änderbar. Passt 30?
-  Status: **offen**, nicht blockierend.
+  Status: **beantwortet** am 2026-10-19 — "30 Tage reichen" (keine
+  Änderung).

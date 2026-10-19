@@ -77,9 +77,10 @@ func (s *Service) InspectionStandingOf(ctx context.Context, assetID uuid.UUID, t
 	return &st, nil
 }
 
-// issueHints liefert die Hinweise zu einer Ausgabe. Gesperrt ist kein
-// Hinweis, sondern ein Ablehnungsgrund (siehe Issue). "Bald faellig" ist
-// keiner: die Ausgabe ist in Ordnung, die Liste mahnt an.
+// issueHints liefert die Hinweise zu einer Ausgabe. Gesperrt (nicht
+// bestanden oder Maengel) ist kein Hinweis, sondern ein Ablehnungsgrund
+// (siehe Issue). "Bald faellig" ist keiner: die Ausgabe ist in Ordnung, die
+// Liste mahnt an.
 func issueHints(st InspectionStanding) []string {
 	hints := make([]string, 0, 2)
 	switch st.Status {
@@ -87,9 +88,6 @@ func issueHints(st InspectionStanding) []string {
 		hints = append(hints, fmt.Sprintf("Prüfung überfällig seit %s", st.NaechstePruefungAm.Format("02.01.2006")))
 	case PruefstandNieGeprueft:
 		hints = append(hints, "Asset wurde noch nie geprüft")
-	}
-	if st.Maengel {
-		hints = append(hints, "Letzte Prüfung mit Mängeln")
 	}
 	return hints
 }

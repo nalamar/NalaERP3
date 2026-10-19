@@ -7,13 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.5.1** (Client: "Meine Arbeitszeit" —
-> Kommen/Gehen, laufender Eintrag, Woche mit ArbZG-Hinweisen). Davor
-> Task F.7 vollständig.
+> Zuletzt abgeschlossen: **F.3.7** (Korrektur: "Mängel" sperrt die
+> Ausgabe — Entscheidung des Nutzers vom 2026-10-19, unter
+> "Korrekturen"). Davor F.5.1 ("Meine Arbeitszeit").
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
-> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> Widerspricht der Nutzer, unter "Korrekturen".
+> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19 — der
+> Nutzer schrieb danach "Fortsetzen" ohne Widerspruch).
 > **Nächste Arbeit: F.5.2** eigene Zeiten nachtragen (`POST
 > /time-entries` mit `started_at`/`ended_at` als RFC 3339,
 > `break_minutes`, `note`), korrigieren (`POST …/{id}/correct` mit
@@ -29,8 +29,7 @@
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
-> Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
-> F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
+> Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, F.13, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
@@ -11240,6 +11239,25 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/test/my_time_page_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
 
+### F.3.7 Korrektur: "Mängel" sperrt die Ausgabe
+
+Entscheidung des Nutzers vom 2026-10-19. `maengel` ergibt den Stand
+`gesperrt`; `Issue` lehnt mit "… letzte Prüfung mit Mängeln" ab; der
+Ausgabe-Hinweis zu Mängeln entfällt. Vorwarnzeit 30 bestätigt.
+
+**Verifikation.** `go build`, `go vet` clean; Tests angepasst und
+ergänzt, grün; Gegenprobe 5 Verfälschungen, alle erkannt; vollständiger
+`NALA_INTEGRATION=1 go test ./... -p 1 -count=1` gegen frische DB:
+durchgehend `ok`.
+
+Geänderte Dateien: `server/internal/assets/{inspection_rules.go,
+inspection_due.go, assignments.go}` samt Tests,
+`server/internal/http/assets.go`,
+`server/internal/http/asset_inspections_integration_test.go`,
+`server/internal/http/asset_assignments_integration_test.go`,
+`docs/adr/0028-asset-zuordnung.md`, `docs/open-questions.md`,
+`docs/backlog.md`, `docs/state.md`.
+
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
 Vom Nutzer vor F.2 gezogen. ADR:
@@ -11374,6 +11392,11 @@ ignoriert statt einen Fehler zu liefern — dokumentiert als Backlog 0.10.
   Recht aber einräumen können." → `assets.read`/`write` nur an
   `role-hr` (und `role-admin`). (4) "Nein, keine Bestätigung
   vorerst." ADR 0028 damit entschieden.
+
+- **2026-10-19 — Antworten zu den Annahmen aus F.3.5.1.** "ja, Mängel
+  sollen Ausgabe sperren" → Korrektur der Annahme "Mängel = ausgebbar
+  mit Hinweis", umgesetzt in F.3.7 (ADR 0028 ergänzt). "30 Tage
+  reichen" → Vorwarnzeit der Prüfungen bestätigt, keine Änderung.
 
 ## Verworfen
 

@@ -43,8 +43,9 @@ func TestIssueHints(t *testing.T) {
 		{"nicht pruefpflichtig", InspectionStanding{Status: PruefstandNichtPruefpflichtig}, []string{}},
 		{"ueberfaellig", InspectionStanding{Status: PruefstandUeberfaellig, NaechstePruefungAm: datePtr(2026, 3, 7)}, []string{"Prüfung überfällig seit 07.03.2026"}},
 		{"nie geprueft", InspectionStanding{Status: PruefstandNieGeprueft}, []string{"Asset wurde noch nie geprüft"}},
-		{"Maengel", InspectionStanding{Status: PruefstandGeprueft, Maengel: true}, []string{"Letzte Prüfung mit Mängeln"}},
-		{"ueberfaellig mit Maengeln", InspectionStanding{Status: PruefstandUeberfaellig, NaechstePruefungAm: datePtr(2026, 3, 7), Maengel: true}, []string{"Prüfung überfällig seit 07.03.2026", "Letzte Prüfung mit Mängeln"}},
+		// Maengel sperren seit F.3.7 (Entscheidung des Nutzers vom
+		// 2026-10-19) - sie sind Ablehnungsgrund, kein Hinweis mehr.
+		{"Maengel-Kennzeichen ist kein Hinweis", InspectionStanding{Status: PruefstandUeberfaellig, NaechstePruefungAm: datePtr(2026, 3, 7), Maengel: true}, []string{"Prüfung überfällig seit 07.03.2026"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -115,6 +115,12 @@ Begründung: ein durchgefallener Auffanggurt darf nicht verwendet
 werden; eine um zwei Tage überfällige Prüfung soll den Betrieb nicht
 lahmlegen, aber sichtbar sein. (→ offene Frage 1)
 
+**Ergänzung 2026-10-19 (F.3.7):** auch das Ergebnis `maengel` sperrt
+(Entscheidung des Nutzers: "Mängel sollen Ausgabe sperren") — bis zur
+nächsten bestandenen Prüfung, unabhängig von einem Folgetermin. Die
+Ablehnung nennt den Grund ("… letzte Prüfung mit Mängeln"). Die
+Vorwarnzeit von 30 Tagen hat der Nutzer bestätigt.
+
 ### 5. Ausmusterung
 
 Ein Asset wird nie gelöscht (Ausgaben und Prüfungen verweisen darauf),

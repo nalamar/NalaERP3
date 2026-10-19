@@ -159,7 +159,10 @@ func TestAssetInspectionsHTTPStandingAndDue(t *testing.T) {
 	gesperrt := tenant.asset(hrToken, "Z-GES", `,"pruefintervall_monate":12`)
 	decodeJSON[inspectionResponse](t, do(http.MethodPost, aiPath, inspBody(gesperrt.ID, "2025-01-10", "nicht_bestanden", "")), http.StatusCreated)
 	ueber := tenant.asset(hrToken, "B-UE", `,"pruefintervall_monate":6,"standort":"Halle 2"`)
-	decodeJSON[inspectionResponse](t, do(http.MethodPost, aiPath, inspBody(ueber.ID, "2024-01-10", "maengel", `,"naechste_pruefung_am":"2024-07-10"`)), http.StatusCreated)
+	decodeJSON[inspectionResponse](t, do(http.MethodPost, aiPath, inspBody(ueber.ID, "2024-01-10", "bestanden", `,"naechste_pruefung_am":"2024-07-10"`)), http.StatusCreated)
+	// Maengel sperren (F.3.7, Entscheidung des Nutzers vom 2026-10-19).
+	maengel := tenant.asset(hrToken, "A-MAE", `,"pruefintervall_monate":12`)
+	decodeJSON[inspectionResponse](t, do(http.MethodPost, aiPath, inspBody(maengel.ID, "2025-03-10", "maengel", `,"naechste_pruefung_am":"2099-01-01"`)), http.StatusCreated)
 	nie := tenant.asset(hrToken, "C-NIE", `,"pruefintervall_monate":12`)
 	bald := tenant.asset(hrToken, "D-BALD", `,"pruefintervall_monate":12`)
 	decodeJSON[inspectionResponse](t, do(http.MethodPost, aiPath, inspBody(bald.ID, today.AddDate(0, -1, 0).Format("2006-01-02"), "bestanden",
@@ -174,13 +177,14 @@ func TestAssetInspectionsHTTPStandingAndDue(t *testing.T) {
 	frei := tenant.asset(hrToken, "F-FREI", "")
 	halter := tenant.employee("Halter")
 	decodeAssignment(t, do(http.MethodPost, aaPath, issueBody(ueber.ID, halter, "2024-02-01")), http.StatusCreated)
+	wantAPIError(t, do(http.MethodPost, aaPath, issueBody(maengel.ID, halter, "2025-03-11")), http.StatusConflict, "conflict", "Asset ist gesperrt: letzte Prüfung mit Mängeln")
 
 	// Pruefstand je Asset.
 	for _, tc := range []struct {
 		asset assetResponse
 		want  string
 	}{
-		{gesperrt, "gesperrt"}, {ueber, "ueberfaellig"}, {nie, "nie_geprueft"}, {bald, "faellig_bald"}, {ok, "geprueft"}, {spaeter, "geprueft"}, {frei, "nicht_pruefpflichtig"},
+		{gesperrt, "gesperrt"}, {maengel, "gesperrt"}, {ueber, "ueberfaellig"}, {nie, "nie_geprueft"}, {bald, "faellig_bald"}, {ok, "geprueft"}, {spaeter, "geprueft"}, {frei, "nicht_pruefpflichtig"},
 	} {
 		st := decodeJSON[assetStandingResponse](t, do(http.MethodGet, assetPath+tc.asset.ID.String()+"/inspection-standing", ""), http.StatusOK)
 		if st.Status != tc.want {
@@ -197,8 +201,11 @@ func TestAssetInspectionsHTTPStandingAndDue(t *testing.T) {
 	if st := decodeJSON[assetStandingResponse](t, do(http.MethodGet, assetPath+bald.ID.String()+"/inspection-standing?warn_tage=5", ""), http.StatusOK); st.Status != "geprueft" {
 		t.Fatalf("Vorwarnzeit 5: %+v", st)
 	}
-	if st := decodeJSON[assetStandingResponse](t, do(http.MethodGet, assetPath+ueber.ID.String()+"/inspection-standing", ""), http.StatusOK); !st.Maengel {
-		t.Fatalf("Maengel erwartet: %+v", st)
+	if st := decodeJSON[assetStandingResponse](t, do(http.MethodGet, assetPath+maengel.ID.String()+"/inspection-standing", ""), http.StatusOK); !st.Maengel || st.Ergebnis != "maengel" {
+		t.Fatalf("gesperrt wegen Maengeln erwartet: %+v", st)
+	}
+	if st := decodeJSON[assetStandingResponse](t, do(http.MethodGet, assetPath+gesperrt.ID.String()+"/inspection-standing", ""), http.StatusOK); st.Maengel {
+		t.Fatalf("gesperrt wegen 'nicht bestanden', nicht wegen Maengeln: %+v", st)
 	}
 	wantAPIError(t, do(http.MethodGet, assetPath+bald.ID.String()+"/inspection-standing?warn_tage=-1", ""), http.StatusBadRequest, "validation_error", "Ungültige Vorwarnzeit (warn_tage: ganze Zahl ab 0)")
 	wantAPIError(t, do(http.MethodGet, assetPath+uuid.NewString()+"/inspection-standing", ""), http.StatusNotFound, "not_found", "Asset nicht gefunden")
@@ -210,20 +217,23 @@ func TestAssetInspectionsHTTPStandingAndDue(t *testing.T) {
 	for _, e := range due {
 		got = append(got, e.Inventarnummer+":"+e.Status)
 	}
-	if strings.Join(got, ",") != "Z-GES:gesperrt,B-UE:ueberfaellig,C-NIE:nie_geprueft,D-BALD:faellig_bald" {
+	if strings.Join(got, ",") != "A-MAE:gesperrt,Z-GES:gesperrt,B-UE:ueberfaellig,C-NIE:nie_geprueft,D-BALD:faellig_bald" {
 		t.Fatalf("Liste: %s", strings.Join(got, ","))
 	}
-	if e := due[1]; e.EmployeeID == nil || *e.EmployeeID != halter || e.MitarbeiterName != "Quali Halter" || e.Standort != "Halle 2" || !e.Maengel {
+	if e := due[0]; !e.Maengel {
+		t.Fatalf("Eintrag A-MAE: %+v", e)
+	}
+	if e := due[2]; e.EmployeeID == nil || *e.EmployeeID != halter || e.MitarbeiterName != "Quali Halter" || e.Standort != "Halle 2" || e.Maengel {
 		t.Fatalf("Eintrag B-UE: %+v", e)
 	}
-	if e := due[3]; e.TageBisFaellig == nil || *e.TageBisFaellig != 10 {
+	if e := due[4]; e.TageBisFaellig == nil || *e.TageBisFaellig != 10 {
 		t.Fatalf("Eintrag D-BALD: %+v", e)
 	}
-	if long := decodeJSON[[]assetDueResponse](t, do(http.MethodGet, aiPath+"due?warn_tage=60", ""), http.StatusOK); len(long) != 5 || long[4].Inventarnummer != "G-45" {
-		t.Fatalf("Vorwarnzeit 60: G-45 als fuenfter Eintrag erwartet, bekommen %+v", long)
+	if long := decodeJSON[[]assetDueResponse](t, do(http.MethodGet, aiPath+"due?warn_tage=60", ""), http.StatusOK); len(long) != 6 || long[5].Inventarnummer != "G-45" {
+		t.Fatalf("Vorwarnzeit 60: G-45 als sechster Eintrag erwartet, bekommen %+v", long)
 	}
-	if short := decodeJSON[[]assetDueResponse](t, do(http.MethodGet, aiPath+"due?warn_tage=5", ""), http.StatusOK); len(short) != 3 {
-		t.Fatalf("Vorwarnzeit 5: erwartet 3 Eintraege, bekommen %+v", short)
+	if short := decodeJSON[[]assetDueResponse](t, do(http.MethodGet, aiPath+"due?warn_tage=5", ""), http.StatusOK); len(short) != 4 {
+		t.Fatalf("Vorwarnzeit 5: erwartet 4 Eintraege, bekommen %+v", short)
 	}
 	wantAPIError(t, do(http.MethodGet, aiPath+"due?warn_tage=x", ""), http.StatusBadRequest, "validation_error", "Ungültige Vorwarnzeit (warn_tage: ganze Zahl ab 0)")
 

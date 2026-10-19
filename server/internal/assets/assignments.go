@@ -21,7 +21,7 @@ import (
 //
 // Ausgegeben wird an Mitarbeiter, ohne Empfangsbestaetigung (Entscheidung
 // des Nutzers vom 2026-10-15). Ein Stueck, dessen letzte Pruefung nicht
-// bestanden ist, wird nicht ausgegeben (F.3.5.2).
+// bestanden ist oder Maengel ergab, wird nicht ausgegeben (F.3.5.2, F.3.7).
 
 const (
 	AssignmentActive    = "active"
@@ -50,8 +50,8 @@ type Assignment struct {
 	AusgegebenByUserID      *string    `json:"ausgegeben_by_user_id"`
 	ZurueckgenommenByUserID *string    `json:"zurueckgenommen_by_user_id"`
 	CreatedAt               time.Time  `json:"created_at"`
-	// Hinweise nur in der Antwort auf eine Ausgabe: Pruefung ueberfaellig,
-	// nie geprueft, Maengel. Sie verhindern die Ausgabe nicht.
+	// Hinweise nur in der Antwort auf eine Ausgabe: Pruefung ueberfaellig
+	// oder nie geprueft. Sie verhindern die Ausgabe nicht.
 	Hinweise []string `json:"hinweise,omitempty"`
 }
 
@@ -171,15 +171,19 @@ func (s *Service) Issue(ctx context.Context, in IssueInput, actorUserID, company
 	}
 	ausgegebenAm := dateOnly(in.AusgegebenAm)
 
-	// Pruefstand am Ausgabetag (F.3.5.2): durchgefallen = gesperrt
-	// (Entscheidung des Nutzers vom 2026-10-15). Gelesen unter der Sperre
-	// der Asset-Zeile, die auch RecordInspection nimmt.
+	// Pruefstand am Ausgabetag (F.3.5.2): nicht bestanden oder Maengel =
+	// gesperrt (Entscheidungen des Nutzers vom 2026-10-15 und 2026-10-19).
+	// Gelesen unter der Sperre der Asset-Zeile, die auch RecordInspection
+	// nimmt.
 	inspections, err := loadActiveInspections(ctx, tx, in.AssetID)
 	if err != nil {
 		return nil, err
 	}
 	standing := standingAt(inspections, intervall, ausgegebenAm, DefaultInspectionWarnDays)
 	if standing.Status == PruefstandGesperrt {
+		if standing.Maengel {
+			return nil, errors.New("Asset ist gesperrt: letzte Prüfung mit Mängeln")
+		}
 		return nil, errors.New("Asset ist gesperrt: letzte Prüfung nicht bestanden")
 	}
 

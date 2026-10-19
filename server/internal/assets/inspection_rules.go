@@ -32,7 +32,7 @@ var ergebnisse = map[string]bool{
 
 // Pruefstand eines Assets.
 const (
-	// Letzte Pruefung bestanden (oder mit Maengeln) und noch nicht faellig.
+	// Letzte Pruefung bestanden und noch nicht faellig.
 	PruefstandGeprueft = "geprueft"
 	// Naechste Pruefung innerhalb der Vorwarnzeit faellig.
 	PruefstandFaelligBald = "faellig_bald"
@@ -40,8 +40,9 @@ const (
 	PruefstandUeberfaellig = "ueberfaellig"
 	// Asset hat ein Pruefintervall, aber keine (nicht stornierte) Pruefung.
 	PruefstandNieGeprueft = "nie_geprueft"
-	// Letzte Pruefung nicht bestanden: darf nicht ausgegeben werden
-	// (Entscheidung des Nutzers vom 2026-10-15).
+	// Letzte Pruefung nicht bestanden oder mit Maengeln: darf nicht
+	// ausgegeben werden (Entscheidungen des Nutzers vom 2026-10-15 und - fuer
+	// Maengel - vom 2026-10-19).
 	PruefstandGesperrt = "gesperrt"
 	// Weder Pruefintervall noch Pruefung - z. B. ein Laptop.
 	PruefstandNichtPruefpflichtig = "nicht_pruefpflichtig"
@@ -49,7 +50,8 @@ const (
 
 // DefaultInspectionWarnDays ist die Vorwarnzeit, wenn der Aufrufer keine
 // nennt. 30 Tage statt 60 wie bei den Qualifikationen: eine Pruefung ist
-// ein Termin mit einem Pruefer, kein Lehrgang mit Wartezeit (Annahme).
+// ein Termin mit einem Pruefer, kein Lehrgang mit Wartezeit (vom Nutzer am
+// 2026-10-19 bestaetigt: "30 Tage reichen").
 const DefaultInspectionWarnDays = 30
 
 type Inspection struct {
@@ -121,10 +123,10 @@ type InspectionStanding struct {
 	// TageBisFaellig: Tage bis einschliesslich NaechstePruefungAm; negativ,
 	// wenn ueberschritten. nil ohne Folgetermin.
 	TageBisFaellig *int `json:"tage_bis_faellig,omitempty"`
-	// Maengel: die massgebliche Pruefung hat Maengel festgestellt. Das
-	// Stueck bleibt ausgebbar (Annahme: "Maengel" heisst nutzbar mit
-	// Auflage, "nicht bestanden" heisst gesperrt); der Hinweis soll aber
-	// sichtbar sein.
+	// Maengel: die massgebliche Pruefung hat Maengel festgestellt - der
+	// Grund der Sperre, wenn Status "gesperrt" ist (sonst: nicht bestanden).
+	// Bis F.3.7 blieb ein Stueck mit Maengeln ausgebbar; der Nutzer hat am
+	// 2026-10-19 entschieden: "Maengel sollen Ausgabe sperren".
 	Maengel bool `json:"maengel"`
 }
 
@@ -166,7 +168,9 @@ func EvaluateInspections(records []Inspection, pruefintervallMonate *int, today 
 		InspectionID: &rec.ID, GeprueftAm: &rec.GeprueftAm, Ergebnis: rec.Ergebnis,
 		NaechstePruefungAm: rec.NaechstePruefungAm, Maengel: rec.Ergebnis == ErgebnisMaengel,
 	}
-	if rec.Ergebnis == ErgebnisNichtBestanden {
+	// Gesperrt bis zur naechsten (bestandenen) Pruefung - unabhaengig von
+	// einem Folgetermin.
+	if rec.Ergebnis == ErgebnisNichtBestanden || rec.Ergebnis == ErgebnisMaengel {
 		st.Status = PruefstandGesperrt
 		return st
 	}

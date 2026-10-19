@@ -39,9 +39,9 @@ func createAsset(t *testing.T, svc *Service, company, nr string, intervall *int)
 // dueFixture legt einen Betrieb mit je einem Asset in jedem Stand am
 // 15.06.2026 (Vorwarnzeit 30) an.
 type dueFixture struct {
-	company, other                                                      string
-	gesperrt, ueber2, ueber10, nie, bald, ok, frei, weg, stornoGesperrt *Asset
-	holder                                                              uuid.UUID
+	company, other                                                               string
+	gesperrt, ueber2, ueber10, nie, bald, ok, frei, weg, stornoGesperrt, maengel *Asset
+	holder                                                                       uuid.UUID
 }
 
 func newDueFixture(t *testing.T, env *testutil.IntegrationEnv, svc *Service) dueFixture {
@@ -60,7 +60,11 @@ func newDueFixture(t *testing.T, env *testutil.IntegrationEnv, svc *Service) due
 	recordInsp(t, svc, c, f.ueber2.ID, InspectionInput{GeprueftAm: d(2025, 12, 13), Ergebnis: ErgebnisBestanden}) // faellig 13.06.
 
 	f.ueber10 = createAsset(t, svc, c, "C-UE10", intPtr(6))
-	recordInsp(t, svc, c, f.ueber10.ID, InspectionInput{GeprueftAm: d(2025, 12, 5), Ergebnis: ErgebnisMaengel}) // faellig 05.06.
+	recordInsp(t, svc, c, f.ueber10.ID, InspectionInput{GeprueftAm: d(2025, 12, 5), Ergebnis: ErgebnisBestanden}) // faellig 05.06.
+
+	// Maengel sperren (F.3.7) - auch mit einem Folgetermin in der Zukunft.
+	f.maengel = createAsset(t, svc, c, "M-MAE", intPtr(12))
+	recordInsp(t, svc, c, f.maengel.ID, InspectionInput{GeprueftAm: d(2026, 5, 20), Ergebnis: ErgebnisMaengel})
 
 	f.nie = createAsset(t, svc, c, "D-NIE", intPtr(12))
 	// Zweites "nie geprueft" ohne Tage: Gleichstand, entschieden nach
@@ -127,7 +131,7 @@ func TestInspectionDueList(t *testing.T) {
 	for _, e := range list {
 		got = append(got, e.Inventarnummer+":"+e.Status)
 	}
-	want := "Z-GES:gesperrt,C-UE10:ueberfaellig,B-UE2:ueberfaellig,D-NIE:nie_geprueft,D0-NIE:nie_geprueft,I-STO:faellig_bald,E-BALD:faellig_bald"
+	want := "M-MAE:gesperrt,Z-GES:gesperrt,C-UE10:ueberfaellig,B-UE2:ueberfaellig,D-NIE:nie_geprueft,D0-NIE:nie_geprueft,I-STO:faellig_bald,E-BALD:faellig_bald"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("Liste:\n erwartet %s\n bekommen %s", want, strings.Join(got, ","))
 	}
@@ -136,12 +140,18 @@ func TestInspectionDueList(t *testing.T) {
 		byNr[e.Inventarnummer] = e
 	}
 	c := byNr["C-UE10"]
-	if c.TageBisFaellig == nil || *c.TageBisFaellig != -10 || !c.Maengel || c.EmployeeID == nil || *c.EmployeeID != f.holder ||
+	if c.TageBisFaellig == nil || *c.TageBisFaellig != -10 || c.Maengel || c.EmployeeID == nil || *c.EmployeeID != f.holder ||
 		c.MitarbeiterName != "Max Halter" || c.Bezeichnung != "Stueck C-UE10" || c.Standort != "Lager C-UE10" || c.Kategorie != KategorieElektrowerkzeug {
 		t.Fatalf("Eintrag C-UE10 nicht wie erwartet: %+v", c)
 	}
 	if b := byNr["B-UE2"]; *b.TageBisFaellig != -2 || b.EmployeeID != nil || b.MitarbeiterName != "" || b.Maengel {
 		t.Fatalf("Eintrag B-UE2 nicht wie erwartet: %+v", b)
+	}
+	if m := byNr["M-MAE"]; !m.Maengel || m.TageBisFaellig != nil || m.Ergebnis != ErgebnisMaengel {
+		t.Fatalf("Eintrag M-MAE: gesperrt wegen Maengeln erwartet: %+v", m)
+	}
+	if z := byNr["Z-GES"]; z.Maengel {
+		t.Fatalf("Eintrag Z-GES: gesperrt wegen 'nicht bestanden', nicht wegen Maengeln: %+v", z)
 	}
 	if i := byNr["I-STO"]; *i.TageBisFaellig != 5 || !i.GeprueftAm.Equal(d(2025, 6, 20)) {
 		t.Fatalf("stornierte Pruefung darf nicht zaehlen: %+v", i)
@@ -160,8 +170,8 @@ func TestInspectionDueList(t *testing.T) {
 			t.Fatalf("Vorwarnzeit 0: kein 'bald faellig' erwartet: %+v", e)
 		}
 	}
-	if len(short) != 5 {
-		t.Fatalf("Vorwarnzeit 0: erwartet 5 Eintraege, bekommen %d", len(short))
+	if len(short) != 6 {
+		t.Fatalf("Vorwarnzeit 0: erwartet 6 Eintraege, bekommen %d", len(short))
 	}
 
 	// Anderer Mandant sieht nur sein Stueck.
@@ -285,15 +295,26 @@ func TestAssignmentIssueRespectsInspection(t *testing.T) {
 		t.Fatalf("nach Storno der Sperre: %v", err)
 	}
 
-	// Hinweise: ueberfaellig (mit Datum) und Maengel; nie geprueft.
+	// Maengel sperren (F.3.7, Entscheidung des Nutzers vom 2026-10-19) -
+	// mit eigener Meldung; eine bestandene Wiederholung hebt die Sperre auf.
+	defekt := createAsset(t, svc, c, "M-DEF", intPtr(12))
+	recordInsp(t, svc, c, defekt.ID, InspectionInput{GeprueftAm: d(2026, 1, 10), Ergebnis: ErgebnisMaengel})
+	_, err = svc.Issue(ctx, IssueInput{AssetID: defekt.ID, EmployeeID: anna, AusgegebenAm: d(2026, 1, 12)}, "", c)
+	wantErr(t, "Maengel", err, "Asset ist gesperrt: letzte Prüfung mit Mängeln")
+	recordInsp(t, svc, c, defekt.ID, InspectionInput{GeprueftAm: d(2026, 1, 20), Ergebnis: ErgebnisBestanden})
+	if _, err := svc.Issue(ctx, IssueInput{AssetID: defekt.ID, EmployeeID: anna, AusgegebenAm: d(2026, 1, 21)}, "", c); err != nil {
+		t.Fatalf("nach bestandener Wiederholung: %v", err)
+	}
+
+	// Hinweise: ueberfaellig (mit Datum); nie geprueft.
 	alt := createAsset(t, svc, c, "E-ALT", intPtr(6))
-	recordInsp(t, svc, c, alt.ID, InspectionInput{GeprueftAm: d(2025, 7, 1), Ergebnis: ErgebnisMaengel}) // faellig 01.01.2026
+	recordInsp(t, svc, c, alt.ID, InspectionInput{GeprueftAm: d(2025, 7, 1), Ergebnis: ErgebnisBestanden}) // faellig 01.01.2026
 	x, err := svc.Issue(ctx, IssueInput{AssetID: alt.ID, EmployeeID: anna, AusgegebenAm: d(2026, 1, 5)}, "", c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(x.Hinweise, "|") != "Prüfung überfällig seit 01.01.2026|Letzte Prüfung mit Mängeln" {
-		t.Fatalf("Hinweise ueberfaellig/Maengel: %q", x.Hinweise)
+	if strings.Join(x.Hinweise, "|") != "Prüfung überfällig seit 01.01.2026" {
+		t.Fatalf("Hinweis ueberfaellig: %q", x.Hinweise)
 	}
 	// Die Hinweise gehoeren nur zur Antwort der Ausgabe.
 	if again, _ := svc.GetAssignment(ctx, x.ID, c); len(again.Hinweise) != 0 {
