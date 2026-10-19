@@ -7,12 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.4.1** (Entscheidungsrecht an einer
-> Stelle `mayDecide`, vorbereitet für Teamleiter; Abwesenheit aus der
-> Genehmigung; Zurückziehen und Storno; Migration 093). Davor F.8.2 und
-> F.8.3 vollständig.
-> **Nächste Arbeit: F.8.4.2** (Krankmeldung inkl. Selbstmeldung, Attest,
-> §9-Rückbuchung, Liste neue Krankmeldungen).
+> Zuletzt abgeschlossen: **F.8.4.2** (Krankmeldungen: Personalabteilung
+> und Selbstmeldung, Attest, Bestätigen, Storno, Liste neue
+> Krankmeldungen, §9-Rückbuchung im Konto; Urlaubsanträge vom Typ `sick`
+> abgelehnt; Migration 094). Davor F.8.4.1, F.8.2, F.8.3.
+> **Nächste Arbeit: F.8.4.3** (Abwesenheitsübersicht `GET /absences`).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
@@ -39,7 +38,7 @@
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
 > (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
 > Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
-> Nächste freie Migration 094, ADR 0030.
+> Nächste freie Migration 095, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*

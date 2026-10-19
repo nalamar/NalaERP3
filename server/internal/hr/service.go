@@ -507,6 +507,11 @@ func (s *LeaveService) Create(ctx context.Context, lr LeaveRequest, companyID st
 	if !leaveTypes[lr.Typ] {
 		return nil, errors.New("Ungültiger Antragstyp")
 	}
+	// Krankheit wird gemeldet, nicht beantragt (ADR 0029, F.8.4.2) - als
+	// Krankmeldung ueber AbsenceService.ReportSick.
+	if lr.Typ == "sick" {
+		return nil, errors.New("Ungültiger Antragstyp: Krankheit wird als Krankmeldung erfasst, nicht beantragt")
+	}
 	// Ohne Angabe zaehlen die Arbeitstage des Zeitraums (ADR 0029): die
 	// Arbeitswoche des Mitarbeiters ohne Feiertage und betriebliche freie
 	// Tage - bis F.8.2.3 waren es Kalendertage. Eine Angabe darf kleiner

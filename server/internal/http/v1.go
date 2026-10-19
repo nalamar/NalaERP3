@@ -1724,6 +1724,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountEmployeeRoutes(protected, employeeSvc)
 	mountLeaveRequestRoutes(protected, leaveSvc, timeEntrySvc)
 	mountLeaveAccountRoutes(protected, hr.NewLeaveAccountService(pg), timeEntrySvc)
+	mountAbsenceRoutes(protected, hr.NewAbsenceService(pg), timeEntrySvc)
 	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
 	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
 	mountAssetRoutes(protected, assetSvc)
@@ -5052,6 +5053,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "überschneidet sich"),
 		strings.Contains(msg, "bereits mit einem anderen"),
 		strings.Contains(msg, "bereits entschieden"),
+		strings.Contains(msg, "bereits bestätigt"),
 		strings.Contains(msg, "ist stillgelegt"),
 		strings.Contains(msg, "bereits ausgemustert"),
 		strings.Contains(msg, "noch ausgegeben"),

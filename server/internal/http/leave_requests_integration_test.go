@@ -243,10 +243,15 @@ func TestLeaveRequestsHRListsAndDecides(t *testing.T) {
 	}
 
 	// Die Personalabteilung stellt einen Antrag FUER einen Mitarbeiter
-	// (leave_requests.decide), z. B. eine telefonische Krankmeldung.
+	// (leave_requests.decide), z. B. telefonisch beantragten unbezahlten
+	// Urlaub. Krankheit wird seit F.8.4.2 nicht mehr beantragt, sondern
+	// als Krankmeldung erfasst.
+	wantAPIError(t, doAuthedRequest(t, handler, hrUnlinked.Token, http.MethodPost, leavePath,
+		`{"employee_id":"`+b.EmployeeID.String()+`","typ":"sick","start_date":"2027-06-01","end_date":"2027-06-02"}`),
+		http.StatusBadRequest, "validation_error", "Ungültiger Antragstyp: Krankheit wird als Krankmeldung erfasst, nicht beantragt")
 	onBehalf := decodeLeave(t, doAuthedRequest(t, handler, hrUnlinked.Token, http.MethodPost, leavePath,
-		`{"employee_id":"`+b.EmployeeID.String()+`","typ":"sick","start_date":"2027-06-01","end_date":"2027-06-02"}`), http.StatusCreated)
-	if onBehalf.EmployeeID != b.EmployeeID || onBehalf.Typ != "sick" || onBehalf.Status != "pending" {
+		`{"employee_id":"`+b.EmployeeID.String()+`","typ":"unpaid","start_date":"2027-06-01","end_date":"2027-06-02"}`), http.StatusCreated)
+	if onBehalf.EmployeeID != b.EmployeeID || onBehalf.Typ != "unpaid" || onBehalf.Status != "pending" {
 		t.Fatalf("Antrag im Auftrag nicht wie gestellt: %+v", onBehalf)
 	}
 	// Ohne eigenen Mitarbeiter und ohne employee_id ist unklar, fuer wen.
@@ -379,10 +384,29 @@ func TestClassifyDomainErrorCoversLeaveRequestMessages(t *testing.T) {
 		"Entscheider erforderlich":                                        http.StatusBadRequest,
 		"Enddatum darf nicht vor Startdatum liegen":                       http.StatusBadRequest,
 		"Ungültiger Antragstyp":                                           http.StatusBadRequest,
-		"Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten":         http.StatusBadRequest,
+		"Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten":   http.StatusBadRequest,
 		"Urlaubsantrag nicht gefunden":                                    http.StatusNotFound,
 		"Urlaubsantrag ist bereits entschieden":                           http.StatusConflict,
 		"Zeitraum überschneidet sich mit einem bestehenden Urlaubsantrag": http.StatusConflict,
+		// F.8.2-F.8.4 (ADR 0029)
+		"Ungültiger Zeitraum: er enthält keinen Arbeitstag":             http.StatusBadRequest,
+		"Ungültiges Bundesland":                                         http.StatusBadRequest,
+		"Ungültiges Jahr":                                               http.StatusBadRequest,
+		"Betrieblicher freier Tag für dieses Datum ist bereits erfasst": http.StatusConflict,
+		"Betrieblicher freier Tag nicht gefunden":                       http.StatusNotFound,
+		"Mindestens ein Arbeitstag erforderlich":                        http.StatusBadRequest,
+		"Ungültiger Arbeitstag: 9 (1 = Montag bis 7 = Sonntag)":         http.StatusBadRequest,
+		"Ungültiger Urlaubsanspruch: mindestens 20 Tage bei 5 Arbeitstagen je Woche (gesetzlicher Mindesturlaub)": http.StatusBadRequest,
+		"Ungültiger Wert für anspruch_tage: ganze oder halbe Tage von 0 bis 366":                                  http.StatusBadRequest,
+		"Begründung erforderlich":             http.StatusBadRequest,
+		"Urlaubsantrag ist bereits storniert": http.StatusConflict,
+		"Urlaubsantrag ist nicht im Status genehmigt - offene Anträge werden zurückgezogen": http.StatusBadRequest,
+		"Ungültiger Antragstyp: Krankheit wird als Krankmeldung erfasst, nicht beantragt":   http.StatusBadRequest,
+		"Zeitraum überschneidet sich mit einer bestehenden Krankmeldung":                    http.StatusConflict,
+		"Abwesenheit nicht gefunden":         http.StatusNotFound,
+		"Krankmeldung ist bereits bestätigt": http.StatusConflict,
+		"Krankmeldung ist bereits storniert": http.StatusConflict,
+		"Ungültige Abwesenheit: keine Krankmeldung - Urlaub wird über den Urlaubsantrag storniert": http.StatusBadRequest,
 	}
 	for msg, want := range cases {
 		if got, _ := classifyDomainError(errors.New(msg)); got != want {
