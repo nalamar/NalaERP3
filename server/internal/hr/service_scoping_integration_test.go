@@ -140,13 +140,15 @@ func TestLeaveCreateComputesDaysForValidDateRange(t *testing.T) {
 	created, err := leaveSvc.Create(ctx, LeaveRequest{
 		EmployeeID: emp.ID,
 		StartDate:  time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
-		EndDate:    time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), // 5 Tage inkl. beider Enden
+		EndDate:    time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC), // Di-Sa: 5 Kalendertage, 4 Arbeitstage
 	}, "default")
 	if err != nil {
 		t.Fatalf("expected valid date range to succeed, got %v", err)
 	}
-	if created.Days != 5 {
-		t.Fatalf("expected 5 days, got %v", created.Days)
+	// Seit F.8.2.3 zaehlen Arbeitstage (ADR 0029): der Samstag kostet
+	// keinen Urlaubstag.
+	if created.Days != 4 {
+		t.Fatalf("expected 4 work days, got %v", created.Days)
 	}
 
 	// Ein eintaegiger Antrag (StartDate == EndDate) ist ebenfalls gueltig -

@@ -318,7 +318,7 @@ func TestLeaveRequestsHTTPErrorMapping(t *testing.T) {
 	wantAPIError(t, post(`{"start_date":"2027-04-05","end_date":"2027-04-06","typ":"sabbatical"}`),
 		http.StatusBadRequest, "validation_error", "Ungültiger Antragstyp")
 	wantAPIError(t, post(`{"start_date":"2027-04-05","end_date":"2027-04-06","days":3}`),
-		http.StatusBadRequest, "validation_error", "Tage dürfen die Länge des Zeitraums nicht überschreiten")
+		http.StatusBadRequest, "validation_error", "Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten")
 	wantAPIError(t, post(`{"employee_id":"kein-uuid"}`),
 		http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
 
@@ -379,7 +379,7 @@ func TestClassifyDomainErrorCoversLeaveRequestMessages(t *testing.T) {
 		"Entscheider erforderlich":                                        http.StatusBadRequest,
 		"Enddatum darf nicht vor Startdatum liegen":                       http.StatusBadRequest,
 		"Ungültiger Antragstyp":                                           http.StatusBadRequest,
-		"Tage dürfen die Länge des Zeitraums nicht überschreiten":         http.StatusBadRequest,
+		"Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten":         http.StatusBadRequest,
 		"Urlaubsantrag nicht gefunden":                                    http.StatusNotFound,
 		"Urlaubsantrag ist bereits entschieden":                           http.StatusConflict,
 		"Zeitraum überschneidet sich mit einem bestehenden Urlaubsantrag": http.StatusConflict,

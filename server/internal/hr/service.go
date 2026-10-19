@@ -30,6 +30,12 @@ type Employee struct {
 	// UserID ist der verknuepfte Login-Benutzer (siehe SetUser). Er wird
 	// nur gelesen; gesetzt wird er ausschliesslich ueber SetUser.
 	UserID *string `json:"user_id,omitempty"`
+	// Bundesland ueberschreibt das des Mandanten (ADR 0029); nil = es gilt
+	// der Mandant.
+	Bundesland *string `json:"bundesland"`
+	// Arbeitstage nach ISO 8601 (1 = Montag ... 7 = Sonntag), sortiert.
+	// Daraus zaehlen Urlaubsantraege ihre Tage.
+	Arbeitstage []int `json:"arbeitstage"`
 }
 
 // EmployeeInput sind die Angaben fuer die Anlage eines Mitarbeiters.
@@ -52,6 +58,9 @@ type EmployeeInput struct {
 	Location    string     `json:"location"`
 	CostCenter  string     `json:"cost_center"`
 	Active      *bool      `json:"active,omitempty"`
+	Bundesland  *string    `json:"bundesland,omitempty"`
+	// Arbeitstage nil = Montag bis Freitag.
+	Arbeitstage []int `json:"arbeitstage,omitempty"`
 }
 
 // Namen der UNIQUE-Indizes, deren Verletzung in eine fachliche Meldung
@@ -102,7 +111,7 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
+	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -113,9 +122,11 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 		var hire, term *time.Time
 		var teamID *uuid.UUID
 		var pn *string
-		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID); err != nil {
+		var days []int16
+		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days); err != nil {
 			return nil, err
 		}
+		e.Arbeitstage = int16sToInts(days)
 		e.HireDate = hire
 		e.Termination = term
 		e.TeamID = teamID
@@ -168,14 +179,22 @@ func (s *EmployeeService) Create(ctx context.Context, in EmployeeInput, companyI
 			e.PersonalNr = &pn
 		}
 	}
+	land, err := normalizeEmployeeBundesland(in.Bundesland)
+	if err != nil {
+		return nil, err
+	}
+	e.Bundesland = land
+	if e.Arbeitstage, err = normalizeArbeitstage(in.Arbeitstage); err != nil {
+		return nil, err
+	}
 	if e.TeamID != nil {
 		if err := s.teamBelongsToCompany(ctx, *e.TeamID, companyID); err != nil {
 			return nil, err
 		}
 	}
-	_, err := s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID)
+	_, err = s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id, bundesland, arbeitstage)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID, e.Bundesland, intsToInt16s(e.Arbeitstage))
 	if err != nil {
 		if isUniqueViolation(err, employeePersonalNrIndex) {
 			return nil, errors.New("Personalnummer existiert bereits")
@@ -190,8 +209,9 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 	var hire, term *time.Time
 	var teamID *uuid.UUID
 	var pn *string
-	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
-		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID)
+	var days []int16
+	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
+		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Mitarbeiter nicht gefunden")
@@ -202,6 +222,7 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 	e.Termination = term
 	e.TeamID = teamID
 	e.PersonalNr = pn
+	e.Arbeitstage = int16sToInts(days)
 	return &e, nil
 }
 
@@ -214,6 +235,7 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 var employeeUpdatableFields = map[string]bool{
 	"first_name": true, "last_name": true, "email": true, "phone": true,
 	"role": true, "location": true, "cost_center": true, "active": true, "team_id": true,
+	"bundesland": true, "arbeitstage": true,
 }
 
 func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[string]any, companyID string) error {
@@ -245,6 +267,18 @@ func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[st
 				}
 			}
 			patch[k] = teamID
+		case "bundesland":
+			land, err := patchBundesland(v)
+			if err != nil {
+				return err
+			}
+			patch[k] = land
+		case "arbeitstage":
+			days, err := patchArbeitstage(v)
+			if err != nil {
+				return err
+			}
+			patch[k] = intsToInt16s(days)
 		default:
 			if _, ok := v.(string); !ok {
 				return fmt.Errorf("Ungültiger Wert für Feld: %s", k)
@@ -449,21 +483,29 @@ func (s *LeaveService) Create(ctx context.Context, lr LeaveRequest, companyID st
 	if !leaveTypes[lr.Typ] {
 		return nil, errors.New("Ungültiger Antragstyp")
 	}
-	// Ohne Angabe zaehlen die Kalendertage des Zeitraums. Eine Angabe darf
-	// kleiner sein (halbe Tage, Wochenenden abgezogen), aber nicht groesser
-	// als der Zeitraum lang ist - sonst liesse sich fuer zwei Tage ein
-	// beliebiger Wert beantragen.
-	calendarDays := lr.EndDate.Sub(lr.StartDate).Hours()/24 + 1
-	if lr.Days <= 0 {
-		lr.Days = calendarDays
+	// Ohne Angabe zaehlen die Arbeitstage des Zeitraums (ADR 0029): die
+	// Arbeitswoche des Mitarbeiters ohne Feiertage und betriebliche freie
+	// Tage - bis F.8.2.3 waren es Kalendertage. Eine Angabe darf kleiner
+	// sein (halbe Tage), aber nicht groesser - sonst liesse sich fuer zwei
+	// Tage ein beliebiger Wert beantragen. Bestehende Antraege behalten
+	// ihre gespeicherte Zahl.
+	workDays, err := NewCalendarService(s.pg).EmployeeWorkDays(ctx, lr.EmployeeID, lr.StartDate, lr.EndDate, companyID)
+	if err != nil {
+		return nil, err
 	}
-	if lr.Days > calendarDays {
-		return nil, errors.New("Tage dürfen die Länge des Zeitraums nicht überschreiten")
+	if workDays == 0 {
+		return nil, errors.New("Ungültiger Zeitraum: er enthält keinen Arbeitstag")
+	}
+	if lr.Days <= 0 {
+		lr.Days = float64(workDays)
+	}
+	if lr.Days > float64(workDays) {
+		return nil, errors.New("Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten")
 	}
 	lr.ID = uuid.New()
 	lr.Status = "pending"
 	lr.CreatedAt = time.Now()
-	_, err := s.pg.Exec(ctx, `INSERT INTO hr_leave_requests (id, employee_id, typ, status, start_date, end_date, days, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+	_, err = s.pg.Exec(ctx, `INSERT INTO hr_leave_requests (id, employee_id, typ, status, start_date, end_date, days, reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
 		lr.ID, lr.EmployeeID, lr.Typ, lr.Status, lr.StartDate, lr.EndDate, lr.Days, lr.Reason)
 	if err != nil {
 		return nil, err

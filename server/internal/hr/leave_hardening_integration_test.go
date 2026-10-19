@@ -174,7 +174,7 @@ func TestLeaveCreateValidatesTypeAndDays(t *testing.T) {
 	_, err := svc.Create(ctx, LeaveRequest{EmployeeID: emp.ID, StartDate: start, EndDate: end, Typ: "sabbatical"}, "default")
 	wantEmployeeError(t, err, "Ungültiger Antragstyp")
 	_, err = svc.Create(ctx, LeaveRequest{EmployeeID: emp.ID, StartDate: start, EndDate: end, Days: 5.5}, "default")
-	wantEmployeeError(t, err, "Tage dürfen die Länge des Zeitraums nicht überschreiten")
+	wantEmployeeError(t, err, "Tage dürfen die Arbeitstage des Zeitraums nicht überschreiten")
 
 	// Weniger Tage als der Zeitraum lang ist, sind zulaessig (halbe Tage).
 	half, err := svc.Create(ctx, LeaveRequest{EmployeeID: emp.ID, StartDate: start, EndDate: end, Days: 4.5, Typ: "unpaid", Reason: "Umzug"}, "default")

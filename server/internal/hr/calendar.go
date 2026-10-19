@@ -212,17 +212,9 @@ func (s *CalendarService) Calendar(ctx context.Context, year int, companyID stri
 	if err != nil {
 		return nil, err
 	}
-	var public []Holiday
-	if settings.Bundesland == "" {
-		public = NationwideHolidays(year)
-	} else {
-		public, err = PublicHolidays(year, settings.Bundesland, HolidayOptions{
-			MariaeHimmelfahrt:      settings.MariaeHimmelfahrt,
-			AugsburgerFriedensfest: settings.AugsburgerFriedensfest,
-		})
-		if err != nil {
-			return nil, err
-		}
+	public, err := publicHolidaysFor(year, settings.Bundesland, settings)
+	if err != nil {
+		return nil, err
 	}
 	companyDays, err := s.ListCompanyDays(ctx, year, companyID)
 	if err != nil {
@@ -237,4 +229,75 @@ func (s *CalendarService) Calendar(ctx context.Context, year int, companyID stri
 	}
 	sort.SliceStable(out.Days, func(i, j int) bool { return out.Days[i].Date.Before(out.Days[j].Date) })
 	return out, nil
+}
+
+// publicHolidaysFor: gesetzliche Feiertage fuer ein Land ("" = nur die
+// bundesweiten); die bayerischen Schalter kommen aus der Einstellung des
+// Mandanten.
+func publicHolidaysFor(year int, land string, settings *CalendarSettings) ([]Holiday, error) {
+	if land == "" {
+		return NationwideHolidays(year), nil
+	}
+	return PublicHolidays(year, land, HolidayOptions{
+		MariaeHimmelfahrt:      settings.MariaeHimmelfahrt,
+		AugsburgerFriedensfest: settings.AugsburgerFriedensfest,
+	})
+}
+
+// EmployeeWorkDays zaehlt die Arbeitstage eines Mitarbeiters im Zeitraum
+// from..to (beide einschliesslich): Tage seiner Arbeitswoche ohne die
+// gesetzlichen Feiertage seines Bundeslandes (sonst des Mandanten, sonst
+// nur die bundesweiten) und ohne betriebliche freie Tage.
+func (s *CalendarService) EmployeeWorkDays(ctx context.Context, employeeID uuid.UUID, from, to time.Time, companyID string) (int, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return 0, errors.New("Mandant erforderlich")
+	}
+	from, to = dateOnly(from), dateOnly(to)
+	if !validCalendarYear(from.Year()) || !validCalendarYear(to.Year()) {
+		return 0, errCalendarYear
+	}
+	if to.Before(from) {
+		return 0, nil
+	}
+	var employeeLand *string
+	var days []int16
+	err := s.pg.QueryRow(ctx, `SELECT bundesland, arbeitstage FROM hr_employees WHERE id=$1 AND company_id=$2`, employeeID, companyID).Scan(&employeeLand, &days)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, errors.New("Mitarbeiter nicht gefunden")
+	}
+	if err != nil {
+		return 0, err
+	}
+	settings, err := s.GetSettings(ctx, companyID)
+	if err != nil {
+		return 0, err
+	}
+	land := settings.Bundesland
+	if employeeLand != nil {
+		land = *employeeLand
+	}
+	var free []Holiday
+	for year := from.Year(); year <= to.Year(); year++ {
+		hs, err := publicHolidaysFor(year, land, settings)
+		if err != nil {
+			return 0, err
+		}
+		free = append(free, hs...)
+	}
+	rows, err := s.pg.Query(ctx, `SELECT datum FROM hr_company_days WHERE company_id=$1 AND datum >= $2 AND datum <= $3`, companyID, from, to)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var d time.Time
+		if err := rows.Scan(&d); err != nil {
+			return 0, err
+		}
+		free = append(free, Holiday{Date: d})
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	return CountWorkDays(from, to, WorkWeekFromISO(int16sToInts(days)), HolidaySet(free)), nil
 }
