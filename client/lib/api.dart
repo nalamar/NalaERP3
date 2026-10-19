@@ -2348,6 +2348,59 @@ class ApiClient {
   Future<List<dynamic>> listQualificationsDue({int? warnDays}) => _getList(
       '/api/v1/qualifications/due', warnDays == null ? null : {'warn_tage': '$warnDays'});
 
+  // -------- Betriebsmittel-Bestand (Backlog F.13.3, Routen F.3.6.1) --------
+  // Bestand nach Inventarnummer; Filter Kategorie, Ausgemusterte auf Wunsch.
+  Future<List<dynamic>> listAssets({String? kategorie, bool includeAusgemustert = false}) {
+    final qp = <String, String>{};
+    if (kategorie != null && kategorie.isNotEmpty) qp['kategorie'] = kategorie;
+    if (includeAusgemustert) qp['include_ausgemustert'] = 'true';
+    return _getList('/api/v1/assets/', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> createAsset(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/assets/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ersetzt die Stammdaten VOLLSTAENDIG - der Server verlangt alle zwoelf
+  // Felder (sonst machte ein vergessenes Pruefintervall ein Werkzeug still
+  // pruefungsfrei).
+  Future<Map<String, dynamic>> updateAsset(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/assets/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ausmustern: endgueltig, mit Datum (JJJJ-MM-TT) und Grund.
+  Future<Map<String, dynamic>> retireAsset(String id, {required String datum, required String grund}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/assets/$id/retire'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'datum': datum, 'grund': grund}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
+  Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
+      _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

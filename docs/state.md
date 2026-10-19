@@ -7,31 +7,30 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.13.2** (Client: Fällige Qualifikationen,
-> betriebsweit). Davor F.13.1 (Qualifikationskatalog). F.13 vom Nutzer
-> am 2026-10-19 beauftragt.
+> Zuletzt abgeschlossen: **F.13.3** (Client: Betriebsmittel-Bestand).
+> Davor F.13.2 (Fällige Qualifikationen), F.13.1 (Katalog). F.13 vom
+> Nutzer am 2026-10-19 beauftragt.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: F.13.3** Betriebsmittel-Bestand im Client: Seite
-> mit Karte "Betriebsmittel" (`assets.read`): Liste (`GET /assets`,
-> Filter `kategorie`, `include_ausgemustert`), anlegen (`POST`),
-> bearbeiten (`PUT` mit ALLEN zwölf Feldern: inventarnummer,
-> bezeichnung, kategorie, seriennummer, hersteller, modell, standort,
-> anschaffungsdatum JJJJ-MM-TT|null, anschaffungspreis|null,
-> kostenstelle_id|null, pruefintervall_monate|null, notiz), ausmustern
-> (`POST /assets/{id}/retire` mit datum, grund); Schreiben nur
-> `assets.write`. Kategorien: werkzeug, elektrowerkzeug, messmittel,
-> leiter, psa, it, maschine, sonstiges. Danach F.13.4 (Ausgabe,
-> Prüfungen, Prüfstand, Fälligkeitsliste der Prüfungen).
+> **Nächste Arbeit: F.13.4** (voraussichtlich zu teilen) — in der Seite
+> "Betriebsmittel" je Stück: Ausgaben (`/asset-assignments?asset_id=`,
+> ausgeben an Mitarbeiter mit Anzeige der `hinweise`; 409 bei
+> gesperrt/ausgegeben/ausgemustert/inaktiv; zurücknehmen mit Zustand;
+> stornieren), Prüfungen (`/asset-inspections?asset_id=`, erfassen mit
+> Ergebnis bestanden/maengel/nicht_bestanden, stornieren), Prüfstand
+> (`/assets/{id}/inspection-standing`); dazu die Fälligkeitsliste der
+> Prüfungen (`/asset-inspections/due`, Standard 30 Tage). Mitarbeiter
+> für die Ausgabe aus `listEmployees` (aktive).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.13.2: 174 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.13.3: 184 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
 > Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen.
+> Auswahlfelder in schmalen Containern mit `isExpanded: true`.
 > Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
@@ -11325,6 +11324,22 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/dashboard_page.dart`,
 `client/lib/pages/qualifications_due_page.dart` (neu),
 `client/test/qualifications_due_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
+
+### F.13.3 Betriebsmittel-Bestand
+
+Seite `assets_page.dart`, Karte mit `assets.read`. Anlegen,
+Bearbeiten (PUT mit allen zwölf Feldern), Ausmustern; Kostenstelle nur
+als Auswahl, wenn ladbar — sonst erhalten.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+10 neue Tests grün; Gegenprobe 29 Verfälschungen, alle erkannt;
+`flutter test` 184 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/lib/pages/assets_page.dart` (neu),
+`client/test/assets_page_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
