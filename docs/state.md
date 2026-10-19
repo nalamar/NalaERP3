@@ -7,25 +7,26 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.3.7** (Korrektur: "Mängel" sperrt die
-> Ausgabe — Entscheidung des Nutzers vom 2026-10-19, unter
-> "Korrekturen"). Davor F.5.1 ("Meine Arbeitszeit").
+> Zuletzt abgeschlossen: **F.5.2** (Client: eigene Zeiten nachtragen,
+> korrigieren, stornieren; Wochen blättern). Davor F.3.7 (Korrektur
+> "Mängel sperrt"), F.5.1.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
-> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19 — der
-> Nutzer schrieb danach "Fortsetzen" ohne Widerspruch).
-> **Nächste Arbeit: F.5.2** eigene Zeiten nachtragen (`POST
-> /time-entries` mit `started_at`/`ended_at` als RFC 3339,
-> `break_minutes`, `note`), korrigieren (`POST …/{id}/correct` mit
-> neuen Zeiten und `reason`, liefert den NEUEN Eintrag, 201) und
-> stornieren (`POST …/{id}/storno`, `reason`); Woche blättern;
-> stornierte auf Wunsch (`include_storniert`). Eingabe der Uhrzeiten
-> in Ortszeit, Umrechnung nach UTC im Client. Danach F.5.3 (Zeiten
-> anderer für die Personalabteilung).
+> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
+> **Nächste Arbeit: F.5.3** (letzte Subtask von F.5) — die
+> Personalabteilung sieht und bearbeitet die Zeiten eines Mitarbeiters
+> (`time_entries.read`/`write`; dieselben Routen mit `employee_id`;
+> `createTimeEntry` kennt `employeeId` schon). Vorschlag: Seite
+> "Arbeitszeiten" mit Auswahl des Mitarbeiters (aus `listEmployees`) und
+> Wiederverwendung der Wochenansicht aus `my_time_page.dart` (Seite um
+> einen optionalen Mitarbeiter erweitern; ohne Kommen/Gehen, denn
+> stempeln kann nur der Mitarbeiter selbst — für andere wird
+> nachgetragen). Danach F.5 abschließen und nächste Arbeit erfragen
+> (mit Empfehlung; bloßes "fortsetzen" = Empfehlung, siehe Memory).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.5.1: 145 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.5.2: 154 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
@@ -11257,6 +11258,21 @@ inspection_due.go, assignments.go}` samt Tests,
 `server/internal/http/asset_assignments_integration_test.go`,
 `docs/adr/0028-asset-zuordnung.md`, `docs/open-questions.md`,
 `docs/backlog.md`, `docs/state.md`.
+
+### F.5.2 Client: eigene Zeiten nachtragen, korrigieren, stornieren
+
+Wochen blättern, Stornierte auf Wunsch, Nachtragen (Ortszeit → UTC,
+Nachtschicht über Mitternacht), Korrigieren und Stornieren mit
+Pflicht-Begründung.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+9 neue Tests grün; Gegenprobe 28 Verfälschungen, alle erkannt;
+`flutter test` 154 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/my_time_page.dart`,
+`client/test/my_time_page_test.dart`, `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 

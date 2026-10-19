@@ -2230,6 +2230,73 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Nachtragen: Eintrag mit Beginn und Ende (RFC 3339, UTC). Ohne
+  // employeeId fuer den eigenen Mitarbeiter.
+  Future<Map<String, dynamic>> createTimeEntry({
+    required String startedAt,
+    required String endedAt,
+    int breakMinutes = 0,
+    String note = '',
+    String? employeeId,
+  }) async {
+    final body = <String, dynamic>{
+      'started_at': startedAt,
+      'ended_at': endedAt,
+      'break_minutes': breakMinutes,
+      'note': note,
+    };
+    if (employeeId != null && employeeId.isNotEmpty) body['employee_id'] = employeeId;
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/time-entries/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Korrigieren: storniert den Eintrag und legt den Ersatz an (mit
+  // Begruendung). Liefert den NEUEN Eintrag.
+  Future<Map<String, dynamic>> correctTimeEntry(
+    String id, {
+    required String startedAt,
+    required String endedAt,
+    int breakMinutes = 0,
+    String note = '',
+    required String reason,
+  }) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/time-entries/$id/correct'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'started_at': startedAt,
+          'ended_at': endedAt,
+          'break_minutes': breakMinutes,
+          'note': note,
+          'reason': reason,
+        }),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Stornieren ohne Ersatz (z. B. Fehlstempelung), mit Begruendung.
+  Future<Map<String, dynamic>> stornoTimeEntry(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/time-entries/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http
