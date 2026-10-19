@@ -439,16 +439,21 @@ type LeaveRequest struct {
 	DecidedByUserID *string    `json:"decided_by_user_id,omitempty"`
 	DecidedAt       *time.Time `json:"decided_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
+	// Zurueckziehen und Storno (F.8.4.1, Migration 093).
+	WithdrawnAt       *time.Time `json:"withdrawn_at,omitempty"`
+	StorniertAt       *time.Time `json:"storniert_at,omitempty"`
+	StorniertByUserID *string    `json:"storniert_by_user_id,omitempty"`
+	StornoReason      string     `json:"storno_reason,omitempty"`
 }
 
 // leaveTypes sind die zulaessigen Antragstypen (020_hr_base.sql).
 var leaveTypes = map[string]bool{"vacation": true, "sick": true, "unpaid": true, "other": true}
 
-const leaveRequestColumns = `id, employee_id, typ, status, start_date, end_date, days, COALESCE(reason,''), approver_id, decided_by_user_id, decided_at, created_at`
+const leaveRequestColumns = `id, employee_id, typ, status, start_date, end_date, days, COALESCE(reason,''), approver_id, decided_by_user_id, decided_at, created_at, withdrawn_at, storniert_at, storniert_by_user_id, COALESCE(storno_reason,'')`
 
 func scanLeaveRequest(row pgx.Row) (*LeaveRequest, error) {
 	var lr LeaveRequest
-	if err := row.Scan(&lr.ID, &lr.EmployeeID, &lr.Typ, &lr.Status, &lr.StartDate, &lr.EndDate, &lr.Days, &lr.Reason, &lr.ApproverID, &lr.DecidedByUserID, &lr.DecidedAt, &lr.CreatedAt); err != nil {
+	if err := row.Scan(&lr.ID, &lr.EmployeeID, &lr.Typ, &lr.Status, &lr.StartDate, &lr.EndDate, &lr.Days, &lr.Reason, &lr.ApproverID, &lr.DecidedByUserID, &lr.DecidedAt, &lr.CreatedAt, &lr.WithdrawnAt, &lr.StorniertAt, &lr.StorniertByUserID, &lr.StornoReason); err != nil {
 		return nil, err
 	}
 	return &lr, nil
@@ -532,17 +537,45 @@ func (s *LeaveService) Create(ctx context.Context, lr LeaveRequest, companyID st
 	return &lr, nil
 }
 
+// ErrNoDecisionRight: der Login darf diesen Antrag nicht entscheiden oder
+// stornieren. Die Routen melden das als 403.
+var ErrNoDecisionRight = errors.New("Keine Berechtigung, diesen Urlaubsantrag zu entscheiden")
+
+// LeaveDecisionRight beschreibt, welche Antraege ein Login entscheiden und
+// stornieren darf (ADR 0029, Entscheidung des Nutzers vom 2026-10-19:
+// "Urlaub genehmigt nur Personalabteilung oder Geschaeftsfuehrer im Moment,
+// eine Erweiterung auf Teamleiter aber bitte schon mit vorbereiten").
+//
+// All: alle Antraege des Mandanten (Recht leave_requests.decide).
+//
+// Vorbereitung Teamleiter: die Frage wird NUR in mayDecide beantwortet,
+// und mayDecide kennt den Antrag. Fuer Teamleiter kommt hier ein Feld
+// hinzu (der Mitarbeiter des Logins, gesetzt bei einem eigenen Recht) und
+// in mayDecide der Vergleich mit hr_teams.lead_employee_id des Teams des
+// Antragstellers - Routen und Aufrufer bleiben unveraendert.
+type LeaveDecisionRight struct {
+	All bool
+}
+
+// mayDecide ist die eine Stelle, an der entschieden wird, ob ein Login
+// einen bestimmten Antrag entscheiden oder stornieren darf.
+func mayDecide(right LeaveDecisionRight, _ *LeaveRequest) error {
+	if right.All {
+		return nil
+	}
+	return ErrNoDecisionRight
+}
+
 // Decide genehmigt einen Antrag oder lehnt ihn ab.
 //
 // Die Entscheidung ist einmalig: entschieden werden kann nur ein Antrag im
-// Status pending. Frueher liess sich ein Antrag beliebig oft neu
-// entscheiden, die erste Entscheidung wurde dabei ueberschrieben.
+// Status pending. Eine Genehmigung legt in derselben Transaktion die
+// Abwesenheit an (hr_absences, ADR 0029) - es gibt keinen genehmigten
+// Antrag ohne Abwesenheit.
 //
 // deciderUserID ist der Login, der entscheidet - an ihm haengt der
-// Nachweis. approver ist dessen Mitarbeiterdatensatz, falls er einen hat;
-// er ist nicht mehr Voraussetzung (ein Administrator ohne
-// Mitarbeiterdatensatz kann entscheiden).
-func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approve bool, deciderUserID string, approver *uuid.UUID, companyID string) (*LeaveRequest, error) {
+// Nachweis. approver ist dessen Mitarbeiterdatensatz, falls er einen hat.
+func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approve bool, right LeaveDecisionRight, deciderUserID string, approver *uuid.UUID, companyID string) (*LeaveRequest, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
@@ -551,6 +584,13 @@ func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approve bool, d
 	}
 	if strings.TrimSpace(deciderUserID) == "" {
 		return nil, errors.New("Entscheider erforderlich")
+	}
+	lr, err := s.Get(ctx, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if err := mayDecide(right, lr); err != nil {
+		return nil, err
 	}
 	if approver != nil {
 		var approverOwned bool
@@ -565,21 +605,104 @@ func (s *LeaveService) Decide(ctx context.Context, id uuid.UUID, approve bool, d
 	if approve {
 		status = "approved"
 	}
-	// Die Statuspruefung steht im UPDATE selbst: zwei gleichzeitige
-	// Entscheidungen koennen so nicht beide durchgehen.
-	ct, err := s.pg.Exec(ctx, `UPDATE hr_leave_requests SET status=$2, approver_id=$3, decided_by_user_id=$4, decided_at=now()
-		WHERE id=$1 AND status='pending' AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$5)`, id, status, approver, deciderUserID, companyID)
+	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
-	lr, err := s.Get(ctx, id, companyID)
+	defer tx.Rollback(ctx)
+	// Die Statuspruefung steht im UPDATE selbst: zwei gleichzeitige
+	// Entscheidungen koennen so nicht beide durchgehen.
+	ct, err := tx.Exec(ctx, `UPDATE hr_leave_requests SET status=$2, approver_id=$3, decided_by_user_id=$4, decided_at=now()
+		WHERE id=$1 AND status='pending' AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$5)`, id, status, approver, deciderUserID, companyID)
 	if err != nil {
 		return nil, err
 	}
 	if ct.RowsAffected() == 0 {
 		return nil, errors.New("Urlaubsantrag ist bereits entschieden")
 	}
-	return lr, nil
+	if approve {
+		if _, err := tx.Exec(ctx, `INSERT INTO hr_absences (id, employee_id, typ, start_date, end_date, status, source_request_id)
+			SELECT $2, employee_id, typ, start_date, end_date, 'approved', id FROM hr_leave_requests WHERE id=$1`, id, uuid.New()); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, companyID)
+}
+
+// Withdraw zieht einen offenen Antrag zurueck. Wer das darf (der
+// Antragsteller selbst oder die Personalabteilung), prueft die Route.
+// Ein entschiedener Antrag laesst sich nicht zurueckziehen - ein
+// genehmigter wird storniert (Storno).
+func (s *LeaveService) Withdraw(ctx context.Context, id uuid.UUID, companyID string) (*LeaveRequest, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if _, err := s.Get(ctx, id, companyID); err != nil {
+		return nil, err
+	}
+	ct, err := s.pg.Exec(ctx, `UPDATE hr_leave_requests SET status='withdrawn', withdrawn_at=now()
+		WHERE id=$1 AND status='pending' AND employee_id IN (SELECT id FROM hr_employees WHERE company_id=$2)`, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if ct.RowsAffected() == 0 {
+		return nil, errors.New("Urlaubsantrag ist bereits entschieden")
+	}
+	return s.Get(ctx, id, companyID)
+}
+
+// Storno storniert einen genehmigten Antrag mit Begruendung; die
+// Abwesenheit wird in derselben Transaktion mitstorniert, die Tage stehen
+// damit wieder im Urlaubskonto. Auch vergangene Zeitraeume sind
+// stornierbar (Fehlbuchung) - die Begruendung ist Pflicht.
+func (s *LeaveService) Storno(ctx context.Context, id uuid.UUID, reason string, right LeaveDecisionRight, actorUserID, companyID string) (*LeaveRequest, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, errors.New("Begründung erforderlich")
+	}
+	if strings.TrimSpace(actorUserID) == "" {
+		return nil, errors.New("Entscheider erforderlich")
+	}
+	lr, err := s.Get(ctx, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if err := mayDecide(right, lr); err != nil {
+		return nil, err
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+	var status string
+	if err := tx.QueryRow(ctx, `SELECT status FROM hr_leave_requests WHERE id=$1 FOR UPDATE`, id).Scan(&status); err != nil {
+		return nil, err
+	}
+	switch status {
+	case "approved":
+	case "storniert":
+		return nil, errors.New("Urlaubsantrag ist bereits storniert")
+	default:
+		return nil, errors.New("Urlaubsantrag ist nicht im Status genehmigt - offene Anträge werden zurückgezogen")
+	}
+	if _, err := tx.Exec(ctx, `UPDATE hr_leave_requests SET status='storniert', storniert_at=now(), storniert_by_user_id=$2, storno_reason=$3 WHERE id=$1`, id, actorUserID, reason); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `UPDATE hr_absences SET status='storniert', storniert_at=now(), storniert_by_user_id=$2, storno_reason=$3
+		WHERE source_request_id=$1 AND status='approved'`, id, actorUserID, reason); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.Get(ctx, id, companyID)
 }
 
 func (s *LeaveService) Get(ctx context.Context, id uuid.UUID, companyID string) (*LeaveRequest, error) {

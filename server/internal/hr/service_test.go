@@ -142,7 +142,7 @@ func TestLeaveDecideValidatesBeforeTouchingDatabase(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			lr, err := s.Decide(context.Background(), tc.id, true, tc.decider, nil, tc.companyID)
+			lr, err := s.Decide(context.Background(), tc.id, true, LeaveDecisionRight{All: true}, tc.decider, nil, tc.companyID)
 			if lr != nil {
 				t.Fatalf("erwartet kein Ergebnis, bekommen %+v", lr)
 			}

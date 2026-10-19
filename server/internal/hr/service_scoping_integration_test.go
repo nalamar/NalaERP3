@@ -222,7 +222,7 @@ func TestLeaveCreateRejectsOverlappingDateRange(t *testing.T) {
 	// Seit F.4.5 entscheidet ein Login (decided_by_user_id); emp.ID wird
 	// als dessen Mitarbeiterdatensatz mitgegeben und muss existieren.
 	deciderID := testutil.SeedAuthUser(t, env, "leave-overlap-decider@example.invalid", "geheim-123456", "hr")
-	if _, err := leaveSvc.Decide(ctx, first.ID, true, deciderID, &emp.ID, "default"); err != nil {
+	if _, err := leaveSvc.Decide(ctx, first.ID, true, LeaveDecisionRight{All: true}, deciderID, &emp.ID, "default"); err != nil {
 		t.Fatalf("approve first request: %v", err)
 	}
 	if _, err := leaveSvc.Create(ctx, LeaveRequest{
@@ -244,7 +244,7 @@ func TestLeaveCreateRejectsOverlappingDateRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create request to be rejected: %v", err)
 	}
-	if _, err := leaveSvc.Decide(ctx, rejected.ID, false, deciderID, &emp.ID, "default"); err != nil {
+	if _, err := leaveSvc.Decide(ctx, rejected.ID, false, LeaveDecisionRight{All: true}, deciderID, &emp.ID, "default"); err != nil {
 		t.Fatalf("reject request: %v", err)
 	}
 	if _, err := leaveSvc.Create(ctx, LeaveRequest{

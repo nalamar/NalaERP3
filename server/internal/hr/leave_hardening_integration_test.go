@@ -53,7 +53,7 @@ func TestLeaveDecideIsOneTimeAndRecordsDecider(t *testing.T) {
 	}
 
 	before := time.Now().Add(-time.Minute)
-	decided, err := svc.Decide(ctx, lr.ID, true, deciderID, &approverEmp.ID, "default")
+	decided, err := svc.Decide(ctx, lr.ID, true, LeaveDecisionRight{All: true}, deciderID, &approverEmp.ID, "default")
 	if err != nil {
 		t.Fatalf("Genehmigen: %v", err)
 	}
@@ -72,9 +72,9 @@ func TestLeaveDecideIsOneTimeAndRecordsDecider(t *testing.T) {
 
 	// Zweiter Versuch - mit umgekehrter Entscheidung und anderem Login:
 	// abgelehnt, und NICHTS an der ersten Entscheidung aendert sich.
-	_, err = svc.Decide(ctx, lr.ID, false, otherDeciderID, nil, "default")
+	_, err = svc.Decide(ctx, lr.ID, false, LeaveDecisionRight{All: true}, otherDeciderID, nil, "default")
 	wantEmployeeError(t, err, "Urlaubsantrag ist bereits entschieden")
-	_, err = svc.Decide(ctx, lr.ID, true, otherDeciderID, nil, "default")
+	_, err = svc.Decide(ctx, lr.ID, true, LeaveDecisionRight{All: true}, otherDeciderID, nil, "default")
 	wantEmployeeError(t, err, "Urlaubsantrag ist bereits entschieden")
 
 	again, err := svc.Get(ctx, lr.ID, "default")
@@ -88,10 +88,10 @@ func TestLeaveDecideIsOneTimeAndRecordsDecider(t *testing.T) {
 
 	// Auch eine Ablehnung ist endgueltig.
 	rejected := mustCreateLeave(t, svc, emp.ID, leaveDay(2027, 4, 1), leaveDay(2027, 4, 2))
-	if _, err := svc.Decide(ctx, rejected.ID, false, deciderID, nil, "default"); err != nil {
+	if _, err := svc.Decide(ctx, rejected.ID, false, LeaveDecisionRight{All: true}, deciderID, nil, "default"); err != nil {
 		t.Fatalf("Ablehnen: %v", err)
 	}
-	_, err = svc.Decide(ctx, rejected.ID, true, deciderID, nil, "default")
+	_, err = svc.Decide(ctx, rejected.ID, true, LeaveDecisionRight{All: true}, deciderID, nil, "default")
 	wantEmployeeError(t, err, "Urlaubsantrag ist bereits entschieden")
 	if got, _ := svc.Get(ctx, rejected.ID, "default"); got == nil || got.Status != "rejected" {
 		t.Fatalf("abgelehnter Antrag wurde nachtraeglich genehmigt: %+v", got)
@@ -109,7 +109,7 @@ func TestLeaveDecideWorksWithoutApproverEmployee(t *testing.T) {
 	deciderID := testutil.SeedAuthUser(t, env, "leave-admin@example.invalid", "geheim-123456", "admin")
 
 	lr := mustCreateLeave(t, svc, emp.ID, leaveDay(2027, 5, 3), leaveDay(2027, 5, 7))
-	decided, err := svc.Decide(ctx, lr.ID, true, deciderID, nil, "default")
+	decided, err := svc.Decide(ctx, lr.ID, true, LeaveDecisionRight{All: true}, deciderID, nil, "default")
 	if err != nil {
 		t.Fatalf("Entscheiden ohne Mitarbeiterdatensatz: %v", err)
 	}
@@ -124,13 +124,13 @@ func TestLeaveDecideWorksWithoutApproverEmployee(t *testing.T) {
 	// gehoeren - und ein so abgelehnter Aufruf entscheidet nichts.
 	pending := mustCreateLeave(t, svc, emp.ID, leaveDay(2027, 6, 1), leaveDay(2027, 6, 2))
 	unknown := uuid.New()
-	_, err = svc.Decide(ctx, pending.ID, true, deciderID, &unknown, "default")
+	_, err = svc.Decide(ctx, pending.ID, true, LeaveDecisionRight{All: true}, deciderID, &unknown, "default")
 	wantEmployeeError(t, err, "Mitarbeiter nicht gefunden")
 	foreignEmp, err := NewEmployeeService(env.PG).Create(ctx, EmployeeInput{FirstName: "Fremd", LastName: "Mandant"}, "other-company")
 	if err != nil {
 		t.Fatalf("Mitarbeiter im zweiten Mandanten anlegen: %v", err)
 	}
-	_, err = svc.Decide(ctx, pending.ID, true, deciderID, &foreignEmp.ID, "default")
+	_, err = svc.Decide(ctx, pending.ID, true, LeaveDecisionRight{All: true}, deciderID, &foreignEmp.ID, "default")
 	wantEmployeeError(t, err, "Mitarbeiter nicht gefunden")
 	if got, _ := svc.Get(ctx, pending.ID, "default"); got == nil || got.Status != "pending" {
 		t.Fatalf("abgelehnter Aufruf hat den Antrag entschieden: %+v", got)
@@ -150,9 +150,9 @@ func TestLeaveGetAndDecideAreScopedToCompany(t *testing.T) {
 	wantEmployeeError(t, err, "Urlaubsantrag nicht gefunden")
 	_, err = svc.Get(ctx, uuid.New(), "default")
 	wantEmployeeError(t, err, "Urlaubsantrag nicht gefunden")
-	_, err = svc.Decide(ctx, lr.ID, true, deciderID, nil, "other-company")
+	_, err = svc.Decide(ctx, lr.ID, true, LeaveDecisionRight{All: true}, deciderID, nil, "other-company")
 	wantEmployeeError(t, err, "Urlaubsantrag nicht gefunden")
-	_, err = svc.Decide(ctx, uuid.New(), true, deciderID, nil, "default")
+	_, err = svc.Decide(ctx, uuid.New(), true, LeaveDecisionRight{All: true}, deciderID, nil, "default")
 	wantEmployeeError(t, err, "Urlaubsantrag nicht gefunden")
 
 	got, err := svc.Get(ctx, lr.ID, "default")
@@ -210,7 +210,7 @@ func TestLeaveListCarriesDecision(t *testing.T) {
 	deciderID := testutil.SeedAuthUser(t, env, "leave-list@example.invalid", "geheim-123456", "hr")
 	open := mustCreateLeave(t, svc, emp.ID, leaveDay(2027, 10, 4), leaveDay(2027, 10, 5))
 	done := mustCreateLeave(t, svc, emp.ID, leaveDay(2027, 10, 11), leaveDay(2027, 10, 12))
-	if _, err := svc.Decide(ctx, done.ID, false, deciderID, nil, "default"); err != nil {
+	if _, err := svc.Decide(ctx, done.ID, false, LeaveDecisionRight{All: true}, deciderID, nil, "default"); err != nil {
 		t.Fatalf("Ablehnen: %v", err)
 	}
 

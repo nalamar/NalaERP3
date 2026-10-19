@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -156,7 +157,11 @@ func mountLeaveRequestRoutes(protected chi.Router, svc *hr.LeaveService, resolve
 		//
 		// Festgehalten wird der Login, der entscheidet; hat er einen
 		// verknuepften Mitarbeiter, wird der als approver_id mitgefuehrt.
-		r.With(requirePermission(permLeaveRequestsDecide)).Post("/{id}/decide", func(w http.ResponseWriter, req *http.Request) {
+		//
+		// Ob der Login DIESEN Antrag entscheiden darf, beantwortet der
+		// Service an einer Stelle (hr.LeaveDecisionRight, vorbereitet fuer
+		// Teamleiter, ADR 0029) - deshalb kein requirePermission hier.
+		r.Post("/{id}/decide", func(w http.ResponseWriter, req *http.Request) {
 			id, ok := parseLeaveRequestID(w, req)
 			if !ok {
 				return
@@ -183,12 +188,74 @@ func mountLeaveRequestRoutes(protected chi.Router, svc *hr.LeaveService, resolve
 			if linked {
 				approver = &own
 			}
-			out, err := svc.Decide(req.Context(), id, *in.Approve, actor, approver, companyID)
+			out, err := svc.Decide(req.Context(), id, *in.Approve, leaveDecisionRight(req), actor, approver, companyID)
+			if err != nil {
+				writeLeaveError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Zurueckziehen eines offenen Antrags: der Antragsteller selbst
+		// (leave_requests.self) oder wer Antraege entscheidet.
+		r.Post("/{id}/withdraw", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseLeaveRequestID(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			lr, err := svc.Get(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			if _, ok := resolveOwnOrPermittedEmployee(w, req, resolver, &lr.EmployeeID, permLeaveRequestsDecide, permLeaveRequestsSelf); !ok {
+				return
+			}
+			out, err := svc.Withdraw(req.Context(), id, companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+
+		// Storno eines genehmigten Antrags mit Begruendung - wer
+		// entscheiden darf (Pruefung im Service wie bei decide).
+		r.Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseLeaveRequestID(w, req)
+			if !ok {
+				return
+			}
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Storno(req.Context(), id, in.Reason, leaveDecisionRight(req), actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeLeaveError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 	})
+}
+
+// leaveDecisionRight leitet aus den Rechten des Logins ab, welche Antraege
+// er entscheiden darf. Heute nur leave_requests.decide = alle.
+func leaveDecisionRight(req *http.Request) hr.LeaveDecisionRight {
+	return hr.LeaveDecisionRight{All: hasPermission(req, permLeaveRequestsDecide)}
+}
+
+// writeLeaveError meldet hr.ErrNoDecisionRight als 403, sonst wie ueblich.
+func writeLeaveError(w http.ResponseWriter, req *http.Request, err error) {
+	if errors.Is(err, hr.ErrNoDecisionRight) {
+		writeAPIError(w, req, http.StatusForbidden, "forbidden", "Keine Berechtigung")
+		return
+	}
+	writeDomainError(w, req, err)
 }
