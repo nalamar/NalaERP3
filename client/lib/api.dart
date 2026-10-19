@@ -2184,6 +2184,52 @@ class ApiClient {
     return _getList('/api/v1/asset-assignments/', qp.isEmpty ? null : qp);
   }
 
+  // -------- Zeiterfassung (Backlog F.5, Server-Routen aus F.1) --------
+  // Eintraege und Tagesauswertung fuer die Arbeitstage from bis to (beide
+  // einschliesslich, JJJJ-MM-TT). Ohne employeeId die eigenen
+  // (time_entries.self); fremde mit time_entries.read. Liefert
+  // {"entries": [...], "days": [...]}.
+  Future<Map<String, dynamic>> listTimeEntries({
+    required String from,
+    required String to,
+    String? employeeId,
+    bool includeStorniert = false,
+  }) {
+    final qp = <String, String>{'from': from, 'to': to};
+    if (employeeId != null && employeeId.isNotEmpty) qp['employee_id'] = employeeId;
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getJson('/api/v1/time-entries/', qp);
+  }
+
+  // Kommen: stempelt fuer den eigenen Mitarbeiter mit der Uhr des SERVERS
+  // (ohne started_at) - die Uhr des Geraets ist dafuer keine verlaessliche
+  // Quelle.
+  Future<Map<String, dynamic>> clockIn() async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/time-entries/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(<String, dynamic>{}),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Gehen: beendet den laufenden Eintrag mit der Uhr des Servers und den
+  // angegebenen Pausenminuten.
+  Future<Map<String, dynamic>> clockOut(String entryId, {int breakMinutes = 0}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/time-entries/$entryId/stop'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'break_minutes': breakMinutes}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

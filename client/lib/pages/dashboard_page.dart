@@ -5,6 +5,7 @@ import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
+import 'my_time_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -104,6 +105,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ContactsScreen(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('time_entries.self'))
+        _DashCard(
+          title: 'Meine Arbeitszeit',
+          icon: Icons.schedule_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MyTimePage(api: api),
               ),
             );
           },

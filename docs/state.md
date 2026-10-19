@@ -7,28 +7,31 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.7.4** — damit ist **TASK F.7 (Client:
-> Mitarbeiterverwaltung) VOLLSTÄNDIG**: Mitarbeiter anlegen (mit
-> Qualifikationen der Stelle und vorhandenen Nachweisen), bearbeiten,
-> deaktivieren/reaktivieren, mit Login verknüpfen; Qualifikationsstand,
-> Anforderungen, Nachweise; ausgegebene Betriebsmittel.
-> **ANNAHME, vom Nutzer nicht ausdrücklich bestätigt:** "fortsetzen" am
-> 2026-10-16 als Zustimmung zur Empfehlung gewertet (F.7 vor F.5; eigene
-> schmale Login-Route). Widerspricht der Nutzer, unter "Korrekturen".
-> **Nächste Arbeit: beim Nutzer erfragen.** Vorschlag F.5 (Zeiterfassung
-> im Client: Kommen/Gehen, eigene Zeiten; Server-Routen aus F.1). Weitere
-> Kandidaten: F.13 (Betriebsmittel-Oberfläche, Fälligkeitslisten,
-> Katalog der Qualifikationen), 0.48 (Client-Testsuite rot), F.8, F.6,
-> F.10, 0.45, 0.47; F.11, F.12 ausdrücklich für später.
+> Zuletzt abgeschlossen: **F.5.1** (Client: "Meine Arbeitszeit" —
+> Kommen/Gehen, laufender Eintrag, Woche mit ArbZG-Hinweisen). Davor
+> Task F.7 vollständig.
+> **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
+> Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
+> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
+> Widerspricht der Nutzer, unter "Korrekturen".
+> **Nächste Arbeit: F.5.2** eigene Zeiten nachtragen (`POST
+> /time-entries` mit `started_at`/`ended_at` als RFC 3339,
+> `break_minutes`, `note`), korrigieren (`POST …/{id}/correct` mit
+> neuen Zeiten und `reason`, liefert den NEUEN Eintrag, 201) und
+> stornieren (`POST …/{id}/storno`, `reason`); Woche blättern;
+> stornierte auf Wunsch (`include_storniert`). Eingabe der Uhrzeiten
+> in Ortszeit, Umrechnung nach UTC im Client. Danach F.5.3 (Zeiten
+> anderer für die Personalabteilung).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.7.4: 133 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.5.1: 145 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
 > Zwei nicht blockierende Annahmen an den Nutzer (open-questions,
 > F.3.5): "Mängel" sperrt nicht; Vorwarnzeit 30 Tage.
+> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, F.13, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
@@ -11216,6 +11219,25 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/employees_page.dart`,
 `client/lib/pages/employee_assets_section.dart` (neu),
 `client/test/employee_assets_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
+
+## Epic F, Task F.5 — Client: Zeiterfassung
+
+### F.5.1 "Meine Arbeitszeit"
+
+Seite `my_time_page.dart`, Karte mit `time_entries.self`. Kommen und
+Gehen senden keine Zeit (Serveruhr). Woche mit Tagessummen und den
+Hinweisen der ArbZG-Auswertung des Servers. Ohne verknüpften
+Mitarbeiter ein klarer Hinweis.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+12 neue Tests grün; Gegenprobe 26 Verfälschungen, alle erkannt;
+`flutter test` 145 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/lib/pages/my_time_page.dart` (neu),
+`client/test/my_time_page_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
