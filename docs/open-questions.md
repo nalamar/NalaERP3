@@ -236,3 +236,21 @@ Backlog-Positionen fortfahren, bis Docker verfügbar ist.
   (Qualifikationen: 60). Der Wert ist beim Abruf änderbar. Passt 30?
   Status: **beantwortet** am 2026-10-19 — "30 Tage reichen" (keine
   Änderung).
+
+## 2026-10-19 — F.8 Abwesenheiten und Urlaubskonto (offen)
+
+Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
+
+1. Feiertage berechnen, Bundesland am Mandanten (am Mitarbeiter
+   überschreibbar), betriebliche Zusatztage pflegbar? Empfehlung: ja.
+   Status: offen.
+2. Jahreskonto mit Jahresanspruch am Mitarbeiter, Teilurlaub als
+   Vorschlag; Vorgabe für neue Mitarbeiter? Empfehlung: ja, Vorgabe als
+   Mandanten-Einstellung mit Startwert 30. Status: offen.
+3. Kein automatischer Verfall, Übertrag durch die Personalabteilung,
+   Nachweisfeld "Hinweis erteilt am"? Empfehlung: ja. Status: offen.
+4. Krankheit direkt als Abwesenheit ohne Diagnose, "Attest ja/nein",
+   Rückbuchung nach §9 BUrlG; Selbstmeldung durch den Mitarbeiter?
+   Empfehlung: ja, Selbstmeldung erlaubt. Status: offen.
+5. Teamleiter genehmigt Anträge seines Teams; Kollegen sehen
+   Abwesenheiten im Team? Empfehlung: beides vorerst nein. Status: offen.

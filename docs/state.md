@@ -7,18 +7,19 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **0.48** — **die Client-Testsuite ist jetzt
-> vollständig grün** (`flutter test` 219 / 0, `flutter analyze` 0 Fehler).
-> Ab jetzt gilt für Client-Arbeit wieder "alles grün" als
-> Regressionsnachweis; `scratchpad/fail_before.txt` ist überholt.
-> Davor: F.13 vollständig (Client deckt die gesamte HR- und
-> Betriebsmittel-API ab).
+> Zuletzt abgeschlossen: **F.8.1** (ADR 0029 Abwesenheiten, Feiertage,
+> Urlaubskonto, Teams — vorgeschlagen). **WARTET AUF DEN NUTZER:** fünf
+> Fragen in ADR 0029 "Offen" (Feiertage/Bundesland, Jahreskonto und
+> Vorgabe, kein automatischer Verfall, Krankmeldung, Teams/Sichtbarkeit);
+> jeweils mit Empfehlung. Danach F.8.2.
+> Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
+> (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
 > 0.48 hat der Nutzer ausdrücklich beauftragt (2026-10-19, um einen
 > Live-Zwischenstand anzusehen).
-> **Nächste Arbeit: Empfehlung F.8** (Abwesenheiten, Urlaubskonto).
+> **Nächste Arbeit: F.8.2** nach Antwort auf ADR 0029 (F.8 vom Nutzer gestartet 2026-10-19).
 > Weitere: F.6, F.10, 0.45, 0.47; F.11, F.12 für später. Bloßes
 > "fortsetzen" = Empfehlung (Memory).
 > Client-Tests: neue Widget-Tests mit `splashFactory:
@@ -31,11 +32,11 @@
 > einer Seite genutzten API-Methoden überschreiben (sonst echte
 > HTTP-Aufrufe im Test). Shader-Fehler im Test → `client/build/` ist
 > veraltet, löschen.
-> Keine offenen Fragen an den Nutzer.
+> Offene Fragen an den Nutzer: 5 (ADR 0029).
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
 > (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
 > Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
-> Nächste freie Migration 090, ADR 0029.
+> Nächste freie Migration 090, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
