@@ -36,6 +36,9 @@ type Employee struct {
 	// Arbeitstage nach ISO 8601 (1 = Montag ... 7 = Sonntag), sortiert.
 	// Daraus zaehlen Urlaubsantraege ihre Tage.
 	Arbeitstage []int `json:"arbeitstage"`
+	// UrlaubstageJahr ist ein ausgehandelter Jahresanspruch; nil = Vorgabe
+	// (4 Tage je woechentlichem Arbeitstag, ADR 0029).
+	UrlaubstageJahr *float64 `json:"urlaubstage_jahr"`
 }
 
 // EmployeeInput sind die Angaben fuer die Anlage eines Mitarbeiters.
@@ -60,7 +63,8 @@ type EmployeeInput struct {
 	Active      *bool      `json:"active,omitempty"`
 	Bundesland  *string    `json:"bundesland,omitempty"`
 	// Arbeitstage nil = Montag bis Freitag.
-	Arbeitstage []int `json:"arbeitstage,omitempty"`
+	Arbeitstage     []int    `json:"arbeitstage,omitempty"`
+	UrlaubstageJahr *float64 `json:"urlaubstage_jahr,omitempty"`
 }
 
 // Namen der UNIQUE-Indizes, deren Verletzung in eine fachliche Meldung
@@ -111,7 +115,7 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 	if limit <= 0 {
 		limit = 50
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
+	rows, err := s.pg.Query(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage, urlaubstage_jahr::float8 FROM hr_employees WHERE company_id=$1 ORDER BY last_name, first_name LIMIT $2 OFFSET $3`, companyID, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +127,7 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 		var teamID *uuid.UUID
 		var pn *string
 		var days []int16
-		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days); err != nil {
+		if err := rows.Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days, &e.UrlaubstageJahr); err != nil {
 			return nil, err
 		}
 		e.Arbeitstage = int16sToInts(days)
@@ -187,14 +191,18 @@ func (s *EmployeeService) Create(ctx context.Context, in EmployeeInput, companyI
 	if e.Arbeitstage, err = normalizeArbeitstage(in.Arbeitstage); err != nil {
 		return nil, err
 	}
+	if err := validateEmployeeLeaveDays(in.UrlaubstageJahr, e.Arbeitstage); err != nil {
+		return nil, err
+	}
+	e.UrlaubstageJahr = in.UrlaubstageJahr
 	if e.TeamID != nil {
 		if err := s.teamBelongsToCompany(ctx, *e.TeamID, companyID); err != nil {
 			return nil, err
 		}
 	}
-	_, err = s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id, bundesland, arbeitstage)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
-		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID, e.Bundesland, intsToInt16s(e.Arbeitstage))
+	_, err = s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id, bundesland, arbeitstage, urlaubstage_jahr)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID, e.Bundesland, intsToInt16s(e.Arbeitstage), e.UrlaubstageJahr)
 	if err != nil {
 		if isUniqueViolation(err, employeePersonalNrIndex) {
 			return nil, errors.New("Personalnummer existiert bereits")
@@ -210,8 +218,8 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 	var teamID *uuid.UUID
 	var pn *string
 	var days []int16
-	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
-		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days)
+	err := s.pg.QueryRow(ctx, `SELECT id, personalnummer, first_name, last_name, COALESCE(email,''), COALESCE(phone,''), hire_date, termination_date, COALESCE(role,''), team_id, COALESCE(location,''), COALESCE(cost_center,''), active, user_id, bundesland, arbeitstage, urlaubstage_jahr::float8 FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).
+		Scan(&e.ID, &pn, &e.FirstName, &e.LastName, &e.Email, &e.Phone, &hire, &term, &e.Role, &teamID, &e.Location, &e.CostCenter, &e.Active, &e.UserID, &e.Bundesland, &days, &e.UrlaubstageJahr)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Mitarbeiter nicht gefunden")
@@ -235,7 +243,7 @@ func (s *EmployeeService) Get(ctx context.Context, id uuid.UUID, companyID strin
 var employeeUpdatableFields = map[string]bool{
 	"first_name": true, "last_name": true, "email": true, "phone": true,
 	"role": true, "location": true, "cost_center": true, "active": true, "team_id": true,
-	"bundesland": true, "arbeitstage": true,
+	"bundesland": true, "arbeitstage": true, "urlaubstage_jahr": true,
 }
 
 func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[string]any, companyID string) error {
@@ -279,11 +287,22 @@ func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[st
 				return err
 			}
 			patch[k] = intsToInt16s(days)
+		case "urlaubstage_jahr":
+			switch t := v.(type) {
+			case nil:
+			case float64:
+				patch[k] = &t
+			default:
+				return fmt.Errorf("Ungültiger Wert für Feld: %s", k)
+			}
 		default:
 			if _, ok := v.(string); !ok {
 				return fmt.Errorf("Ungültiger Wert für Feld: %s", k)
 			}
 		}
+	}
+	if err := s.checkLeaveDaysAfterPatch(ctx, id, patch, companyID); err != nil {
+		return err
 	}
 	sets := make([]string, 0, len(patch))
 	args := make([]any, 0, len(patch)+2)
@@ -614,4 +633,33 @@ func (s *LeaveService) List(ctx context.Context, employeeID *uuid.UUID, limit, o
 
 func itoa(i int) string {
 	return fmt.Sprintf("%d", i)
+}
+
+// checkLeaveDaysAfterPatch prueft den Jahresanspruch gegen die Arbeitstage,
+// wie sie nach dem Patch waeren - auch wenn nur die Arbeitstage geaendert
+// werden (mehr Arbeitstage heben die Untergrenze). Der CHECK in 092 sichert
+// dasselbe in der Datenbank; hier entsteht die verstaendliche Meldung.
+func (s *EmployeeService) checkLeaveDaysAfterPatch(ctx context.Context, id uuid.UUID, patch map[string]any, companyID string) error {
+	newDays, daysPatched := patch["arbeitstage"]
+	newLeave, leavePatched := patch["urlaubstage_jahr"]
+	if !daysPatched && !leavePatched {
+		return nil
+	}
+	var leave *float64
+	var stored []int16
+	err := s.pg.QueryRow(ctx, `SELECT urlaubstage_jahr::float8, arbeitstage FROM hr_employees WHERE id=$1 AND company_id=$2`, id, companyID).Scan(&leave, &stored)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return errors.New("Mitarbeiter nicht gefunden")
+	}
+	if err != nil {
+		return err
+	}
+	days := int16sToInts(stored)
+	if daysPatched {
+		days = int16sToInts(newDays.([]int16))
+	}
+	if leavePatched {
+		leave, _ = newLeave.(*float64)
+	}
+	return validateEmployeeLeaveDays(leave, days)
 }

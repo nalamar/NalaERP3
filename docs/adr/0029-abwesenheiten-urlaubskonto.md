@@ -165,6 +165,8 @@ Mandanten-Einstellung Bundesland gehört zu `settings.manage`.
    20 gelten für die 5-Tage-Woche; bei weniger Arbeitstagen je Woche
    anteilig (gesetzlich 4 × Arbeitstage je Woche, z. B. 12 bei drei
    Tagen). Ein Anspruch unter dieser Untergrenze wird abgelehnt.
+   Vorgelegt am 2026-10-19, Antwort "fortsetzen" — als Zustimmung
+   gewertet und so umgesetzt (F.8.3.1), nicht ausdrücklich bestätigt.
 3. **Verfall:** "Genau so" — kein automatischer Verfall, Übertrag durch
    die Personalabteilung, Nachweisfeld "Hinweis erteilt am".
 4. **Krankheit:** "So umsetzen" — direkt als Abwesenheit ohne Diagnose,

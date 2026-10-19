@@ -1723,6 +1723,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountTimeEntryRoutes(protected, timeEntrySvc)
 	mountEmployeeRoutes(protected, employeeSvc)
 	mountLeaveRequestRoutes(protected, leaveSvc, timeEntrySvc)
+	mountLeaveAccountRoutes(protected, hr.NewLeaveAccountService(pg), timeEntrySvc)
 	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
 	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
 	mountAssetRoutes(protected, assetSvc)

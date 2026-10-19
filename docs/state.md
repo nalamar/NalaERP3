@@ -7,20 +7,18 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.2.3** — damit **F.8.2 vollständig**
-> (Feiertage je Land, Bundesland am Mandanten und Mitarbeiter,
-> betriebliche Zusatztage, Arbeitswoche; **Urlaubsanträge zählen jetzt
-> Arbeitstage**). ADR 0029 entschieden (Urlaubsvorgabe 20 Tage,
-> abweichend am Mitarbeiter; Genehmigung nur Personalabteilung/
-> Geschäftsführung, Teamleiter vorbereiten).
-> **Nächste Arbeit: F.8.3** (Urlaubskonto). Vorher die Annahme zur
-> Teilzeit-Untergrenze (anteilig 4 × Arbeitstage je Woche) dem Nutzer
-> vorlegen — mit Empfehlung, nicht blockierend.
+> Zuletzt abgeschlossen: **F.8.3.1** (Jahresanspruch am Mitarbeiter,
+> Jahreskonto `hr_leave_accounts`, `GET/PUT /leave-accounts`; Migration
+> 092). Davor F.8.2 vollständig (Feiertage, Arbeitswoche, Anträge zählen
+> Arbeitstage).
+> **Nächste Arbeit: F.8.3.2** (Teilurlaub-Vorschlag, Liste Resturlaub).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
-> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
+> Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19);
+> Urlaubs-Untergrenze bei Teilzeit anteilig 4 Tage je wöchentlichem
+> Arbeitstag (2026-10-19, F.8.3.1).
 > 0.48 hat der Nutzer ausdrücklich beauftragt (2026-10-19, um einen
 > Live-Zwischenstand anzusehen).
 > F.8 vom Nutzer gestartet 2026-10-19.
@@ -36,12 +34,11 @@
 > einer Seite genutzten API-Methoden überschreiben (sonst echte
 > HTTP-Aufrufe im Test). Shader-Fehler im Test → `client/build/` ist
 > veraltet, löschen.
-> Keine offenen Fragen an den Nutzer (Annahme zur anteiligen
-> Urlaubs-Untergrenze bei Teilzeit wird bei F.8.3 vorgelegt).
+> Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
 > (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
 > Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
-> Nächste freie Migration 092, ADR 0030.
+> Nächste freie Migration 093, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
