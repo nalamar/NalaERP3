@@ -7,6 +7,7 @@ import 'contacts_screen.dart';
 import 'employees_page.dart';
 import 'my_time_page.dart';
 import 'qualification_catalog_page.dart';
+import 'qualifications_due_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -145,6 +146,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => QualificationCatalogPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('qualifications.read'))
+        _DashCard(
+          title: 'Fällige Qualifikationen',
+          icon: Icons.notification_important_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => QualificationsDuePage(api: api),
               ),
             );
           },

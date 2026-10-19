@@ -2341,6 +2341,13 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
 
+  // Betriebsweite Liste (F.13.2, Route F.2.6.2): fuer alle aktiven
+  // Mitarbeiter, was fehlt, abgelaufen ist oder innerhalb der Vorwarnzeit
+  // ablaeuft - das Dringendste zuerst. Ohne warnDays der Standard des
+  // Servers (60 Tage). Nur mit qualifications.read.
+  Future<List<dynamic>> listQualificationsDue({int? warnDays}) => _getList(
+      '/api/v1/qualifications/due', warnDays == null ? null : {'warn_tage': '$warnDays'});
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

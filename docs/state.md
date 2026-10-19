@@ -7,30 +7,31 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.13.1** (Client: Qualifikationskatalog —
-> anlegen, ändern, stilllegen, Vorschlagskatalog übernehmen). F.13 vom
-> Nutzer am 2026-10-19 beauftragt ("Dann setze mit F.13 fort"). Davor
-> Task F.5 vollständig.
+> Zuletzt abgeschlossen: **F.13.2** (Client: Fällige Qualifikationen,
+> betriebsweit). Davor F.13.1 (Qualifikationskatalog). F.13 vom Nutzer
+> am 2026-10-19 beauftragt.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: F.13.2** betriebsweite Fälligkeitsliste der
-> Qualifikationen (`GET /qualifications/due`, `warn_tage` Standard 60;
-> Einträge mit employee_id, personalnummer, first_name, last_name, Art
-> (code/name/kategorie), status fehlt/abgelaufen/laeuft_ab,
-> gueltig_bis, tage_bis_ablauf; nur `qualifications.read`). Vorschlag:
-> eigene Seite mit Karte "Fällige Qualifikationen" oder Einstieg aus dem
-> Katalog; Statustexte aus `qualificationStatusLabel` (F.7.3.1)
-> wiederverwenden. Danach F.13.3/F.13.4 Betriebsmittel.
+> **Nächste Arbeit: F.13.3** Betriebsmittel-Bestand im Client: Seite
+> mit Karte "Betriebsmittel" (`assets.read`): Liste (`GET /assets`,
+> Filter `kategorie`, `include_ausgemustert`), anlegen (`POST`),
+> bearbeiten (`PUT` mit ALLEN zwölf Feldern: inventarnummer,
+> bezeichnung, kategorie, seriennummer, hersteller, modell, standort,
+> anschaffungsdatum JJJJ-MM-TT|null, anschaffungspreis|null,
+> kostenstelle_id|null, pruefintervall_monate|null, notiz), ausmustern
+> (`POST /assets/{id}/retire` mit datum, grund); Schreiben nur
+> `assets.write`. Kategorien: werkzeug, elektrowerkzeug, messmittel,
+> leiter, psa, it, maschine, sonstiges. Danach F.13.4 (Ausgabe,
+> Prüfungen, Prüfstand, Fälligkeitsliste der Prüfungen).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.13.1: 168 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.13.2: 174 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
-> Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen
-> (`pump(5 s)`), die MaterialApp bleibt beim Neuaufbau erhalten.
+> Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen.
 > Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
@@ -11307,6 +11308,24 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/qualification_catalog_page.dart` (neu),
 `client/test/qualification_catalog_test.dart` (neu),
 `docs/backlog.md`, `docs/state.md`.
+
+### F.13.2 Fällige Qualifikationen
+
+Seite `qualifications_due_page.dart`, Karte mit `qualifications.read`.
+Reihenfolge des Servers, Zähler, Vorwarnzeit einstellbar.
+
+**Gegenprobe-Befund:** Zähler-Test kannte jeden Stand nur einmal —
+ergänzt.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+6 neue Tests grün; Gegenprobe 11 Verfälschungen, alle erkannt;
+`flutter test` 174 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/lib/pages/qualifications_due_page.dart` (neu),
+`client/test/qualifications_due_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern
 
