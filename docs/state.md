@@ -32,7 +32,9 @@
 > HTTP-Aufrufe im Test). Shader-Fehler im Test → `client/build/` ist
 > veraltet, löschen.
 > Keine offenen Fragen an den Nutzer.
-> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47.
+> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
+> (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
+> Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
