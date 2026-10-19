@@ -2676,6 +2676,12 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Freie Tage eines Jahres fuer den Mandanten: gesetzliche (nach
+  // eingestelltem Bundesland) und betriebliche (F.8.2.2). Jeder angemeldete
+  // Benutzer.
+  Future<Map<String, dynamic>> getHolidays({int? year}) =>
+      _getJson('/api/v1/holidays/', year == null ? null : {'year': '$year'});
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

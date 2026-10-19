@@ -5,6 +5,7 @@ import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
+import 'absence_overview_page.dart';
 import 'leave_admin_page.dart';
 import 'my_leave_page.dart';
 import 'my_time_page.dart';
@@ -150,6 +151,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => LeaveAdminPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('leave_requests.read'))
+        _DashCard(
+          title: 'Abwesenheiten',
+          icon: Icons.calendar_month_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AbsenceOverviewPage(api: api),
               ),
             );
           },
