@@ -2,6 +2,7 @@ package hr
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,4 +162,105 @@ func TestLeaveAccountBalance(t *testing.T) {
 	wantEmployeeError(t, err, "Mitarbeiter nicht gefunden")
 	acc, err = accounts.Get(ctx, emp.ID, 2026, company)
 	wantAccount(t, acc, err, 14, 0, 9, 2, true)
+}
+
+func TestLeaveAccountProposalAndRemaining(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	company := seedWorkdaysCompany(t, env)
+	other := seedWorkdaysCompany(t, env)
+	emps := NewEmployeeService(env.PG)
+	accounts := NewLeaveAccountService(env.PG)
+	leaves := NewLeaveService(env.PG)
+	date := func(y int, m time.Month, d int) *time.Time {
+		v := leaveDay(y, m, d)
+		return &v
+	}
+	inactive := false
+	mk := func(last string, in EmployeeInput) uuid.UUID {
+		t.Helper()
+		in.FirstName, in.LastName = "Rest", last
+		e, err := emps.Create(ctx, in, company)
+		if err != nil {
+			t.Fatalf("%s: %v", last, err)
+		}
+		return e.ID
+	}
+	newcomer := mk("Neu", EmployeeInput{HireDate: date(2026, 7, 2)})
+	veteran := mk("Alt", EmployeeInput{HireDate: date(2020, 4, 1)})
+	leftThisYear := mk("Gegangen", EmployeeInput{HireDate: date(2020, 4, 1), Termination: date(2026, 3, 31), Active: &inactive})
+	leftLastYear := mk("Frueher", EmployeeInput{HireDate: date(2020, 4, 1), Termination: date(2025, 6, 30), Active: &inactive})
+	noRest := mk("Leer", EmployeeInput{})
+	traveller := mk("Bereist", EmployeeInput{})
+	if _, err := emps.Create(ctx, EmployeeInput{FirstName: "Fremd", LastName: "Firma"}, other); err != nil {
+		t.Fatal(err)
+	}
+
+	// Vorschlag im Konto, aber nicht uebernommen.
+	acc, err := accounts.Get(ctx, newcomer, 2026, company)
+	wantAccount(t, acc, err, 20, 0, 0, 0, false)
+	if acc.Teilurlaub == nil || acc.Teilurlaub.Tage != 8.5 || acc.Teilurlaub.Monate != 5 {
+		t.Fatalf("Vorschlag Eintritt 02.07.: %+v", acc.Teilurlaub)
+	}
+	// Im Folgejahr kein Vorschlag mehr.
+	if acc, err = accounts.Get(ctx, newcomer, 2027, company); err != nil || acc.Teilurlaub != nil {
+		t.Fatalf("Folgejahr: %+v, %v", acc, err)
+	}
+	if acc, err = accounts.Get(ctx, veteran, 2026, company); err != nil || acc.Teilurlaub != nil {
+		t.Fatalf("ganzes Jahr: %+v, %v", acc, err)
+	}
+	// Der Vorschlag rechnet mit dem Jahresanspruch des Mitarbeiters, nicht
+	// mit dem festgelegten Konto.
+	if err := emps.Update(ctx, newcomer, map[string]any{"urlaubstage_jahr": float64(30)}, company); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := accounts.Set(ctx, newcomer, 2026, LeaveAccountInput{AnspruchTage: 12.5}, "", company); err != nil {
+		t.Fatal(err)
+	}
+	acc, err = accounts.Get(ctx, newcomer, 2026, company)
+	wantAccount(t, acc, err, 12.5, 0, 0, 0, true)
+	// 30 * 5/12 = 12,5 - ein halber Tag wird aufgerundet (§5 Abs. 2).
+	if acc.Teilurlaub == nil || acc.Teilurlaub.Tage != 13 {
+		t.Fatalf("Vorschlag bei 30 Tagen: %+v", acc.Teilurlaub)
+	}
+
+	// Resturlaub: ohne Rest und ausserhalb des Jahres nicht dabei.
+	if _, err := accounts.Set(ctx, noRest, 2026, LeaveAccountInput{AnspruchTage: 0}, "", company); err != nil {
+		t.Fatal(err)
+	}
+	lr, err := leaves.Create(ctx, LeaveRequest{EmployeeID: traveller, StartDate: leaveDay(2026, 6, 8), EndDate: leaveDay(2026, 6, 12)}, company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	setLeaveStatus(t, env, lr.ID, "approved")
+	list, err := accounts.Remaining(ctx, 2026, company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, r := range list {
+		names = append(names, r.LastName)
+		switch r.EmployeeID {
+		case traveller:
+			if r.Konto.RestTage != 15 {
+				t.Fatalf("Rest nach Urlaub: %+v", r.Konto)
+			}
+		case leftThisYear:
+			if r.Konto.Teilurlaub == nil || r.Konto.Teilurlaub.Tage != 5 {
+				t.Fatalf("Austritt 31.03.: %+v", r.Konto.Teilurlaub)
+			}
+		case leftLastYear, noRest:
+			t.Fatalf("gehoert nicht in die Liste: %+v", r)
+		}
+	}
+	if got := strings.Join(names, ","); got != "Alt,Bereist,Gegangen,Neu" {
+		t.Fatalf("Liste: %s", got)
+	}
+	_, err = accounts.Remaining(ctx, 1800, company)
+	wantEmployeeError(t, err, "Ungültiges Jahr")
+	// Der andere Mandant sieht nur seinen Mitarbeiter.
+	otherList, err := accounts.Remaining(ctx, 2026, other)
+	if err != nil || len(otherList) != 1 || otherList[0].LastName != "Firma" {
+		t.Fatalf("fremder Mandant: %+v, %v", otherList, err)
+	}
 }

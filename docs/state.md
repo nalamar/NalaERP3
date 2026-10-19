@@ -7,11 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.3.1** (Jahresanspruch am Mitarbeiter,
-> Jahreskonto `hr_leave_accounts`, `GET/PUT /leave-accounts`; Migration
-> 092). Davor F.8.2 vollständig (Feiertage, Arbeitswoche, Anträge zählen
-> Arbeitstage).
-> **Nächste Arbeit: F.8.3.2** (Teilurlaub-Vorschlag, Liste Resturlaub).
+> Zuletzt abgeschlossen: **F.8.3.2** — damit **F.8.3 vollständig**
+> (Jahresanspruch, Jahreskonto, Teilurlaub-Vorschlag nach §5 BUrlG,
+> Liste Resturlaub). Davor F.8.2 vollständig.
+> **Nächste Arbeit: F.8.4** (Abwesenheiten: aus Genehmigung,
+> Krankmeldung inkl. Selbstmeldung, §9-Rückbuchung, Zurückziehen/Storno
+> von Anträgen, Übersicht; Entscheidungsrecht an einer Stelle,
+> vorbereitet für Teamleiter) — wird geteilt.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als

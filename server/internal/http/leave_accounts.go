@@ -46,6 +46,22 @@ func mountLeaveAccountRoutes(protected chi.Router, svc *hr.LeaveAccountService, 
 			writeJSON(w, http.StatusOK, out)
 		})
 
+		// Liste "Resturlaub": alle Mitarbeiter mit Rest im Jahr - fuer den
+		// Hinweis auf Resturlaub und Verfall. Nur mit leave_requests.read.
+		r.With(requirePermission(permLeaveRequestsRead)).Get("/remaining", func(w http.ResponseWriter, req *http.Request) {
+			year, ok := calendarYear(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Remaining(req.Context(), year, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		// Konto eines Jahres festlegen - vollstaendiger Ersatz; anspruch_tage
 		// ist Pflicht, damit ein vergessenes Feld nicht still 0 Tage ergibt.
 		r.With(requirePermission(permLeaveRequestsDecide)).Put("/{employee_id}/{year}", func(w http.ResponseWriter, req *http.Request) {

@@ -76,6 +76,11 @@ type LeaveAccount struct {
 	Notiz            string     `json:"notiz"`
 	Festgelegt       bool       `json:"festgelegt"`
 	UpdatedAt        *time.Time `json:"updated_at,omitempty"`
+	// Teilurlaub ist der Vorschlag nach §5 BUrlG, wenn der Mitarbeiter im
+	// Jahr ein- oder austritt (F.8.3.2) - berechnet aus dem Jahresanspruch
+	// des Mitarbeiters, nicht aus dem festgelegten Konto. Uebernommen wird
+	// er nur, wenn die Personalabteilung das Konto damit festlegt.
+	Teilurlaub *PartialLeave `json:"teilurlaub,omitempty"`
 }
 
 // LeaveAccountInput ersetzt das Konto eines Jahres vollstaendig.
@@ -102,7 +107,8 @@ func (s *LeaveAccountService) Get(ctx context.Context, employeeID uuid.UUID, yea
 	}
 	var yearly *float64
 	var days []int16
-	err := s.pg.QueryRow(ctx, `SELECT urlaubstage_jahr::float8, arbeitstage FROM hr_employees WHERE id=$1 AND company_id=$2`, employeeID, companyID).Scan(&yearly, &days)
+	var hire, termination *time.Time
+	err := s.pg.QueryRow(ctx, `SELECT urlaubstage_jahr::float8, arbeitstage, hire_date, termination_date FROM hr_employees WHERE id=$1 AND company_id=$2`, employeeID, companyID).Scan(&yearly, &days, &hire, &termination)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, errors.New("Mitarbeiter nicht gefunden")
 	}
@@ -115,6 +121,7 @@ func (s *LeaveAccountService) Get(ctx context.Context, employeeID uuid.UUID, yea
 	} else {
 		acc.AnspruchTage = DefaultLeaveDays(len(days))
 	}
+	acc.Teilurlaub = PartialLeaveProposal(year, hire, termination, acc.AnspruchTage)
 	var updated time.Time
 	err = s.pg.QueryRow(ctx, `
         SELECT anspruch_tage::float8, uebertrag_tage::float8, hinweis_erteilt_am, notiz, updated_at
@@ -242,4 +249,61 @@ func (s *LeaveAccountService) Set(ctx context.Context, employeeID uuid.UUID, yea
 		return nil, err
 	}
 	return s.Get(ctx, employeeID, year, companyID)
+}
+
+// RemainingLeave ist eine Zeile der Liste "Resturlaub".
+type RemainingLeave struct {
+	EmployeeID uuid.UUID    `json:"employee_id"`
+	PersonalNr *string      `json:"personalnummer,omitempty"`
+	FirstName  string       `json:"first_name"`
+	LastName   string       `json:"last_name"`
+	Konto      LeaveAccount `json:"konto"`
+}
+
+// Remaining listet alle Mitarbeiter mit Resturlaub (Rest > 0) im Jahr,
+// nach Namen sortiert - die Grundlage fuer den Hinweis auf Resturlaub und
+// Verfall (BAG 9 AZR 541/15), deshalb mit "Hinweis erteilt am" im Konto.
+// Beruecksichtigt werden aktive Mitarbeiter und solche, die im Jahr
+// ausgetreten sind.
+func (s *LeaveAccountService) Remaining(ctx context.Context, year int, companyID string) ([]RemainingLeave, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if !validCalendarYear(year) {
+		return nil, errCalendarYear
+	}
+	rows, err := s.pg.Query(ctx, `
+        SELECT id, personalnummer, first_name, last_name FROM hr_employees
+         WHERE company_id=$1
+           AND (active OR (termination_date >= $2 AND termination_date <= $3))
+         ORDER BY last_name, first_name, id
+    `, companyID, calendarDay(year, time.January, 1), calendarDay(year, time.December, 31))
+	if err != nil {
+		return nil, err
+	}
+	var people []RemainingLeave
+	for rows.Next() {
+		var r RemainingLeave
+		if err := rows.Scan(&r.EmployeeID, &r.PersonalNr, &r.FirstName, &r.LastName); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		people = append(people, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := []RemainingLeave{}
+	for _, r := range people {
+		acc, err := s.Get(ctx, r.EmployeeID, year, companyID)
+		if err != nil {
+			return nil, err
+		}
+		if acc.RestTage > 0 {
+			r.Konto = *acc
+			out = append(out, r)
+		}
+	}
+	return out, nil
 }

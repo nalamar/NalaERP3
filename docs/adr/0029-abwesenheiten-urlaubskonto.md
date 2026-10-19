@@ -211,6 +211,15 @@ bleibt ungenutzt. Das Bundesland steht in `hr_calendar_settings`, nicht
 in `company_profiles` — die Firmenstammdaten werden vollständig per
 Upsert ersetzt und gehören zu Rechnung und Briefkopf.
 
+## Teilurlaub: Rundung (F.8.3.2, 2026-10-19)
+
+§5 Abs. 2 BUrlG rundet Bruchteile von mindestens einem halben Tag auf
+einen ganzen Tag auf; über kleinere Bruchteile sagt das Gesetz nichts
+(sie bleiben nach der Rechtsprechung als Bruchteil bestehen). Das Konto
+kennt nur halbe Tage. Festlegung: kleinere Bruchteile werden auf einen
+halben Tag aufgerundet — zugunsten des Mitarbeiters. Der Wert ist ein
+Vorschlag; die Personalabteilung legt das Konto fest.
+
 ## Konsequenzen
 
 - Migrationen ab 090 (Bundesland, Konto, `hr_holidays.company_id`,

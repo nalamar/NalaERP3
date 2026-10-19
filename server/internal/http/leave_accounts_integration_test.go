@@ -105,3 +105,26 @@ func TestLeaveAccountsHTTP(t *testing.T) {
 		t.Fatalf("Konto folgt dem Jahresanspruch nicht: %+v", acc)
 	}
 }
+
+func TestLeaveAccountsRemainingHTTP(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	tenant := newCatalogTenant(t, env, handler)
+	seedRoleWithPermissions(t, env, "rest-self", "leave_requests.self")
+	seedRoleWithPermissions(t, env, "rest-read", "leave_requests.read")
+	worker := tenant.linkedUser("rest-self", "Arbeiter")
+	reader := tenant.user("rest-read")
+	const path = "/api/v1/leave-accounts/remaining"
+
+	var list []struct {
+		EmployeeID uuid.UUID            `json:"employee_id"`
+		LastName   string               `json:"last_name"`
+		Konto      leaveAccountResponse `json:"konto"`
+	}
+	decodeJSONStatus(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+"?year=2026", ""), http.StatusOK, &list)
+	if len(list) != 1 || list[0].EmployeeID != worker.EmployeeID || list[0].LastName != "Arbeiter" || list[0].Konto.RestTage != 20 {
+		t.Fatalf("Resturlaub: %+v", list)
+	}
+	wantStatus(t, doAuthedRequest(t, handler, worker.Token, http.MethodGet, path+"?year=2026", ""), http.StatusForbidden)
+	wantAPIError(t, doAuthedRequest(t, handler, reader, http.MethodGet, path+"?year=1800", ""), http.StatusBadRequest, "validation_error", "Ungültiges Jahr")
+}
