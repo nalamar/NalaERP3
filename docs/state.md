@@ -7,30 +7,36 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.13.3** (Client: Betriebsmittel-Bestand).
-> Davor F.13.2 (Fällige Qualifikationen), F.13.1 (Katalog). F.13 vom
-> Nutzer am 2026-10-19 beauftragt.
+> Zuletzt abgeschlossen: **F.13.4.1** (Client: Detailseite je
+> Betriebsmittel mit Ausgaben — ausgeben mit Hinweisen, zurücknehmen,
+> stornieren). Davor F.13.3, F.13.2, F.13.1. F.13 vom Nutzer am
+> 2026-10-19 beauftragt.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: F.13.4** (voraussichtlich zu teilen) — in der Seite
-> "Betriebsmittel" je Stück: Ausgaben (`/asset-assignments?asset_id=`,
-> ausgeben an Mitarbeiter mit Anzeige der `hinweise`; 409 bei
-> gesperrt/ausgegeben/ausgemustert/inaktiv; zurücknehmen mit Zustand;
-> stornieren), Prüfungen (`/asset-inspections?asset_id=`, erfassen mit
-> Ergebnis bestanden/maengel/nicht_bestanden, stornieren), Prüfstand
-> (`/assets/{id}/inspection-standing`); dazu die Fälligkeitsliste der
-> Prüfungen (`/asset-inspections/due`, Standard 30 Tage). Mitarbeiter
-> für die Ausgabe aus `listEmployees` (aktive).
+> **Nächste Arbeit: F.13.4.2** (letzte Subtask von F.13) — auf
+> `asset_detail_page.dart` Abschnitt "Prüfungen": Prüfstand
+> (`GET /assets/{id}/inspection-standing`; Status geprueft/faellig_bald/
+> ueberfaellig/nie_geprueft/gesperrt/nicht_pruefpflichtig, `maengel`),
+> Liste (`GET /asset-inspections?asset_id=`), erfassen (`POST
+> /asset-inspections`: asset_id, geprueft_am, ergebnis bestanden/maengel/
+> nicht_bestanden, optional naechste_pruefung_am — bei nicht_bestanden
+> verboten —, pruefer_name Pflicht, optional pruefer_employee_id, notiz),
+> stornieren (`POST …/{id}/storno`); dazu Seite/Karte "Fällige
+> Prüfungen" (`GET /asset-inspections/due`, `warn_tage` Standard 30,
+> Einträge mit Halter). Danach F.13 abschließen und nächste Arbeit mit
+> Empfehlung erfragen.
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.13.3: 184 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.13.4.1: 195 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
 > Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen.
-> Auswahlfelder in schmalen Containern mit `isExpanded: true`.
+> Auswahlfelder in schmalen Containern mit `isExpanded: true`. Gleich
+> beschriftete Buttons in Seite und Dialog: im Test auf den Dialog
+> beschränken (`find.descendant(of: find.byType(AlertDialog), …)`).
 > Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
@@ -11340,6 +11346,22 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/dashboard_page.dart`,
 `client/lib/pages/assets_page.dart` (neu),
 `client/test/assets_page_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
+
+### F.13.4.1 Detailseite je Betriebsmittel: Ausgaben
+
+Seite `asset_detail_page.dart` (aus der Liste geöffnet). Ausgeben an
+aktive Mitarbeiter, Hinweise als Dialog, Ablehnung als Meldung;
+Zurücknehmen; Stornieren mit Begründung.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+11 neue Tests grün; Gegenprobe 23 Verfälschungen, alle erkannt;
+`flutter test` 195 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/assets_page.dart`,
+`client/lib/pages/asset_detail_page.dart` (neu),
+`client/test/asset_detail_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern

@@ -2401,6 +2401,53 @@ class ApiClient {
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
 
+  // -------- Ausgabe von Betriebsmitteln (Backlog F.13.4.1, Routen F.3.6.2) --------
+  // Ausgeben an einen Mitarbeiter (Datum JJJJ-MM-TT). Die Antwort enthaelt
+  // ggf. "hinweise" (Pruefung ueberfaellig, nie geprueft); ein gesperrtes
+  // Stueck lehnt der Server mit 409 ab. Erwartet 201.
+  Future<Map<String, dynamic>> issueAsset({
+    required String assetId,
+    required String employeeId,
+    required String ausgegebenAm,
+    String notiz = '',
+  }) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/asset-assignments/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'asset_id': assetId, 'employee_id': employeeId, 'ausgegeben_am': ausgegebenAm, 'notiz': notiz}),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Zuruecknehmen: einmalig, Datum JJJJ-MM-TT, Zustand optional.
+  Future<Map<String, dynamic>> returnAsset(String assignmentId, {required String datum, String zustand = ''}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/asset-assignments/$assignmentId/return'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'datum': datum, 'zustand': zustand}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ausgabe stornieren (falsch erfasst), mit Begruendung.
+  Future<Map<String, dynamic>> stornoAssetAssignment(String assignmentId, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/asset-assignments/$assignmentId/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

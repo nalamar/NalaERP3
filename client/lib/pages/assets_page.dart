@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'asset_detail_page.dart';
 
 // Betriebsmittel-Bestand (Backlog F.13.3) auf den Routen aus F.3.6.1:
 // Einzelstuecke mit Inventarnummer anlegen, bearbeiten, ausmustern. Lesen
@@ -402,6 +403,10 @@ class _AssetsPageState extends State<AssetsPage> {
                   if (retired) 'ausgemustert am ${isoToGerman(m['ausgemustert_am']?.toString())} (${m['ausgemustert_grund'] ?? ''})',
                 ].join(' · ');
                 return ListTile(
+                  onTap: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => AssetDetailPage(api: widget.api, asset: m)));
+                    if (mounted) _load();
+                  },
                   title: Text('${m['inventarnummer'] ?? ''} – ${m['bezeichnung'] ?? ''}'),
                   subtitle: Text(details),
                   trailing: _canWrite
