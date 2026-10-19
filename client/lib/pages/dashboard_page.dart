@@ -449,7 +449,6 @@ class _DashCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Ink(
         width: 260,
-        height: 160,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -461,25 +460,36 @@ class _DashCard extends StatelessWidget {
           ],
           border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircleAvatar(
-                backgroundColor: color.withValues(alpha: 0.12),
-                radius: 28,
-                child: Icon(icon, color: color, size: 30)),
-            const SizedBox(height: 12),
-            Text(title,
-                style:
-                    const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-            if (subtitleWidget != null) ...[
-              const SizedBox(height: 6),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 18),
-                child: subtitleWidget,
+        // Mindesthoehe statt fester Hoehe: mit Unterzeile (z. B. Auftraege)
+        // reichten 160 px nicht, der Inhalt lief ueber (Backlog 0.48). Die
+        // Karte waechst jetzt mit, ohne Inhalt abzuschneiden.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 160),
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircleAvatar(
+                      backgroundColor: color.withValues(alpha: 0.12),
+                      radius: 28,
+                      child: Icon(icon, color: color, size: 30)),
+                  const SizedBox(height: 12),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w600)),
+                  if (subtitleWidget != null) ...[
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: subtitleWidget,
+                    ),
+                  ],
+                ],
               ),
-            ],
-          ],
+            ),
+          ),
         ),
       ),
     );

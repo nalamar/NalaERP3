@@ -7,35 +7,32 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.13.4.2** — damit ist **TASK F.13 (Client:
-> Qualifikationskatalog, Fälligkeitslisten, Betriebsmittel) VOLLSTÄNDIG**.
-> Der Client deckt jetzt die gesamte HR- und Betriebsmittel-API ab
-> (Mitarbeiter, Zeiterfassung, Qualifikationen, Betriebsmittel mit
-> Ausgabe und Prüfungen).
+> Zuletzt abgeschlossen: **0.48** — **die Client-Testsuite ist jetzt
+> vollständig grün** (`flutter test` 219 / 0, `flutter analyze` 0 Fehler).
+> Ab jetzt gilt für Client-Arbeit wieder "alles grün" als
+> Regressionsnachweis; `scratchpad/fail_before.txt` ist überholt.
+> Davor: F.13 vollständig (Client deckt die gesamte HR- und
+> Betriebsmittel-API ab).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: Empfehlung 0.48** (vorbestehend rote Client-
-> Testsuite: 12 Tests in `sales_order_context_pages_test.dart`; Ursachen
-> Shader `ink_sparkle.frag`, Dashboard-Überlauf, veraltete erwartete
-> Texte; dazu die verwaiste `bank_statements_page.dart` mit 2
-> Analyse-Fehlern) — macht jede Client-Prüfung umständlich. Danach F.8
-> (Abwesenheiten, Urlaubskonto). Weitere: F.6, F.10, 0.45, 0.47; F.11,
-> F.12 für später. Bloßes "fortsetzen" = Empfehlung (Memory).
-> **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
-> `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
-> Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.13.4.2: 205 / 12.
-> Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
-> Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
-> `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
-> Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen.
-> Auswahlfelder in schmalen Containern mit `isExpanded: true`. Gleich
-> beschriftete Buttons in Seite und Dialog: im Test auf den Dialog
-> beschränken. Fakes: alle von einer Seite genutzten API-Methoden
-> überschreiben (sonst echte HTTP-Aufrufe im Test).
+> 0.48 hat der Nutzer ausdrücklich beauftragt (2026-10-19, um einen
+> Live-Zwischenstand anzusehen).
+> **Nächste Arbeit: Empfehlung F.8** (Abwesenheiten, Urlaubskonto).
+> Weitere: F.6, F.10, 0.45, 0.47; F.11, F.12 für später. Bloßes
+> "fortsetzen" = Empfehlung (Memory).
+> Client-Tests: neue Widget-Tests mit `splashFactory:
+> InkRipple.splashFactory` und Desktop-Fenstergröße; API-Methoden über
+> `http.runWithClient` + `MockClient`; Gegenprobe
+> `scratchpad/mutrun_flutter.py`. Snackbars in Tests: bei mehreren
+> Meldungen nacheinander die erste ablaufen lassen. Auswahlfelder in
+> schmalen Containern mit `isExpanded: true`. Gleich beschriftete Buttons
+> in Seite und Dialog: im Test auf den Dialog beschränken. Fakes: alle von
+> einer Seite genutzten API-Methoden überschreiben (sonst echte
+> HTTP-Aufrufe im Test). Shader-Fehler im Test → `client/build/` ist
+> veraltet, löschen.
 > Keine offenen Fragen an den Nutzer.
-> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
+> **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47.
 > Nächste freie Migration 090, ADR 0029.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >

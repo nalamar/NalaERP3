@@ -243,6 +243,16 @@ class _FakeApiClient extends ApiClient {
   Future<List<dynamic>> listProjectPhases(String projectId) async =>
       projectPhases;
 
+  // Seit 17.04.2026 laedt die Projekt-Detailseite ihren kaufmaennischen
+  // Stand ueber diesen Aufruf; ohne Ueberschreibung lief im Test ein echter
+  // HTTP-Aufruf ins Leere und die Seite zeigte nur "Fehler" (Backlog 0.48).
+  @override
+  Future<Map<String, dynamic>> getProjectCommercialContext(String id) async => {
+        'quotes': quoteList,
+        'sales_orders': salesOrderList,
+        'invoices_out': invoiceList,
+      };
+
   @override
   Future<List<dynamic>> listPhaseElevations(
           String projectId, String phaseId) async =>
@@ -2054,7 +2064,8 @@ void main() {
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.widgetWithText(TextFormField, 'Stahl'),
+        // Kategorie ist seit 17.04.2026 ein Auswahlfeld (Backlog 0.48).
+        matching: find.widgetWithText(DropdownButtonFormField<String>, 'Stahl'),
       ),
       findsOneWidget,
     );
@@ -5355,7 +5366,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Kaufmännischer Status'), findsOneWidget);
-    expect(find.text('2 Angebote  •  2 Aufträge'), findsOneWidget);
+    // Seit 17.04.2026 mit Rechnungszahl (Backlog 0.48: Test war veraltet).
+    expect(find.text('2 Angebote  •  2 Aufträge  •  0 Rechnungen'), findsOneWidget);
     expect(find.textContaining('1 Angebote mit Folgebeleg'), findsOneWidget);
     expect(find.textContaining('1 Aufträge in Teilfaktura'), findsOneWidget);
     expect(

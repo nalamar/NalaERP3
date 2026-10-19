@@ -2490,6 +2490,29 @@ class ApiClient {
   Future<List<dynamic>> listAssetInspectionsDue({int? warnDays}) => _getList(
       '/api/v1/asset-inspections/due', warnDays == null ? null : {'warn_tage': '$warnDays'});
 
+  // Kontoauszuege (Server-Routen /bank-statements, bank.read/bank.write).
+  // Fehlten bisher, obwohl bank_statements_page.dart sie aufruft (Backlog
+  // 0.48). Der Server wertet derzeit nur limit aus, offset wird ignoriert.
+  Future<List<dynamic>> listBankStatements({int? limit, int? offset}) {
+    final qp = <String, String>{};
+    if (limit != null) qp['limit'] = '$limit';
+    if (offset != null) qp['offset'] = '$offset';
+    return _getList('/api/v1/bank-statements', qp.isEmpty ? null : qp);
+  }
+
+  // Ordnet einen Kontoauszug zu; ohne invoiceId sucht der Server selbst.
+  Future<Map<String, dynamic>> matchBankStatement(String id, {String? invoiceId}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/bank-statements/$id/match'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({if (invoiceId != null) 'invoice_id': invoiceId}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http
