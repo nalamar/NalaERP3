@@ -5,6 +5,7 @@ import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
+import 'my_leave_page.dart';
 import 'my_time_page.dart';
 import 'qualification_catalog_page.dart';
 import 'qualifications_due_page.dart';
@@ -122,6 +123,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => MyTimePage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('leave_requests.self'))
+        _DashCard(
+          title: 'Mein Urlaub',
+          icon: Icons.beach_access_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MyLeavePage(api: api),
               ),
             );
           },
