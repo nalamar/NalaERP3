@@ -9,6 +9,7 @@ import 'my_time_page.dart';
 import 'qualification_catalog_page.dart';
 import 'qualifications_due_page.dart';
 import 'assets_page.dart';
+import 'asset_inspections_due_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -173,6 +174,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => AssetsPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('assets.read'))
+        _DashCard(
+          title: 'Fällige Prüfungen',
+          icon: Icons.fact_check_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AssetInspectionsDuePage(api: api),
               ),
             );
           },

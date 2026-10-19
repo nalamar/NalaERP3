@@ -2448,6 +2448,48 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Pruefungen von Betriebsmitteln (Backlog F.13.4.2, Routen F.3.6.3) --------
+  // Pruefstand eines Stuecks heute; Vorwarnzeit Standard 30 Tage (Server).
+  Future<Map<String, dynamic>> getAssetInspectionStanding(String assetId) =>
+      _getJson('/api/v1/assets/$assetId/inspection-standing');
+
+  // Pruefungen eines Stuecks, die juengste zuerst; stornierte auf Wunsch.
+  Future<List<dynamic>> listAssetInspections(String assetId, {bool includeStorniert = false}) {
+    final qp = <String, String>{'asset_id': assetId};
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getList('/api/v1/asset-inspections/', qp);
+  }
+
+  // Pruefung erfassen (body: asset_id, geprueft_am, ergebnis,
+  // naechste_pruefung_am optional, pruefer_name, notiz). Erwartet 201.
+  Future<Map<String, dynamic>> recordAssetInspection(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/asset-inspections/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> stornoAssetInspection(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/asset-inspections/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Betriebsweite Liste: gesperrt, ueberfaellig, nie geprueft, bald faellig.
+  Future<List<dynamic>> listAssetInspectionsDue({int? warnDays}) => _getList(
+      '/api/v1/asset-inspections/due', warnDays == null ? null : {'warn_tage': '$warnDays'});
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

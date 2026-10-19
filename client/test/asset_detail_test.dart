@@ -71,6 +71,13 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) async => const [];
+
+  // Pruefungen (F.13.4.2) - hier ohne Belang, aber ohne Netzwerk.
+  @override
+  Future<Map<String, dynamic>> getAssetInspectionStanding(String assetId) async => {'status': 'nie_geprueft'};
+
+  @override
+  Future<List<dynamic>> listAssetInspections(String assetId, {bool includeStorniert = false}) async => const [];
 }
 
 Map<String, dynamic> _asset({bool retired = false}) => {
@@ -140,6 +147,9 @@ void main() {
     expect(find.text('Leiter · Standort Halle 2 · Prüfung alle 12 Monate · SN S9'), findsOneWidget);
     expect(find.text('Ausgegeben an Anna Berg · seit 01.10.2026'), findsOneWidget);
     expect(find.text('Bert Cord · 01.09.2026 – 20.09.2026 (Holm verbogen)'), findsOneWidget);
+    // Abschnitt Pruefungen (F.13.4.2) auf derselben Seite.
+    expect(find.text('Prüfungen'), findsOneWidget);
+    expect(find.text('Prüfstand: noch nie geprüft'), findsOneWidget);
     expect(find.text('Zurücknehmen'), findsNothing);
     expect(find.text('Ausgeben'), findsNothing);
     expect(find.byTooltip('Stornieren'), findsNothing);

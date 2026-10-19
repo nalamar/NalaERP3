@@ -7,36 +7,33 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.13.4.1** (Client: Detailseite je
-> Betriebsmittel mit Ausgaben — ausgeben mit Hinweisen, zurücknehmen,
-> stornieren). Davor F.13.3, F.13.2, F.13.1. F.13 vom Nutzer am
-> 2026-10-19 beauftragt.
+> Zuletzt abgeschlossen: **F.13.4.2** — damit ist **TASK F.13 (Client:
+> Qualifikationskatalog, Fälligkeitslisten, Betriebsmittel) VOLLSTÄNDIG**.
+> Der Client deckt jetzt die gesamte HR- und Betriebsmittel-API ab
+> (Mitarbeiter, Zeiterfassung, Qualifikationen, Betriebsmittel mit
+> Ausgabe und Prüfungen).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: F.13.4.2** (letzte Subtask von F.13) — auf
-> `asset_detail_page.dart` Abschnitt "Prüfungen": Prüfstand
-> (`GET /assets/{id}/inspection-standing`; Status geprueft/faellig_bald/
-> ueberfaellig/nie_geprueft/gesperrt/nicht_pruefpflichtig, `maengel`),
-> Liste (`GET /asset-inspections?asset_id=`), erfassen (`POST
-> /asset-inspections`: asset_id, geprueft_am, ergebnis bestanden/maengel/
-> nicht_bestanden, optional naechste_pruefung_am — bei nicht_bestanden
-> verboten —, pruefer_name Pflicht, optional pruefer_employee_id, notiz),
-> stornieren (`POST …/{id}/storno`); dazu Seite/Karte "Fällige
-> Prüfungen" (`GET /asset-inspections/due`, `warn_tage` Standard 30,
-> Einträge mit Halter). Danach F.13 abschließen und nächste Arbeit mit
-> Empfehlung erfragen.
+> **Nächste Arbeit: Empfehlung 0.48** (vorbestehend rote Client-
+> Testsuite: 12 Tests in `sales_order_context_pages_test.dart`; Ursachen
+> Shader `ink_sparkle.frag`, Dashboard-Überlauf, veraltete erwartete
+> Texte; dazu die verwaiste `bank_statements_page.dart` mit 2
+> Analyse-Fehlern) — macht jede Client-Prüfung umständlich. Danach F.8
+> (Abwesenheiten, Urlaubskonto). Weitere: F.6, F.10, 0.45, 0.47; F.11,
+> F.12 für später. Bloßes "fortsetzen" = Empfehlung (Memory).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.13.4.1: 195 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.13.4.2: 205 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`. Snackbars in
 > Tests: bei mehreren Meldungen nacheinander die erste ablaufen lassen.
 > Auswahlfelder in schmalen Containern mit `isExpanded: true`. Gleich
 > beschriftete Buttons in Seite und Dialog: im Test auf den Dialog
-> beschränken (`find.descendant(of: find.byType(AlertDialog), …)`).
+> beschränken. Fakes: alle von einer Seite genutzten API-Methoden
+> überschreiben (sonst echte HTTP-Aufrufe im Test).
 > Keine offenen Fragen an den Nutzer.
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.48.
 > Nächste freie Migration 090, ADR 0029.
@@ -11362,6 +11359,27 @@ Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/assets_page.dart`,
 `client/lib/pages/asset_detail_page.dart` (neu),
 `client/test/asset_detail_test.dart` (neu), `docs/backlog.md`,
+`docs/state.md`.
+
+### F.13.4.2 Prüfungen und Fällige Prüfungen (letzte Subtask von F.13)
+
+Abschnitt `asset_inspections_section.dart` auf der Detailseite;
+Seite `asset_inspections_due_page.dart` mit Karte.
+
+**Gegenprobe-Befund:** drei Testlücken geschlossen (Farbe "nie
+geprüft", negative Vorwarnzeit, Abschnitt auf der Detailseite).
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+10 neue Tests grün; Gegenprobe 30 Verfälschungen, alle erkannt;
+`flutter test` 205 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/api.dart`,
+`client/lib/pages/asset_detail_page.dart`,
+`client/lib/pages/dashboard_page.dart`,
+`client/lib/pages/asset_inspections_section.dart` (neu),
+`client/lib/pages/asset_inspections_due_page.dart` (neu),
+`client/test/asset_inspections_test.dart` (neu),
+`client/test/asset_detail_test.dart`, `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern

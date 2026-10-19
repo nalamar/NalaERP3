@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import 'asset_inspections_section.dart';
 import 'assets_page.dart' show assetKategorieLabel, intervallLabel, isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
 
@@ -332,6 +333,8 @@ class _AssetDetailPageState extends State<AssetDetailPage> {
                   ],
                 ),
             ],
+            const Divider(height: 32),
+            AssetInspectionsSection(api: widget.api, assetId: _id, retired: _retired, now: widget.now),
           ],
         ),
       ),
