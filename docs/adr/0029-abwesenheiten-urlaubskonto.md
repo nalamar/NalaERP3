@@ -1,8 +1,8 @@
 # ADR 0029 — Abwesenheiten, Feiertage, Urlaubskonto, Teams
 
 Datum: 2026-10-19
-Status: vorgeschlagen (F.8.1). Fünf Punkte brauchen die Freigabe des
-Nutzers, bevor F.8.2 beginnt (siehe "Offen").
+Status: entschieden (vorgeschlagen in F.8.1; die fünf offenen Punkte hat
+der Nutzer am 2026-10-19 beantwortet, siehe "Entscheidungen des Nutzers")
 Bezug: Backlog F.8 (Epic F — Personal & HR); `aufgabe.md` §1, Domäne F:
 "Urlaub/Abwesenheit". Baut auf ADR 0025 (Urlaubsanträge über HTTP) auf.
 
@@ -153,11 +153,42 @@ Mandanten-Einstellung Bundesland gehört zu `settings.manage`.
    eigener Schritt; Teamleiter-Genehmigung braucht eine Stellvertreter-
    Regel.*
 
+## Entscheidungen des Nutzers (2026-10-19)
+
+1. **Feiertage:** "Ja genau so" — berechnet, Bundesland am Mandanten,
+   am Mitarbeiter überschreibbar, betriebliche Zusatztage pflegbar.
+2. **Urlaubskonto:** "Genau so. Jeder Mitarbeiter bekommt mindestens 20
+   Tage Urlaub, wenn anderes ausgehandelt wird, hinterlegt die
+   Personalabteilung das im Mitarbeiter." → **Vorgabe 20 Tage** (statt
+   der vorgeschlagenen Mandanten-Einstellung mit 30); abweichender
+   Anspruch am Mitarbeiter. *Annahme (zu bestätigen bei F.8.3):* die
+   20 gelten für die 5-Tage-Woche; bei weniger Arbeitstagen je Woche
+   anteilig (gesetzlich 4 × Arbeitstage je Woche, z. B. 12 bei drei
+   Tagen). Ein Anspruch unter dieser Untergrenze wird abgelehnt.
+3. **Verfall:** "Genau so" — kein automatischer Verfall, Übertrag durch
+   die Personalabteilung, Nachweisfeld "Hinweis erteilt am".
+4. **Krankheit:** "So umsetzen" — direkt als Abwesenheit ohne Diagnose,
+   Attest ja/nein, Rückbuchung nach §9, Selbstmeldung erlaubt, Liste
+   "neue Krankmeldungen" für die Personalabteilung.
+5. **Genehmigung und Teams:** "Nein, Urlaub genehmigt nur
+   Personalabteilung oder Geschäftsführer im Moment, eine Erweiterung
+   auf Teamleiter aber bitte schon mit vorbereiten." → Genehmigen bleibt
+   bei `leave_requests.decide` (heute Rollen `role-hr` und `role-admin`
+   laut 087 — das deckt Personalabteilung und Geschäftsführung ab).
+   **Vorbereitung Teamleiter (F.8.4):** die Frage "darf dieser Login
+   diesen Antrag entscheiden?" wird an **einer** Stelle im Service
+   beantwortet (statt nur über `requirePermission`), die den
+   Antrag kennt; der Teamleiter (`hr_teams.lead_employee_id`) wird dort
+   später mit einem eigenen Recht (etwa `leave_requests.decide_team`)
+   ergänzt. Das Recht wird jetzt **nicht** angelegt. Kollegen sehen
+   Abwesenheiten anderer vorerst nicht.
+
 ## Vorgeschlagene Aufteilung (nach Freigabe)
 
-- **F.8.2** Feiertagsberechnung (rein, mit Tests je Land und Osterdaten),
-  Bundesland am Mandanten/Mitarbeiter, betriebliche Zusatztage,
-  Arbeitstage-Zählung für neue Anträge.
+- **F.8.2** Feiertage und Arbeitstage, geteilt in **F.8.2.1**
+  Feiertagsberechnung und Arbeitstage-Zählung (rein, ohne DB) und
+  **F.8.2.2** Bundesland am Mandanten/Mitarbeiter, betriebliche
+  Zusatztage, Zählung in neuen Anträgen.
 - **F.8.3** Urlaubskonto (Tabelle, Jahresanspruch, Teilurlaub-Vorschlag,
   Rest, Liste Resturlaub, Hinweis-Nachweis) mit Routen.
 - **F.8.4** Abwesenheiten: aus Genehmigung, Krankmeldung, §9-Rückbuchung,
