@@ -2657,6 +2657,25 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Liste "Resturlaub" eines Jahres (leave_requests.read).
+  Future<List<dynamic>> listRemainingLeave({int? year}) =>
+      _getList('/api/v1/leave-accounts/remaining', year == null ? null : {'year': '$year'});
+
+  // Urlaubskonto eines Jahres festlegen (leave_requests.decide):
+  // anspruch_tage (Pflicht), uebertrag_tage, hinweis_erteilt_am
+  // (JJJJ-MM-TT), notiz. Ersetzt das Konto vollstaendig.
+  Future<Map<String, dynamic>> setLeaveAccount(String employeeId, int year, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/leave-accounts/$employeeId/$year'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

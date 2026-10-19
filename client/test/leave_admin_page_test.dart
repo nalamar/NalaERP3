@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nalaerp_client/api.dart';
 import 'package:nalaerp_client/pages/dashboard_page.dart';
+import 'package:nalaerp_client/pages/leave_accounts_page.dart';
 import 'package:nalaerp_client/pages/leave_admin_page.dart';
 
 // Urlaubsantraege und Krankmeldungen fuer die Personalabteilung (Backlog
@@ -80,6 +81,21 @@ class _FakeApi extends ApiClient {
   Future<Map<String, dynamic>> setAbsenceAttest(String id, bool attest) async {
     calls.add('attest $id $attest');
     return {'id': id};
+  }
+
+  final List<Map<String, dynamic>> sickReports = [];
+
+  @override
+  Future<Map<String, dynamic>> reportSick(Map<String, dynamic> body) async {
+    calls.add('reportSick');
+    sickReports.add(body);
+    return {'id': 'neu'};
+  }
+
+  @override
+  Future<List<dynamic>> listRemainingLeave({int? year}) async {
+    calls.add('remaining $year');
+    return [];
   }
 
   @override
@@ -237,6 +253,62 @@ void main() {
     await tester.tap(_inDialog(find.widgetWithText(FilledButton, 'Stornieren')));
     await tester.pumpAndSettle();
     expect(api.calls, contains('stornoAbsence s2 doppelt gemeldet'));
+  });
+
+  testWidgets('Krankmeldung fuer einen Mitarbeiter erfassen', (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
+    await tester.tap(find.text('Krankmeldung erfassen'));
+    await tester.pumpAndSettle();
+    expect(_inDialog(find.text('Erfasst wird nur der Zeitraum - keine Diagnose.')), findsOneWidget);
+    await tester.tap(_inDialog(find.text('Erfassen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte den Mitarbeiter wählen.'), findsOneWidget);
+    await tester.tap(_inDialog(find.byType(DropdownButtonFormField<String>)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Dorn, Carl').last);
+    await tester.pumpAndSettle();
+    final fields = _inDialog(find.byType(TextField));
+    expect(tester.widget<TextField>(fields.at(0)).controller!.text, '14.10.2026');
+    await tester.enterText(fields.at(1), '13.10.2026');
+    await tester.tap(_inDialog(find.text('Erfassen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Der letzte Tag liegt vor dem ersten.'), findsOneWidget);
+    await tester.enterText(fields.at(1), 'x');
+    await tester.tap(_inDialog(find.text('Erfassen')));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte beide Tage als TT.MM.JJJJ angeben.'), findsOneWidget);
+    expect(api.sickReports, isEmpty);
+    await tester.enterText(fields.at(1), '16.10.2026');
+    await tester.tap(_inDialog(find.text('Attest liegt vor')));
+    await tester.pumpAndSettle();
+    await tester.tap(_inDialog(find.text('Erfassen')));
+    await tester.pumpAndSettle();
+    expect(api.sickReports, [
+      {'employee_id': 'e2', 'start_date': '2026-10-14', 'end_date': '2026-10-16', 'attest': true}
+    ]);
+    expect(find.text('Krankmeldung erfasst'), findsOneWidget);
+  });
+
+  testWidgets('Weg zu den Urlaubskonten; ohne Rechte keine Buttons oben', (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
+    await tester.tap(find.text('Urlaubskonten und Resturlaub'));
+    await tester.pumpAndSettle();
+    expect(find.byType(LeaveAccountsPage), findsOneWidget);
+    expect(api.calls, contains('remaining 2026'));
+    // Mit Mitarbeiterliste, aber ohne Entscheidungsrecht: Konten ja,
+    // Krankmeldung erfassen nein.
+    final reader = _FakeApi(perms: const {'leave_requests.read', 'employees.read'});
+    await tester.pumpWidget(const SizedBox());
+    await _pump(tester, reader);
+    expect(find.text('Krankmeldung erfassen'), findsNothing);
+    expect(find.text('Urlaubskonten und Resturlaub'), findsOneWidget);
+    final readOnly = _FakeApi(perms: const {'leave_requests.read'});
+    await tester.pumpWidget(const SizedBox());
+    await _pump(tester, readOnly);
+    expect(find.text('Krankmeldung erfassen'), findsNothing);
+    expect(find.text('Urlaubskonten und Resturlaub'), findsNothing);
   });
 
   testWidgets('Dashboard: "Urlaubsanträge" nur mit leave_requests.read', (tester) async {

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import 'employee_qualifications_section.dart' show parseDateInput;
+import 'leave_accounts_page.dart';
 import 'my_leave_page.dart' show leaveRequestLine, sickLine;
 
 // Urlaubsantraege und Krankmeldungen fuer die Personalabteilung (Backlog
@@ -55,6 +57,7 @@ class _LeaveAdminPageState extends State<LeaveAdminPage> {
   List<Map<String, dynamic>> approved = [];
   List<dynamic> newSick = [];
   Map<String, String> names = {};
+  List<Map<String, dynamic>> activeEmployees = [];
   bool loading = false;
   String? error;
 
@@ -84,6 +87,8 @@ class _LeaveAdminPageState extends State<LeaveAdminPage> {
         approved = approvedFromYear(ok, year);
         newSick = sick;
         names = employeeNames(emps);
+        activeEmployees = emps.map((e) => e as Map<String, dynamic>).where((e) => e['active'] != false).toList()
+          ..sort((a, b) => names[a['id'].toString()]!.compareTo(names[b['id'].toString()]!));
       });
     } on ApiException catch (e) {
       if (mounted) setState(() => error = 'Daten konnten nicht geladen werden: ${e.message}');
@@ -179,6 +184,85 @@ class _LeaveAdminPageState extends State<LeaveAdminPage> {
     await _run(() => widget.api.stornoAbsence(a['id'].toString(), reason), 'Krankmeldung storniert');
   }
 
+  // Krankmeldung fuer einen Mitarbeiter: gilt als bestaetigt, Attest wie
+  // angegeben. Nur Zeitraum und Attest - keine Diagnose (ADR 0029).
+  Future<void> _reportSickDialog() async {
+    final t = (widget.now ?? DateTime.now)();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final today = '${two(t.day)}.${two(t.month)}.${t.year}';
+    final fromCtrl = TextEditingController(text: today);
+    final toCtrl = TextEditingController(text: today);
+    String? employeeId;
+    bool attest = false;
+    String? dialogError;
+    final body = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Krankmeldung erfassen'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: employeeId,
+                  isExpanded: true,
+                  decoration: const InputDecoration(labelText: 'Mitarbeiter'),
+                  items: [
+                    for (final e in activeEmployees)
+                      DropdownMenuItem(value: e['id'].toString(), child: Text(names[e['id'].toString()] ?? '')),
+                  ],
+                  onChanged: (v) => setStateDialog(() => employeeId = v),
+                ),
+                TextField(controller: fromCtrl, decoration: const InputDecoration(labelText: 'Erster Krankheitstag (TT.MM.JJJJ)')),
+                TextField(controller: toCtrl, decoration: const InputDecoration(labelText: 'Letzter Tag (TT.MM.JJJJ)')),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: attest,
+                  onChanged: (v) => setStateDialog(() => attest = v ?? false),
+                  title: const Text('Attest liegt vor'),
+                ),
+                const Text('Erfasst wird nur der Zeitraum - keine Diagnose.'),
+                if (dialogError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(
+              onPressed: () {
+                final from = parseDateInput(fromCtrl.text);
+                final to = parseDateInput(toCtrl.text);
+                String? problem;
+                if (employeeId == null) {
+                  problem = 'Bitte den Mitarbeiter wählen.';
+                } else if (from == null || to == null) {
+                  problem = 'Bitte beide Tage als TT.MM.JJJJ angeben.';
+                } else if (to.compareTo(from) < 0) {
+                  problem = 'Der letzte Tag liegt vor dem ersten.';
+                }
+                if (problem != null) {
+                  setStateDialog(() => dialogError = problem);
+                  return;
+                }
+                Navigator.of(ctx).pop({'employee_id': employeeId, 'start_date': from, 'end_date': to, 'attest': attest});
+              },
+              child: const Text('Erfassen'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (body == null) return;
+    await _run(() => widget.api.reportSick(body), 'Krankmeldung erfasst');
+  }
+
   Widget _header(String text) => Padding(
         padding: const EdgeInsets.only(top: 16, bottom: 4),
         child: Text(text, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -195,6 +279,21 @@ class _LeaveAdminPageState extends State<LeaveAdminPage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              children: [
+                if (_canDecide && activeEmployees.isNotEmpty)
+                  FilledButton(onPressed: _reportSickDialog, child: const Text('Krankmeldung erfassen')),
+                if (widget.api.hasPermission('employees.read'))
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context)
+                        .push(MaterialPageRoute(builder: (_) => LeaveAccountsPage(api: widget.api, now: widget.now)))
+                        .then((_) => _load()),
+                    child: const Text('Urlaubskonten und Resturlaub'),
+                  ),
+              ],
+            ),
             if (loading) const LinearProgressIndicator(minHeight: 2),
             if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
             if (error == null) ...[
