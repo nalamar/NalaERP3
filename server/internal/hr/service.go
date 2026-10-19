@@ -726,6 +726,19 @@ func (s *LeaveService) Get(ctx context.Context, id uuid.UUID, companyID string) 
 }
 
 func (s *LeaveService) List(ctx context.Context, employeeID *uuid.UUID, limit, offset int, companyID string) ([]LeaveRequest, error) {
+	return s.ListFiltered(ctx, employeeID, "", limit, offset, companyID)
+}
+
+// leaveStatuses sind die Statuswerte eines Antrags (Migration 093).
+var leaveStatuses = map[string]bool{"pending": true, "approved": true, "rejected": true, "withdrawn": true, "storniert": true}
+
+// ListFiltered ist List mit optionalem Statusfilter ("" = alle) - die
+// Personalabteilung braucht alle OFFENEN Antraege, auch wenn es mehr
+// neuere entschiedene gibt als eine Seite fasst (F.8.6.2.1).
+func (s *LeaveService) ListFiltered(ctx context.Context, employeeID *uuid.UUID, status string, limit, offset int, companyID string) ([]LeaveRequest, error) {
+	if status != "" && !leaveStatuses[status] {
+		return nil, errors.New("Ungültiger Status")
+	}
 	if limit <= 0 {
 		limit = 50
 	}
@@ -744,6 +757,10 @@ func (s *LeaveService) List(ctx context.Context, employeeID *uuid.UUID, limit, o
 	} else {
 		where = "WHERE employee_id IN (SELECT id FROM hr_employees WHERE company_id=$1)"
 		args = append(args, companyID)
+	}
+	if status != "" {
+		args = append(args, status)
+		where += " AND status=$" + itoa(len(args))
 	}
 	args = append(args, limit, offset)
 	rows, err := s.pg.Query(ctx, `SELECT `+leaveRequestColumns+` FROM hr_leave_requests `+where+` ORDER BY created_at DESC LIMIT $`+itoa(len(args)-1)+` OFFSET $`+itoa(len(args)), args...)

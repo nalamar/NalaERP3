@@ -2516,9 +2516,10 @@ class ApiClient {
   // -------- Urlaub und Abwesenheiten (Backlog F.8.6, Routen F.8.2-F.8.4) --------
   // Antraege: ohne employeeId die eigenen (leave_requests.self); mit
   // leave_requests.read und ohne employeeId alle des Mandanten.
-  Future<List<dynamic>> listLeaveRequests({String? employeeId, int? limit}) {
+  Future<List<dynamic>> listLeaveRequests({String? employeeId, String? status, int? limit}) {
     final qp = <String, String>{};
     if (employeeId != null && employeeId.isNotEmpty) qp['employee_id'] = employeeId;
+    if (status != null && status.isNotEmpty) qp['status'] = status;
     if (limit != null) qp['limit'] = '$limit';
     return _getList('/api/v1/leave-requests/', qp.isEmpty ? null : qp);
   }
@@ -2586,6 +2587,74 @@ class ApiClient {
     if (teamId != null && teamId.isNotEmpty) qp['team_id'] = teamId;
     if (includeStorniert) qp['include_storniert'] = 'true';
     return _getList('/api/v1/absences/', qp);
+  }
+
+  // Antrag genehmigen (approve true) oder ablehnen - leave_requests.decide.
+  Future<Map<String, dynamic>> decideLeaveRequest(String id, bool approve) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/leave-requests/$id/decide'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'approve': approve}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Genehmigten Antrag mit Begruendung stornieren; die Tage gehen aufs Konto zurueck.
+  Future<Map<String, dynamic>> stornoLeaveRequest(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/leave-requests/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Selbst gemeldete, noch nicht bestaetigte Krankmeldungen (leave_requests.read).
+  Future<List<dynamic>> listNewSickReports() => _getList('/api/v1/absences/sick/new');
+
+  // Attest ja/nein an einer Krankmeldung festhalten.
+  Future<Map<String, dynamic>> setAbsenceAttest(String id, bool attest) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/absences/$id/attest'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'attest': attest}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Selbstmeldung bestaetigen - sie verschwindet aus "neue Krankmeldungen".
+  Future<Map<String, dynamic>> confirmAbsence(String id) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/absences/$id/confirm'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(<String, dynamic>{}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Krankmeldung mit Begruendung stornieren.
+  Future<Map<String, dynamic>> stornoAbsence(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/absences/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
   // -------- Documents --------

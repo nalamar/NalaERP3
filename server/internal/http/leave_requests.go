@@ -126,7 +126,7 @@ func mountLeaveRequestRoutes(protected chi.Router, svc *hr.LeaveService, resolve
 				filter = &employeeID
 			}
 			companyID, _ := companyIDFromContext(req.Context())
-			out, err := svc.List(req.Context(), filter, limit, offset, companyID)
+			out, err := svc.ListFiltered(req.Context(), filter, q.Get("status"), limit, offset, companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return

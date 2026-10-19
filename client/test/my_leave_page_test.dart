@@ -60,7 +60,7 @@ class _FakeApi extends ApiClient {
   }
 
   @override
-  Future<List<dynamic>> listLeaveRequests({String? employeeId, int? limit}) async {
+  Future<List<dynamic>> listLeaveRequests({String? employeeId, String? status, int? limit}) async {
     calls.add('requests ${employeeId ?? '-'} $limit');
     return requests.map((e) => Map<String, dynamic>.from(e)).toList();
   }

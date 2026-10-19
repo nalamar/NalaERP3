@@ -7,13 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.6.1** ("Mein Urlaub" im Client: Konto,
-> Anträge stellen/zurückziehen, Krankmeldung selbst). Server-Seite von
-> F.8 vollständig (F.8.2–F.8.5, Migrationen 090–094).
-> **Nächste Arbeit: F.8.6.2** (Personalabteilung: entscheiden,
-> stornieren, neue Krankmeldungen, Konto festlegen, Resturlaub). Danach
-> F.8.6.3 Übersicht, F.8.6.4 Einstellungen/Teams/Mitarbeiterfelder.
-> Client-Suite: 229 / 0.
+> Zuletzt abgeschlossen: **F.8.6.2.1** (Personalabteilung im Client:
+> Anträge genehmigen/ablehnen/stornieren, neue Krankmeldungen; Server:
+> Statusfilter `?status=`). Davor F.8.6.1 "Mein Urlaub".
+> **Nächste Arbeit: F.8.6.2.2** (Krankmeldung für Mitarbeiter, Konto
+> festlegen mit Teilurlaub-Vorschlag, Liste Resturlaub). Danach F.8.6.3
+> Übersicht, F.8.6.4 Einstellungen/Teams/Mitarbeiterfelder.
+> Client-Suite: 238 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
