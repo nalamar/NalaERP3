@@ -62,6 +62,55 @@ func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService) {
 			writeJSON(w, http.StatusOK, out)
 		})
 
+		// Teams pflegen (F.8.5): employees.write wie die Mitarbeiter. Teams
+		// haben vorerst keine Wirkung auf Rechte (ADR 0029).
+		r.With(requirePermission("employees.write")).Post("/teams", func(w http.ResponseWriter, req *http.Request) {
+			var in hr.TeamInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.CreateTeam(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("employees.write")).Put("/teams/{teamID}", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "teamID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Team-ID")
+				return
+			}
+			var in hr.TeamInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.UpdateTeam(req.Context(), id, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+		r.With(requirePermission("employees.write")).Delete("/teams/{teamID}", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "teamID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Team-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			if err := svc.DeleteTeam(req.Context(), id, companyID); err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+
 		// Logins des Mandanten zur Auswahl beim Verknuepfen (Backlog
 		// F.7.2.1). employees.write wie das Verknuepfen selbst; die volle
 		// Benutzerliste unter /users verlangt users.manage, das die

@@ -90,10 +90,13 @@ type Team struct {
 	ID   uuid.UUID  `json:"id"`
 	Name string     `json:"name"`
 	Lead *uuid.UUID `json:"lead_employee_id,omitempty"`
+	// Mitglieder: Zahl der zugeordneten Mitarbeiter (F.8.5).
+	Mitglieder int `json:"mitglieder"`
 }
 
 func (s *EmployeeService) ListTeams(ctx context.Context, companyID string) ([]Team, error) {
-	rows, err := s.pg.Query(ctx, `SELECT id, name, lead_employee_id FROM hr_teams WHERE company_id=$1 ORDER BY name`, companyID)
+	rows, err := s.pg.Query(ctx, `SELECT t.id, t.name, t.lead_employee_id, (SELECT count(*) FROM hr_employees e WHERE e.team_id=t.id)
+		FROM hr_teams t WHERE t.company_id=$1 ORDER BY t.name`, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +105,7 @@ func (s *EmployeeService) ListTeams(ctx context.Context, companyID string) ([]Te
 	for rows.Next() {
 		var t Team
 		var lead *uuid.UUID
-		if err := rows.Scan(&t.ID, &t.Name, &lead); err != nil {
+		if err := rows.Scan(&t.ID, &t.Name, &lead, &t.Mitglieder); err != nil {
 			return nil, err
 		}
 		t.Lead = lead

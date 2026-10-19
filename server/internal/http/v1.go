@@ -5054,6 +5054,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits mit einem anderen"),
 		strings.Contains(msg, "bereits entschieden"),
 		strings.Contains(msg, "bereits bestätigt"),
+		strings.Contains(msg, "hat noch mitglieder"),
 		strings.Contains(msg, "ist stillgelegt"),
 		strings.Contains(msg, "bereits ausgemustert"),
 		strings.Contains(msg, "noch ausgegeben"),
