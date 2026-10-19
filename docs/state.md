@@ -7,26 +7,27 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.5.2** (Client: eigene Zeiten nachtragen,
-> korrigieren, stornieren; Wochen blättern). Davor F.3.7 (Korrektur
-> "Mängel sperrt"), F.5.1.
+> Zuletzt abgeschlossen: **F.5.3** — damit ist **TASK F.5 (Client:
+> Zeiterfassung) VOLLSTÄNDIG**: Kommen/Gehen, eigene Woche mit
+> ArbZG-Hinweisen, Nachtragen/Korrigieren/Stornieren, Zeiten anderer für
+> die Personalabteilung. Davor F.3.7, F.7.
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
 > Zustimmung zur Empfehlung gewertet): F.7 vor F.5, eigene schmale
 > Login-Route (2026-10-16); F.5 als nächste Arbeit (2026-10-19).
-> **Nächste Arbeit: F.5.3** (letzte Subtask von F.5) — die
-> Personalabteilung sieht und bearbeitet die Zeiten eines Mitarbeiters
-> (`time_entries.read`/`write`; dieselben Routen mit `employee_id`;
-> `createTimeEntry` kennt `employeeId` schon). Vorschlag: Seite
-> "Arbeitszeiten" mit Auswahl des Mitarbeiters (aus `listEmployees`) und
-> Wiederverwendung der Wochenansicht aus `my_time_page.dart` (Seite um
-> einen optionalen Mitarbeiter erweitern; ohne Kommen/Gehen, denn
-> stempeln kann nur der Mitarbeiter selbst — für andere wird
-> nachgetragen). Danach F.5 abschließen und nächste Arbeit erfragen
-> (mit Empfehlung; bloßes "fortsetzen" = Empfehlung, siehe Memory).
+> **Nächste Arbeit: Empfehlung F.13**, beginnend mit dem
+> Qualifikationskatalog im Client (Arten anlegen/ändern/stilllegen,
+> Vorschlagskatalog übernehmen — `/qualification-types`, F.2.5.1) und
+> der betriebsweiten Fälligkeitsliste der Qualifikationen
+> (`/qualifications/due`). Begründung: ohne Katalog-Oberfläche ist der
+> Katalog leer, und die Qualifikationsfunktionen aus F.7.3 bieten nichts
+> zur Auswahl an. Danach Betriebsmittel-Oberfläche (Bestand, Ausgabe,
+> Prüfungen, Fälligkeitsliste). Alternativen: 0.48 (Client-Tests
+> reparieren), F.8, F.6, F.10, 0.45, 0.47. Bloßes "fortsetzen" =
+> Empfehlung (Memory).
 > **CLIENT-TESTSUITE IST VORBESTEHEND ROT (Backlog 0.48):** 12 Tests in
 > `sales_order_context_pages_test.dart`. Für Client-Arbeit fehlschlagende
 > Tests vor/nach namentlich vergleichen (Referenz:
-> `scratchpad/fail_before.txt`); Stand nach F.5.2: 154 / 12.
+> `scratchpad/fail_before.txt`); Stand nach F.5.3: 158 / 12.
 > Neue Widget-Tests mit `splashFactory: InkRipple.splashFactory` und
 > Desktop-Fenstergröße; API-Methoden über `http.runWithClient` +
 > `MockClient`; Gegenprobe `scratchpad/mutrun_flutter.py`.
@@ -11272,6 +11273,21 @@ Pflicht-Begründung.
 Geänderte Dateien: `client/lib/api.dart`,
 `client/lib/pages/my_time_page.dart`,
 `client/test/my_time_page_test.dart`, `docs/backlog.md`,
+`docs/state.md`.
+
+### F.5.3 Client: Zeiten anderer für die Personalabteilung (letzte Subtask von F.5)
+
+`MyTimePage` mit optionalem Mitarbeiter; Einstieg über "Arbeitszeiten"
+in der Mitarbeiterseite. Ohne Kommen/Gehen; Bearbeiten nur mit
+`time_entries.write`.
+
+**Verifikation.** `flutter analyze` der geänderten Dateien ohne Befund;
+4 neue Tests grün; Gegenprobe 11 Verfälschungen, alle erkannt;
+`flutter test` 158 / 12, fehlschlagende identisch mit vorher.
+
+Geänderte Dateien: `client/lib/pages/my_time_page.dart`,
+`client/lib/pages/employees_page.dart`,
+`client/test/employee_time_test.dart` (neu), `docs/backlog.md`,
 `docs/state.md`.
 
 ## Backlog 0.46 — Request-Log ohne Werte von Query-Parametern

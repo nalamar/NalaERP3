@@ -4,6 +4,7 @@ import '../api.dart';
 import 'employee_qualifications_section.dart';
 import 'employee_assets_section.dart';
 import 'initial_qualifications_dialog.dart';
+import 'my_time_page.dart';
 
 // Mitarbeiterverwaltung (Backlog F.7.1) auf den Routen aus F.4.4:
 // /api/v1/employees. Lesen mit employees.read, anlegen und aendern mit
@@ -424,6 +425,17 @@ class _EmployeesPageState extends State<EmployeesPage> {
           Text('Kostenstelle: ${sel['cost_center'] ?? ''}'),
           Text('Login: ${_loginLabel(sel)}'),
           const SizedBox(height: 12),
+          if (widget.api.hasPermission('time_entries.read') && id.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => MyTimePage(api: widget.api, employeeId: id, employeeName: employeeDisplayName(sel)),
+                )),
+                icon: const Icon(Icons.schedule),
+                label: const Text('Arbeitszeiten'),
+              ),
+            ),
           if (_canWrite)
             Wrap(
               spacing: 8,

@@ -7,6 +7,11 @@ import 'employee_qualifications_section.dart' show parseDateInput;
 // Hinweisen der Pruefung nach Arbeitszeitgesetz (Server, F.1); Zeiten
 // nachtragen, korrigieren und stornieren, Wochen blaettern.
 //
+// Mit employeeId (F.5.3) dieselbe Ansicht fuer die Personalabteilung: die
+// Zeiten eines anderen Mitarbeiters, lesen mit time_entries.read,
+// nachtragen/korrigieren/stornieren mit time_entries.write. Kommen und
+// Gehen gibt es dort nicht - stempeln kann nur der Mitarbeiter selbst.
+//
 // Beim Kommen und Gehen gilt die Uhr des SERVERS - der Client sendet dann
 // keine Zeit. Beim Nachtragen und Korrigieren gibt der Mitarbeiter die
 // Zeiten in der Ortszeit des Geraets an; sie werden nach UTC umgerechnet.
@@ -116,8 +121,11 @@ class EntryTimes {
 const notLinkedMessage = 'Kein Mitarbeiter mit diesem Benutzer verknüpft';
 
 class MyTimePage extends StatefulWidget {
-  const MyTimePage({super.key, required this.api, this.now});
+  const MyTimePage({super.key, required this.api, this.now, this.employeeId, this.employeeName});
   final ApiClient api;
+  // Fremder Mitarbeiter (Personalabteilung); null = die eigenen Zeiten.
+  final String? employeeId;
+  final String? employeeName;
   // Uhr fuer die Wochenauswahl; in Tests fest vorgegeben.
   final DateTime Function()? now;
 
@@ -136,6 +144,10 @@ class _MyTimePageState extends State<MyTimePage> {
   bool showStorniert = false;
 
   DateTime _now() => (widget.now ?? DateTime.now)();
+  bool get _forOther => widget.employeeId != null;
+  // Eigene Zeiten bearbeitet der Mitarbeiter mit time_entries.self (der
+  // Server prueft); fremde nur mit time_entries.write.
+  bool get _canEdit => !_forOther || widget.api.hasPermission('time_entries.write');
   DateTime _weekAnchor() => _now().add(Duration(days: 7 * weekOffset));
 
   @override
@@ -151,7 +163,8 @@ class _MyTimePageState extends State<MyTimePage> {
     });
     try {
       final range = weekRange(_weekAnchor());
-      final sheet = await widget.api.listTimeEntries(from: range.from, to: range.to, includeStorniert: showStorniert);
+      final sheet = await widget.api
+          .listTimeEntries(from: range.from, to: range.to, employeeId: widget.employeeId, includeStorniert: showStorniert);
       if (!mounted) return;
       setState(() {
         entries = (sheet['entries'] as List?) ?? const [];
@@ -159,7 +172,7 @@ class _MyTimePageState extends State<MyTimePage> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => error = e.message == notLinkedMessage
+      setState(() => error = e.message == notLinkedMessage && !_forOther
           ? 'Ihr Login ist mit keinem Mitarbeiter verknüpft. Bitte wenden Sie sich an die Personalabteilung.'
           : 'Arbeitszeiten konnten nicht geladen werden: ${e.message}');
     } catch (e) {
@@ -325,7 +338,11 @@ class _MyTimePageState extends State<MyTimePage> {
     if (r == null) return;
     try {
       await widget.api.createTimeEntry(
-          startedAt: r.times.startedAt, endedAt: r.times.endedAt, breakMinutes: r.times.breakMinutes, note: r.note);
+          startedAt: r.times.startedAt,
+          endedAt: r.times.endedAt,
+          breakMinutes: r.times.breakMinutes,
+          note: r.note,
+          employeeId: widget.employeeId);
       _snack('Zeit nachgetragen');
       await _load();
     } catch (e) {
@@ -437,6 +454,7 @@ class _MyTimePageState extends State<MyTimePage> {
       return Text('$text – storniert: ${m['storno_reason'] ?? ''}',
           style: const TextStyle(color: Colors.grey, decoration: TextDecoration.lineThrough));
     }
+    if (!_canEdit) return Text(text);
     return Row(
       children: [
         Expanded(child: Text(text)),
@@ -492,7 +510,7 @@ class _MyTimePageState extends State<MyTimePage> {
     final range = weekRange(_weekAnchor());
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Meine Arbeitszeit'),
+        title: Text(_forOther ? 'Arbeitszeiten: ${widget.employeeName ?? ''}' : 'Meine Arbeitszeit'),
         actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Neu laden')],
       ),
       body: SafeArea(
@@ -504,7 +522,7 @@ class _MyTimePageState extends State<MyTimePage> {
               Text(error!, style: const TextStyle(color: Color(0xFFB00020)))
             else ...[
               // Kommen/Gehen gilt fuer jetzt - nur in der aktuellen Woche.
-              if (weekOffset == 0) _statusCard(),
+              if (weekOffset == 0 && !_forOther) _statusCard(),
               const SizedBox(height: 16),
               Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
@@ -516,7 +534,8 @@ class _MyTimePageState extends State<MyTimePage> {
                       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   IconButton(tooltip: 'Nächste Woche', icon: const Icon(Icons.chevron_right), onPressed: () => _goToWeek(weekOffset + 1)),
                   if (weekOffset != 0) TextButton(onPressed: () => _goToWeek(0), child: const Text('Diese Woche')),
-                  OutlinedButton.icon(onPressed: _addEntry, icon: const Icon(Icons.add), label: const Text('Zeit nachtragen')),
+                  if (_canEdit)
+                    OutlinedButton.icon(onPressed: _addEntry, icon: const Icon(Icons.add), label: const Text('Zeit nachtragen')),
                   FilterChip(
                     label: const Text('Stornierte anzeigen'),
                     selected: showStorniert,
