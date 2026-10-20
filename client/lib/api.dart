@@ -2682,6 +2682,43 @@ class ApiClient {
   Future<Map<String, dynamic>> getHolidays({int? year}) =>
       _getJson('/api/v1/holidays/', year == null ? null : {'year': '$year'});
 
+  // Feiertagskalender des Mandanten (F.8.2.2): Bundesland ("" = nicht
+  // eingestellt) und bayerische Schalter - settings.manage.
+  Future<Map<String, dynamic>> getHrCalendarSettings() => _getJson('/api/v1/settings/hr-calendar/');
+
+  Future<Map<String, dynamic>> setHrCalendarSettings(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/settings/hr-calendar/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Betriebliche freie Tage (Betriebsruhe) - leave_requests.decide.
+  Future<List<dynamic>> listCompanyDays({int? year}) =>
+      _getList('/api/v1/holidays/company-days', year == null ? null : {'year': '$year'});
+
+  Future<Map<String, dynamic>> createCompanyDay(String datum, String name) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/holidays/company-days'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'datum': datum, 'name': name}),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<void> deleteCompanyDay(String id) async {
+    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/holidays/company-days/$id'), headers: headers));
+    if (r.statusCode != 204) _throwApiException(r);
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

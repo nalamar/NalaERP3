@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'hr_calendar_page.dart';
 import 'leave_accounts_page.dart';
 import 'my_leave_page.dart' show leaveRequestLine, sickLine;
 
@@ -291,6 +292,12 @@ class _LeaveAdminPageState extends State<LeaveAdminPage> {
                         .push(MaterialPageRoute(builder: (_) => LeaveAccountsPage(api: widget.api, now: widget.now)))
                         .then((_) => _load()),
                     child: const Text('Urlaubskonten und Resturlaub'),
+                  ),
+                if (_canDecide)
+                  OutlinedButton(
+                    onPressed: () =>
+                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => HrCalendarPage(api: widget.api, now: widget.now))),
+                    child: const Text('Feiertage und Betriebsruhe'),
                   ),
               ],
             ),

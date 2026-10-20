@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_destinations.dart';
 import '../web/browser.dart' as browser;
+import 'hr_calendar_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.api});
@@ -1356,6 +1357,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 12),
+              // Feiertagskalender (Backlog F.8.6.4.1): eigene Seite.
+              ListTile(
+                title: _buildSectionTitle('Feiertage und Betriebsruhe'),
+                subtitle: const Text('Bundesland für die gesetzlichen Feiertage, betriebliche freie Tage'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HrCalendarPage(api: widget.api))),
               ),
               const SizedBox(height: 12),
               ExpansionTile(

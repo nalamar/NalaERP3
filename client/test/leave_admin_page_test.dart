@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:nalaerp_client/api.dart';
 import 'package:nalaerp_client/pages/dashboard_page.dart';
+import 'package:nalaerp_client/pages/hr_calendar_page.dart';
 import 'package:nalaerp_client/pages/leave_accounts_page.dart';
 import 'package:nalaerp_client/pages/leave_admin_page.dart';
 
@@ -91,6 +92,12 @@ class _FakeApi extends ApiClient {
     sickReports.add(body);
     return {'id': 'neu'};
   }
+
+  @override
+  Future<List<dynamic>> listCompanyDays({int? year}) async => [];
+
+  @override
+  Future<Map<String, dynamic>> getHolidays({int? year}) async => {'days': []};
 
   @override
   Future<List<dynamic>> listRemainingLeave({int? year}) async {
@@ -297,6 +304,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(LeaveAccountsPage), findsOneWidget);
     expect(api.calls, contains('remaining 2026'));
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Feiertage und Betriebsruhe'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HrCalendarPage), findsOneWidget);
     // Mit Mitarbeiterliste, aber ohne Entscheidungsrecht: Konten ja,
     // Krankmeldung erfassen nein.
     final reader = _FakeApi(perms: const {'leave_requests.read', 'employees.read'});
@@ -304,6 +316,7 @@ void main() {
     await _pump(tester, reader);
     expect(find.text('Krankmeldung erfassen'), findsNothing);
     expect(find.text('Urlaubskonten und Resturlaub'), findsOneWidget);
+    expect(find.text('Feiertage und Betriebsruhe'), findsNothing);
     final readOnly = _FakeApi(perms: const {'leave_requests.read'});
     await tester.pumpWidget(const SizedBox());
     await _pump(tester, readOnly);

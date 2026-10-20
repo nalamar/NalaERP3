@@ -7,12 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.6.3** (Abwesenheitsübersicht im Client:
-> Monatsraster, Team-Filter, freie Tage). Davor F.8.6.1, F.8.6.2.
-> **Nächste Arbeit: F.8.6.4** (Einstellungen Bundesland/Schalter/
-> betriebliche Tage, Teams pflegen, Mitarbeiterfelder Bundesland/
-> Arbeitstage/Jahresanspruch) — letzte Subtask von F.8.
-> Client-Suite: 254 / 0.
+> Zuletzt abgeschlossen: **F.8.6.4.1** (Feiertage und Betriebsruhe im
+> Client: Bundesland, bayerische Schalter, betriebliche Tage). Davor
+> F.8.6.1–F.8.6.3.
+> **Nächste Arbeit: F.8.6.4.2** (Teams pflegen, Mitarbeiterfelder
+> Bundesland/Arbeitstage/Jahresanspruch) — letzte Subtask von F.8.
+> Client-Suite: 260 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
