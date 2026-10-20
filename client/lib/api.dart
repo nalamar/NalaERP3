@@ -2719,6 +2719,38 @@ class ApiClient {
     if (r.statusCode != 204) _throwApiException(r);
   }
 
+  // Teams pflegen (F.8.5) - employees.write. Body: name, lead_employee_id
+  // (null = kein Teamleiter).
+  Future<Map<String, dynamic>> createTeam(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/employees/teams'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateTeam(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/employees/teams/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Nur ohne Mitglieder - sonst 409.
+  Future<void> deleteTeam(String id) async {
+    final r = await _sendWithAuth((headers) => http.delete(_u('/api/v1/employees/teams/$id'), headers: headers));
+    if (r.statusCode != 204) _throwApiException(r);
+  }
+
   // -------- Documents --------
   Future<List<dynamic>> listMaterialDocuments(String materialId) async {
     final r = await _sendWithAuth((headers) => http

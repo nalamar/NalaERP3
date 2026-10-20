@@ -1,6 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../api.dart';
+import 'employee_work_settings.dart';
+import 'teams_page.dart';
 import 'employee_qualifications_section.dart';
 import 'employee_assets_section.dart';
 import 'initial_qualifications_dialog.dart';
@@ -424,6 +426,10 @@ class _EmployeesPageState extends State<EmployeesPage> {
           Text('Standort: ${sel['location'] ?? ''}'),
           Text('Kostenstelle: ${sel['cost_center'] ?? ''}'),
           Text('Login: ${_loginLabel(sel)}'),
+          // Arbeitstage und Urlaub (F.8.6.4.2).
+          Text('Bundesland: ${employeeBundeslandLabel(sel)}'),
+          Text('Arbeitstage: ${workdaysLabel(((sel['arbeitstage'] as List?) ?? const [1, 2, 3, 4, 5]).map((e) => (e as num).toInt()).toList())}'),
+          Text('Jahresurlaub: ${leaveEntitlementLabel(sel)}'),
           const SizedBox(height: 12),
           if (widget.api.hasPermission('time_entries.read') && id.isNotEmpty)
             Padding(
@@ -442,6 +448,15 @@ class _EmployeesPageState extends State<EmployeesPage> {
               runSpacing: 8,
               children: [
                 FilledButton.tonal(onPressed: _editSelected, child: const Text('Bearbeiten')),
+                OutlinedButton(
+                  onPressed: () async {
+                    final updated = await showWorkSettingsDialog(context, widget.api, sel);
+                    if (updated == null || !mounted) return;
+                    setState(() => selected = updated);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Arbeitstage und Urlaub gespeichert')));
+                  },
+                  child: const Text('Arbeitstage und Urlaub'),
+                ),
                 if (active)
                   FilledButton.icon(
                     onPressed: () => _setActive(false),
@@ -490,7 +505,14 @@ class _EmployeesPageState extends State<EmployeesPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Personal'),
-        actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Neu laden')],
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => TeamsPage(api: widget.api))).then((_) => _load()),
+            icon: const Icon(Icons.groups_outlined),
+            label: const Text('Teams'),
+          ),
+          IconButton(onPressed: _load, icon: const Icon(Icons.refresh), tooltip: 'Neu laden'),
+        ],
         backgroundColor: Colors.transparent,
       ),
       floatingActionButton: _canWrite
