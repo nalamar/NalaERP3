@@ -7,14 +7,14 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.8.6.4.2** — damit ist **TASK F.8
-> (Abwesenheiten, Feiertage, Urlaubskonto, Teams) VOLLSTÄNDIG**, Server
-> (Migrationen 090–094) und Client. ADR 0029 entschieden.
-> **Live-Stand am 2026-10-20 neu gebaut und gestartet** ("fortsetzen" als
-> Zustimmung zur Empfehlung gewertet): Migrationen 090–094 eingespielt,
-> neue Routen mit dem lokalen Admin geprüft (200).
-> **Nächste Arbeit: Empfehlung 0.49** (erster Admin bei Neuinstallation,
-> vom Nutzer gewünscht) vor F.6/F.10/F.11/F.12.
+> Zuletzt abgeschlossen: **0.49.1** (Server: erster Admin `Admin`/`Admin`
+> bei leerer Datenbank, Pflicht zum Passwortwechsel, Sperre aller
+> geschützten Routen bis zum Wechsel; Migration 095). Davor TASK F.8
+> vollständig, Live-Stand am 2026-10-20 neu gestartet ("fortsetzen" als
+> Zustimmung gewertet).
+> **Nächste Arbeit: 0.49.2** (Client: Pflichtdialog "Passwort ändern").
+> Bis dahin sähe ein Bootstrap-Admin im Client nur Fehler; bestehende
+> Installationen haben Benutzer und sind nicht betroffen.
 > Client-Suite: 269 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
@@ -42,7 +42,7 @@
 > **Ebenfalls offen:** F.6, F.8, F.10, F.11, F.12, 0.45, 0.47, 0.49
 > (erster Admin `Admin`/`Admin` bei Neuinstallation mit Pflicht-
 > Passwortwechsel, vom Nutzer beauftragt 2026-10-19).
-> Nächste freie Migration 095, ADR 0030.
+> Nächste freie Migration 096, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*

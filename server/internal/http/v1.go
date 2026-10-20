@@ -58,7 +58,10 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	authStore := auth.NewSessionStore(rd)
 	loginRateLimiter := auth.NewLoginRateLimiter(rd, cfg.LoginRateLimitMaxAttempts, time.Duration(cfg.LoginRateLimitWindowSeconds)*time.Second)
 	authSvc := auth.NewService(authRepo, authStore, cfg).WithRateLimiter(loginRateLimiter)
-	protected := r.With(requireAuth(authSvc))
+	// Alle geschuetzten Routen verlangen zusaetzlich, dass kein
+	// Passwortwechsel aussteht (Backlog 0.49). Ausgenommen sind nur
+	// /auth/me und /auth/change-password (eigene Middleware-Kette).
+	protected := r.With(requireAuth(authSvc), requirePasswordChanged)
 	conSvc := contacts.NewService(pg).WithMongo(mg, cfg.MongoDB)
 	numSvc := settings.NewNumberingService(pg)
 	journalSvc := accounting.NewJournalService(pg)
@@ -146,6 +149,23 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			if err := authSvc.Logout(req.Context(), in.RefreshToken); err != nil {
 				writeAPIError(w, req, http.StatusUnauthorized, "invalid_token", "Token ungültig oder abgelaufen")
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+		})
+		// Passwort aendern (Backlog 0.49) - auch, solange der Wechsel
+		// erzwungen ist.
+		r.With(requireAuth(authSvc)).Post("/change-password", func(w http.ResponseWriter, req *http.Request) {
+			var in struct {
+				CurrentPassword string `json:"current_password"`
+				NewPassword     string `json:"new_password"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			if err := authSvc.ChangePassword(req.Context(), actorUserIDFromContext(req.Context()), in.CurrentPassword, in.NewPassword); err != nil {
+				writeDomainError(w, req, err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
@@ -5179,6 +5199,20 @@ func requireAuth(authSvc *auth.Service) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, req.WithContext(ctx))
 		})
 	}
+}
+
+// requirePasswordChanged sperrt jede Route, solange der angemeldete
+// Benutzer sein Passwort aendern muss (Backlog 0.49). Laeuft nach
+// requireAuth; der Benutzer wird dort bei jeder Anfrage frisch geladen,
+// die Sperre faellt also mit dem Wechsel sofort.
+func requirePasswordChanged(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if user, ok := authUserFromContext(req.Context()); ok && user.MustChangePassword {
+			writeAPIError(w, req, http.StatusForbidden, "password_change_required", "Passwort muss geändert werden")
+			return
+		}
+		next.ServeHTTP(w, req)
+	})
 }
 
 func authUserFromContext(ctx context.Context) (auth.User, bool) {

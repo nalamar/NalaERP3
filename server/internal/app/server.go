@@ -10,6 +10,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.mongodb.org/mongo-driver/mongo"
 
+	"nalaerp3/internal/auth"
 	"nalaerp3/internal/config"
 	"nalaerp3/internal/db"
 	httpx "nalaerp3/internal/http"
@@ -79,6 +80,16 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		pgConn.Close()
 		_ = mgConn.Disconnect(context.Background())
 		return nil, err
+	}
+
+	// Erster Admin bei Neuinstallation (Backlog 0.49): nur wenn es noch
+	// keinen einzigen Benutzer gibt. Das Passwort steht bewusst nicht im Log.
+	if created, err := auth.EnsureBootstrapAdmin(ctx, pgConn); err != nil {
+		pgConn.Close()
+		_ = mgConn.Disconnect(context.Background())
+		return nil, err
+	} else if created {
+		log.Printf("Erster Administrator angelegt: Benutzer %q - das Passwort muss bei der ersten Anmeldung geändert werden", auth.BootstrapAdminUsername)
 	}
 
 	// Router mit Abhängigkeiten

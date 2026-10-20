@@ -37,13 +37,13 @@ func (r *Repository) FindUserByLogin(ctx context.Context, login string) (*User, 
 	err := r.pg.QueryRow(ctx, `
         SELECT id, email, COALESCE(username,''), password_hash, COALESCE(first_name,''), COALESCE(last_name,''),
                COALESCE(display_name,''), locale, timezone, is_active, is_locked, COALESCE(company_id,''), branch_id,
-               last_login_at, password_changed_at, created_at, updated_at
+               last_login_at, password_changed_at, must_change_password, created_at, updated_at
           FROM users
          WHERE LOWER(email)=$1 OR LOWER(COALESCE(username,''))=$1
     `, login).Scan(
 		&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.FirstName, &u.LastName,
 		&u.DisplayName, &u.Locale, &u.Timezone, &u.IsActive, &u.IsLocked, &u.CompanyID, &u.BranchID,
-		&u.LastLoginAt, &u.PasswordChangedAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.LastLoginAt, &u.PasswordChangedAt, &u.MustChangePassword, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -59,13 +59,13 @@ func (r *Repository) GetUserByID(ctx context.Context, userID string) (*User, err
 	err := r.pg.QueryRow(ctx, `
         SELECT id, email, COALESCE(username,''), password_hash, COALESCE(first_name,''), COALESCE(last_name,''),
                COALESCE(display_name,''), locale, timezone, is_active, is_locked, COALESCE(company_id,''), branch_id,
-               last_login_at, password_changed_at, created_at, updated_at
+               last_login_at, password_changed_at, must_change_password, created_at, updated_at
           FROM users
          WHERE id=$1
     `, userID).Scan(
 		&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.FirstName, &u.LastName,
 		&u.DisplayName, &u.Locale, &u.Timezone, &u.IsActive, &u.IsLocked, &u.CompanyID, &u.BranchID,
-		&u.LastLoginAt, &u.PasswordChangedAt, &u.CreatedAt, &u.UpdatedAt,
+		&u.LastLoginAt, &u.PasswordChangedAt, &u.MustChangePassword, &u.CreatedAt, &u.UpdatedAt,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -260,6 +260,12 @@ func (r *Repository) ReplaceUserRoles(ctx context.Context, userID string, roleCo
 	}
 
 	return r.ListRoleCodesByUserID(ctx, userID)
+}
+
+// SetPassword setzt ein neues Passwort und hebt die Wechselpflicht auf.
+func (r *Repository) SetPassword(ctx context.Context, userID, hash string, at time.Time) error {
+	_, err := r.pg.Exec(ctx, `UPDATE users SET password_hash=$2, password_changed_at=$3, must_change_password=false, updated_at=$3 WHERE id=$1`, userID, hash, at)
+	return err
 }
 
 func (r *Repository) UpdateLastLogin(ctx context.Context, userID string, at time.Time) error {

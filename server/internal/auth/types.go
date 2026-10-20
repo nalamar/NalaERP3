@@ -19,8 +19,11 @@ type User struct {
 	BranchID          *string    `json:"branch_id,omitempty"`
 	LastLoginAt       *time.Time `json:"last_login_at"`
 	PasswordChangedAt *time.Time `json:"password_changed_at"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	// MustChangePassword: bis zum Passwortwechsel sind alle geschuetzten
+	// Routen gesperrt (Backlog 0.49).
+	MustChangePassword bool      `json:"must_change_password"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type Role struct {
