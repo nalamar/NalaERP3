@@ -10,10 +10,11 @@
 > Zuletzt abgeschlossen: **F.8.6.4.2** — damit ist **TASK F.8
 > (Abwesenheiten, Feiertage, Urlaubskonto, Teams) VOLLSTÄNDIG**, Server
 > (Migrationen 090–094) und Client. ADR 0029 entschieden.
-> **Nächste Arbeit: offen — Empfehlung:** Live-Stand neu starten und F.8
-> vom Nutzer ansehen lassen (Live-DB braucht Migrationen 090–094; Docker-
-> Images neu bauen). Danach Empfehlung 0.49 (erster Admin bei
-> Neuinstallation, vom Nutzer gewünscht) vor F.6/F.10/F.11/F.12.
+> **Live-Stand am 2026-10-20 neu gebaut und gestartet** ("fortsetzen" als
+> Zustimmung zur Empfehlung gewertet): Migrationen 090–094 eingespielt,
+> neue Routen mit dem lokalen Admin geprüft (200).
+> **Nächste Arbeit: Empfehlung 0.49** (erster Admin bei Neuinstallation,
+> vom Nutzer gewünscht) vor F.6/F.10/F.11/F.12.
 > Client-Suite: 269 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
