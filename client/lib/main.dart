@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'api.dart';
+import 'pages/change_password_page.dart';
 import 'pages/dashboard_page.dart';
 
 void main() {
@@ -49,14 +50,16 @@ class NalaERPApp extends StatelessWidget {
 }
 
 class AuthGate extends StatefulWidget {
-  const AuthGate({super.key});
+  // api nur fuer Tests; sonst ein eigener ApiClient.
+  const AuthGate({super.key, this.api});
+  final ApiClient? api;
 
   @override
   State<AuthGate> createState() => _AuthGateState();
 }
 
 class _AuthGateState extends State<AuthGate> {
-  final ApiClient _api = ApiClient();
+  late final ApiClient _api = widget.api ?? ApiClient();
   bool _loading = true;
   Map<String, dynamic>? _identity;
   String? _error;
@@ -136,6 +139,16 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  // Nach dem erzwungenen Wechsel: Identitaet neu laden (Kennzeichen weg).
+  Future<void> _reloadIdentity() async {
+    try {
+      final me = await _api.getCurrentUser();
+      if (mounted) setState(() => _identity = me);
+    } catch (e) {
+      if (mounted) setState(() => _error = e.toString());
+    }
+  }
+
   Future<void> _handleLogout() async {
     await _api.logout();
     if (!mounted) return;
@@ -155,6 +168,11 @@ class _AuthGateState extends State<AuthGate> {
         error: _error,
         onLogin: _handleLogin,
       );
+    }
+    // Erzwungener Passwortwechsel (Backlog 0.49): der Server sperrt alles
+    // andere, also gleich die Wechsel-Seite statt des Dashboards.
+    if (mustChangePassword(_identity)) {
+      return ChangePasswordPage(api: _api, forced: true, onChanged: _reloadIdentity, onLogout: _handleLogout);
     }
     final rawPermissions = (_identity!['permissions'] as List?) ?? const [];
     final permissions = rawPermissions.map((e) => e.toString()).toSet();

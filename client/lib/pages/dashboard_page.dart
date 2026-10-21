@@ -6,6 +6,7 @@ import '../widgets/commercial_summary_widgets.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
 import 'absence_overview_page.dart';
+import 'change_password_page.dart';
 import 'leave_admin_page.dart';
 import 'my_leave_page.dart';
 import 'my_time_page.dart';
@@ -254,6 +255,11 @@ class DashboardPage extends StatelessWidget {
         backgroundColor: color,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangePasswordPage(api: api))),
+            icon: const Icon(Icons.password_rounded),
+            tooltip: 'Passwort ändern',
+          ),
           IconButton(
             onPressed: () async => onLogout(),
             icon: const Icon(Icons.logout_rounded),

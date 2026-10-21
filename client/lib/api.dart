@@ -320,6 +320,19 @@ class ApiClient {
     return data;
   }
 
+  // Eigenes Passwort aendern (Backlog 0.49) - auch, solange der Server den
+  // Wechsel erzwingt. Erwartet 204.
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/auth/change-password'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'current_password': currentPassword, 'new_password': newPassword}),
+      ),
+    );
+    if (r.statusCode != 204) _throwApiException(r);
+  }
+
   // -------- Settings: Numbering --------
   Future<Map<String, dynamic>> getNumberingConfig(String entity) =>
       _getJson('/api/v1/settings/numbering/$entity');
