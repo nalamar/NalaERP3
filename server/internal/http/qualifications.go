@@ -2,6 +2,7 @@ package apihttp
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -212,7 +213,7 @@ func optionalEmployeeID(w http.ResponseWriter, req *http.Request) (*uuid.UUID, b
 // Personalabteilung traegt ein, welche Qualifikationen erreicht sind").
 // Lesen nach dem Muster der Zeiterfassung: eigene mit self, fremde mit
 // read (resolveOwnOrPermittedEmployee).
-func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService, resolver employeeForUser) {
+func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService, docs *hr.QualificationDocumentService, resolver employeeForUser) {
 	write := requirePermission(permQualificationsWrite)
 
 	protected.Route("/qualifications", func(r chi.Router) {
@@ -385,6 +386,94 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 				return
 			}
 			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Nachweisdokumente (F.10.1): hochladen mit qualifications.write;
+		// lesen wie der Nachweis selbst (eigene mit .self, alle mit .read).
+		// Bewusst nicht ueber den allgemeinen Download /documents/{id}.
+		r.With(write).Post("/{id}/documents", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachweis-ID")
+				return
+			}
+			// Etwas Luft fuer die Multipart-Huelle; die Datei selbst prueft
+			// der Service auf 10 MB.
+			req.Body = http.MaxBytesReader(w, req.Body, hr.MaxQualificationDocumentBytes+(1<<20))
+			if err := req.ParseMultipartForm(1 << 20); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges Upload-Formular oder Datei zu groß")
+				return
+			}
+			file, header, err := req.FormFile("file")
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Datei fehlt (Feld 'file')")
+				return
+			}
+			defer file.Close()
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := docs.Upload(req.Context(), id, file, header.Filename, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// authorizeQualification laedt den Nachweis und prueft, ob der
+		// Aufrufer ihn lesen darf. Bei false ist die Antwort geschrieben.
+		authorizeQualification := func(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool) {
+			id, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachweis-ID")
+				return uuid.Nil, false
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			q, err := svc.Get(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return uuid.Nil, false
+			}
+			if _, ok := resolveOwnOrPermittedEmployee(w, req, resolver, &q.EmployeeID, permQualificationsRead, permQualificationsSelf); !ok {
+				return uuid.Nil, false
+			}
+			return id, true
+		}
+
+		r.Get("/{id}/documents", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := authorizeQualification(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := docs.List(req.Context(), id, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.Get("/{id}/documents/{docID}", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := authorizeQualification(w, req)
+			if !ok {
+				return
+			}
+			docID, err := uuid.Parse(chi.URLParam(req, "docID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Dokument-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			rc, d, err := docs.Open(req.Context(), id, docID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			defer rc.Close()
+			w.Header().Set("Content-Type", d.ContentType)
+			w.Header().Set("Content-Disposition", "attachment; filename=\""+sanitizeFilename(d.Filename)+"\"")
+			w.Header().Set("Content-Length", strconv.FormatInt(d.Length, 10))
+			_, _ = io.Copy(w, rc)
 		})
 
 		r.With(write).Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {

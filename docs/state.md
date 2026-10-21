@@ -7,15 +7,14 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **0.49.2** — damit ist **0.49 vollständig**
-> (erster Admin `Admin`/`Admin` bei leerer Datenbank, serverseitig
-> erzwungener Passwortwechsel, Pflichtseite im Client, freiwilliger
-> Wechsel aus dem Dashboard). Davor TASK F.8 vollständig.
-> **Nächste Arbeit: offen — Empfehlung:** Live-Stand neu bauen (enthält
-> dann 0.49; die Live-DB hat Benutzer, es entsteht KEIN Bootstrap-Admin),
-> danach F.10 (Qualifikationen: Nachweisdokumente, Zwischenbestätigung
-> Schweißer, Benachrichtigung) oder F.6 (erweiterte ArbZG-Auswertung,
-> braucht fachliche Klärung). Weitere: F.11, F.12, 0.45, 0.47.
+> Zuletzt abgeschlossen: **F.10.1** (Nachweisdokumente auf dem Server:
+> Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
+> Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
+> 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
+> **Nächste Arbeit: F.10.2** (Nachweisdokumente im Client). **Offene
+> Fragen an den Nutzer: 2** (F.10.3 Zwischenbestätigung Schweißer,
+> F.10.4 Benachrichtigung — jeweils mit Empfehlung, nicht blockierend für
+> F.10.2 und F.10.5).
 > Client-Suite: 274 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
@@ -39,9 +38,9 @@
 > einer Seite genutzten API-Methoden überschreiben (sonst echte
 > HTTP-Aufrufe im Test). Shader-Fehler im Test → `client/build/` ist
 > veraltet, löschen.
-> Keine offenen Fragen an den Nutzer.
+> Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 096, ADR 0030.
+> Nächste freie Migration 097, ADR 0030.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*

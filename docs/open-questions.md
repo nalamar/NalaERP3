@@ -256,3 +256,22 @@ Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
    Abwesenheiten im Team? Empfehlung: beides vorerst nein. Entscheidung:
    nein, nur Personalabteilung/Geschäftsführung; Teamleiter-Erweiterung
    vorbereiten. Status: beantwortet (ADR 0029, "Entscheidungen des Nutzers").
+
+## 2026-10-21 — F.10 Qualifikationen, Ergänzungen (offen)
+
+1. **Zwischenbestätigung der Schweißerprüfung** (DIN EN ISO 9606-1: alle
+   sechs Monate bestätigt die Schweißaufsicht bzw. der Arbeitgeber, dass
+   der Schweißer im Geltungsbereich geschweißt hat; ohne Bestätigung
+   verliert das Zertifikat seine Gültigkeit). Vorschlag: an der
+   Qualifikationsart optional "Bestätigung alle N Monate"; Bestätigungen
+   als eigene, unveränderliche Einträge am Nachweis (Datum, wer); der
+   Stand zeigt "Bestätigung fällig am …"; **eine überfällige Bestätigung
+   wirkt wie ein abgelaufener Nachweis**. Empfehlung: so umsetzen.
+   Status: offen.
+2. **Benachrichtigung über anstehende Erneuerungen.** Das Repo hat keine
+   Versand-Infrastruktur. Optionen: (a) Hinweise im System (Dashboard-
+   Hinweis mit Anzahl fälliger Nachweise und Prüfungen für die
+   Personalabteilung, Hinweis auf eigene Fälligkeiten für Mitarbeiter);
+   (b) E-Mail per SMTP (braucht Mailserver-Zugang, Versandprotokoll,
+   Abmeldung). Empfehlung: zuerst (a); E-Mail als eigener Backlog-Punkt
+   für später. Status: offen.

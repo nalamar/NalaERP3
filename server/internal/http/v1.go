@@ -1746,7 +1746,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountLeaveAccountRoutes(protected, hr.NewLeaveAccountService(pg), timeEntrySvc)
 	mountAbsenceRoutes(protected, hr.NewAbsenceService(pg), timeEntrySvc)
 	mountQualificationTypeRoutes(protected, qualificationTypeSvc)
-	mountQualificationRoutes(protected, qualificationSvc, timeEntrySvc)
+	mountQualificationRoutes(protected, qualificationSvc, hr.NewQualificationDocumentService(qualificationSvc, mg, cfg.MongoDB), timeEntrySvc)
 	mountAssetRoutes(protected, assetSvc)
 	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
 	mountAssetInspectionRoutes(protected, assetSvc)
