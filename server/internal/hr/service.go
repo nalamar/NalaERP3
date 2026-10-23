@@ -146,9 +146,9 @@ func (s *EmployeeService) List(ctx context.Context, limit, offset int, companyID
 // teamBelongsToCompany prueft, dass ein Team zum Mandanten gehoert. Der
 // Fremdschluessel allein genuegt nicht: er wuerde auch ein Team eines
 // anderen Mandanten akzeptieren.
-func (s *EmployeeService) teamBelongsToCompany(ctx context.Context, teamID uuid.UUID, companyID string) error {
+func teamBelongsToCompany(ctx context.Context, db querier, teamID uuid.UUID, companyID string) error {
 	var owned bool
-	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_teams WHERE id=$1 AND company_id=$2)`, teamID, companyID).Scan(&owned); err != nil {
+	if err := db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hr_teams WHERE id=$1 AND company_id=$2)`, teamID, companyID).Scan(&owned); err != nil {
 		return err
 	}
 	if !owned {
@@ -158,6 +158,12 @@ func (s *EmployeeService) teamBelongsToCompany(ctx context.Context, teamID uuid.
 }
 
 func (s *EmployeeService) Create(ctx context.Context, in EmployeeInput, companyID string) (*Employee, error) {
+	return createEmployee(ctx, s.pg, in, companyID)
+}
+
+// createEmployee legt den Mitarbeiter ueber db an - den Pool oder die
+// Transaktion der Anlage mit Qualifikationen (CreateEmployeeWithQualifications).
+func createEmployee(ctx context.Context, db querier, in EmployeeInput, companyID string) (*Employee, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
@@ -199,11 +205,11 @@ func (s *EmployeeService) Create(ctx context.Context, in EmployeeInput, companyI
 	}
 	e.UrlaubstageJahr = in.UrlaubstageJahr
 	if e.TeamID != nil {
-		if err := s.teamBelongsToCompany(ctx, *e.TeamID, companyID); err != nil {
+		if err := teamBelongsToCompany(ctx, db, *e.TeamID, companyID); err != nil {
 			return nil, err
 		}
 	}
-	_, err = s.pg.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id, bundesland, arbeitstage, urlaubstage_jahr)
+	_, err = db.Exec(ctx, `INSERT INTO hr_employees (id, personalnummer, first_name, last_name, email, phone, hire_date, termination_date, role, team_id, location, cost_center, active, company_id, bundesland, arbeitstage, urlaubstage_jahr)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
 		e.ID, e.PersonalNr, e.FirstName, e.LastName, e.Email, e.Phone, e.HireDate, e.Termination, e.Role, e.TeamID, e.Location, e.CostCenter, e.Active, companyID, e.Bundesland, intsToInt16s(e.Arbeitstage), e.UrlaubstageJahr)
 	if err != nil {
@@ -273,7 +279,7 @@ func (s *EmployeeService) Update(ctx context.Context, id uuid.UUID, patch map[st
 				return err
 			}
 			if teamID != nil {
-				if err := s.teamBelongsToCompany(ctx, *teamID, companyID); err != nil {
+				if err := teamBelongsToCompany(ctx, s.pg, *teamID, companyID); err != nil {
 					return err
 				}
 			}

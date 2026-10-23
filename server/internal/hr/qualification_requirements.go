@@ -74,34 +74,45 @@ func (s *QualificationService) SetRequirements(ctx context.Context, employeeID u
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if err := setRequirementsTx(ctx, tx, employeeID, wanted, actorUserID, companyID); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.ListRequirements(ctx, employeeID, companyID)
+}
 
+// setRequirementsTx schreibt die Anforderungen in tx (wanted ohne
+// Doppelte, ohne uuid.Nil); Commit und Rollback liegen beim Aufrufer.
+func setRequirementsTx(ctx context.Context, tx pgx.Tx, employeeID uuid.UUID, wanted []uuid.UUID, actorUserID, companyID string) error {
 	// Sperrt den Mitarbeiter: prueft den Mandanten und verhindert, dass
 	// zwei gleichzeitige Aenderungen seiner Anforderungen einander
 	// ueberschreiben.
 	var locked uuid.UUID
 	if err := tx.QueryRow(ctx, `SELECT id FROM hr_employees WHERE id=$1 AND company_id=$2 FOR UPDATE`, employeeID, companyID).Scan(&locked); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, errors.New("Mitarbeiter nicht gefunden")
+			return errors.New("Mitarbeiter nicht gefunden")
 		}
-		return nil, err
+		return err
 	}
 
 	existing := make(map[uuid.UUID]bool)
 	rows, err := tx.Query(ctx, `SELECT type_id FROM hr_employee_qualification_requirements WHERE employee_id=$1`, employeeID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	for rows.Next() {
 		var id uuid.UUID
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, err
+			return err
 		}
 		existing[id] = true
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return err
 	}
 
 	added := make([]uuid.UUID, 0, len(wanted))
@@ -113,28 +124,25 @@ func (s *QualificationService) SetRequirements(ctx context.Context, employeeID u
 	if len(added) > 0 {
 		var found, active int
 		if err := tx.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE aktiv) FROM hr_qualification_types WHERE id = ANY($1) AND company_id=$2`, added, companyID).Scan(&found, &active); err != nil {
-			return nil, err
+			return err
 		}
 		if found != len(added) {
-			return nil, errors.New("Qualifikationsart nicht gefunden")
+			return errors.New("Qualifikationsart nicht gefunden")
 		}
 		if active != len(added) {
-			return nil, errors.New("Qualifikationsart ist stillgelegt")
+			return errors.New("Qualifikationsart ist stillgelegt")
 		}
 	}
 
 	if _, err := tx.Exec(ctx, `DELETE FROM hr_employee_qualification_requirements WHERE employee_id=$1 AND NOT (type_id = ANY($2))`, employeeID, wanted); err != nil {
-		return nil, err
+		return err
 	}
 	for _, id := range added {
 		if _, err := tx.Exec(ctx, `INSERT INTO hr_employee_qualification_requirements (employee_id, type_id, created_by_user_id) VALUES ($1,$2,$3)`, employeeID, id, nullableUserID(actorUserID)); err != nil {
-			return nil, err
+			return err
 		}
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-	return s.ListRequirements(ctx, employeeID, companyID)
+	return nil
 }
 
 // ListRequirements liefert die Anforderungen eines Mitarbeiters, nach Name

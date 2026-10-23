@@ -31,7 +31,7 @@ func parseEmployeeID(w http.ResponseWriter, req *http.Request) (uuid.UUID, bool)
 	return id, true
 }
 
-func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService) {
+func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService, quals *hr.QualificationService) {
 	protected.Route("/employees", func(r chi.Router) {
 		r.With(requirePermission("employees.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
 			q := req.URL.Query()
@@ -133,6 +133,52 @@ func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService) {
 			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.Create(req.Context(), in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Anlage mit Anforderungen und vorhandenen Nachweisen in einem
+		// Aufruf (F.10.5.1): ganz oder gar nicht. Verlangt beide
+		// Schreibrechte - die Anforderungen und Nachweise allein brauchen
+		// qualifications.write.
+		r.With(requirePermission("employees.write"), requirePermission(permQualificationsWrite)).Post("/with-qualifications", func(w http.ResponseWriter, req *http.Request) {
+			var body struct {
+				Employee        hr.EmployeeInput `json:"employee"`
+				RequiredTypeIDs []uuid.UUID      `json:"required_type_ids"`
+				Qualifications  []struct {
+					TypeID     uuid.UUID `json:"type_id"`
+					ErworbenAm string    `json:"erworben_am"`
+					GueltigBis string    `json:"gueltig_bis"`
+					Aussteller string    `json:"aussteller"`
+					NachweisNr string    `json:"nachweis_nr"`
+					Note       string    `json:"note"`
+				} `json:"qualifications"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			in := hr.EmployeeWithQualificationsInput{Employee: body.Employee, RequiredTypeIDs: body.RequiredTypeIDs}
+			for _, q := range body.Qualifications {
+				erworben, ok := parseOptionalDate(w, req, "erworben_am", q.ErworbenAm)
+				if !ok {
+					return
+				}
+				gueltigBis, ok := parseOptionalDate(w, req, "gueltig_bis", q.GueltigBis)
+				if !ok {
+					return
+				}
+				iq := hr.InitialQualification{TypeID: q.TypeID, GueltigBis: gueltigBis, Aussteller: q.Aussteller, NachweisNr: q.NachweisNr, Note: q.Note}
+				if erworben != nil {
+					iq.ErworbenAm = *erworben // fehlt es, meldet der Service "Erwerbsdatum erforderlich"
+				}
+				in.Qualifications = append(in.Qualifications, iq)
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quals.CreateEmployeeWithQualifications(req.Context(), in, actorUserIDFromContext(req.Context()), companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return

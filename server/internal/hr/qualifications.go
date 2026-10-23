@@ -81,30 +81,48 @@ func (s *QualificationService) Create(ctx context.Context, in QualificationInput
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
-	if len(in.EmployeeIDs) == 0 {
-		return nil, errors.New("Mindestens ein Mitarbeiter erforderlich")
-	}
-	for _, id := range in.EmployeeIDs {
-		if id == uuid.Nil {
-			return nil, errors.New("employee_id erforderlich")
-		}
-	}
-	if in.TypeID == uuid.Nil {
-		return nil, errors.New("type_id erforderlich")
-	}
-	// "Heute" ist der Kalendertag in Europe/Berlin, wie bei den
-	// Zeiteintraegen.
-	if err := ValidateQualificationDates(in.ErworbenAm, in.GueltigBis, WorkDateOf(time.Now())); err != nil {
+	if err := validateQualificationInput(in); err != nil {
 		return nil, err
 	}
-	employeeIDs := uniqueEmployeeIDs(in.EmployeeIDs)
-	erworbenAm := dateOnly(in.ErworbenAm)
 
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	out, err := createQualificationsTx(ctx, tx, in, actorUserID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// validateQualificationInput prueft die Eingaben ohne Datenbank.
+func validateQualificationInput(in QualificationInput) error {
+	if len(in.EmployeeIDs) == 0 {
+		return errors.New("Mindestens ein Mitarbeiter erforderlich")
+	}
+	for _, id := range in.EmployeeIDs {
+		if id == uuid.Nil {
+			return errors.New("employee_id erforderlich")
+		}
+	}
+	if in.TypeID == uuid.Nil {
+		return errors.New("type_id erforderlich")
+	}
+	// "Heute" ist der Kalendertag in Europe/Berlin, wie bei den
+	// Zeiteintraegen.
+	return ValidateQualificationDates(in.ErworbenAm, in.GueltigBis, WorkDateOf(time.Now()))
+}
+
+// createQualificationsTx schreibt geprueften Eingaben (validateQualificationInput)
+// in tx; Commit und Rollback liegen beim Aufrufer.
+func createQualificationsTx(ctx context.Context, tx pgx.Tx, in QualificationInput, actorUserID, companyID string) ([]EmployeeQualification, error) {
+	employeeIDs := uniqueEmployeeIDs(in.EmployeeIDs)
+	erworbenAm := dateOnly(in.ErworbenAm)
 
 	// Die Art muss zum Mandanten gehoeren und aktiv sein. Eine stillgelegte
 	// Art nimmt keine NEUEN Nachweise an; ihre bestehenden bleiben.
@@ -176,9 +194,6 @@ func (s *QualificationService) Create(ctx context.Context, in QualificationInput
 			return nil, err
 		}
 		out = append(out, *q)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
 	}
 	return out, nil
 }
