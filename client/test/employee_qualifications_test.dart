@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:nalaerp_client/api.dart';
 import 'package:nalaerp_client/pages/employee_qualifications_section.dart';
 import 'package:nalaerp_client/pages/employees_page.dart';
+import 'package:nalaerp_client/web/browser.dart' as browser;
 
 // Qualifikationen am Mitarbeiter im Client (Backlog F.7.3.1). InkRipple
 // und Desktop-Fenster wie in employees_page_test.dart (Backlog 0.48).
@@ -22,8 +24,11 @@ class _FakeQualApi extends ApiClient {
     Map<String, List<dynamic>>? records,
     this.allTypes,
     this.createError,
+    Map<String, List<dynamic>>? documents,
+    this.uploadError,
   })  : standing = standing ?? {},
         records = records ?? {},
+        documents = documents ?? {},
         requirements = requirements ?? [],
         super(baseUrl: 'http://localhost:8080');
 
@@ -39,6 +44,12 @@ class _FakeQualApi extends ApiClient {
   final Object? createError;
   final List<Map<String, dynamic>> created = [];
   final List<MapEntry<String, String>> stornos = [];
+  // Nachweisdokumente je Nachweis (F.10.2).
+  final Map<String, List<dynamic>> documents;
+  final Object? uploadError;
+  final List<String> documentListCalls = [];
+  final List<Map<String, Object?>> uploads = [];
+  final List<List<String?>> downloads = [];
 
   final List<String> standingCalls = [];
   final List<MapEntry<String, List<String>>> setCalls = [];
@@ -78,6 +89,34 @@ class _FakeQualApi extends ApiClient {
 
   @override
   Future<List<dynamic>> listQualificationRequirements(String employeeId) async => requirements;
+
+  @override
+  Future<List<dynamic>> listQualificationDocuments(String qualificationId) async {
+    documentListCalls.add(qualificationId);
+    return List<dynamic>.from(documents[qualificationId] ?? const []);
+  }
+
+  @override
+  Future<Map<String, dynamic>> uploadQualificationDocument(String qualificationId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    if (uploadError != null) throw uploadError!;
+    uploads.add({'qual': qualificationId, 'filename': filename, 'length': bytes.length, 'contentType': contentType});
+    final doc = <String, dynamic>{
+      'id': 'd-neu',
+      'qualification_id': qualificationId,
+      'filename': filename,
+      'content_type': contentType,
+      'length': bytes.length,
+      'uploaded_at': '2026-10-22T09:00:00Z',
+    };
+    documents.putIfAbsent(qualificationId, () => []).add(doc);
+    return doc;
+  }
+
+  @override
+  Future<void> downloadQualificationDocument(String qualificationId, String documentId, {String? filename}) async {
+    downloads.add([qualificationId, documentId, filename]);
+  }
 
   @override
   Future<List<dynamic>> setQualificationRequirements(String employeeId, List<String> typeIds) async {
@@ -563,6 +602,228 @@ void main() {
       await expectLater(
         mock({'error': {'code': 'conflict', 'message': 'Nachweis ist bereits storniert'}}, () => api.stornoQualification('q1', 'x'), status: 409),
         throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Nachweis ist bereits storniert')),
+      );
+    });
+  });
+
+  group('Nachweisdokumente: Hilfsfunktionen', () {
+    test('formatFileSize', () {
+      expect(formatFileSize(0), '0 B');
+      expect(formatFileSize(1023), '1023 B');
+      expect(formatFileSize(1024), '1 KB');
+      expect(formatFileSize(250 * 1024 + 300), '250 KB');
+      expect(formatFileSize(1024 * 1024), '1,0 MB');
+      expect(formatFileSize(1536 * 1024), '1,5 MB');
+    });
+
+    test('qualificationUploadProblem: leer und ueber 10 MB abgelehnt, genau 10 MB erlaubt', () {
+      expect(qualificationUploadProblem(0), 'Die Datei ist leer.');
+      expect(qualificationUploadProblem(1), isNull);
+      expect(qualificationUploadProblem(10 * 1024 * 1024), isNull);
+      expect(qualificationUploadProblem(10 * 1024 * 1024 + 1), 'Die Datei ist zu groß (10,0 MB, höchstens 10 MB).');
+      expect(qualificationUploadProblem(12 * 1024 * 1024), 'Die Datei ist zu groß (12,0 MB, höchstens 10 MB).');
+    });
+
+    test('qualificationDocumentLabel', () {
+      expect(qualificationDocumentLabel({'filename': 'scan.pdf', 'length': 2048, 'uploaded_at': '2026-10-21T15:00:00Z'}),
+          'scan.pdf · 2 KB · hochgeladen 21.10.2026');
+      expect(qualificationDocumentLabel({'filename': 'liste.png'}), 'liste.png');
+    });
+  });
+
+  Map<String, List<dynamic>> recordsWithOne() => {
+        'e1': [
+          {'id': 'q1', 'type_id': 't1', 'erworben_am': '2026-03-15T00:00:00Z'},
+          {'id': 'q2', 'type_id': 't1', 'erworben_am': '2024-03-15T00:00:00Z'},
+        ],
+      };
+
+  testWidgets('Dokumente ansehen und herunterladen, ohne Schreibrecht kein Hochladen', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+      ],
+      records: recordsWithOne(),
+      documents: {
+        'q2': [
+          {'id': 'd1', 'filename': 'zertifikat.pdf', 'length': 2048, 'uploaded_at': '2026-10-21T15:00:00Z'},
+          {'id': 'd2', 'filename': 'liste.png', 'length': 1536 * 1024, 'uploaded_at': '2026-10-20T08:00:00Z'},
+        ],
+      },
+    );
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+    await tester.pumpAndSettle();
+
+    // Zum ersten Nachweis gibt es keine Dokumente.
+    await tester.tap(find.byTooltip('Dokumente').first);
+    await tester.pumpAndSettle();
+    expect(api.documentListCalls, ['q1']);
+    expect(find.text('Keine Dokumente.'), findsOneWidget);
+    expect(find.text('Datei hochladen'), findsNothing);
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Dokumente').at(1));
+    await tester.pumpAndSettle();
+    expect(api.documentListCalls, ['q1', 'q2']);
+    expect(find.text('Erste Hilfe – erworben 15.03.2024 · unbefristet'), findsOneWidget);
+    expect(find.text('zertifikat.pdf · 2 KB · hochgeladen 21.10.2026'), findsOneWidget);
+    expect(find.text('liste.png · 1,5 MB · hochgeladen 20.10.2026'), findsOneWidget);
+    expect(find.text('Keine Dokumente.'), findsNothing);
+    expect(find.text('Datei hochladen'), findsNothing);
+
+    await tester.tap(find.byTooltip('Herunterladen').at(1));
+    await tester.pumpAndSettle();
+    expect(api.downloads, [
+      ['q2', 'd2', 'liste.png']
+    ]);
+  });
+
+  testWidgets('Dokument hochladen: Dateiauswahl, Upload, Liste neu geladen', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      types: [
+        {'id': 't1', 'name': 'Erste Hilfe'},
+      ],
+      records: recordsWithOne(),
+    );
+    final accepts = <String?>[];
+    browser.PickedFile? next = browser.PickedFile(Uint8List.fromList([1, 2, 3]), 'scan.pdf', 'application/pdf');
+    Future<browser.PickedFile?> picker({String? accept}) async {
+      accepts.add(accept);
+      return next;
+    }
+
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1', filePicker: picker)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dokumente').first);
+    await tester.pumpAndSettle();
+    expect(find.text('PDF, JPEG oder PNG, höchstens 10 MB. Dokumente werden nicht gelöscht.'), findsOneWidget);
+
+    await tester.tap(find.text('Datei hochladen'));
+    await tester.pumpAndSettle();
+    expect(accepts, [qualificationDocumentAccept]);
+    expect(api.uploads, [
+      {'qual': 'q1', 'filename': 'scan.pdf', 'length': 3, 'contentType': 'application/pdf'}
+    ]);
+    expect(api.documentListCalls, ['q1', 'q1']);
+    expect(find.text('scan.pdf · 3 B · hochgeladen 22.10.2026'), findsOneWidget);
+
+    // Auswahl abgebrochen: nichts passiert.
+    next = null;
+    await tester.tap(find.text('Datei hochladen'));
+    await tester.pumpAndSettle();
+    expect(api.uploads.length, 1);
+    expect(api.documentListCalls.length, 2);
+  });
+
+  testWidgets('zu grosse und leere Dateien werden nicht hochgeladen', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      records: recordsWithOne(),
+    );
+    var next = browser.PickedFile(Uint8List(10 * 1024 * 1024 + 1), 'riesig.pdf', 'application/pdf');
+    Future<browser.PickedFile?> picker({String? accept}) async => next;
+
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1', filePicker: picker)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dokumente').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Datei hochladen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Die Datei ist zu groß (10,0 MB, höchstens 10 MB).'), findsOneWidget);
+
+    next = browser.PickedFile(Uint8List(0), 'leer.pdf', 'application/pdf');
+    await tester.tap(find.text('Datei hochladen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Die Datei ist leer.'), findsOneWidget);
+    expect(api.uploads, isEmpty);
+    // Der Dialog bleibt offen.
+    expect(find.text('Nachweisdokumente'), findsOneWidget);
+  });
+
+  testWidgets('Fehler des Servers beim Hochladen wird im Dialog angezeigt', (tester) async {
+    await _desktop(tester);
+    final api = _FakeQualApi(
+      permissions: const {'qualifications.read', 'qualifications.write'},
+      records: recordsWithOne(),
+      uploadError: const ApiException(statusCode: 400, message: 'Nur PDF, JPEG oder PNG erlaubt'),
+    );
+    Future<browser.PickedFile?> picker({String? accept}) async =>
+        browser.PickedFile(Uint8List.fromList([1]), 'notiz.txt', 'text/plain');
+
+    await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1', filePicker: picker)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dokumente').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Datei hochladen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Upload fehlgeschlagen: Nur PDF, JPEG oder PNG erlaubt'), findsOneWidget);
+    // Nach dem Fehler bleibt der Knopf bedienbar.
+    final button = tester.widget<TextButton>(find.ancestor(of: find.text('Datei hochladen'), matching: find.byWidgetPredicate((w) => w is TextButton)));
+    expect(button.onPressed, isNotNull);
+    expect(api.documentListCalls, ['q1']);
+  });
+
+  group('API-Methoden der Nachweisdokumente', () {
+    final api = ApiClient(baseUrl: 'http://api.test');
+    late List<http.Request> calls;
+
+    Future<T> mock<T>(Object body, Future<T> Function() call, {int status = 200, Map<String, String>? headers}) {
+      final client = MockClient((req) async {
+        calls.add(req);
+        final bytes = body is List<int> ? body : utf8.encode(jsonEncode(body));
+        return http.Response.bytes(bytes, status, headers: headers ?? {'content-type': 'application/json'});
+      });
+      return http.runWithClient(call, () => client);
+    }
+
+    setUp(() => calls = []);
+
+    test('auflisten und herunterladen ueber die eigenen Routen', () async {
+      final list = await mock([
+        {'id': 'd1'}
+      ], () => api.listQualificationDocuments('q1'));
+      await mock(<int>[37, 80, 68, 70], () => api.downloadQualificationDocument('q1', 'd1', filename: 'scan.pdf'),
+          headers: {'content-type': 'application/pdf'});
+      expect(calls.map((c) => '${c.method} ${c.url.path}'), [
+        'GET /api/v1/qualifications/q1/documents',
+        'GET /api/v1/qualifications/q1/documents/d1',
+      ]);
+      expect(list.single['id'], 'd1');
+    });
+
+    test('hochladen als Multipart im Feld file, erwartet 201', () async {
+      final out = await mock({'id': 'd1', 'filename': 'scan.pdf'},
+          () => api.uploadQualificationDocument('q1', 'scan.pdf', Uint8List.fromList(utf8.encode('%PDF-1.4')), contentType: 'application/pdf'),
+          status: 201);
+      expect(out['id'], 'd1');
+      final req = calls.single;
+      expect('${req.method} ${req.url.path}', 'POST /api/v1/qualifications/q1/documents');
+      expect(req.headers['content-type'], startsWith('multipart/form-data'));
+      final body = utf8.decode(req.bodyBytes);
+      expect(body, contains('name="file"; filename="scan.pdf"'));
+      expect(body, contains('content-type: application/pdf'));
+      expect(body, contains('%PDF-1.4'));
+    });
+
+    test('Fehler beim Hochladen und Herunterladen werden zur ApiException', () async {
+      await expectLater(
+        mock({'error': {'code': 'validation_error', 'message': 'Nur PDF, JPEG oder PNG erlaubt'}},
+            () => api.uploadQualificationDocument('q1', 'x.txt', Uint8List.fromList([1])),
+            status: 400),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Nur PDF, JPEG oder PNG erlaubt')),
+      );
+      // 200 statt 201 ist kein Erfolg.
+      await expectLater(mock({'id': 'd1'}, () => api.uploadQualificationDocument('q1', 'x.pdf', Uint8List.fromList([1])), status: 200),
+          throwsA(isA<ApiException>()));
+      await expectLater(
+        mock({'error': {'code': 'not_found', 'message': 'Dokument nicht gefunden'}}, () => api.downloadQualificationDocument('q1', 'dx'),
+            status: 404),
+        throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Dokument nicht gefunden')),
       );
     });
   });

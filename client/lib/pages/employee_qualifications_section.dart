@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import '../web/browser.dart' as browser;
 
 // Qualifikationen am Mitarbeiter (Backlog F.7.3.1): Stand je Art und die
 // Anforderungen der Stelle. Vorgabe des Nutzers vom 2026-10-13: die
@@ -130,10 +131,49 @@ String qualificationRecordLabel(Map<String, dynamic> r) {
   return parts.join(' · ');
 }
 
+// Nachweisdokumente (Backlog F.10.2): Scan des Zertifikats, unterschriebene
+// Teilnehmerliste. Der Server nimmt PDF/JPEG/PNG bis 10 MB an (F.10.1) und
+// erkennt die Art am Inhalt; der Client prueft vorab nur die Groesse, damit
+// eine zu grosse Datei nicht erst hochgeladen wird.
+const maxQualificationDocumentBytes = 10 * 1024 * 1024;
+const qualificationDocumentAccept = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+
+typedef QualificationFilePicker = Future<browser.PickedFile?> Function({String? accept});
+
+// formatFileSize schreibt eine Dateigroesse deutsch: Bytes, KB (ganz), MB
+// (eine Nachkommastelle mit Komma).
+String formatFileSize(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  if (bytes < 1024 * 1024) return '${(bytes / 1024).round()} KB';
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1).replaceAll('.', ',')} MB';
+}
+
+// qualificationUploadProblem: Grund, warum eine Datei nicht hochgeladen
+// wird, sonst null.
+String? qualificationUploadProblem(int length) {
+  if (length == 0) return 'Die Datei ist leer.';
+  if (length > maxQualificationDocumentBytes) {
+    return 'Die Datei ist zu groß (${formatFileSize(length)}, höchstens 10 MB).';
+  }
+  return null;
+}
+
+// qualificationDocumentLabel beschreibt ein Dokument in einer Zeile.
+String qualificationDocumentLabel(Map<String, dynamic> d) {
+  final parts = <String>[d['filename']?.toString() ?? ''];
+  final len = d['length'];
+  if (len is int) parts.add(formatFileSize(len));
+  final am = _date(d['uploaded_at']?.toString());
+  if (am.isNotEmpty) parts.add('hochgeladen $am');
+  return parts.join(' · ');
+}
+
 class EmployeeQualificationsSection extends StatefulWidget {
-  const EmployeeQualificationsSection({super.key, required this.api, required this.employeeId});
+  const EmployeeQualificationsSection({super.key, required this.api, required this.employeeId, this.filePicker});
   final ApiClient api;
   final String employeeId;
+  // Fuer Tests austauschbar; sonst die Dateiauswahl des Browsers.
+  final QualificationFilePicker? filePicker;
 
   @override
   State<EmployeeQualificationsSection> createState() => _EmployeeQualificationsSectionState();
@@ -403,6 +443,128 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
     }
   }
 
+  Future<void> _documentsDialog(Map<String, dynamic> record) async {
+    final qualId = record['id'].toString();
+    final title = '${typeNames[record['type_id']?.toString()] ?? record['type_id']} – ${qualificationRecordLabel(record)}';
+    List<dynamic> docs = [];
+    String? dialogError;
+    bool busy = true;
+    bool started = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          // Laden und Hochladen laufen asynchron weiter, auch wenn der
+          // Dialog schon geschlossen ist.
+          void update(VoidCallback f) {
+            if (ctx.mounted) setStateDialog(f);
+          }
+
+          Future<void> reload() async {
+            try {
+              final out = await widget.api.listQualificationDocuments(qualId);
+              update(() {
+                docs = out;
+                dialogError = null;
+              });
+            } catch (e) {
+              update(() => dialogError = 'Dokumente konnten nicht geladen werden: $e');
+            } finally {
+              update(() => busy = false);
+            }
+          }
+
+          Future<void> upload() async {
+            final pick = widget.filePicker ?? browser.pickFile;
+            final picked = await pick(accept: qualificationDocumentAccept);
+            if (picked == null) return;
+            final problem = qualificationUploadProblem(picked.bytes.length);
+            if (problem != null) {
+              update(() => dialogError = problem);
+              return;
+            }
+            update(() {
+              busy = true;
+              dialogError = null;
+            });
+            try {
+              await widget.api.uploadQualificationDocument(qualId, picked.filename, picked.bytes, contentType: picked.contentType);
+            } catch (e) {
+              update(() {
+                busy = false;
+                dialogError = 'Upload fehlgeschlagen: $e';
+              });
+              return;
+            }
+            await reload();
+          }
+
+          Future<void> download(Map<String, dynamic> d) async {
+            try {
+              await widget.api.downloadQualificationDocument(qualId, d['id'].toString(), filename: d['filename']?.toString());
+            } catch (e) {
+              update(() => dialogError = 'Download fehlgeschlagen: $e');
+            }
+          }
+
+          if (!started) {
+            started = true;
+            reload();
+          }
+          return AlertDialog(
+            title: const Text('Nachweisdokumente'),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title),
+                    const SizedBox(height: 8),
+                    if (busy) const LinearProgressIndicator(minHeight: 2),
+                    if (!busy && docs.isEmpty && dialogError == null) const Text('Keine Dokumente.'),
+                    for (final d in docs)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(qualificationDocumentLabel(d as Map<String, dynamic>), overflow: TextOverflow.ellipsis),
+                          ),
+                          IconButton(
+                            tooltip: 'Herunterladen',
+                            icon: const Icon(Icons.download, size: 18),
+                            onPressed: () => download(d),
+                          ),
+                        ],
+                      ),
+                    if (_canWrite) ...[
+                      const SizedBox(height: 8),
+                      const Text('PDF, JPEG oder PNG, höchstens 10 MB. Dokumente werden nicht gelöscht.'),
+                    ],
+                    if (dialogError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (_canWrite)
+                TextButton.icon(
+                  onPressed: busy ? null : upload,
+                  icon: const Icon(Icons.upload_file),
+                  label: const Text('Datei hochladen'),
+                ),
+              FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Schließen')),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -456,6 +618,11 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
                     '${typeNames[(r as Map<String, dynamic>)['type_id']?.toString()] ?? r['type_id']}: ${qualificationRecordLabel(r)}',
                     overflow: TextOverflow.ellipsis,
                   ),
+                ),
+                IconButton(
+                  tooltip: 'Dokumente',
+                  icon: const Icon(Icons.attach_file, size: 18),
+                  onPressed: () => _documentsDialog(r),
                 ),
                 if (_canWrite)
                   IconButton(

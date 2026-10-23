@@ -2180,6 +2180,53 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Nachweisdokumente (Backlog F.10.2, Server-Routen aus F.10.1). Lesen wie
+  // der Nachweis selbst, hochladen mit qualifications.write. Der Server
+  // nimmt nur PDF/JPEG/PNG bis 10 MB an und erkennt die Art am Inhalt.
+  Future<List<dynamic>> listQualificationDocuments(String qualificationId) =>
+      _getList('/api/v1/qualifications/$qualificationId/documents');
+
+  // Die Multipart-Anfrage wird je Versuch neu gebaut, damit nach einer
+  // Token-Erneuerung (_sendWithAuth) erneut gesendet werden kann.
+  Future<Map<String, dynamic>> uploadQualificationDocument(
+      String qualificationId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    MediaType? mt;
+    if (contentType != null && contentType.isNotEmpty) {
+      try {
+        mt = MediaType.parse(contentType);
+      } catch (_) {
+        mt = null;
+      }
+    }
+    final r = await _sendWithAuth((headers) async {
+      final req = http.MultipartRequest(
+          'POST', _u('/api/v1/qualifications/$qualificationId/documents'));
+      req.headers.addAll(headers);
+      req.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mt));
+      return http.Response.fromStream(await req.send());
+    });
+    if (r.statusCode != 201) {
+      _throwApiException(r, fallbackMessage: 'Upload fehlgeschlagen');
+    }
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Bewusst nicht ueber downloadDocument (/documents/{id}) - den liefert
+  // der Server fuer Nachweisdokumente nicht aus.
+  Future<void> downloadQualificationDocument(
+      String qualificationId, String documentId,
+      {String? filename}) async {
+    final r = await _getBytesResponse(
+        '/api/v1/qualifications/$qualificationId/documents/$documentId');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Nachweis_$documentId',
+      contentType: r.headers['content-type'] ?? 'application/octet-stream',
+    );
+  }
+
   // -------- Betriebsmittel (Backlog F.7.4, Server-Routen aus F.3.6.2) --------
   // Ausgaben von Betriebsmitteln, die neuesten zuerst. Mit assets.read alle,
   // mit assets.self nur die eigenen.

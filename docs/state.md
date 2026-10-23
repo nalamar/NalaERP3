@@ -7,15 +7,19 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.1** (Nachweisdokumente auf dem Server:
+> Zuletzt abgeschlossen: **F.10.2** (2026-10-23, Nachweisdokumente im
+> Client: Knopf "Dokumente" je Nachweis, Dialog mit Liste, Herunterladen,
+> Hochladen mit `qualifications.write`; Vorabprüfung leer/> 10 MB, Art
+> prüft der Server). Davor **F.10.1** (Nachweisdokumente auf dem Server:
 > Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
-> **Nächste Arbeit: F.10.2** (Nachweisdokumente im Client). **Offene
-> Fragen an den Nutzer: 2** (F.10.3 Zwischenbestätigung Schweißer,
-> F.10.4 Benachrichtigung — jeweils mit Empfehlung, nicht blockierend für
-> F.10.2 und F.10.5).
-> Client-Suite: 274 / 0.
+> **Nächste Arbeit: F.10.5** (Mitarbeiteranlage mit Anforderungen und
+> Nachweisen als ein atomarer Aufruf). **Offene Fragen an den Nutzer: 2**
+> (F.10.3 Zwischenbestätigung Schweißer, F.10.4 Benachrichtigung —
+> jeweils mit Empfehlung, nicht blockierend für F.10.5).
+> Live-Stand enthält F.10.1/F.10.2 noch nicht (Neubau nur auf Wunsch).
+> Client-Suite: 284 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
