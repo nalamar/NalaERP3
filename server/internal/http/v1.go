@@ -5036,8 +5036,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func writeHTTPError(w http.ResponseWriter, req *http.Request, code int, msg string, err error) {
-	logAPIError(req, code, "http_error", msg, err)
-	http.Error(w, msg, code)
+	public := publicErrorMessage(req, code, msg, err)
+	logAPIError(req, code, "http_error", public, err)
+	http.Error(w, public, code)
 }
 
 func writeDomainError(w http.ResponseWriter, req *http.Request, err error) {
@@ -5046,17 +5047,28 @@ func writeDomainError(w http.ResponseWriter, req *http.Request, err error) {
 		return
 	}
 	status, code := classifyDomainError(err)
-	logAPIError(req, status, code, err.Error(), err)
+	// Nicht zugeordnete Fehler (500) sind roh: ihr Text bleibt im Log
+	// (describeError), der Aufrufer bekommt ihn nicht (Backlog 0.47).
+	message := err.Error()
+	if status >= http.StatusInternalServerError {
+		message = internalErrorMessage(req)
+	}
+	logAPIError(req, status, code, message, err)
 	writeJSON(w, status, map[string]any{
 		"error": map[string]any{
 			"code":    code,
-			"message": err.Error(),
+			"message": message,
 		},
 	})
 }
 
 func classifyDomainError(err error) (int, string) {
 	if err == nil {
+		return http.StatusInternalServerError, "internal_error"
+	}
+	// Ein Postgres-Fehler ist nie eine fachliche Meldung, auch wenn ein
+	// Datenwert in seinem Detail zufaellig wie eine klingt.
+	if pgErrorOf(err) != nil {
 		return http.StatusInternalServerError, "internal_error"
 	}
 	msg := strings.ToLower(strings.TrimSpace(err.Error()))

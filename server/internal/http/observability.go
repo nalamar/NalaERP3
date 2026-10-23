@@ -2,6 +2,8 @@ package apihttp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type contextKey string
@@ -154,19 +157,83 @@ func panicRecoveryMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// Rohe Datenbankfehler (Backlog 0.47, ADR 0030). Ein Postgres-Fehler
+// traegt in Message und Detail Datenwerte - "Key (personalnummer)=(1001)
+// already exists", "invalid input syntax for type uuid: \"...\"". Solche
+// Texte erreichen weder das Log noch den Aufrufer: geloggt werden nur die
+// Kennungen aus dem Schema, der Aufrufer bekommt einen allgemeinen Text
+// mit Request-ID.
+
+// pgErrorOf liefert den Postgres-Fehler in der Kette, sonst nil.
+func pgErrorOf(err error) *pgconn.PgError {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr
+	}
+	return nil
+}
+
+// describeError ist der Fehlertext fuer das Log. Bei einem Postgres-Fehler
+// nur SQLSTATE und Schema-Namen, keine Meldung und kein Detail - auch
+// nicht der Text, den der Code darum gewickelt hat, weil er den
+// Postgres-Text enthaelt.
+func describeError(err error) string {
+	if err == nil {
+		return ""
+	}
+	if pgErr := pgErrorOf(err); pgErr != nil {
+		return fmt.Sprintf("postgres code=%s constraint=%s table=%s column=%s", pgErr.Code, pgErr.ConstraintName, pgErr.TableName, pgErr.ColumnName)
+	}
+	return err.Error()
+}
+
+// internalErrorMessage ist der Text fuer den Aufrufer bei einem internen
+// Fehler; die Request-ID findet den Logeintrag.
+func internalErrorMessage(req *http.Request) string {
+	if req != nil {
+		if id := RequestIDFromContext(req.Context()); id != "" {
+			return "Interner Fehler (Request-ID " + id + ")"
+		}
+	}
+	return "Interner Fehler"
+}
+
+// publicErrorMessage ist, was der Aufrufer von writeHTTPError sieht. Ein
+// Postgres-Fehler wird nie durchgereicht; bei Status 500 auch kein anderer
+// roher Fehlertext (msg == err.Error()). Selbst formulierte Meldungen
+// bleiben.
+func publicErrorMessage(req *http.Request, code int, msg string, err error) string {
+	if err == nil {
+		return msg
+	}
+	if pgErrorOf(err) != nil || (code >= http.StatusInternalServerError && msg == err.Error()) {
+		switch {
+		case code >= http.StatusInternalServerError:
+			return internalErrorMessage(req)
+		case code == http.StatusNotFound:
+			return "Nicht gefunden"
+		default:
+			return "Ungültige Eingabe"
+		}
+	}
+	return msg
+}
+
+// logAPIError schreibt msg wie uebergeben - die Aufrufer reichen nur den
+// oeffentlichen Text herein - und err nur ueber describeError.
 func logAPIError(req *http.Request, code int, errCode, msg string, err error) {
 	if req == nil {
-		log.Printf("http_api_error status=%d code=%s message=%q err=%v", code, errCode, msg, err)
+		log.Printf("http_api_error status=%d code=%s message=%q err=%q", code, errCode, msg, describeError(err))
 		return
 	}
 	log.Printf(
-		"http_api_error method=%s path=%s status=%d code=%s message=%q err=%v request_id=%s correlation_id=%s remote_ip=%s",
+		"http_api_error method=%s path=%s status=%d code=%s message=%q err=%q request_id=%s correlation_id=%s remote_ip=%s",
 		req.Method,
 		req.URL.Path,
 		code,
 		errCode,
 		msg,
-		err,
+		describeError(err),
 		RequestIDFromContext(req.Context()),
 		CorrelationIDFromContext(req.Context()),
 		realIP(req),

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.5.2** und damit **F.10.5** (2026-10-23,
+> Zuletzt abgeschlossen: **0.47** (2026-10-23, ADR 0030: Postgres-Fehler
+> nur noch mit SQLSTATE/Schema-Namen im Log, bei 500 "Interner Fehler
+> (Request-ID …)" an den Aufrufer — zentral in writeDomainError /
+> writeHTTPError / logAPIError, keine Aufrufstelle geändert; "fortsetzen"
+> als Zustimmung gewertet). Davor **F.10.5.2** und damit **F.10.5** (2026-10-23,
 > Client: Qualifikationen stehen im Anlegedialog, "Anlegen" ist EIN
 > Aufruf; Teilerfolg-Dialog aus F.7.3.3 entfällt). Davor **F.10.5.1** (2026-10-23, Server: `POST
 > /employees/with-qualifications` legt Mitarbeiter, Anforderungen und
@@ -23,10 +27,9 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: 0.47** (rohe Datenbankfehler mit Datenwerten im
-> Fehler-Log und in der Antwort — DSGVO "keine Personaldaten in Logs",
-> ohne fachliche Klärung lösbar). Alternativen: F.11 (Stellen-Vorlagen),
-> Epic G.
+> nächste Arbeit: F.11** (Vorlagen für Stellen mit erforderlichen
+> Qualifikationen — vom Nutzer gewünscht, baut direkt auf F.2/F.10.5 auf;
+> vor dem Bau ADR + Fragen). Alternative: Epic G (Fuhrpark).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
 > Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
@@ -54,7 +57,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 097, ADR 0030.
+> Nächste freie Migration 097, ADR 0031.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
