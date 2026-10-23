@@ -2072,6 +2072,23 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Legt Mitarbeiter, Anforderungen und vorhandene Nachweise in einem
+  // Aufruf an, ganz oder gar nicht (Backlog F.10.5, Server F.10.5.1). Body:
+  // employee, required_type_ids, qualifications (type_id, erworben_am
+  // JJJJ-MM-TT). Liefert {employee, requirements, qualifications}. Braucht
+  // employees.write und qualifications.write.
+  Future<Map<String, dynamic>> createEmployeeWithQualifications(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/employees/with-qualifications'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Aendert nur die genannten Felder (PATCH). Zulaessig sind first_name,
   // last_name, email, phone, role, location, cost_center, active und
   // team_id; jedes andere Feld lehnt der Server ab. Liefert den

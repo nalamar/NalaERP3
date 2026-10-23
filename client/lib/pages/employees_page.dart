@@ -148,16 +148,33 @@ class _EmployeesPageState extends State<EmployeesPage> {
     final phoneCtrl = TextEditingController();
     final roleCtrl = TextEditingController();
     String? teamId;
+    // Anforderungen und vorhandene Nachweise gleich mit (F.7.3.3, F.10.5):
+    // nur mit qualifications.write und nicht leerem Katalog.
+    List<InitialQualificationEntry>? qualEntries;
+    String? qualHint;
+    if (widget.api.hasPermission('qualifications.write')) {
+      try {
+        final types = await widget.api.listQualificationTypes();
+        if (types.isNotEmpty) qualEntries = initialQualificationEntries(types);
+      } catch (e) {
+        qualHint = 'Qualifikationen konnten nicht geladen werden ($e). Der Mitarbeiter wird ohne sie angelegt; '
+            'nachtragen im Abschnitt "Qualifikationen".';
+      }
+      if (!mounted) return;
+    }
+    String? dialogError;
+    String? summary;
     final created = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Mitarbeiter anlegen'),
           content: SizedBox(
-            width: 400,
+            width: qualEntries == null ? 400 : 620,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   TextField(controller: personalNrCtrl, decoration: const InputDecoration(labelText: 'Personalnummer (optional)')),
                   TextField(controller: firstCtrl, decoration: const InputDecoration(labelText: 'Vorname')),
@@ -171,6 +188,17 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     items: _teamItems(),
                     onChanged: (v) => setStateDialog(() => teamId = v),
                   ),
+                  if (qualEntries != null) InitialQualificationFields(entries: qualEntries, onChanged: setStateDialog),
+                  if (qualHint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(qualHint),
+                    ),
+                  if (dialogError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                    ),
                 ],
               ),
             ),
@@ -179,16 +207,34 @@ class _EmployeesPageState extends State<EmployeesPage> {
             TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
             FilledButton(
               onPressed: () async {
+                final body = buildEmployeeCreateBody(
+                  firstName: firstCtrl.text,
+                  lastName: lastCtrl.text,
+                  personalNr: personalNrCtrl.text,
+                  email: emailCtrl.text,
+                  phone: phoneCtrl.text,
+                  role: roleCtrl.text,
+                  teamId: teamId,
+                );
+                final entries = qualEntries;
+                InitialQualificationPlan? plan;
+                if (entries != null) {
+                  plan = buildInitialQualificationPlan(entries);
+                  if (plan.error != null) {
+                    setStateDialog(() => dialogError = plan!.error);
+                    return;
+                  }
+                }
+                setStateDialog(() => dialogError = null);
                 try {
-                  final emp = await widget.api.createEmployee(buildEmployeeCreateBody(
-                    firstName: firstCtrl.text,
-                    lastName: lastCtrl.text,
-                    personalNr: personalNrCtrl.text,
-                    email: emailCtrl.text,
-                    phone: phoneCtrl.text,
-                    role: roleCtrl.text,
-                    teamId: teamId,
-                  ));
+                  Map<String, dynamic> emp;
+                  if (plan != null) {
+                    final res = await widget.api.createEmployeeWithQualifications(buildEmployeeWithQualificationsBody(body, plan));
+                    emp = res['employee'] as Map<String, dynamic>;
+                    summary = initialQualificationSummary(res);
+                  } else {
+                    emp = await widget.api.createEmployee(body);
+                  }
                   if (ctx.mounted) Navigator.of(ctx).pop(emp);
                 } catch (e) {
                   _showError(e);
@@ -201,13 +247,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
       ),
     );
     if (created == null || !mounted) return;
-    // Zweiter Schritt: Anforderungen der Stelle und vorhandene Nachweise
-    // (F.7.3.3). Erst danach auswaehlen - sonst zeigte der Abschnitt
-    // "Qualifikationen" den Stand von vor dem Speichern.
-    if (widget.api.hasPermission('qualifications.write')) {
-      await showInitialQualificationsDialog(context, widget.api, created['id'].toString(), employeeDisplayName(created));
-      if (!mounted) return;
-    }
+    if (summary != null) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary!)));
     setState(() => selected = created);
     await _load();
   }

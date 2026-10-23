@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
-import '../api.dart';
 import 'employee_qualifications_section.dart';
 
-// Zweiter Schritt beim Anlegen eines Mitarbeiters (Backlog F.7.3.3).
-// Vorgabe des Nutzers vom 2026-10-13: "Beim Anlegen eines neuen
-// Mitarbeiters soll die Personalabteilung festlegen koennen, welche
-// Qualifikationen fuer die Stelle noetig sind und ob sie schon vorhanden
-// sind."
+// Qualifikationen gleich beim Anlegen eines Mitarbeiters (Backlog F.7.3.3,
+// seit F.10.5.2 in einem Aufruf). Vorgabe des Nutzers vom 2026-10-13:
+// "Beim Anlegen eines neuen Mitarbeiters soll die Personalabteilung
+// festlegen koennen, welche Qualifikationen fuer die Stelle noetig sind und
+// ob sie schon vorhanden sind."
 //
-// Der Server kennt dafuer keinen einzelnen Aufruf (atomare Anlage: Backlog
-// F.10). Der Mitarbeiter ist an dieser Stelle schon angelegt; danach
-// werden die Anforderungen gesetzt und die vorhandenen Nachweise einzeln
-// erfasst. Schlaegt ein Schritt fehl, sagt das Ergebnis genau, was
-// gespeichert ist und was nicht.
+// Die Auswahl steht im Anlegedialog selbst; gespeichert wird mit
+// POST /employees/with-qualifications - Mitarbeiter, Anforderungen und
+// Nachweise ganz oder gar nicht (F.10.5.1). Einen Teilerfolg gibt es
+// deshalb nicht mehr; ein Fehler bleibt im Dialog, die Eingaben auch.
 
 class InitialQualificationEntry {
   InitialQualificationEntry({required this.typeId, required this.name});
@@ -23,20 +21,29 @@ class InitialQualificationEntry {
   String erworbenAm = '';
 }
 
+// initialQualificationEntries: je aktiver Art eine Zeile, nach Name sortiert.
+List<InitialQualificationEntry> initialQualificationEntries(List<dynamic> types) => [
+      for (final t in types)
+        InitialQualificationEntry(
+          typeId: (t as Map<String, dynamic>)['id'].toString(),
+          name: t['name']?.toString() ?? t['id'].toString(),
+        ),
+    ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
 class InitialQualificationPlan {
   const InitialQualificationPlan({this.requiredIds = const [], this.records = const [], this.error});
   final List<String> requiredIds;
-  // Je vorhandener Qualifikation: Name (fuer die Meldung) und Body.
-  final List<MapEntry<String, Map<String, dynamic>>> records;
+  // Je vorhandener Qualifikation: type_id und erworben_am (JJJJ-MM-TT).
+  final List<Map<String, dynamic>> records;
   final String? error;
 }
 
-// buildInitialQualificationPlan prueft die Eingaben VOR jedem Aufruf: ein
+// buildInitialQualificationPlan prueft die Eingaben VOR dem Aufruf: ein
 // "vorhanden" ohne gueltiges Erwerbsdatum wird abgelehnt, statt still
 // uebergangen.
-InitialQualificationPlan buildInitialQualificationPlan(String employeeId, List<InitialQualificationEntry> entries) {
+InitialQualificationPlan buildInitialQualificationPlan(List<InitialQualificationEntry> entries) {
   final requiredIds = <String>[];
-  final records = <MapEntry<String, Map<String, dynamic>>>[];
+  final records = <Map<String, dynamic>>[];
   for (final e in entries) {
     if (e.required) requiredIds.add(e.typeId);
     if (!e.present) continue;
@@ -44,163 +51,81 @@ InitialQualificationPlan buildInitialQualificationPlan(String employeeId, List<I
     if (date == null) {
       return InitialQualificationPlan(error: '${e.name}: bitte das Erwerbsdatum als TT.MM.JJJJ angeben.');
     }
-    records.add(MapEntry(e.name, buildQualificationBody(employeeId: employeeId, typeId: e.typeId, erworbenAm: date)));
+    records.add({'type_id': e.typeId, 'erworben_am': date});
   }
   requiredIds.sort();
   return InitialQualificationPlan(requiredIds: requiredIds, records: records);
 }
 
-// Ergebnis eines Schritts: Zeile fuer die Rueckmeldung und ob er gelang.
-class InitialQualificationStep {
-  const InitialQualificationStep(this.line, {required this.ok});
-  final String line;
-  final bool ok;
+// buildEmployeeWithQualificationsBody baut den Body fuer
+// POST /employees/with-qualifications.
+Map<String, dynamic> buildEmployeeWithQualificationsBody(Map<String, dynamic> employee, InitialQualificationPlan plan) => {
+      'employee': employee,
+      'required_type_ids': plan.requiredIds,
+      'qualifications': plan.records,
+    };
+
+// initialQualificationSummary beschreibt, was ausser dem Mitarbeiter
+// gespeichert wurde; null, wenn nichts.
+String? initialQualificationSummary(Map<String, dynamic> result) {
+  final reqs = (result['requirements'] as List?)?.length ?? 0;
+  final recs = (result['qualifications'] as List?)?.length ?? 0;
+  if (reqs == 0 && recs == 0) return null;
+  final parts = <String>[
+    if (reqs > 0) 'Anforderungen: $reqs',
+    if (recs > 0) recs == 1 ? '1 Nachweis' : '$recs Nachweise',
+  ];
+  return 'Mitarbeiter angelegt (${parts.join(', ')}).';
 }
 
-// applyInitialQualifications fuehrt den Plan aus und liefert je Schritt
-// ein Ergebnis. Anforderungen werden nur gesetzt, wenn
-// welche gewaehlt sind (ein neuer Mitarbeiter hat keine). Ein fehlerhafter
-// Nachweis haelt die uebrigen nicht auf.
-Future<List<InitialQualificationStep>> applyInitialQualifications(
-    ApiClient api, String employeeId, InitialQualificationPlan plan) async {
-  final lines = <InitialQualificationStep>[];
-  if (plan.requiredIds.isNotEmpty) {
-    try {
-      await api.setQualificationRequirements(employeeId, plan.requiredIds);
-      lines.add(InitialQualificationStep('Anforderungen gespeichert (${plan.requiredIds.length}).', ok: true));
-    } catch (e) {
-      lines.add(InitialQualificationStep('Anforderungen NICHT gespeichert: $e', ok: false));
-    }
-  }
-  for (final r in plan.records) {
-    try {
-      await api.createQualification(r.value);
-      lines.add(InitialQualificationStep('Nachweis "${r.key}" erfasst.', ok: true));
-    } catch (e) {
-      lines.add(InitialQualificationStep('Nachweis "${r.key}" NICHT erfasst: $e', ok: false));
-    }
-  }
-  return lines;
-}
+// InitialQualificationFields: die Zeilen im Anlegedialog. onChanged baut
+// den Dialog neu auf (StatefulBuilder).
+class InitialQualificationFields extends StatelessWidget {
+  const InitialQualificationFields({super.key, required this.entries, required this.onChanged});
+  final List<InitialQualificationEntry> entries;
+  final void Function(VoidCallback) onChanged;
 
-// showInitialQualificationsDialog zeigt den zweiten Schritt. Ohne aktive
-// Arten im Katalog gibt es nichts zu fragen.
-Future<void> showInitialQualificationsDialog(BuildContext context, ApiClient api, String employeeId, String employeeName) async {
-  List<dynamic> types;
-  try {
-    types = await api.listQualificationTypes();
-  } catch (e) {
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Qualifikationen konnten nicht geladen werden: $e')));
-    }
-    return;
-  }
-  if (types.isEmpty || !context.mounted) return;
-  final entries = [
-    for (final t in types)
-      InitialQualificationEntry(
-        typeId: (t as Map<String, dynamic>)['id'].toString(),
-        name: t['name']?.toString() ?? t['id'].toString(),
-      ),
-  ]..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
-
-  final plan = await showDialog<InitialQualificationPlan>(
-    context: context,
-    barrierDismissible: false,
-    builder: (ctx) {
-      String? error;
-      return StatefulBuilder(
-        builder: (ctx, setStateDialog) => AlertDialog(
-          title: Text('Qualifikationen für $employeeName'),
-          content: SizedBox(
-            width: 620,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Welche Qualifikationen braucht die Stelle, und welche sind schon vorhanden?'),
-                  const SizedBox(height: 8),
-                  for (final e in entries)
-                    Row(
-                      key: ValueKey('iq-${e.typeId}'),
-                      children: [
-                        Expanded(child: Text(e.name, overflow: TextOverflow.ellipsis)),
-                        Checkbox(
-                          key: ValueKey('iq-req-${e.typeId}'),
-                          value: e.required,
-                          onChanged: (v) => setStateDialog(() => e.required = v == true),
-                        ),
-                        const Text('erforderlich'),
-                        const SizedBox(width: 8),
-                        Checkbox(
-                          key: ValueKey('iq-has-${e.typeId}'),
-                          value: e.present,
-                          onChanged: (v) => setStateDialog(() => e.present = v == true),
-                        ),
-                        const Text('vorhanden seit'),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 120,
-                          child: TextField(
-                            key: ValueKey('iq-date-${e.typeId}'),
-                            enabled: e.present,
-                            decoration: const InputDecoration(hintText: 'TT.MM.JJJJ', isDense: true),
-                            onChanged: (v) => e.erworbenAm = v,
-                          ),
-                        ),
-                      ],
-                    ),
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
-                    ),
-                ],
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text('Qualifikationen', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Welche Qualifikationen braucht die Stelle, und welche sind schon vorhanden?'),
+        const SizedBox(height: 8),
+        for (final e in entries)
+          Row(
+            key: ValueKey('iq-${e.typeId}'),
+            children: [
+              Expanded(child: Text(e.name, overflow: TextOverflow.ellipsis)),
+              Checkbox(
+                key: ValueKey('iq-req-${e.typeId}'),
+                value: e.required,
+                onChanged: (v) => onChanged(() => e.required = v == true),
               ),
-            ),
+              const Text('erforderlich'),
+              const SizedBox(width: 8),
+              Checkbox(
+                key: ValueKey('iq-has-${e.typeId}'),
+                value: e.present,
+                onChanged: (v) => onChanged(() => e.present = v == true),
+              ),
+              const Text('vorhanden seit'),
+              const SizedBox(width: 8),
+              SizedBox(
+                width: 120,
+                child: TextField(
+                  key: ValueKey('iq-date-${e.typeId}'),
+                  enabled: e.present,
+                  decoration: const InputDecoration(hintText: 'TT.MM.JJJJ', isDense: true),
+                  onChanged: (v) => e.erworbenAm = v,
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Überspringen')),
-            FilledButton(
-              onPressed: () {
-                final p = buildInitialQualificationPlan(employeeId, entries);
-                if (p.error != null) {
-                  setStateDialog(() => error = p.error);
-                  return;
-                }
-                Navigator.of(ctx).pop(p);
-              },
-              child: const Text('Speichern'),
-            ),
-          ],
-        ),
-      );
-    },
-  );
-  if (plan == null || (plan.requiredIds.isEmpty && plan.records.isEmpty)) return;
-  final lines = await applyInitialQualifications(api, employeeId, plan);
-  if (!context.mounted) return;
-  final failed = lines.any((l) => !l.ok);
-  if (!failed) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(lines.map((l) => l.line).join(' '))));
-    return;
+      ],
+    );
   }
-  // Teilerfolg nicht in einer fluechtigen Meldung verstecken.
-  await showDialog<void>(
-    context: context,
-    builder: (ctx) => AlertDialog(
-      title: const Text('Nicht alles gespeichert'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Der Mitarbeiter ist angelegt. Fehlendes bitte im Abschnitt "Qualifikationen" nachtragen.'),
-          const SizedBox(height: 8),
-          for (final l in lines) Text(l.line, style: l.ok ? null : const TextStyle(color: Color(0xFFB00020))),
-        ],
-      ),
-      actions: [FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('OK'))],
-    ),
-  );
 }

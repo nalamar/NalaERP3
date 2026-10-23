@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.5.1** (2026-10-23, Server: `POST
+> Zuletzt abgeschlossen: **F.10.5.2** und damit **F.10.5** (2026-10-23,
+> Client: Qualifikationen stehen im Anlegedialog, "Anlegen" ist EIN
+> Aufruf; Teilerfolg-Dialog aus F.7.3.3 entfällt). Davor **F.10.5.1** (2026-10-23, Server: `POST
 > /employees/with-qualifications` legt Mitarbeiter, Anforderungen und
 > Nachweise in EINER Transaktion an; verlangt `employees.write` und
 > `qualifications.write`; Schreibwege dafür in `…Tx`-Funktionen zerlegt).
@@ -19,15 +21,15 @@
 > Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
-> **Nächste Arbeit: F.10.5.2** (Client: Anlegedialog fragt Anforderungen
-> und vorhandene Nachweise VOR dem Speichern ab und nutzt den einen
-> Aufruf; der Teilerfolg-Dialog aus F.7.3.3 entfällt). **Offene Fragen an
-> den Nutzer: 2** (F.10.3 Zwischenbestätigung Schweißer, F.10.4
-> Benachrichtigung — jeweils mit Empfehlung, nicht blockierend).
-> Live-Stand enthält F.10.1/F.10.2/F.10.5.1 noch nicht (Neubau nur auf
-> Wunsch). Docker Desktop muss für Integrationstests laufen (2026-10-23
+> **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
+> (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
+> nächste Arbeit: 0.47** (rohe Datenbankfehler mit Datenwerten im
+> Fehler-Log und in der Antwort — DSGVO "keine Personaldaten in Logs",
+> ohne fachliche Klärung lösbar). Alternativen: F.11 (Stellen-Vorlagen),
+> Epic G.
+> Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
+> Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
-> Client-Suite: 284 / 0.
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
 > **ANNAHMEN, vom Nutzer nicht ausdrücklich bestätigt** ("fortsetzen" als
