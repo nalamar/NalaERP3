@@ -336,6 +336,59 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 			writeJSON(w, http.StatusOK, out)
 		})
 
+		// Stellen eines Mitarbeiters (F.11.3.1): lesen wie die
+		// Anforderungen, ohne employee_id die eigenen.
+		r.Get("/positions", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			employeeID, ok := resolveOwnOrPermittedEmployee(w, req, resolver, requested, permQualificationsRead, permQualificationsSelf)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListEmployeePositions(req.Context(), employeeID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		// Stellen setzen: ersetzt die Menge vollstaendig, employee_id ist
+		// Pflicht (wie bei den Anforderungen).
+		r.With(write).Put("/positions", func(w http.ResponseWriter, req *http.Request) {
+			requested, ok := optionalEmployeeID(w, req)
+			if !ok {
+				return
+			}
+			if requested == nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "employee_id erforderlich")
+				return
+			}
+			var in struct {
+				PositionIDs *[]uuid.UUID `json:"position_ids"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			// Fehlende Liste ist nicht leere Liste - sonst entfernte ein
+			// vergessenes Feld alle Stellen.
+			if in.PositionIDs == nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Feld erforderlich: position_ids")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.SetEmployeePositions(req.Context(), *requested, *in.PositionIDs, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		// Stand eines Mitarbeiters - ohne employee_id der eigene: was fehlt,
 		// abgelaufen ist, ablaeuft oder gilt, das Dringendste zuerst.
 		r.Get("/standing", func(w http.ResponseWriter, req *http.Request) {

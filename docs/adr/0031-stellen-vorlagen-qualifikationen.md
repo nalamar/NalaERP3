@@ -134,3 +134,9 @@ Präzisierung F.11.2: eine Stelle hat wie eine Qualifikationsart einen
 **Code** (A-Z, 0-9, _; nach der Anlage nicht änderbar) als stabilen
 Schlüssel für den Vorschlagskatalog und einen änderbaren Namen; beide
 eindeutig je Mandant, der Name ohne Rücksicht auf Groß-/Kleinschreibung.
+
+Präzisierung F.11.3.1: eine **stillgelegte Stelle zählt im Stand nicht
+mehr** (wie eine stillgelegte Art), bleibt dem Mitarbeiter aber
+zugeordnet. Die eigenen Anforderungen eines Mitarbeiters bleiben eine
+eigene Liste; im Stand zählt die Vereinigung (eigene Anforderungen,
+Arten der aktiven Stellen, Pflicht für alle).

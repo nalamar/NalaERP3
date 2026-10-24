@@ -151,10 +151,12 @@ func (s *QualificationService) DueList(ctx context.Context, today time.Time, war
 		return nil, err
 	}
 
+	// Eigene Anforderungen und die Arten der aktiven Stellen (F.11.3.1),
+	// dieselbe Abfrage wie in Standing.
 	requirements := make(map[uuid.UUID][]uuid.UUID)
 	reqRows, err := s.pg.Query(ctx, `
 		SELECT r.employee_id, r.type_id
-		  FROM hr_employee_qualification_requirements r
+		  FROM (`+effectiveRequirementsSQL+`) r
 		  JOIN hr_employees e ON e.id = r.employee_id
 		 WHERE e.company_id=$1 AND e.active
 	`, companyID)

@@ -234,8 +234,9 @@ func (s *QualificationService) Standing(ctx context.Context, employeeID uuid.UUI
 		return nil, err
 	}
 
+	// Eigene Anforderungen und die Arten der aktiven Stellen (F.11.3.1).
 	ownRequirements := make([]uuid.UUID, 0)
-	reqRows, err := s.pg.Query(ctx, `SELECT type_id FROM hr_employee_qualification_requirements WHERE employee_id=$1`, employeeID)
+	reqRows, err := s.pg.Query(ctx, `SELECT type_id FROM (`+effectiveRequirementsSQL+`) eff WHERE employee_id=$1`, employeeID)
 	if err != nil {
 		return nil, err
 	}

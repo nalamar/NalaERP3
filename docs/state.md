@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.11.2** (2026-10-24, Server: Stellen und
+> Zuletzt abgeschlossen: **F.11.3.1** (2026-10-24, Server: Stellen am
+> Mitarbeiter, Migration 098, `GET/PUT /qualifications/positions`; Stand
+> und Fälligkeitsliste zählen die Arten der aktiven Stellen über
+> `effectiveRequirementsSQL`; stillgelegte Stelle zählt nicht). Davor
+> **F.11.2** (2026-10-24, Server: Stellen und
 > Zuordnung Stelle → Arten, Migration 097, Routen `/positions`; noch ohne
 > Wirkung auf Mitarbeiter). **ANNAHME**: die vier F.11-Fragen hat der
 > Nutzer mit "fortsetzen" beantwortet = Empfehlungen aus ADR 0031
@@ -32,10 +36,9 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: F.11.3** (Stellen am Mitarbeiter; Stand und
-> Fälligkeitsliste als Vereinigung — `qualification_requirements.go`
-> `Standing`, `qualification_due.go` `DueList`, `ListRequirements` mit
-> Herkunft; Anlage aus F.10.5 mit Stellen). Danach F.11.4–F.11.6.
+> nächste Arbeit: F.11.3.2** (Anlage `POST /employees/with-qualifications`
+> nimmt `position_ids` an; `setEmployeePositionsTx` in
+> `CreateEmployeeWithQualifications`). Danach F.11.4–F.11.6.
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
 > Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
@@ -63,7 +66,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 098, ADR 0032.
+> Nächste freie Migration 099, ADR 0032.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
