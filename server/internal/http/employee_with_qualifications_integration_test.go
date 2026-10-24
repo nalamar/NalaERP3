@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -129,6 +130,11 @@ func TestEmployeeWithQualificationsIsAllOrNothing(t *testing.T) {
 	}
 	foreign := newCatalogTenant(t, env, handler)
 	foreignType := foreign.qualType(foreign.user("hr"), "FREMD", "null")
+	// Stellen (F.11.3.2): eine aktive, eine stillgelegte, eine fremde.
+	activePos := decodePosition(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath, `{"code":"MONTEUR","name":"Monteur","type_ids":`+idsJSON(annual.ID)+`}`), http.StatusCreated)
+	inactivePos := decodePosition(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath, `{"code":"ALTSTELLE","name":"Altstelle"}`), http.StatusCreated)
+	decodePosition(t, doAuthedRequest(t, handler, token, http.MethodPut, positionsPath+inactivePos.ID.String(), `{"name":"Altstelle","aktiv":false,"hinweis":"","type_ids":[]}`), http.StatusOK)
+	foreignPos := decodePosition(t, doAuthedRequest(t, handler, foreign.user("hr"), http.MethodPost, positionsPath, `{"code":"FREMD","name":"Fremd"}`), http.StatusCreated)
 	if _, err := env.PG.Exec(context.Background(), `INSERT INTO hr_employees (id, first_name, last_name, personalnummer, company_id) VALUES ($1,'Schon','Da','P-DOPPELT',$2)`, uuid.New(), c.company); err != nil {
 		t.Fatalf("Mitarbeiter mit Personalnummer: %v", err)
 	}
@@ -153,6 +159,12 @@ func TestEmployeeWithQualificationsIsAllOrNothing(t *testing.T) {
 		{"Art fehlt", `{` + emp + `,"qualifications":[{"erworben_am":"2026-03-15"}]}`, http.StatusBadRequest, "validation_error", "type_id erforderlich"},
 		{"Name fehlt", `{"employee":{"first_name":"Ohne"},"required_type_ids":["` + annual.ID.String() + `"]}`, http.StatusBadRequest, "validation_error", "Vor- und Nachname erforderlich"},
 		{"Personalnummer doppelt", `{"employee":{"first_name":"A","last_name":"B","personalnummer":"P-DOPPELT"},"required_type_ids":["` + annual.ID.String() + `"]}`, http.StatusBadRequest, "validation_error", "Personalnummer existiert bereits"},
+		// Stellen scheitern NACH Mitarbeiter und Anforderungen: auch dann
+		// bleibt nichts.
+		{"Stelle unbekannt", `{` + emp + `,"required_type_ids":["` + annual.ID.String() + `"],"position_ids":` + idsJSON(activePos.ID, uuid.New()) + `,"qualifications":[` + ok + `]}`, http.StatusNotFound, "not_found", "Stelle nicht gefunden"},
+		{"Stelle stillgelegt", `{` + emp + `,"position_ids":` + idsJSON(inactivePos.ID) + `}`, http.StatusConflict, "conflict", "Stelle ist stillgelegt"},
+		{"Stelle fremder Mandant", `{` + emp + `,"position_ids":` + idsJSON(foreignPos.ID) + `}`, http.StatusNotFound, "not_found", "Stelle nicht gefunden"},
+		{"Stelle leer", `{` + emp + `,"position_ids":["00000000-0000-0000-0000-000000000000"]}`, http.StatusBadRequest, "validation_error", "position_id erforderlich"},
 		{"Team unbekannt", `{"employee":{"first_name":"A","last_name":"B","team_id":"` + uuid.NewString() + `"},"required_type_ids":["` + annual.ID.String() + `"]}`, http.StatusNotFound, "not_found", "Team nicht gefunden"},
 		{"kein JSON", `{`, http.StatusBadRequest, "validation_error", "Ungültige Eingabe"},
 	}
@@ -182,5 +194,47 @@ func TestEmployeeWithQualificationsNeedsBothPermissions(t *testing.T) {
 	}
 	if got := c.tenantCounts(); got != before {
 		t.Fatalf("ohne Recht gespeichert: vorher %v, nachher %v", before, got)
+	}
+}
+
+// Stellen gleich bei der Anlage (F.11.3.2): ihre Arten zaehlen sofort im
+// Stand, die eigenen Anforderungen bleiben getrennt.
+func TestEmployeeWithQualificationsAssignsPositions(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	token := c.user("hr")
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		return doAuthedRequest(t, handler, token, method, path, body)
+	}
+	kran := c.qualType(token, "KRAN", "null")
+	eigen := c.qualType(token, "EIGEN", "null")
+	pos := decodePosition(t, do(http.MethodPost, positionsPath, `{"code":"KRANFUEHRER","name":"Kranführer","type_ids":`+idsJSON(kran.ID)+`}`), http.StatusCreated)
+
+	rec := do(http.MethodPost, onboardingPath, `{"employee":{"first_name":"Neu","last_name":"Kran"},"required_type_ids":`+idsJSON(eigen.ID)+`,"position_ids":`+idsJSON(pos.ID, pos.ID)+`}`)
+	out := decodeOnboarding(t, rec)
+	var body struct {
+		Positions []positionResponse `json:"positions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Antwort nicht lesbar: %v", err)
+	}
+	if len(body.Positions) != 1 || body.Positions[0].ID != pos.ID {
+		t.Fatalf("Stellen in der Antwort: %s", rec.Body.String())
+	}
+	if len(out.Requirements) != 1 || out.Requirements[0].TypeID != eigen.ID {
+		t.Fatalf("eigene Anforderungen: %+v", out.Requirements)
+	}
+	if got := decodeEmployeePositions(t, do(http.MethodGet, qualPath+"positions?employee_id="+out.Employee.ID.String(), "")); strings.Join(got, ",") != "KRANFUEHRER" {
+		t.Fatalf("gespeicherte Stellen: %v", got)
+	}
+	if got := standingCodes(decodeStanding(t, do(http.MethodGet, qualPath+"standing?employee_id="+out.Employee.ID.String(), ""))); got != "EIGEN,KRAN" {
+		t.Fatalf("Stand: %s", got)
+	}
+	// Ohne position_ids: keine Stellen, leere Liste in der Antwort.
+	rec = do(http.MethodPost, onboardingPath, `{"employee":{"first_name":"Ohne","last_name":"Stelle"}}`)
+	decodeOnboarding(t, rec)
+	if !strings.Contains(rec.Body.String(), `"positions":[]`) {
+		t.Fatalf("ohne Stellen: %s", rec.Body.String())
 	}
 }

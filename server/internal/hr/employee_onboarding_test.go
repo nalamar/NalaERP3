@@ -24,6 +24,7 @@ func TestEmployeeWithQualificationsValidatesBeforeTouchingDatabase(t *testing.T)
 	}{
 		{"ohne Mandant", EmployeeWithQualificationsInput{Employee: emp}, " ", "Mandant erforderlich"},
 		{"Anforderung ohne Art", EmployeeWithQualificationsInput{Employee: emp, RequiredTypeIDs: []uuid.UUID{typ, uuid.Nil}}, "c1", "type_id erforderlich"},
+		{"Stelle leer", EmployeeWithQualificationsInput{Employee: emp, PositionIDs: []uuid.UUID{uuid.New(), uuid.Nil}}, "c1", "position_id erforderlich"},
 		{"Nachweis ohne Art", EmployeeWithQualificationsInput{Employee: emp, Qualifications: []InitialQualification{{ErworbenAm: past}}}, "c1", "type_id erforderlich"},
 		{"Nachweis ohne Datum", EmployeeWithQualificationsInput{Employee: emp, Qualifications: []InitialQualification{{TypeID: typ}}}, "c1", "Erwerbsdatum erforderlich"},
 		{"Nachweis in der Zukunft", EmployeeWithQualificationsInput{Employee: emp, Qualifications: []InitialQualification{

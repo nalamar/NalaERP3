@@ -148,6 +148,7 @@ func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService, quals *h
 			var body struct {
 				Employee        hr.EmployeeInput `json:"employee"`
 				RequiredTypeIDs []uuid.UUID      `json:"required_type_ids"`
+				PositionIDs     []uuid.UUID      `json:"position_ids"`
 				Qualifications  []struct {
 					TypeID     uuid.UUID `json:"type_id"`
 					ErworbenAm string    `json:"erworben_am"`
@@ -161,7 +162,7 @@ func mountEmployeeRoutes(protected chi.Router, svc *hr.EmployeeService, quals *h
 				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
 				return
 			}
-			in := hr.EmployeeWithQualificationsInput{Employee: body.Employee, RequiredTypeIDs: body.RequiredTypeIDs}
+			in := hr.EmployeeWithQualificationsInput{Employee: body.Employee, RequiredTypeIDs: body.RequiredTypeIDs, PositionIDs: body.PositionIDs}
 			for _, q := range body.Qualifications {
 				erworben, ok := parseOptionalDate(w, req, "erworben_am", q.ErworbenAm)
 				if !ok {

@@ -42,12 +42,16 @@ type EmployeeWithQualificationsInput struct {
 	// RequiredTypeIDs: Anforderungen der Stelle (neu angelegt, also nur
 	// aktive Arten des Mandanten).
 	RequiredTypeIDs []uuid.UUID
-	Qualifications  []InitialQualification
+	// PositionIDs: Stellen des Mitarbeiters (F.11.3.2; nur aktive Stellen
+	// des Mandanten). Ihre Arten gelten wie in SetEmployeePositions.
+	PositionIDs    []uuid.UUID
+	Qualifications []InitialQualification
 }
 
 type EmployeeWithQualifications struct {
 	Employee       *Employee                  `json:"employee"`
 	Requirements   []QualificationRequirement `json:"requirements"`
+	Positions      []Position                 `json:"positions"`
 	Qualifications []EmployeeQualification    `json:"qualifications"`
 }
 
@@ -76,6 +80,10 @@ func (s *QualificationService) CreateEmployeeWithQualifications(ctx context.Cont
 			return nil, errors.New("type_id erforderlich")
 		}
 	}
+	positionIDs, err := normalizePositionIDs(in.PositionIDs)
+	if err != nil {
+		return nil, err
+	}
 	// Vorab ohne Datenbank: der Mitarbeiter hat noch keine ID, deshalb
 	// steht hier ein Platzhalter (validateQualificationInput prueft nur,
 	// dass einer genannt ist).
@@ -98,6 +106,9 @@ func (s *QualificationService) CreateEmployeeWithQualifications(ctx context.Cont
 	if err := setRequirementsTx(ctx, tx, emp.ID, uniqueTypeIDs(in.RequiredTypeIDs), actorUserID, companyID); err != nil {
 		return nil, err
 	}
+	if err := setEmployeePositionsTx(ctx, tx, emp.ID, positionIDs, actorUserID, companyID); err != nil {
+		return nil, err
+	}
 	records := make([]EmployeeQualification, 0, len(in.Qualifications))
 	for _, q := range in.Qualifications {
 		out, err := createQualificationsTx(ctx, tx, q.input(emp.ID), actorUserID, companyID)
@@ -113,5 +124,9 @@ func (s *QualificationService) CreateEmployeeWithQualifications(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	return &EmployeeWithQualifications{Employee: emp, Requirements: reqs, Qualifications: records}, nil
+	positions, err := s.ListEmployeePositions(ctx, emp.ID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	return &EmployeeWithQualifications{Employee: emp, Requirements: reqs, Positions: positions, Qualifications: records}, nil
 }
