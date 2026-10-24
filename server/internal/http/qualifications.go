@@ -66,38 +66,47 @@ var qualificationTypeUpdateFields = []string{"name", "kategorie", "gueltigkeit_m
 // Antwort bereits geschrieben.
 func decodeQualificationTypeUpdate(w http.ResponseWriter, req *http.Request) (hr.QualificationTypeUpdate, bool) {
 	var out hr.QualificationTypeUpdate
+	ok := decodeCompleteReplacement(w, req, qualificationTypeUpdateFields, "Der Code einer Qualifikationsart ist nicht änderbar", &out)
+	return out, ok
+}
+
+// decodeCompleteReplacement liest den Body eines PUT, der ALLE Felder
+// ersetzt: jedes Feld aus fields ist Pflicht, "code" ist nicht aenderbar
+// (codeMessage), andere Felder sind unbekannt. Bei false ist die Antwort
+// bereits geschrieben.
+func decodeCompleteReplacement(w http.ResponseWriter, req *http.Request, fields []string, codeMessage string, out any) bool {
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(req.Body).Decode(&raw); err != nil || raw == nil {
 		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
-		return out, false
+		return false
 	}
 	if _, ok := raw["code"]; ok {
-		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Der Code einer Qualifikationsart ist nicht änderbar")
-		return out, false
+		writeAPIError(w, req, http.StatusBadRequest, "validation_error", codeMessage)
+		return false
 	}
-	allowed := make(map[string]bool, len(qualificationTypeUpdateFields))
-	for _, f := range qualificationTypeUpdateFields {
+	allowed := make(map[string]bool, len(fields))
+	for _, f := range fields {
 		allowed[f] = true
 		if _, ok := raw[f]; !ok {
 			writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Feld erforderlich: "+f)
-			return out, false
+			return false
 		}
 	}
 	for k := range raw {
 		if !allowed[k] {
 			writeAPIError(w, req, http.StatusBadRequest, "validation_error", "unbekanntes Feld: "+k)
-			return out, false
+			return false
 		}
 	}
 	body, err := json.Marshal(raw)
 	if err == nil {
-		err = json.Unmarshal(body, &out)
+		err = json.Unmarshal(body, out)
 	}
 	if err != nil {
 		writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
-		return out, false
+		return false
 	}
-	return out, true
+	return true
 }
 
 func mountQualificationTypeRoutes(protected chi.Router, svc *hr.QualificationTypeService) {

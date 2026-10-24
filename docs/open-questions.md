@@ -276,7 +276,7 @@ Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
    Abmeldung). Empfehlung: zuerst (a); E-Mail als eigener Backlog-Punkt
    für später. Status: offen.
 
-## 2026-10-24 — F.11 Stellen als Vorlagen für Qualifikationen (offen, blockiert F.11)
+## 2026-10-24 — F.11 Stellen als Vorlagen für Qualifikationen (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Details, Optionen und Begründung in `docs/adr/0031-stellen-vorlagen-qualifikationen.md`.
 
@@ -285,14 +285,14 @@ Details, Optionen und Begründung in `docs/adr/0031-stellen-vorlagen-qualifikati
    aller Inhaber sofort; eine neue Pflicht-Unterweisung für Schweißer
    erscheint bei allen Schweißern als "fehlt". Beim Kopieren bliebe sie
    bei den vorhandenen still aus. Einzelne Zusatzanforderungen bleiben
-   möglich. Status: offen.
+   möglich. Status: beantwortet ("fortsetzen" am 2026-10-24 = Empfehlung; Annahme, nicht ausdrücklich bestätigt).
 2. **Mehrere Stellen je Mitarbeiter** (z. B. Monteur und
-   Staplerfahrer)? Empfehlung: ja. Status: offen.
+   Staplerfahrer)? Empfehlung: ja. Status: beantwortet ("fortsetzen" am 2026-10-24 = Empfehlung; Annahme, nicht ausdrücklich bestätigt).
 3. **Freitext "Stelle / Rolle"** bleibt als Berufsbezeichnung
    unverändert, die Stellen kommen als eigenes Feld dazu? Empfehlung: ja.
-   Status: offen.
+   Status: beantwortet ("fortsetzen" am 2026-10-24 = Empfehlung; Annahme, nicht ausdrücklich bestätigt).
 4. **"Generieren"**: Vorschlagskatalog typischer Metallbau-Stellen zum
    Übernehmen (wie beim Qualifikationskatalog) plus Anlegen von Hand —
    oder (auch) Vorlagen aus vorhandenen Mitarbeitern ableiten?
-   Empfehlung: Katalog + von Hand zuerst, Ableiten später. Status: offen.
+   Empfehlung: Katalog + von Hand zuerst, Ableiten später. Status: beantwortet ("fortsetzen" am 2026-10-24 = Empfehlung; Annahme, nicht ausdrücklich bestätigt).
 

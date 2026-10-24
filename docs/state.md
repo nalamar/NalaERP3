@@ -7,10 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.11.1** (2026-10-24, ADR 0031 als ENTWURF:
-> Stellen als Vorlagen für Qualifikationen; kein Produktivcode). **F.11
-> ist blocked** — vier Fragen an den Nutzer (open-questions 2026-10-24),
-> jeweils mit Empfehlung. Davor **0.47** (2026-10-23, ADR 0030: Postgres-Fehler
+> Zuletzt abgeschlossen: **F.11.2** (2026-10-24, Server: Stellen und
+> Zuordnung Stelle → Arten, Migration 097, Routen `/positions`; noch ohne
+> Wirkung auf Mitarbeiter). **ANNAHME**: die vier F.11-Fragen hat der
+> Nutzer mit "fortsetzen" beantwortet = Empfehlungen aus ADR 0031
+> (dauerhaft gelten, mehrere Stellen je Mitarbeiter, `role` bleibt,
+> Katalog + von Hand). Davor **F.11.1** (ADR 0031). Davor **0.47** (2026-10-23, ADR 0030: Postgres-Fehler
 > nur noch mit SQLSTATE/Schema-Namen im Log, bei 500 "Interner Fehler
 > (Request-ID …)" an den Aufrufer — zentral in writeDomainError /
 > writeHTTPError / logAPIError, keine Aufrufstelle geändert; "fortsetzen"
@@ -30,10 +32,10 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit**: nach Antwort F.11.2 ff. (Teilung laut ADR 0031);
-> bis dahin **Epic G (Fuhrpark), beginnend mit G.1 Fahrzeugstamm** —
-> vorher Backlog-Abschnitt Epic G und `aufgabe.md` §1 lesen, ADR für das
-> Modell (Fahrzeuge als eigene Entität oder als Betriebsmittel aus F.3).
+> nächste Arbeit: F.11.3** (Stellen am Mitarbeiter; Stand und
+> Fälligkeitsliste als Vereinigung — `qualification_requirements.go`
+> `Standing`, `qualification_due.go` `DueList`, `ListRequirements` mit
+> Herkunft; Anlage aus F.10.5 mit Stellen). Danach F.11.4–F.11.6.
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
 > Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
@@ -61,7 +63,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 097, ADR 0032.
+> Nächste freie Migration 098, ADR 0032.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*

@@ -1,8 +1,12 @@
 # ADR 0031 — Stellen als Vorlagen für erforderliche Qualifikationen
 
 Datum: 2026-10-24
-Status: **Entwurf — wartet auf Entscheidungen des Nutzers**
-(`docs/open-questions.md`, 2026-10-24). Kein Produktivcode vor der Antwort.
+Status: **entschieden wie empfohlen** (2026-10-24) — **ANNAHME**: der
+Nutzer hat auf die vier Fragen mit "fortsetzen" geantwortet; das ist als
+Zustimmung zu allen Empfehlungen gewertet, nicht ausdrücklich bestätigt
+(`docs/open-questions.md`, 2026-10-24). Damit gilt: Stammdaten je
+Mandant, **dauerhaft gelten (B)**, mehrere Stellen je Mitarbeiter, `role`
+bleibt, Vorschlagskatalog + von Hand (Ableiten später).
 Bezug: Backlog F.11; Wunsch des Nutzers vom 2026-10-13: "Vorlagen für
 Mitarbeiter-Stellen generieren, die bestimmte Qualifikationen erfordern";
 ADR 0027 (Qualifikationen, Anforderungen je Mitarbeiter).
@@ -116,3 +120,17 @@ Zuordnung (Server) · Stellen am Mitarbeiter und Stand/Fälligkeit als
 Vereinigung (Server) · Pflege der Stellen und Auswahl beim Anlegen/
 Bearbeiten (Client) · Vorschlagskatalog. Die Anlage aus F.10.5 nimmt
 dann zusätzlich Stellen an.
+
+## Umsetzung (Teilung im Backlog)
+
+F.11.2 Stellen und Zuordnung Stelle → Arten (Server, Migration 097) ·
+F.11.3 Stellen am Mitarbeiter, Stand/Fälligkeit als Vereinigung, Anlage
+aus F.10.5 mit Stellen (Server) · F.11.4 Vorschlagskatalog (Server) ·
+F.11.5 Pflege der Stellen (Client) · F.11.6 Stellen beim Anlegen und
+Bearbeiten (Client) · F.11.7 Vorlagen aus vorhandenen Mitarbeitern
+ableiten (später).
+
+Präzisierung F.11.2: eine Stelle hat wie eine Qualifikationsart einen
+**Code** (A-Z, 0-9, _; nach der Anlage nicht änderbar) als stabilen
+Schlüssel für den Vorschlagskatalog und einen änderbaren Namen; beide
+eindeutig je Mandant, der Name ohne Rücksicht auf Groß-/Kleinschreibung.
