@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.11.3.2** und damit **F.11.3** (2026-10-24,
+> Zuletzt abgeschlossen: **F.11.4** (2026-10-24, Server: Vorschlagskatalog
+> mit fünf Stellen, `POST /positions/adopt-defaults`, ergänzt nur
+> Fehlendes, meldet fehlende Arten; als nicht recherchiert gekennzeichnet).
+> **Damit ist die Server-Seite von F.11 fertig.** Davor **F.11.3.2** und damit **F.11.3** (2026-10-24,
 > Server: die Anlage mit Qualifikationen nimmt `position_ids` an, in
 > derselben Transaktion). Davor **F.11.3.1** (2026-10-24, Server: Stellen am
 > Mitarbeiter, Migration 098, `GET/PUT /qualifications/positions`; Stand
@@ -38,11 +41,10 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: F.11.4** (Vorschlagskatalog typischer Metallbau-Stellen
-> zum Übernehmen, nach dem Muster `qualification_defaults.go` /
-> `AdoptDefaults`; Zuordnung über die Codes des Qualifikations-
-> Vorschlagskatalogs, nur Arten, die der Mandant hat; als nicht
-> recherchiert kennzeichnen). Danach F.11.5–F.11.6 (Client).
+> nächste Arbeit: F.11.5** (Client: Pflege der Stellen — Liste, Anlegen,
+> Bearbeiten mit Arten-Auswahl, Stilllegen, Vorschlag übernehmen mit
+> Anzeige der fehlenden Arten; Muster `qualification_catalog_page.dart`).
+> Danach F.11.6 (Stellen beim Anlegen/Bearbeiten eines Mitarbeiters).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
 > Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).

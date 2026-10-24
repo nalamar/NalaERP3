@@ -279,3 +279,113 @@ func TestClassifyDomainErrorCoversPositionMessages(t *testing.T) {
 		}
 	}
 }
+
+type adoptedPositionResponse struct {
+	positionResponse
+	FehlendeArten []string `json:"fehlende_arten"`
+}
+
+func decodeAdoptedPositions(t *testing.T, rec *httptest.ResponseRecorder) map[string]adoptedPositionResponse {
+	t.Helper()
+	if rec.Code != http.StatusOK {
+		t.Fatalf("erwartet 200, bekommen %d mit Body %s", rec.Code, rec.Body.String())
+	}
+	var list []adoptedPositionResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("Antwort nicht lesbar: %v (%s)", err, rec.Body.String())
+	}
+	out := map[string]adoptedPositionResponse{}
+	for _, p := range list {
+		out[p.Code] = p
+	}
+	return out
+}
+
+// Vorschlagskatalog (F.11.4): ohne Qualifikationskatalog entstehen die
+// Stellen ohne Arten und nennen die fehlenden; ein zweiter Aufruf legt
+// nichts an.
+func TestPositionsAdoptDefaultsWithoutQualificationCatalog(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	token := c.user("hr")
+	got := decodeAdoptedPositions(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath+"adopt-defaults", ""))
+	if len(got) != 5 {
+		t.Fatalf("erwartet 5 Stellen, bekommen %d", len(got))
+	}
+	kran := got["KRANFUEHRER"]
+	if len(kran.TypeIDs) != 0 || strings.Join(kran.FehlendeArten, ",") != "KRANFUEHRER,ANSCHLAEGER" || kran.Name != "Kranführer" || !kran.Aktiv || !strings.HasPrefix(kran.Hinweis, "Vorschlag, nicht recherchiert") {
+		t.Fatalf("Kranführer: %+v", kran)
+	}
+	if again := decodeAdoptedPositions(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath+"adopt-defaults", "")); len(again) != 0 {
+		t.Fatalf("zweiter Aufruf legt an: %v", again)
+	}
+	if l := decodePositions(t, doAuthedRequest(t, handler, token, http.MethodGet, positionsPath, "")); len(l) != 5 {
+		t.Fatalf("Liste: %d", len(l))
+	}
+}
+
+// Mit Qualifikationskatalog: Arten ueber den Code, nur aktive; was der
+// Mandant schon hat (Code oder Name), bleibt unberuehrt.
+func TestPositionsAdoptDefaultsMapsTypesAndKeepsExisting(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	token := c.user("hr")
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		return doAuthedRequest(t, handler, token, method, path, body)
+	}
+	types := map[string]uuid.UUID{}
+	for _, qt := range decodeQualificationTypeList(t, do(http.MethodPost, qtPath+"adopt-defaults", "")) {
+		types[qt.Code] = qt.ID
+	}
+	if _, err := env.PG.Exec(context.Background(), `UPDATE hr_qualification_types SET aktiv=false WHERE id=$1`, types["GEFAHRSTOFFE"]); err != nil {
+		t.Fatalf("stilllegen: %v", err)
+	}
+	ownLager := decodePosition(t, do(http.MethodPost, positionsPath, `{"code":"LAGERIST","name":"Lager (eigen)"}`), http.StatusCreated)
+	ownMonteur := decodePosition(t, do(http.MethodPost, positionsPath, `{"code":"EIGEN","name":"monteur","type_ids":`+idsJSON(types["ERSTHELFER"])+`}`), http.StatusCreated)
+	// Ein anderer Mandant hat schon alles - das zaehlt hier nicht.
+	other := newCatalogTenant(t, env, handler)
+	decodeAdoptedPositions(t, doAuthedRequest(t, handler, other.user("hr"), http.MethodPost, positionsPath+"adopt-defaults", ""))
+
+	got := decodeAdoptedPositions(t, do(http.MethodPost, positionsPath+"adopt-defaults", ""))
+	if len(got) != 3 {
+		t.Fatalf("erwartet SCHWEISSER, STAPLERFAHRER, KRANFUEHRER, bekommen %v", got)
+	}
+	welder := got["SCHWEISSER"]
+	if !sameIDs(welder.TypeIDs, sortedIDs(types["SCHWEISSERPRUEFUNG"], types["BRANDSCHUTZHELFER"])) || strings.Join(welder.FehlendeArten, ",") != "GEFAHRSTOFFE" {
+		t.Fatalf("Schweißer: %+v", welder)
+	}
+	if st := got["STAPLERFAHRER"]; !sameIDs(st.TypeIDs, sortedIDs(types["STAPLER_SCHEIN"], types["STAPLER_UNTERWEISUNG"], types["STAPLER_BEAUFTRAGUNG"])) || len(st.FehlendeArten) != 0 || st.FehlendeArten == nil {
+		t.Fatalf("Staplerfahrer: %+v", st)
+	}
+	for id, wantName := range map[uuid.UUID]string{ownLager.ID: "Lager (eigen)", ownMonteur.ID: "monteur"} {
+		p := decodePosition(t, do(http.MethodGet, positionsPath+id.String(), ""), http.StatusOK)
+		if p.Name != wantName {
+			t.Fatalf("eigene Stelle veraendert: %+v", p)
+		}
+	}
+	if p := decodePosition(t, do(http.MethodGet, positionsPath+ownLager.ID.String(), ""), http.StatusOK); len(p.TypeIDs) != 0 {
+		t.Fatalf("eigene Stelle LAGERIST um Arten ergaenzt: %+v", p)
+	}
+	if p := decodePosition(t, do(http.MethodGet, positionsPath+ownMonteur.ID.String(), ""), http.StatusOK); !sameIDs(p.TypeIDs, []uuid.UUID{types["ERSTHELFER"]}) {
+		t.Fatalf("eigene Stelle monteur veraendert: %+v", p)
+	}
+	if l := decodePositions(t, do(http.MethodGet, positionsPath, "")); len(l) != 5 {
+		t.Fatalf("Liste: %d", len(l))
+	}
+}
+
+func TestPositionsAdoptDefaultsNeedsWritePermission(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	seedRoleWithPermissions(t, env, "itest-pos-read", "qualifications.read")
+	for _, role := range []string{"production", "itest-pos-read"} {
+		wantAPIError(t, doAuthedRequest(t, handler, c.user(role), http.MethodPost, positionsPath+"adopt-defaults", ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
+	}
+	var n int
+	if err := env.PG.QueryRow(context.Background(), `SELECT count(*) FROM hr_positions WHERE company_id=$1`, c.company).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("ohne Recht angelegt: %d (%v)", n, err)
+	}
+}

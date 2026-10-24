@@ -255,3 +255,98 @@ func (s *PositionService) Update(ctx context.Context, id uuid.UUID, in PositionU
 	}
 	return s.Get(ctx, id, companyID)
 }
+
+// AdoptedPosition ist eine beim Uebernehmen NEU angelegte Stelle.
+// FehlendeArten sind Codes aus dem Vorschlag, die der Mandant (noch) nicht
+// als aktive Art hat - sie fehlen an der Stelle. Abhilfe: zuerst den
+// Qualifikationskatalog uebernehmen, oder die Stelle von Hand ergaenzen.
+type AdoptedPosition struct {
+	Position
+	FehlendeArten []string `json:"fehlende_arten"`
+}
+
+// AdoptDefaults uebernimmt den Vorschlagskatalog (DefaultPositions) und
+// liefert die NEU angelegten Stellen.
+//
+// Wie beim Qualifikationskatalog wird nur ergaenzt, was fehlt: eine Stelle,
+// deren Code ODER Name der Mandant schon hat, wird nicht angefasst - auch
+// nicht ihre Arten. Ein zweiter Aufruf legt deshalb nichts an. Arten werden
+// ueber ihren Code zugeordnet, nur aktive des Mandanten.
+func (s *PositionService) AdoptDefaults(ctx context.Context, companyID string) ([]AdoptedPosition, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	byCode := make(map[string]uuid.UUID)
+	rows, err := tx.Query(ctx, `SELECT code, id FROM hr_qualification_types WHERE company_id=$1 AND aktiv`, companyID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var code string
+		var id uuid.UUID
+		if err := rows.Scan(&code, &id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		byCode[code] = id
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	type adopted struct {
+		id      uuid.UUID
+		missing []string
+	}
+	created := make([]adopted, 0)
+	for _, d := range DefaultPositions() {
+		// ON CONFLICT ohne Ziel: greift fuer den Code UND den Namen
+		// (eindeutig ohne Gross-/Kleinschreibung), auch bei zwei
+		// gleichzeitigen Uebernahmen.
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `INSERT INTO hr_positions (id, company_id, code, name, hinweis) VALUES ($1,$2,$3,$4,$5)
+			ON CONFLICT DO NOTHING RETURNING id`, uuid.New(), companyID, d.Code, d.Name, d.Hinweis).Scan(&id)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				continue // gab es schon
+			}
+			return nil, err
+		}
+		typeIDs := make([]uuid.UUID, 0, len(d.TypeCodes))
+		missing := make([]string, 0)
+		for _, code := range d.TypeCodes {
+			if typeID, ok := byCode[code]; ok {
+				typeIDs = append(typeIDs, typeID)
+			} else {
+				missing = append(missing, code)
+			}
+		}
+		wanted, err := normalizePositionTypeIDs(typeIDs)
+		if err != nil {
+			return nil, err
+		}
+		if err := replacePositionTypesTx(ctx, tx, id, wanted, companyID); err != nil {
+			return nil, err
+		}
+		created = append(created, adopted{id: id, missing: missing})
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	out := make([]AdoptedPosition, 0, len(created))
+	for _, c := range created {
+		p, err := s.Get(ctx, c.id, companyID)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, AdoptedPosition{Position: *p, FehlendeArten: c.missing})
+	}
+	return out, nil
+}

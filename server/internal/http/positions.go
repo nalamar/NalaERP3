@@ -58,6 +58,18 @@ func mountPositionRoutes(protected chi.Router, svc *hr.PositionService) {
 			writeJSON(w, http.StatusCreated, out)
 		})
 
+		// Vorschlagskatalog uebernehmen (F.11.4): legt nur an, was fehlt,
+		// und liefert die NEU angelegten Stellen samt fehlender Arten.
+		r.With(write).Post("/adopt-defaults", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.AdoptDefaults(req.Context(), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(readAny).Get("/{id}", func(w http.ResponseWriter, req *http.Request) {
 			id, ok := parsePositionID(w, req)
 			if !ok {
