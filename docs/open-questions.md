@@ -275,3 +275,24 @@ Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
    (b) E-Mail per SMTP (braucht Mailserver-Zugang, Versandprotokoll,
    Abmeldung). Empfehlung: zuerst (a); E-Mail als eigener Backlog-Punkt
    für später. Status: offen.
+
+## 2026-10-24 — F.11 Stellen als Vorlagen für Qualifikationen (offen, blockiert F.11)
+
+Details, Optionen und Begründung in `docs/adr/0031-stellen-vorlagen-qualifikationen.md`.
+
+1. **Kopieren oder dauerhaft gelten?** Empfehlung: dauerhaft gelten
+   (verknüpft) — ändert sich die Stelle, ändern sich die Anforderungen
+   aller Inhaber sofort; eine neue Pflicht-Unterweisung für Schweißer
+   erscheint bei allen Schweißern als "fehlt". Beim Kopieren bliebe sie
+   bei den vorhandenen still aus. Einzelne Zusatzanforderungen bleiben
+   möglich. Status: offen.
+2. **Mehrere Stellen je Mitarbeiter** (z. B. Monteur und
+   Staplerfahrer)? Empfehlung: ja. Status: offen.
+3. **Freitext "Stelle / Rolle"** bleibt als Berufsbezeichnung
+   unverändert, die Stellen kommen als eigenes Feld dazu? Empfehlung: ja.
+   Status: offen.
+4. **"Generieren"**: Vorschlagskatalog typischer Metallbau-Stellen zum
+   Übernehmen (wie beim Qualifikationskatalog) plus Anlegen von Hand —
+   oder (auch) Vorlagen aus vorhandenen Mitarbeitern ableiten?
+   Empfehlung: Katalog + von Hand zuerst, Ableiten später. Status: offen.
+
