@@ -1856,7 +1856,8 @@
 
 ## Epic G — Fuhrpark
 
-- [ ] G.1 Fahrzeugstamm — todo
+- [ ] G.1 Fahrzeugstamm — **blocked** (2026-10-25, gestartet mit "fortsetzen" als Zustimmung zur Empfehlung; wartet auf Entscheidungen des Nutzers, `docs/open-questions.md` 2026-10-25)
+  - [x] G.1.1 ADR: Bestandsaufnahme, Recherche, Optionen — done (Entwurf), siehe `docs/adr/0032-fuhrpark.md`. Reine Recherche-/ADR-Arbeit, kein Produktivcode. Belegt: kein Bestand (Gap-Analyse), nur `role-fleet` ohne eigene Rechte; Betriebsmittel nehmen Fahrzeuge aus (`089_assets.sql:22`). Recherche über Sekundärquellen (in der ADR gekennzeichnet): HU nach §29 StVZO im Plakettenmonat, Fristen je Fahrzeugart verzweigt (Anhänger widersprüchlich) → Folgetermin angeben statt berechnen; UVV mindestens jährlich (DGUV Vorschrift 70 §57); Führerscheinkontrolle ohne gesetzliche Frequenz, Praxis halbjährlich, Gesetzentwurf BT-Drs. 20/14039 (Stand unbekannt); Fahrtenbuch in geschlossener Form (BFH VI B 37/23, VI R 64/04). Empfehlungen: eigene Entität in `internal/fleet`; Termine wie Prüfungen der Betriebsmittel; Fahrerzuordnung wie Ausgabe; **Führerscheinkontrolle über die Qualifikationen** (Art + Stelle "Fahrer", keine Kopie); Fahrtenbuch optional, unveränderlich, lückenloser km-Stand; Rechte `fleet.self/read/write` an Fuhrpark und Admin. Fünf Fragen in `docs/open-questions.md` (2026-10-25).
 - [ ] G.2 Termine (HU/AU, UVV, Wartung) — todo
 - [ ] G.3 Fahrtenbuch, Kosten, Führerscheinkontrolle — todo
 
