@@ -1,8 +1,9 @@
 # ADR 0032 — Fuhrpark: Fahrzeuge, Termine, Fahrer, Fahrtenbuch
 
 Datum: 2026-10-25
-Status: **Entwurf — wartet auf Entscheidungen des Nutzers**
-(`docs/open-questions.md`, 2026-10-25). Kein Produktivcode vor der Antwort.
+Status: **entschieden** — alle fünf Fragen vom Nutzer am 2026-10-25
+ausdrücklich wie empfohlen beantwortet (siehe "Entscheidungen des
+Nutzers").
 Bezug: `aufgabe.md` §1 Domäne G ("Fahrzeuge, Termine (HU/AU, UVV,
 Wartung), Fahrtenbuch, Kosten, Führerscheinkontrolle"); Backlog G.1–G.3;
 ADR 0027 (Qualifikationen, Führerscheinkontrolle dorthin verwiesen),
@@ -146,3 +147,32 @@ G.1 Fahrzeugstamm (Migration, Service, Routen, Client) · G.2 Termine und
 Fälligkeit · G.3a Fahrerzuordnung · G.3b Führerscheinkontrolle über
 Qualifikationen (Vorschlagskatalog-Art + Stelle) · G.3c Fahrtenbuch ·
 G.3d Kosten. Jeweils mit eigener Teilung im Backlog.
+
+## Entscheidungen des Nutzers (2026-10-25)
+
+1. Umfang: "Nur Fahrzeuge und Anhänger" — Maschinen ohne Zulassung
+   bleiben Betriebsmittel (F.3).
+2. Führerscheinkontrolle über die Qualifikationen, Frist 6 Monate als
+   Vorschlag, Stelle "Fahrer", keine Kopie, Erfassung durch die
+   Personalabteilung: "Ja genau so".
+3. Sperre bei UVV/HU "Mängel"/"nicht bestanden", sonst Hinweis: "Genau
+   so".
+4. Fahrtenbuch optional je Fahrzeug, geschlossene Form, Fahrer erfassen
+   selbst, lesen nur Fuhrpark und Fahrer: "Ja".
+5. `fleet.read`/`fleet.write` an Fuhrpark und Administrator, nicht an die
+   Personalabteilung: "Genau so".
+
+## Umsetzung (Teilung im Backlog)
+
+G.1.2 Migration und Service Fahrzeugstamm · G.1.3 HTTP-Routen · G.1.4
+Client · G.2 Termine (HU, UVV, Wartung, Fristen) und Fälligkeit · G.3a
+Fahrerzuordnung · G.3b Führerscheinkontrolle über Qualifikationen · G.3c
+Fahrtenbuch · G.3d Kosten.
+
+Präzisierungen G.1.2: Fahrzeugarten `pkw`, `transporter`, `lkw`,
+`anhaenger`. Kennzeichen in Großbuchstaben mit einfachen Leerzeichen
+gespeichert, eindeutig je Mandant **unter den nicht abgemeldeten**
+Fahrzeugen (ein Kennzeichen kann nach Abmeldung neu vergeben werden).
+Fahrzeug-Identnummer optional, 17 Zeichen nach ISO 3779 (A-Z ohne I, O,
+Q; 0-9), eindeutig je Mandant. Abmelden mit Datum und Grund, endgültig;
+gelöscht wird nichts.

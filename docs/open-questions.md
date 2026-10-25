@@ -296,26 +296,26 @@ Details, Optionen und Begründung in `docs/adr/0031-stellen-vorlagen-qualifikati
    oder (auch) Vorlagen aus vorhandenen Mitarbeitern ableiten?
    Empfehlung: Katalog + von Hand zuerst, Ableiten später. Status: beantwortet ("fortsetzen" am 2026-10-24 = Empfehlung; Annahme, nicht ausdrücklich bestätigt).
 
-## 2026-10-25 — Epic G Fuhrpark (offen, blockiert G)
+## 2026-10-25 — Epic G Fuhrpark (beantwortet)
 
 Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
 
 1. **Umfang**: zulassungspflichtige Fahrzeuge und Anhänger im Fuhrpark;
    Stapler, Hubarbeitsbühnen und andere Maschinen ohne Zulassung bleiben
-   Betriebsmittel (F.3)? Empfehlung: ja. Status: offen.
+   Betriebsmittel (F.3)? Empfehlung: ja. Status: **beantwortet** am 2026-10-25 — "Nur Fahrzeuge und Anhänger".
 2. **Führerscheinkontrolle über die Qualifikationen** (neue Art im
    Vorschlagskatalog, Frist 6 Monate als änderbarer Vorschlag — keine
    gesetzliche Frequenz, halbjährlich ist Praxis; Stelle "Fahrer" verlangt
    sie), **ohne Führerscheinkopie**; erfasst wie alle Nachweise die
-   Personalabteilung? Empfehlung: ja. Status: offen.
+   Personalabteilung? Empfehlung: ja. Status: **beantwortet** am 2026-10-25 — "Ja genau so".
 3. **Sperren oder Hinweis**: UVV/HU mit "Mängel"/"nicht bestanden" sperrt
    die Fahrerzuordnung; überfälliger Termin oder nicht gültige
    Führerscheinkontrolle des Fahrers nur deutlicher Hinweis? Empfehlung:
-   so (wie bei den Betriebsmitteln). Status: offen.
+   so (wie bei den Betriebsmitteln). Status: **beantwortet** am 2026-10-25 — "Genau so".
 4. **Fahrtenbuch**: optional je Fahrzeug, in geschlossener Form
    (unveränderlich, Korrektur nur als sichtbares Storno, lückenloser
    Kilometerstand); Fahrer erfassen ihre Fahrten selbst, lesen nur
-   Fuhrpark und der Fahrer? Empfehlung: ja. Status: offen.
+   Fuhrpark und der Fahrer? Empfehlung: ja. Status: **beantwortet** am 2026-10-25 — "Ja".
 5. **Wer pflegt den Fuhrpark**: Rolle Fuhrpark und Administrator
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
-   ja. Status: offen.
+   ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
