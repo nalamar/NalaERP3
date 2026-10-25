@@ -26,7 +26,11 @@ class _FakeQualApi extends ApiClient {
     this.createError,
     Map<String, List<dynamic>>? documents,
     this.uploadError,
-  })  : standing = standing ?? {},
+    Map<String, List<dynamic>>? employeePositions,
+    this.activePositions = const [],
+    this.positionsError,
+  })  : employeePositions = employeePositions ?? {},
+        standing = standing ?? {},
         records = records ?? {},
         documents = documents ?? {},
         requirements = requirements ?? [],
@@ -50,6 +54,11 @@ class _FakeQualApi extends ApiClient {
   final List<String> documentListCalls = [];
   final List<Map<String, Object?>> uploads = [];
   final List<List<String?>> downloads = [];
+  // Stellen (F.11.6).
+  final Map<String, List<dynamic>> employeePositions;
+  final List<dynamic> activePositions;
+  final Object? positionsError;
+  final List<MapEntry<String, List<String>>> positionCalls = [];
 
   final List<String> standingCalls = [];
   final List<MapEntry<String, List<String>>> setCalls = [];
@@ -89,6 +98,23 @@ class _FakeQualApi extends ApiClient {
 
   @override
   Future<List<dynamic>> listQualificationRequirements(String employeeId) async => requirements;
+
+  @override
+  Future<List<dynamic>> listEmployeePositions(String employeeId) async {
+    if (positionsError != null) throw positionsError!;
+    return employeePositions[employeeId] ?? const [];
+  }
+
+  @override
+  Future<List<dynamic>> listPositions({bool includeInactive = false}) async => activePositions;
+
+  @override
+  Future<List<dynamic>> setEmployeePositions(String employeeId, List<String> positionIds) async {
+    positionCalls.add(MapEntry(employeeId, positionIds));
+    final byId = {for (final p in [...activePositions, ...(employeePositions[employeeId] ?? const [])]) (p as Map<String, dynamic>)['id']: p};
+    employeePositions[employeeId] = [for (final id in positionIds) byId[id]];
+    return employeePositions[employeeId]!;
+  }
 
   @override
   Future<List<dynamic>> listQualificationDocuments(String qualificationId) async {
@@ -825,6 +851,141 @@ void main() {
             status: 404),
         throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Dokument nicht gefunden')),
       );
+    });
+  });
+
+  group('Stellen am Mitarbeiter (F.11.6)', () {
+    test('employeePositionsLabel und employeePositionChoices', () {
+      expect(employeePositionsLabel([]), 'keine');
+      expect(
+          employeePositionsLabel([
+            {'id': 'p1', 'name': 'Monteur', 'aktiv': true},
+            {'id': 'p2', 'name': 'Altstelle', 'aktiv': false},
+          ]),
+          'Monteur, Altstelle (stillgelegt)');
+      final c = employeePositionChoices([
+        {'id': 'p1', 'name': 'Monteur'},
+        {'id': 'p3', 'name': 'kranführer'},
+      ], [
+        {'id': 'p1', 'name': 'Monteur', 'aktiv': true},
+        {'id': 'p2', 'name': 'Altstelle', 'aktiv': false},
+      ]);
+      expect(c.map((e) => e['id']), ['p2', 'p3', 'p1']);
+      expect(c.map((e) => e['stillgelegt']), [true, false, false]);
+    });
+
+    testWidgets('zeigt die Stellen; ohne Schreibrecht kein Festlegen', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(employeePositions: {
+        'e1': [
+          {'id': 'p1', 'name': 'Monteur', 'aktiv': true},
+          {'id': 'p2', 'name': 'Altstelle', 'aktiv': false},
+        ],
+      });
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Stellen: Monteur, Altstelle (stillgelegt)'), findsOneWidget);
+      expect(find.text('Stellen festlegen'), findsNothing);
+
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(key: const ValueKey('ohne'), api: _FakeQualApi(), employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Stellen: keine'), findsOneWidget);
+    });
+
+    testWidgets('Stellen nicht ladbar: Meldung, Stand bleibt sichtbar', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(
+        standing: {'e1': [_st('Erste Hilfe', 'fehlt', erforderlich: true)]},
+        positionsError: const ApiException(statusCode: 500, message: 'weg'),
+      );
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Stellen konnten nicht geladen werden: weg'), findsOneWidget);
+      expect(find.text('Erste Hilfe (erforderlich)'), findsOneWidget);
+    });
+
+    testWidgets('Stellen festlegen: vorausgewählt, stillgelegte bleiben, danach neu geladen', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(
+        permissions: const {'qualifications.read', 'qualifications.write'},
+        employeePositions: {
+          'e1': [
+            {'id': 'p2', 'name': 'Altstelle', 'aktiv': false},
+          ],
+        },
+        activePositions: [
+          {'id': 'p1', 'name': 'Monteur', 'aktiv': true},
+          {'id': 'p3', 'name': 'Kranführer', 'aktiv': true},
+        ],
+      );
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      final loadsBefore = api.standingCalls.length;
+      await tester.tap(find.text('Stellen festlegen'));
+      await tester.pumpAndSettle();
+      expect(find.text('stillgelegt – zählt im Stand nicht mehr'), findsOneWidget);
+      CheckboxListTile tile(String name) => tester.widget<CheckboxListTile>(find.widgetWithText(CheckboxListTile, name));
+      expect(tile('Altstelle').value, isTrue);
+      expect(tile('Monteur').value, isFalse);
+      await tester.tap(find.text('Monteur'));
+      await tester.pumpAndSettle();
+      expect(tile('Monteur').value, isTrue);
+      await tester.tap(find.text('Kranführer'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Kranführer'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Speichern'));
+      await tester.pumpAndSettle();
+      expect(api.positionCalls.single.key, 'e1');
+      expect(api.positionCalls.single.value, ['p1', 'p2']);
+      expect(api.standingCalls.length, greaterThan(loadsBefore));
+      expect(find.text('Stellen: Monteur, Altstelle (stillgelegt)'), findsOneWidget);
+    });
+
+    testWidgets('Stellen festlegen: Abbrechen speichert nichts; ohne Stellen ein Hinweis', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(permissions: const {'qualifications.read', 'qualifications.write'});
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stellen festlegen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Es gibt noch keine Stellen. Stellen legt die Personalabteilung unter "Stellen" an.'), findsOneWidget);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(api.positionCalls, isEmpty);
+    });
+
+    group('API-Methoden', () {
+      final api = ApiClient(baseUrl: 'http://api.test');
+      late List<http.Request> calls;
+
+      Future<T> mock<T>(Object body, Future<T> Function() call, {int status = 200}) {
+        final client = MockClient((req) async {
+          calls.add(req);
+          return http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json'});
+        });
+        return http.runWithClient(call, () => client);
+      }
+
+      setUp(() => calls = []);
+
+      test('lesen und setzen, auch leer; Fehler werden zur ApiException', () async {
+        await mock([], () => api.listEmployeePositions('e1'));
+        await mock([], () => api.setEmployeePositions('e1', ['p1']));
+        await mock([], () => api.setEmployeePositions('e1', []));
+        expect(calls.map((c) => '${c.method} ${c.url.path}?${c.url.query}'), [
+          'GET /api/v1/qualifications/positions?employee_id=e1',
+          'PUT /api/v1/qualifications/positions?employee_id=e1',
+          'PUT /api/v1/qualifications/positions?employee_id=e1',
+        ]);
+        expect(jsonDecode(calls[1].body), {'position_ids': ['p1']});
+        expect(calls[2].body, '{"position_ids":[]}');
+        expect(calls[1].headers['content-type'], startsWith('application/json'));
+        await expectLater(
+          mock({'error': {'code': 'conflict', 'message': 'Stelle ist stillgelegt'}}, () => api.setEmployeePositions('e1', ['x']), status: 409),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Stelle ist stillgelegt')),
+        );
+      });
     });
   });
 }

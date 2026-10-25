@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.11.5** (2026-10-25, Client: Seite "Stellen"
+> Zuletzt abgeschlossen: **F.11.6** und damit **F.11 bis auf F.11.7**
+> (2026-10-25, Client: Stellen am Mitarbeiter anzeigen und festlegen, im
+> Anlegedialog wählbar). Davor **F.11.5** (2026-10-25, Client: Seite "Stellen"
 > mit Pflege, Arten-Auswahl, Stilllegen, Vorschläge übernehmen samt
 > fehlender Arten; Dashboard-Karte). Davor **F.11.4** (2026-10-24, Server: Vorschlagskatalog
 > mit fünf Stellen, `POST /positions/adopt-defaults`, ergänzt nur
@@ -43,13 +45,14 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: F.11.6** (Client: Stellen am Mitarbeiter — im
-> Abschnitt "Qualifikationen" anzeigen und mit `qualifications.write`
-> setzen (`GET/PUT /qualifications/positions`); beim Anlegen im
-> Anlegedialog wählbar, `position_ids` im Aufruf aus F.10.5.2). Danach
-> ist F.11 bis auf F.11.7 (später) fertig.
+> nächste Arbeit: Epic G (Fuhrpark), G.1 Fahrzeugstamm** — zuerst ADR
+> 0032 (Bestandsaufnahme; Fahrzeuge als eigene Entität oder als
+> Betriebsmittel aus F.3; Termine HU/AU/UVV aus G.2 und
+> Führerscheinkontrolle aus G.3 mitdenken; Bezug zu Qualifikationen und
+> Stellen). Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
+> F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 299 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 309 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).

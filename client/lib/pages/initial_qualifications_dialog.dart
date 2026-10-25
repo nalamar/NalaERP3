@@ -58,10 +58,14 @@ InitialQualificationPlan buildInitialQualificationPlan(List<InitialQualification
 }
 
 // buildEmployeeWithQualificationsBody baut den Body fuer
-// POST /employees/with-qualifications.
-Map<String, dynamic> buildEmployeeWithQualificationsBody(Map<String, dynamic> employee, InitialQualificationPlan plan) => {
+// POST /employees/with-qualifications; positionIds sind die gewaehlten
+// Stellen (F.11.6), ohne Doppelte, sortiert.
+Map<String, dynamic> buildEmployeeWithQualificationsBody(Map<String, dynamic> employee, InitialQualificationPlan plan,
+        {Iterable<String> positionIds = const []}) =>
+    {
       'employee': employee,
       'required_type_ids': plan.requiredIds,
+      'position_ids': positionIds.toSet().toList()..sort(),
       'qualifications': plan.records,
     };
 
@@ -70,12 +74,54 @@ Map<String, dynamic> buildEmployeeWithQualificationsBody(Map<String, dynamic> em
 String? initialQualificationSummary(Map<String, dynamic> result) {
   final reqs = (result['requirements'] as List?)?.length ?? 0;
   final recs = (result['qualifications'] as List?)?.length ?? 0;
-  if (reqs == 0 && recs == 0) return null;
+  final pos = (result['positions'] as List?)?.length ?? 0;
+  if (reqs == 0 && recs == 0 && pos == 0) return null;
   final parts = <String>[
+    if (pos > 0) 'Stellen: $pos',
     if (reqs > 0) 'Anforderungen: $reqs',
     if (recs > 0) recs == 1 ? '1 Nachweis' : '$recs Nachweise',
   ];
   return 'Mitarbeiter angelegt (${parts.join(', ')}).';
+}
+
+// InitialPositionFields: Auswahl der Stellen im Anlegedialog (F.11.6).
+// positions: die aktiven Stellen; selected wird hier veraendert.
+class InitialPositionFields extends StatelessWidget {
+  const InitialPositionFields({super.key, required this.positions, required this.selected, required this.onChanged});
+  final List<dynamic> positions;
+  final Set<String> selected;
+  final void Function(VoidCallback) onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        const Text('Stellen', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Was die Stellen verlangen, ist für den Mitarbeiter erforderlich.'),
+        Wrap(
+          spacing: 8,
+          children: [
+            for (final p in positions)
+              FilterChip(
+                key: ValueKey('ip-${(p as Map<String, dynamic>)['id']}'),
+                label: Text(p['name']?.toString() ?? ''),
+                selected: selected.contains(p['id'].toString()),
+                onSelected: (v) => onChanged(() {
+                  if (v) {
+                    selected.add(p['id'].toString());
+                  } else {
+                    selected.remove(p['id'].toString());
+                  }
+                }),
+              ),
+          ],
+        ),
+      ],
+    );
+  }
 }
 
 // InitialQualificationFields: die Zeilen im Anlegedialog. onChanged baut

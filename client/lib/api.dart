@@ -2452,6 +2452,25 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Stellen eines Mitarbeiters (F.11.6, Route F.11.3.1), nach Name, auch
+  // stillgelegte (aktiv=false; sie zaehlen im Stand nicht mehr).
+  Future<List<dynamic>> listEmployeePositions(String employeeId) =>
+      _getList('/api/v1/qualifications/positions', {'employee_id': employeeId});
+
+  // Ersetzt die Stellen VOLLSTAENDIG durch positionIds (leer = keine).
+  // Liefert die Stellen danach. Nur mit qualifications.write.
+  Future<List<dynamic>> setEmployeePositions(String employeeId, List<String> positionIds) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/qualifications/positions', {'employee_id': employeeId}),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'position_ids': positionIds}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
   // Vorschlagskatalog uebernehmen: liefert die NEU angelegten Stellen, je
   // mit fehlende_arten (Codes, die der Mandant nicht als aktive Art hat).
   Future<List<dynamic>> adoptDefaultPositions() async {

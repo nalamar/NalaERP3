@@ -18,7 +18,13 @@ class _FakeApi extends ApiClient {
     this.types = const [],
     this.typesError,
     this.combinedError,
+    this.positions = const [],
+    this.positionsError,
   }) : super(baseUrl: 'http://localhost:8080');
+
+  // Aktive Stellen (F.11.6).
+  final List<dynamic> positions;
+  final Object? positionsError;
 
   final Set<String> permissions;
   final List<dynamic> types;
@@ -69,6 +75,9 @@ class _FakeApi extends ApiClient {
       'requirements': [
         for (final id in body['required_type_ids'] as List) {'type_id': id}
       ],
+      'positions': [
+        for (final id in body['position_ids'] as List) {'id': id}
+      ],
       'qualifications': [
         for (final q in body['qualifications'] as List) {'id': 'q', ...(q as Map<String, dynamic>)}
       ],
@@ -80,6 +89,16 @@ class _FakeApi extends ApiClient {
     if (typesError != null) throw typesError!;
     return types;
   }
+
+  @override
+  Future<List<dynamic>> listPositions({bool includeInactive = false}) async {
+    if (positionsError != null) throw positionsError!;
+    // Wie der Server: ohne includeInactive nur die aktiven.
+    return positions.where((p) => includeInactive || (p as Map<String, dynamic>)['aktiv'] != false).toList();
+  }
+
+  @override
+  Future<List<dynamic>> listEmployeePositions(String employeeId) async => const [];
 
   @override
   Future<List<dynamic>> getQualificationStanding(String employeeId) async => const [];
@@ -170,6 +189,7 @@ void main() {
     expect(body, {
       'employee': {'first_name': 'Neu', 'last_name': 'Mann'},
       'required_type_ids': ['t1'],
+      'position_ids': [],
       'qualifications': [
         {'type_id': 't1', 'erworben_am': '2026-02-01'}
       ],
@@ -178,13 +198,20 @@ void main() {
     expect(buildEmployeeWithQualificationsBody({}, buildInitialQualificationPlan([])), {
       'employee': {},
       'required_type_ids': [],
+      'position_ids': [],
       'qualifications': [],
     });
+    // Stellen ohne Doppelte, sortiert.
+    expect(buildEmployeeWithQualificationsBody({}, buildInitialQualificationPlan([]), positionIds: ['p2', 'p1', 'p2'])['position_ids'],
+        ['p1', 'p2']);
 
     expect(initialQualificationSummary({'requirements': [], 'qualifications': []}), isNull);
     expect(initialQualificationSummary({'requirements': [1, 2], 'qualifications': [1]}), 'Mitarbeiter angelegt (Anforderungen: 2, 1 Nachweis).');
     expect(initialQualificationSummary({'requirements': [], 'qualifications': [1, 2]}), 'Mitarbeiter angelegt (2 Nachweise).');
     expect(initialQualificationSummary({'requirements': [1]}), 'Mitarbeiter angelegt (Anforderungen: 1).');
+    expect(initialQualificationSummary({'positions': [1, 2], 'requirements': [1], 'qualifications': [1]}),
+        'Mitarbeiter angelegt (Stellen: 2, Anforderungen: 1, 1 Nachweis).');
+    expect(initialQualificationSummary({'positions': [], 'requirements': [], 'qualifications': []}), isNull);
   });
 
   testWidgets('Anlegen mit Anforderungen und vorhandenem Nachweis in einem Aufruf', (tester) async {
@@ -211,6 +238,7 @@ void main() {
     expect(api.combinedCalls.single, {
       'employee': {'first_name': 'Neu', 'last_name': 'Mann'},
       'required_type_ids': ['t-eh', 't-st'],
+      'position_ids': [],
       'qualifications': [
         {'type_id': 't-st', 'erworben_am': '2026-03-15'}
       ],
@@ -356,6 +384,69 @@ void main() {
         mock({'error': {'code': 'forbidden', 'message': 'Keine Berechtigung'}}, () => api.createEmployeeWithQualifications(body), status: 403),
         throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Keine Berechtigung')),
       );
+    });
+  });
+
+  group('Stellen beim Anlegen (F.11.6)', () {
+    const positions = [
+      {'id': 'p-m', 'code': 'MONTEUR', 'name': 'Monteur', 'aktiv': true},
+      {'id': 'p-k', 'code': 'KRAN', 'name': 'Kranführer', 'aktiv': true},
+      {'id': 'p-alt', 'code': 'ALT', 'name': 'Altstelle', 'aktiv': false},
+    ];
+
+    testWidgets('Stellen wählbar, gehen mit in den einen Aufruf', (tester) async {
+      await _desktop(tester);
+      final api = _FakeApi(permissions: _allWrite, types: _types, positions: positions);
+      await _openDialog(tester, api);
+      expect(find.text('Was die Stellen verlangen, ist für den Mitarbeiter erforderlich.'), findsOneWidget);
+      // Stillgelegte Stellen stehen bei der Anlage nicht zur Wahl.
+      expect(find.byKey(const ValueKey('ip-p-alt')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('ip-p-m')));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilterChip>(find.byKey(const ValueKey('ip-p-m'))).selected, isTrue);
+      await tester.tap(find.byKey(const ValueKey('ip-p-k')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('ip-p-k')));
+      await tester.pumpAndSettle();
+      await _create(tester);
+      expect(api.combinedCalls.single['position_ids'], ['p-m']);
+      expect(find.text('Mitarbeiter angelegt (Stellen: 1).'), findsOneWidget);
+    });
+
+    testWidgets('Stellen ohne Qualifikationskatalog: trotzdem der eine Aufruf', (tester) async {
+      await _desktop(tester);
+      final api = _FakeApi(permissions: _allWrite, positions: positions);
+      await _openDialog(tester, api);
+      expect(find.byKey(const ValueKey('iq-req-t-eh')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('ip-p-k')));
+      await tester.pumpAndSettle();
+      await _create(tester);
+      expect(api.order, ['createEmployeeWithQualifications']);
+      expect(api.combinedCalls.single, {
+        'employee': {'first_name': 'Neu', 'last_name': 'Mann'},
+        'required_type_ids': [],
+        'position_ids': ['p-k'],
+        'qualifications': [],
+      });
+    });
+
+    testWidgets('Stellen nicht ladbar: Hinweis, Qualifikationen bleiben wählbar', (tester) async {
+      await _desktop(tester);
+      final api = _FakeApi(permissions: _allWrite, types: _types, positionsError: const ApiException(statusCode: 500, message: 'weg'));
+      await _openDialog(tester, api);
+      expect(find.text('Stellen konnten nicht geladen werden (weg). Nachtragen im Abschnitt "Qualifikationen".'), findsOneWidget);
+      expect(find.byKey(const ValueKey('iq-req-t-eh')), findsOneWidget);
+      await _create(tester);
+      expect(api.combinedCalls.single['position_ids'], isEmpty);
+    });
+
+    testWidgets('ohne qualifications.write keine Stellen-Auswahl', (tester) async {
+      await _desktop(tester);
+      final api = _FakeApi(permissions: const {'employees.read', 'employees.write'}, positions: positions);
+      await _openDialog(tester, api);
+      expect(find.byKey(const ValueKey('ip-p-m')), findsNothing);
+      await _create(tester);
+      expect(api.order, ['createEmployee']);
     });
   });
 }

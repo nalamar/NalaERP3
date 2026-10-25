@@ -72,6 +72,37 @@ List<Map<String, dynamic>> requirementChoices(List<dynamic> activeTypes, List<dy
   return out;
 }
 
+// Stellen am Mitarbeiter (Backlog F.11.6, ADR 0031): was eine aktive
+// Stelle verlangt, ist fuer ihn erforderlich - dauerhaft.
+
+// employeePositionsLabel: die Stellen als Namen; stillgelegte
+// gekennzeichnet (sie zaehlen im Stand nicht mehr).
+String employeePositionsLabel(List<dynamic> positions) {
+  if (positions.isEmpty) return 'keine';
+  return [
+    for (final p in positions)
+      (p as Map<String, dynamic>)['aktiv'] == false ? '${p['name']} (stillgelegt)' : (p['name']?.toString() ?? ''),
+  ].join(', ');
+}
+
+// employeePositionChoices: alle aktiven Stellen, dazu bereits zugeordnete,
+// inzwischen stillgelegte - ohne sie entfernte das Speichern sie still
+// (PUT ersetzt die Menge). Nach Name.
+List<Map<String, dynamic>> employeePositionChoices(List<dynamic> activePositions, List<dynamic> assigned) {
+  final out = <Map<String, dynamic>>[
+    for (final p in activePositions)
+      {'id': (p as Map<String, dynamic>)['id'].toString(), 'name': p['name']?.toString() ?? '', 'stillgelegt': false},
+  ];
+  final known = out.map((c) => c['id']).toSet();
+  for (final a in assigned) {
+    final m = a as Map<String, dynamic>;
+    final id = m['id'].toString();
+    if (!known.contains(id)) out.add({'id': id, 'name': m['name']?.toString() ?? id, 'stillgelegt': true});
+  }
+  out.sort((a, b) => (a['name'] as String).toLowerCase().compareTo((b['name'] as String).toLowerCase()));
+  return out;
+}
+
 // parseDateInput liest ein Datum als TT.MM.JJJJ (auch T.M.JJJJ) oder
 // JJJJ-MM-TT und liefert es als JJJJ-MM-TT; null bei leerer oder
 // ungueltiger Eingabe (z. B. 31.02.2026).
@@ -185,6 +216,10 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
   List<dynamic> records = [];
   // Namen aller Arten, auch stillgelegter - die Nachweise tragen nur die ID.
   Map<String, String> typeNames = {};
+  // Stellen des Mitarbeiters (F.11.6); positionsError, wenn sie sich nicht
+  // laden liessen - der Stand bleibt dann trotzdem sichtbar.
+  List<dynamic> positions = [];
+  String? positionsError;
   bool loading = false;
   String? error;
 
@@ -204,6 +239,13 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
     try {
       final st = await widget.api.getQualificationStanding(widget.employeeId);
       final recs = await widget.api.listEmployeeQualifications(widget.employeeId);
+      List<dynamic> pos = const [];
+      String? posError;
+      try {
+        pos = await widget.api.listEmployeePositions(widget.employeeId);
+      } catch (e) {
+        posError = 'Stellen konnten nicht geladen werden: $e';
+      }
       Map<String, String> names = typeNames;
       try {
         final types = await widget.api.listQualificationTypes(includeInactive: true);
@@ -219,6 +261,8 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
           standing = st;
           records = recs;
           typeNames = names;
+          positions = pos;
+          positionsError = posError;
         });
       }
     } catch (e) {
@@ -293,6 +337,67 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
 
   void _snack(String text) {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  }
+
+  Future<void> _editPositions() async {
+    List<dynamic> active;
+    try {
+      active = await widget.api.listPositions();
+    } catch (e) {
+      _snack('Fehler: $e');
+      return;
+    }
+    if (!mounted) return;
+    final choices = employeePositionChoices(active, positions);
+    final selected = <String>{for (final p in positions) (p as Map<String, dynamic>)['id'].toString()};
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: const Text('Stellen festlegen'),
+          content: SizedBox(
+            width: 460,
+            child: choices.isEmpty
+                ? const Text('Es gibt noch keine Stellen. Stellen legt die Personalabteilung unter "Stellen" an.')
+                : SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Was die Stellen verlangen, ist für den Mitarbeiter erforderlich.'),
+                        for (final c in choices)
+                          CheckboxListTile(
+                            dense: true,
+                            value: selected.contains(c['id']),
+                            title: Text(c['name'] as String),
+                            subtitle: c['stillgelegt'] == true ? const Text('stillgelegt – zählt im Stand nicht mehr') : null,
+                            onChanged: (v) => setStateDialog(() {
+                              if (v == true) {
+                                selected.add(c['id'] as String);
+                              } else {
+                                selected.remove(c['id']);
+                              }
+                            }),
+                          ),
+                      ],
+                    ),
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+            FilledButton(onPressed: () => Navigator.of(ctx).pop(Set<String>.from(selected)), child: const Text('Speichern')),
+          ],
+        ),
+      ),
+    );
+    if (result == null) return;
+    try {
+      final ids = result.toList()..sort();
+      await widget.api.setEmployeePositions(widget.employeeId, ids);
+      await _load();
+    } catch (e) {
+      _snack('Fehler: $e');
+    }
   }
 
   Future<void> _recordDialog() async {
@@ -585,10 +690,18 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
                 icon: const Icon(Icons.checklist),
                 label: const Text('Anforderungen festlegen'),
               ),
+              TextButton.icon(
+                onPressed: _editPositions,
+                icon: const Icon(Icons.work_outline),
+                label: const Text('Stellen festlegen'),
+              ),
             ],
           ),
         if (loading) const LinearProgressIndicator(minHeight: 2),
         if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
+        if (error == null && !loading)
+          Text(positionsError ?? 'Stellen: ${employeePositionsLabel(positions)}',
+              style: positionsError == null ? null : const TextStyle(color: Color(0xFFB00020))),
         if (!loading && error == null && standing.isEmpty)
           const Text('Keine Anforderungen und keine Nachweise.'),
         for (final s in standing)

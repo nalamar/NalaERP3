@@ -152,6 +152,8 @@ class _EmployeesPageState extends State<EmployeesPage> {
     // nur mit qualifications.write und nicht leerem Katalog.
     List<InitialQualificationEntry>? qualEntries;
     String? qualHint;
+    List<dynamic>? positionChoices;
+    String? positionHint;
     if (widget.api.hasPermission('qualifications.write')) {
       try {
         final types = await widget.api.listQualificationTypes();
@@ -160,8 +162,16 @@ class _EmployeesPageState extends State<EmployeesPage> {
         qualHint = 'Qualifikationen konnten nicht geladen werden ($e). Der Mitarbeiter wird ohne sie angelegt; '
             'nachtragen im Abschnitt "Qualifikationen".';
       }
+      // Stellen (F.11.6): nur die aktiven, nur wenn es welche gibt.
+      try {
+        final pos = await widget.api.listPositions();
+        if (pos.isNotEmpty) positionChoices = pos;
+      } catch (e) {
+        positionHint = 'Stellen konnten nicht geladen werden ($e). Nachtragen im Abschnitt "Qualifikationen".';
+      }
       if (!mounted) return;
     }
+    final chosenPositions = <String>{};
     String? dialogError;
     String? summary;
     final created = await showDialog<Map<String, dynamic>>(
@@ -170,7 +180,7 @@ class _EmployeesPageState extends State<EmployeesPage> {
         builder: (ctx, setStateDialog) => AlertDialog(
           title: const Text('Mitarbeiter anlegen'),
           content: SizedBox(
-            width: qualEntries == null ? 400 : 620,
+            width: qualEntries == null && positionChoices == null ? 400 : 620,
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -188,6 +198,13 @@ class _EmployeesPageState extends State<EmployeesPage> {
                     items: _teamItems(),
                     onChanged: (v) => setStateDialog(() => teamId = v),
                   ),
+                  if (positionChoices != null)
+                    InitialPositionFields(positions: positionChoices, selected: chosenPositions, onChanged: setStateDialog),
+                  if (positionHint != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(positionHint),
+                    ),
                   if (qualEntries != null) InitialQualificationFields(entries: qualEntries, onChanged: setStateDialog),
                   if (qualHint != null)
                     Padding(
@@ -217,7 +234,9 @@ class _EmployeesPageState extends State<EmployeesPage> {
                   teamId: teamId,
                 );
                 final entries = qualEntries;
-                InitialQualificationPlan? plan;
+                // Der eine Aufruf, sobald Qualifikationen oder Stellen
+                // gewaehlt werden koennen.
+                InitialQualificationPlan? plan = positionChoices != null ? const InitialQualificationPlan() : null;
                 if (entries != null) {
                   plan = buildInitialQualificationPlan(entries);
                   if (plan.error != null) {
@@ -229,7 +248,8 @@ class _EmployeesPageState extends State<EmployeesPage> {
                 try {
                   Map<String, dynamic> emp;
                   if (plan != null) {
-                    final res = await widget.api.createEmployeeWithQualifications(buildEmployeeWithQualificationsBody(body, plan));
+                    final res = await widget.api
+                        .createEmployeeWithQualifications(buildEmployeeWithQualificationsBody(body, plan, positionIds: chosenPositions));
                     emp = res['employee'] as Map<String, dynamic>;
                     summary = initialQualificationSummary(res);
                   } else {
