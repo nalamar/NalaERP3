@@ -11,6 +11,7 @@ import 'leave_admin_page.dart';
 import 'my_leave_page.dart';
 import 'my_time_page.dart';
 import 'qualification_catalog_page.dart';
+import 'positions_page.dart';
 import 'qualifications_due_page.dart';
 import 'assets_page.dart';
 import 'asset_inspections_due_page.dart';
@@ -191,6 +192,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => QualificationCatalogPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('qualifications.read'))
+        _DashCard(
+          title: 'Stellen',
+          icon: Icons.work_outline_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => PositionsPage(api: api),
               ),
             );
           },

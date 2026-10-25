@@ -2418,6 +2418,54 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
   }
 
+  // -------- Stellen (Backlog F.11.5, Server-Routen aus F.11.2/F.11.4) --------
+  // Stellen als Vorlagen fuer erforderliche Qualifikationen (ADR 0031).
+  // Lesen mit einem der Qualifikationsrechte, pflegen mit
+  // qualifications.write. Ohne includeInactive nur die aktiven.
+  Future<List<dynamic>> listPositions({bool includeInactive = false}) =>
+      _getList('/api/v1/positions/', includeInactive ? {'include_inactive': 'true'} : null);
+
+  // body: code, name, hinweis, type_ids.
+  Future<Map<String, dynamic>> createPosition(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/positions/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // PUT ersetzt ALLES: name, aktiv, hinweis, type_ids sind Pflicht, code
+  // ist nicht aenderbar.
+  Future<Map<String, dynamic>> updatePosition(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/positions/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Vorschlagskatalog uebernehmen: liefert die NEU angelegten Stellen, je
+  // mit fehlende_arten (Codes, die der Mandant nicht als aktive Art hat).
+  Future<List<dynamic>> adoptDefaultPositions() async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/positions/adopt-defaults'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(<String, dynamic>{}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
   // Betriebsweite Liste (F.13.2, Route F.2.6.2): fuer alle aktiven
   // Mitarbeiter, was fehlt, abgelaufen ist oder innerhalb der Vorwarnzeit
   // ablaeuft - das Dringendste zuerst. Ohne warnDays der Standard des

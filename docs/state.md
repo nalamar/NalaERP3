@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.11.4** (2026-10-24, Server: Vorschlagskatalog
+> Zuletzt abgeschlossen: **F.11.5** (2026-10-25, Client: Seite "Stellen"
+> mit Pflege, Arten-Auswahl, Stilllegen, Vorschläge übernehmen samt
+> fehlender Arten; Dashboard-Karte). Davor **F.11.4** (2026-10-24, Server: Vorschlagskatalog
 > mit fünf Stellen, `POST /positions/adopt-defaults`, ergänzt nur
 > Fehlendes, meldet fehlende Arten; als nicht recherchiert gekennzeichnet).
 > **Damit ist die Server-Seite von F.11 fertig.** Davor **F.11.3.2** und damit **F.11.3** (2026-10-24,
@@ -41,12 +43,13 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: F.11.5** (Client: Pflege der Stellen — Liste, Anlegen,
-> Bearbeiten mit Arten-Auswahl, Stilllegen, Vorschlag übernehmen mit
-> Anzeige der fehlenden Arten; Muster `qualification_catalog_page.dart`).
-> Danach F.11.6 (Stellen beim Anlegen/Bearbeiten eines Mitarbeiters).
+> nächste Arbeit: F.11.6** (Client: Stellen am Mitarbeiter — im
+> Abschnitt "Qualifikationen" anzeigen und mit `qualifications.write`
+> setzen (`GET/PUT /qualifications/positions`); beim Anlegen im
+> Anlegedialog wählbar, `position_ids` im Aufruf aus F.10.5.2). Danach
+> ist F.11 bis auf F.11.7 (später) fertig.
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 286 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 299 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
