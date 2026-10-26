@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.1.4** und damit **G.1** (2026-10-26, Client:
+> Zuletzt abgeschlossen: **G.2.1** (2026-10-26, Server: Migration 100
+> Termine/Erledigungen, Fachregeln `schedule_rules.go`; Modell als
+> Präzisierung in ADR 0032 — Termin mit Starttermin, Erledigung als Beleg,
+> HU zum Monatsende). Davor **G.1.4** und damit **G.1** (2026-10-26, Client:
 > Seite "Fuhrpark" mit Liste, Filtern, Anlegen/Bearbeiten, Abmelden;
 > Dashboard-Karte). Davor **G.1.3** (2026-10-26, Server: Routen
 > `/fleet/vehicles` mit Liste, Anlegen, Einzelabruf, PUT als vollständiger
@@ -53,14 +56,12 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.2** (Termine HU, UVV, Wartung, Fristen wie
-> Versicherung/Leasingende; ADR 0032 §3: erledigen unveränderlich mit
-> Storno, Folgetermin angegeben und gespeichert — HU als Monat, Vorschlag
-> 24, UVV 12 —, Wartung zusätzlich nach km, Fälligkeit beim Lesen, 30 Tage
-> Vorwarnzeit, betriebsweite Liste; Sperre bei "Mängel"/"nicht
-> bestanden" wirkt erst mit der Fahrerzuordnung G.3a). Zuerst teilen
-> (Migration+Regeln, Service, Routen, Client). Muster:
-> `internal/assets/inspections.go`, `inspection_rules.go`,
+> nächste Arbeit: G.2.2** (Service: Termine anlegen/ändern/stilllegen,
+> Erledigung mit Folgetermin-Vorschlag aus dem Intervall und HU-
+> Normalisierung, Storno, Stand je Fahrzeug über `EvaluateSchedule`,
+> betriebsweite Fälligkeitsliste; Fahrzeug-Zeile sperren wie bei den
+> Betriebsmitteln; abgemeldete Fahrzeuge nehmen keine neuen Termine/
+> Erledigungen an). Muster `internal/assets/inspections.go`,
 > `inspection_due.go`.
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
@@ -91,7 +92,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 100, ADR 0033.
+> Nächste freie Migration 101, ADR 0033.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*

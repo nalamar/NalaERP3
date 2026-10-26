@@ -176,3 +176,24 @@ Fahrzeugen (ein Kennzeichen kann nach Abmeldung neu vergeben werden).
 Fahrzeug-Identnummer optional, 17 Zeichen nach ISO 3779 (A-Z ohne I, O,
 Q; 0-9), eindeutig je Mandant. Abmelden mit Datum und Grund, endgültig;
 gelöscht wird nichts.
+
+Präzisierung G.2 (2026-10-26, technische Ausgestaltung von §3, keine
+neue fachliche Entscheidung): wer ein Fahrzeug neu erfasst, kennt meist
+nur den nächsten Termin von der Plakette, nicht die letzte HU. Deshalb
+zwei Dinge statt nur "Erledigungen":
+
+- **Termin** (Planung, änderbar): je Fahrzeug und Art (HU, UVV, Wartung,
+  Versicherung, Leasingende, Sonstiges mit Bezeichnung) mit
+  **Starttermin**, Start-km, Intervall in Monaten bzw. km und Notiz;
+  stilllegbar.
+- **Erledigung** (Beleg, unveränderlich, Storno): Datum, Ergebnis (HU/UVV:
+  bestanden, Mängel, nicht bestanden; sonst "erledigt"), km-Stand,
+  Prüfstelle/Werkstatt, **gespeicherter Folgetermin** (Vorschlag aus dem
+  Intervall) und Folge-km.
+- Fällig ist der Folgetermin der jüngsten nicht stornierten Erledigung,
+  sonst der Starttermin. **HU immer zum Monatsende** (Plakettenmonat).
+  Sperre bei jüngster HU/UVV mit Mängeln oder nicht bestanden bis zur
+  nächsten bestandenen; der Folgetermin (Nachprüfung) bleibt sichtbar.
+  Fälligkeit nach km kommt erst mit dem Fahrtenbuch (G.3c), weil vorher
+  kein aktueller Kilometerstand bekannt ist.
+- Vorschläge für das Intervall: HU 24, UVV 12, Versicherung 12 Monate.
