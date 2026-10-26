@@ -7,7 +7,8 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.2.2.3** und damit **G.2.2** (2026-10-26,
+> Zuletzt abgeschlossen: **G.2.3** (2026-10-26, Server: Routen für
+> Termine, Erledigungen und Fälligkeitsliste unter `/fleet/...`). Davor **G.2.2.3** und damit **G.2.2** (2026-10-26,
 > Server: betriebsweite Fälligkeitsliste `DueList`; dabei Fehler behoben:
 > kein Folgetermin-Vorschlag nach HU/UVV mit Mängeln/nicht bestanden).
 > Davor **G.2.2.2** (2026-10-26, Server: Erledigungen
@@ -61,12 +62,13 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.2.3** (HTTP-Routen: Termine je Fahrzeug lesen mit
-> Stand/anlegen/PUT, Erledigungen erfassen/stornieren/lesen,
-> Fälligkeitsliste; `fleet.read`/`fleet.write`; Datum JJJJ-MM-TT;
-> "Fahrzeug ist abgemeldet" in `classifyDomainError` als 409 — "Termin
-> ist stillgelegt" und "bereits storniert" sind schon zugeordnet). Danach
-> G.2.4 Client.
+> nächste Arbeit: G.2.4** (Client: Termine am Fahrzeug — Detailseite
+> oder Dialog aus der Fuhrpark-Liste mit Stand je Termin, anlegen/ändern/
+> stilllegen, erledigen mit Vorschlag des Servers, HU als MM.JJJJ,
+> Erledigungen mit Storno; Seite "Fällige Fahrzeugtermine" und
+> Dashboard-Karte mit `fleet.read`). Vermutlich zu teilen. Muster:
+> `asset_detail_page.dart`, `asset_inspections_section.dart`,
+> `asset_inspections_due_page.dart`.
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf

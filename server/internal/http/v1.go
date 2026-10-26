@@ -1753,6 +1753,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
 	mountAssetInspectionRoutes(protected, assetSvc)
 	mountFleetRoutes(protected, fleet.NewVehicleService(pg))
+	mountFleetScheduleRoutes(protected, fleet.NewScheduleService(pg))
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
 	protected.Route("/bank-statements", func(r chi.Router) {
@@ -5098,6 +5099,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "asset ist gesperrt"),
 		strings.Contains(msg, "bereits zurückgegeben"),
 		strings.Contains(msg, "bereits abgemeldet"),
+		strings.Contains(msg, "fahrzeug ist abgemeldet"),
 		strings.Contains(msg, "mitarbeiter ist nicht aktiv"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
@@ -5168,7 +5170,10 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "kann den mitarbeiter nicht"),
 		strings.Contains(msg, "darf höchstens"),
 		strings.Contains(msg, "unbekanntes feld"),
-		strings.Contains(msg, "nicht überschreiten"):
+		strings.Contains(msg, "nicht überschreiten"),
+		strings.Contains(msg, "nur bei sonstigen terminen"),
+		strings.Contains(msg, "muss nach dem datum liegen"),
+		strings.Contains(msg, "muss über dem kilometerstand liegen"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"
