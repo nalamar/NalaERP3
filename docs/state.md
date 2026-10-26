@@ -7,7 +7,8 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.2.2.1** (2026-10-26, Server:
+> Zuletzt abgeschlossen: **G.2.2.2** (2026-10-26, Server: Erledigungen
+> erfassen mit gespeichertem Folgetermin, stornieren, lesen). Davor **G.2.2.1** (2026-10-26, Server:
 > `ScheduleService` — Termine anlegen/ändern/lesen mit Stand). Davor **G.2.1** (2026-10-26, Server: Migration 100
 > Termine/Erledigungen, Fachregeln `schedule_rules.go`; Modell als
 > Präzisierung in ADR 0032 — Termin mit Starttermin, Erledigung als Beleg,
@@ -57,11 +58,12 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.2.2.2** (Erledigungen: `RecordCompletion` mit
-> `lockActiveVehicle`, `ValidateCompletion` gegen Erstzulassung,
-> Folgetermin-Vorschlag `NextDue`, HU über `NormalizeDue`, Folge-km aus
-> km-Stand + Intervall-km; `StornoCompletion`; `ListCompletions`; nicht an
-> stillgelegtem Termin). Danach G.2.2.3 Fälligkeitsliste.
+> nächste Arbeit: G.2.2.3** (betriebsweite Fälligkeitsliste: aktive
+> Termine nicht abgemeldeter Fahrzeuge mit Stand gesperrt/überfällig/
+> fällig bald, das Dringendste zuerst, über `EvaluateSchedule` — Wächter-
+> test Liste = Stand je Fahrzeug wie `TestInspectionDueListMatchesStanding`).
+> Danach G.2.3 Routen (dabei "Fahrzeug ist abgemeldet" in
+> `classifyDomainError`), G.2.4 Client.
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
