@@ -2591,6 +2591,41 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Fuhrpark: Termine (Backlog G.2.4, Routen G.2.3) --------
+  // Termine eines Fahrzeugs mit Stand (HU, UVV, Wartung, Versicherung,
+  // Leasing, Sonstiges); stillgelegte nur auf Wunsch.
+  Future<List<dynamic>> listVehicleSchedules(String vehicleId, {bool includeInactive = false}) =>
+      _getList('/api/v1/fleet/vehicles/$vehicleId/schedules', includeInactive ? {'include_inactive': 'true'} : null);
+
+  // body: vehicle_id, art, bezeichnung (nur sonstige), starttermin
+  // (JJJJ-MM-TT; HU legt der Server aufs Monatsende), start_km,
+  // intervall_monate (null = Vorschlag der Art), intervall_km, notiz.
+  Future<Map<String, dynamic>> createSchedule(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/schedules/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ersetzt die Planung VOLLSTAENDIG: starttermin, start_km,
+  // intervall_monate, intervall_km, notiz, aktiv sind Pflicht.
+  Future<Map<String, dynamic>> updateSchedule(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/fleet/schedules/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);

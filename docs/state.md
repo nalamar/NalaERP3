@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.2.3** (2026-10-26, Server: Routen für
+> Zuletzt abgeschlossen: **G.2.4.1** (2026-10-26, Client: Termine am
+> Fahrzeug planen — Detailseite aus der Fuhrpark-Liste, HU als MM.JJJJ).
+> Davor **G.2.3** (2026-10-26, Server: Routen für
 > Termine, Erledigungen und Fälligkeitsliste unter `/fleet/...`). Davor **G.2.2.3** und damit **G.2.2** (2026-10-26,
 > Server: betriebsweite Fälligkeitsliste `DueList`; dabei Fehler behoben:
 > kein Folgetermin-Vorschlag nach HU/UVV mit Mängeln/nicht bestanden).
@@ -62,17 +64,17 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.2.4** (Client: Termine am Fahrzeug — Detailseite
-> oder Dialog aus der Fuhrpark-Liste mit Stand je Termin, anlegen/ändern/
-> stilllegen, erledigen mit Vorschlag des Servers, HU als MM.JJJJ,
-> Erledigungen mit Storno; Seite "Fällige Fahrzeugtermine" und
-> Dashboard-Karte mit `fleet.read`). Vermutlich zu teilen. Muster:
-> `asset_detail_page.dart`, `asset_inspections_section.dart`,
-> `asset_inspections_due_page.dart`.
+> nächste Arbeit: G.2.4.2** (Client: Erledigungen — je Termin "Erledigt
+> erfassen" mit Datum, Ergebnis — HU/UVV bestanden/Mängel/nicht
+> bestanden, sonst erledigt —, km-Stand, Prüfstelle, optionalem
+> Folgetermin — HU als MM.JJJJ; leer = Vorschlag des Servers, nach
+> Mängeln/nicht bestanden keiner —, Folge-km; Liste der Erledigungen
+> mit Storno; API `listCompletions`, `recordCompletion`,
+> `stornoCompletion`). Danach G.2.4.3.
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 323 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 338 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).

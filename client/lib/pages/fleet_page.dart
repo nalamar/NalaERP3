@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'assets_page.dart' show isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'vehicle_detail_page.dart';
 
 // Fuhrpark: Fahrzeugstamm (Backlog G.1.4) auf den Routen aus G.1.3 -
 // zulassungspflichtige Fahrzeuge und Anhaenger anlegen, bearbeiten,
@@ -386,6 +387,10 @@ class _FleetPageState extends State<FleetPage> {
                 final deregistered = m['abgemeldet_am'] != null;
                 final bez = m['bezeichnung']?.toString() ?? '';
                 return ListTile(
+                  onTap: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => VehicleDetailPage(api: widget.api, vehicle: m)));
+                    if (mounted) _load();
+                  },
                   title: Text('${m['kennzeichen'] ?? ''}${bez.isEmpty ? '' : ' – $bez'}'),
                   subtitle: Text(vehicleDetails(m)),
                   trailing: _canWrite
