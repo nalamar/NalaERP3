@@ -15,6 +15,7 @@ import 'positions_page.dart';
 import 'qualifications_due_page.dart';
 import 'assets_page.dart';
 import 'asset_inspections_due_page.dart';
+import 'fleet_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -244,6 +245,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => AssetInspectionsDuePage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('fleet.read'))
+        _DashCard(
+          title: 'Fuhrpark',
+          icon: Icons.local_shipping_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => FleetPage(api: api),
               ),
             );
           },

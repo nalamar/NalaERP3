@@ -2541,6 +2541,56 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Fuhrpark: Fahrzeugstamm (Backlog G.1.4, Routen G.1.3) --------
+  // Fahrzeuge und Anhaenger nach Kennzeichen; Filter Art, abgemeldete auf
+  // Wunsch. Lesen mit fleet.read, pflegen mit fleet.write (nur Fuhrpark und
+  // Admin, Entscheidung des Nutzers vom 2026-10-25).
+  Future<List<dynamic>> listVehicles({String? art, bool includeAbgemeldete = false}) {
+    final qp = <String, String>{};
+    if (art != null && art.isNotEmpty) qp['art'] = art;
+    if (includeAbgemeldete) qp['include_abgemeldete'] = 'true';
+    return _getList('/api/v1/fleet/vehicles/', qp.isEmpty ? null : qp);
+  }
+
+  Future<Map<String, dynamic>> createVehicle(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/vehicles/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Ersetzt die Stammdaten VOLLSTAENDIG - der Server verlangt alle zwoelf
+  // Felder (sonst schaltete ein vergessenes "fahrtenbuch" es still ab).
+  Future<Map<String, dynamic>> updateVehicle(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/fleet/vehicles/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Abmelden: endgueltig, mit Datum (JJJJ-MM-TT) und Grund.
+  Future<Map<String, dynamic>> deregisterVehicle(String id, {required String datum, required String grund}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/vehicles/$id/deregister'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'datum': datum, 'grund': grund}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
