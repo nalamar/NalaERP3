@@ -63,12 +63,24 @@ func TestCompletionProposalsAndNormalization(t *testing.T) {
 	if err != nil || c7.NaechsterTermin != nil {
 		t.Fatalf("Leasing: %+v %v", c7, err)
 	}
+	// Nach Maengeln oder nicht bestanden kein Vorschlag aus dem Intervall
+	// (es steht eine Nachpruefung an); eine angegebene Frist bleibt.
+	for _, ergebnis := range []string{ErgebnisMaengel, ErgebnisNichtBestanden} {
+		bad, err := svc.RecordCompletion(ctx, CompletionInput{ScheduleID: uvv.ID, ErledigtAm: day(2026, 5, 1), Ergebnis: ergebnis}, "", company)
+		if err != nil || bad.NaechsterTermin != nil {
+			t.Fatalf("%s ohne Vorschlag: %+v %v", ergebnis, bad, err)
+		}
+	}
+	nach, err := svc.RecordCompletion(ctx, CompletionInput{ScheduleID: hu.ID, ErledigtAm: day(2026, 5, 1), Ergebnis: ErgebnisNichtBestanden, NaechsterTermin: datePtr(2026, 6, 1)}, "", company)
+	if err != nil || nach.NaechsterTermin == nil || !nach.NaechsterTermin.Equal(day(2026, 6, 30)) {
+		t.Fatalf("Nachpruefungsfrist: %+v %v", nach, err)
+	}
 	// Ein spaeter geaendertes Intervall aendert die gespeicherten nicht.
 	if _, err := svc.UpdateSchedule(ctx, hu.ID, ScheduleUpdate{IntervallMonate: intPtr(12), Aktiv: true}, company); err != nil {
 		t.Fatalf("Intervall aendern: %v", err)
 	}
 	list, err := svc.ListCompletions(ctx, hu.ID, false, company)
-	if err != nil || len(list) != 2 || list[0].ID != c2.ID || !list[1].NaechsterTermin.Equal(day(2028, 3, 31)) {
+	if err != nil || len(list) != 3 || list[0].ID != nach.ID || list[1].ID != c2.ID || !list[2].NaechsterTermin.Equal(day(2028, 3, 31)) {
 		t.Fatalf("gespeicherter Folgetermin: %+v %v", list, err)
 	}
 }

@@ -24,7 +24,8 @@ type CompletionInput struct {
 	Ergebnis   string    `json:"ergebnis"`
 	KmStand    *int      `json:"km_stand"`
 	// NaechsterTermin: nil = aus dem Intervall des Termins vorschlagen
-	// (NextDue). Angegeben wird er bei der HU auf das Monatsende gelegt.
+	// (NextDue) - nicht nach einer HU/UVV mit Maengeln oder nicht
+	// bestanden. Angegeben wird er bei der HU auf das Monatsende gelegt.
 	NaechsterTermin *time.Time `json:"naechster_termin"`
 	// NaechsterKm: nil = km-Stand + Intervall-km des Termins, wenn beides
 	// bekannt ist.
@@ -89,7 +90,10 @@ func (s *ScheduleService) RecordCompletion(ctx context.Context, in CompletionInp
 	if naechster != nil {
 		n := NormalizeDue(art, *naechster)
 		naechster = &n
-	} else if !in.ErledigtAm.IsZero() {
+	} else if !in.ErledigtAm.IsZero() && !(pruefArten[art] && in.Ergebnis != ErgebnisBestanden) {
+		// Kein Vorschlag nach einer HU/UVV mit Maengeln oder nicht
+		// bestanden: dann steht eine Nachpruefung an, nicht der regulaere
+		// Termin in 24 Monaten. Ihre Frist wird angegeben (oder fehlt).
 		naechster = NextDue(art, in.ErledigtAm, intervallMonate)
 	}
 	naechsterKm := in.NaechsterKm

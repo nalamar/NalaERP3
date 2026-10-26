@@ -197,3 +197,9 @@ zwei Dinge statt nur "Erledigungen":
   Fälligkeit nach km kommt erst mit dem Fahrtenbuch (G.3c), weil vorher
   kein aktueller Kilometerstand bekannt ist.
 - Vorschläge für das Intervall: HU 24, UVV 12, Versicherung 12 Monate.
+
+Nachtrag G.2.2.3 (2026-10-26): nach einer HU oder UVV mit **Mängeln oder
+nicht bestanden** schlägt der Service **keinen** Folgetermin aus dem
+Intervall vor — dann steht eine Nachprüfung an, nicht der reguläre
+Termin in 24 Monaten. Die Frist der Nachprüfung wird angegeben (bei der
+HU zum Monatsende) oder fehlt. Gefunden beim Test der Fälligkeitsliste.
