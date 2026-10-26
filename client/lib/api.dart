@@ -2626,6 +2626,16 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Betriebsweite Faelligkeitsliste der Fahrzeugtermine: gesperrt,
+  // ueberfaellig, faellig bald - das Dringendste zuerst. Ohne warnDays der
+  // Standard des Servers (30 Tage).
+  Future<List<dynamic>> listScheduleDue({int? warnDays}) =>
+      _getList('/api/v1/fleet/schedules/due', warnDays == null ? null : {'warn_tage': '$warnDays'});
+
+  // Ein Fahrzeug (fleet.read), z. B. fuer die Detailseite aus der
+  // Faelligkeitsliste.
+  Future<Map<String, dynamic>> getVehicle(String id) => _getJson('/api/v1/fleet/vehicles/$id');
+
   // Erledigungen eines Termins, die juengste zuerst; stornierte auf Wunsch.
   Future<List<dynamic>> listCompletions(String scheduleId, {bool includeStorniert = false}) =>
       _getList('/api/v1/fleet/schedules/$scheduleId/completions', includeStorniert ? {'include_storniert': 'true'} : null);

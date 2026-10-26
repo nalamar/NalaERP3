@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.2.4.2** (2026-10-26, Client: Erledigungen
+> Zuletzt abgeschlossen: **G.2.4.3** und damit **G.2** (2026-10-26,
+> Client: Seite "Fällige Fahrzeugtermine" mit Dashboard-Karte; Zeile
+> öffnet das Fahrzeug). **Epic G: G.1 und G.2 fertig.** Davor **G.2.4.2** (2026-10-26, Client: Erledigungen
 > erfassen, ansehen, stornieren). Davor **G.2.4.1** (2026-10-26, Client: Termine am
 > Fahrzeug planen — Detailseite aus der Fuhrpark-Liste, HU als MM.JJJJ).
 > Davor **G.2.3** (2026-10-26, Server: Routen für
@@ -65,15 +67,20 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.2.4.3** (Client: Seite "Fällige Fahrzeugtermine" —
-> `GET /fleet/schedules/due`, Zähler je Stand, Vorwarnzeit einstellbar,
-> Zeile öffnet die Detailseite — und Dashboard-Karte mit `fleet.read`;
-> Muster `asset_inspections_due_page.dart`). Danach ist G.2 fertig;
-> weiter mit G.3a Fahrerzuordnung.
+> nächste Arbeit: G.3b vor G.3a** (Empfehlung: die Fahrerzuordnung G.3a
+> soll bei ungültiger Führerscheinkontrolle warnen — dafür braucht es
+> zuerst die Qualifikationsart `FUEHRERSCHEINKONTROLLE` (Kategorie,
+> Frist 6 Monate als Vorschlag, Hinweis "keine Kopie des Führerscheins")
+> im Qualifikations-Vorschlagskatalog und die Stelle `FAHRER` im
+> Stellen-Vorschlagskatalog, ADR 0032 §5, Entscheidung 2 des Nutzers;
+> Katalogtests anpassen — 18 Arten → 19, 5 Stellen → 6). Danach G.3a
+> (Zuordnung Fahrzeug ↔ Mitarbeiter wie Betriebsmittel-Ausgabe; Sperre
+> bei gesperrtem HU/UVV-Termin, Hinweis bei überfälligem Termin und bei
+> nicht gültiger Führerscheinkontrolle).
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 348 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 354 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).
