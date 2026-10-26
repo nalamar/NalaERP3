@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'assets_page.dart' show isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'vehicle_completions.dart';
 
 // Termine eines Fahrzeugs (Backlog G.2.4.1) auf den Routen aus G.2.3: HU,
 // UVV, Wartung, Versicherung, Leasingende, Sonstiges - mit Stand. Ein
@@ -127,10 +128,11 @@ Map<String, dynamic> buildScheduleUpdateBody({
     };
 
 class VehicleSchedulesSection extends StatefulWidget {
-  const VehicleSchedulesSection({super.key, required this.api, required this.vehicleId, this.deregistered = false});
+  const VehicleSchedulesSection({super.key, required this.api, required this.vehicleId, this.deregistered = false, this.now});
   final ApiClient api;
   final String vehicleId;
   final bool deregistered;
+  final DateTime Function()? now;
 
   @override
   State<VehicleSchedulesSection> createState() => _VehicleSchedulesSectionState();
@@ -143,6 +145,9 @@ class _VehicleSchedulesSectionState extends State<VehicleSchedulesSection> {
   String? error;
 
   bool get _canWrite => widget.api.hasPermission('fleet.write') && !widget.deregistered;
+  // Stornieren bleibt am abgemeldeten Fahrzeug erlaubt (Berichtigung der
+  // Historie, wie der Server).
+  bool get _canStorno => widget.api.hasPermission('fleet.write');
 
   @override
   void initState() {
@@ -343,9 +348,27 @@ class _VehicleSchedulesSectionState extends State<VehicleSchedulesSection> {
                 terminstandLabel(art, st),
                 style: TextStyle(color: terminstandIsBad(st['status']?.toString()) ? const Color(0xFFB00020) : null),
               ),
-              trailing: _canWrite
-                  ? IconButton(tooltip: 'Termin bearbeiten', icon: const Icon(Icons.edit), onPressed: () => _scheduleDialog(schedule: m))
-                  : null,
+              trailing: Wrap(
+                children: [
+                  if (_canWrite && m['aktiv'] != false)
+                    IconButton(
+                      tooltip: 'Erledigt erfassen',
+                      icon: const Icon(Icons.task_alt),
+                      onPressed: () async {
+                        if (await showRecordCompletionDialog(context, widget.api, m, (widget.now ?? DateTime.now)())) await _load();
+                      },
+                    ),
+                  IconButton(
+                    tooltip: 'Erledigungen',
+                    icon: const Icon(Icons.history),
+                    onPressed: () async {
+                      if (await showCompletionsDialog(context, widget.api, m, canStorno: _canStorno)) await _load();
+                    },
+                  ),
+                  if (_canWrite)
+                    IconButton(tooltip: 'Termin bearbeiten', icon: const Icon(Icons.edit), onPressed: () => _scheduleDialog(schedule: m)),
+                ],
+              ),
             );
           }),
       ],

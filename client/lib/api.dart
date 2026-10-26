@@ -2626,6 +2626,39 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Erledigungen eines Termins, die juengste zuerst; stornierte auf Wunsch.
+  Future<List<dynamic>> listCompletions(String scheduleId, {bool includeStorniert = false}) =>
+      _getList('/api/v1/fleet/schedules/$scheduleId/completions', includeStorniert ? {'include_storniert': 'true'} : null);
+
+  // body: schedule_id, erledigt_am (JJJJ-MM-TT), ergebnis, km_stand,
+  // naechster_termin (null = Vorschlag des Servers aus dem Intervall; nach
+  // HU/UVV mit Maengeln oder nicht bestanden keiner), naechster_km,
+  // pruefer, notiz.
+  Future<Map<String, dynamic>> recordCompletion(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/completions/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Storniert eine Erledigung (einmalig, mit Begruendung).
+  Future<Map<String, dynamic>> stornoCompletion(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/completions/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
