@@ -29,6 +29,7 @@ import (
 	"nalaerp3/internal/auth"
 	"nalaerp3/internal/config"
 	"nalaerp3/internal/contacts"
+	"nalaerp3/internal/fleet"
 	"nalaerp3/internal/hr"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/pdfgen"
@@ -1751,6 +1752,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountAssetRoutes(protected, assetSvc)
 	mountAssetAssignmentRoutes(protected, assetSvc, timeEntrySvc)
 	mountAssetInspectionRoutes(protected, assetSvc)
+	mountFleetRoutes(protected, fleet.NewVehicleService(pg))
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
 	protected.Route("/bank-statements", func(r chi.Router) {
@@ -5095,6 +5097,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits ausgegeben"),
 		strings.Contains(msg, "asset ist gesperrt"),
 		strings.Contains(msg, "bereits zurückgegeben"),
+		strings.Contains(msg, "bereits abgemeldet"),
 		strings.Contains(msg, "mitarbeiter ist nicht aktiv"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),

@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.1.2** (2026-10-25, Server: Migration 099
+> Zuletzt abgeschlossen: **G.1.3** (2026-10-26, Server: Routen
+> `/fleet/vehicles` mit Liste, Anlegen, Einzelabruf, PUT als vollständiger
+> Ersatz, Abmelden; nur `fleet.read`/`fleet.write`). Davor **G.1.2** (2026-10-25, Server: Migration 099
 > `fleet_vehicles` + Rechte `fleet.*`, Paket `internal/fleet` mit
 > `VehicleService`). **ADR 0032 entschieden: die fünf Fragen hat der
 > Nutzer am 2026-10-25 AUSDRÜCKLICH wie empfohlen beantwortet** (keine
@@ -49,10 +51,10 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.1.3** (HTTP-Routen `/fleet/vehicles`: Liste mit
-> Filtern, Anlegen, Einzelabruf, PUT als vollständiger Ersatz, Abmelden;
-> `fleet.read`/`fleet.write`; "bereits abgemeldet" in
-> `classifyDomainError` als 409 aufnehmen). Danach G.1.4 (Client), G.2.
+> nächste Arbeit: G.1.4** (Client: Seite "Fuhrpark" mit Liste, Filter
+> Art und abgemeldete, Anlegen/Bearbeiten mit allen Feldern — PUT
+> verlangt alle zwölf —, Abmelden mit Datum und Grund; Dashboard-Karte
+> mit `fleet.read`; Muster `assets_page.dart`). Danach G.2 (Termine).
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
