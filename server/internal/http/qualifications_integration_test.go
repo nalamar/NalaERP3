@@ -208,7 +208,7 @@ func TestQualificationsHTTPFlow(t *testing.T) {
 
 	// Stillgelegte Art: keine neuen Nachweise.
 	decodeQualificationType(t, do(http.MethodPut, qtPath+annual.ID.String(),
-		`{"name":"Art ARBEITSSCHUTZ","kategorie":"unterweisung","gueltigkeit_monate":12,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`), http.StatusOK)
+		`{"name":"Art ARBEITSSCHUTZ","kategorie":"unterweisung","gueltigkeit_monate":12,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`), http.StatusOK)
 	wantAPIError(t, do(http.MethodPost, qualPath, qualBody(annual.ID, "2026-05-15", a)), http.StatusConflict, "conflict", "Qualifikationsart ist stillgelegt")
 }
 
@@ -248,7 +248,7 @@ func TestQualificationRequirementsHTTP(t *testing.T) {
 	wantAPIError(t, do(http.MethodPut, qualPath+"requirements?employee_id="+uuid.NewString(), `{"type_ids":[]}`), http.StatusNotFound, "not_found", "Mitarbeiter nicht gefunden")
 	still := tenant.qualType(hrToken, "STILL", "12")
 	decodeQualificationType(t, do(http.MethodPut, qtPath+still.ID.String(),
-		`{"name":"Art STILL","kategorie":"unterweisung","gueltigkeit_monate":12,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`), http.StatusOK)
+		`{"name":"Art STILL","kategorie":"unterweisung","gueltigkeit_monate":12,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`), http.StatusOK)
 	wantAPIError(t, do(http.MethodPut, reqPath, `{"type_ids":["`+still.ID.String()+`"]}`), http.StatusConflict, "conflict", "Qualifikationsart ist stillgelegt")
 
 	// Eine ausdrücklich leere Liste entfernt alle.

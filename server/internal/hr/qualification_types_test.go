@@ -11,7 +11,7 @@ import (
 // Validierung des Katalogs greift vor jedem DB-Zugriff (nil-Pool).
 
 func TestQualificationTypeCreateValidatesBeforeTouchingDatabase(t *testing.T) {
-	zero, negative := 0, -3
+	zero, negative, six, seven := 0, -3, 6, 7
 	valid := QualificationTypeInput{Code: "STAPLER_SCHEIN", Name: "Staplerschein", Kategorie: QualificationKategorieQualifikation}
 	with := func(mod func(*QualificationTypeInput)) QualificationTypeInput {
 		in := valid
@@ -36,6 +36,11 @@ func TestQualificationTypeCreateValidatesBeforeTouchingDatabase(t *testing.T) {
 		{"Kategorie unbekannt", with(func(in *QualificationTypeInput) { in.Kategorie = "gesundheit" }), "default", "Ungültige Kategorie"},
 		{"Frist 0", with(func(in *QualificationTypeInput) { in.GueltigkeitMonate = &zero }), "default", "Gültigkeit muss größer als 0 sein"},
 		{"Frist negativ", with(func(in *QualificationTypeInput) { in.GueltigkeitMonate = &negative }), "default", "Gültigkeit muss größer als 0 sein"},
+		// Zwischenbestaetigung (F.10.3).
+		{"Bestaetigung 0", with(func(in *QualificationTypeInput) { in.BestaetigungMonate = &zero }), "default", "Bestätigungsintervall muss größer als 0 sein"},
+		{"Bestaetigung negativ", with(func(in *QualificationTypeInput) { in.BestaetigungMonate = &negative }), "default", "Bestätigungsintervall muss größer als 0 sein"},
+		{"Bestaetigung gleich Frist", with(func(in *QualificationTypeInput) { in.GueltigkeitMonate, in.BestaetigungMonate = &six, &six }), "default", "Bestätigungsintervall muss kürzer als die Gültigkeit sein"},
+		{"Bestaetigung laenger als Frist", with(func(in *QualificationTypeInput) { in.GueltigkeitMonate, in.BestaetigungMonate = &six, &seven }), "default", "Bestätigungsintervall muss kürzer als die Gültigkeit sein"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -51,7 +56,7 @@ func TestQualificationTypeCreateValidatesBeforeTouchingDatabase(t *testing.T) {
 }
 
 func TestQualificationTypeUpdateValidatesBeforeTouchingDatabase(t *testing.T) {
-	zero := 0
+	zero, twelve := 0, 12
 	s := NewQualificationTypeService(nil)
 	valid := QualificationTypeUpdate{Name: "Staplerschein", Kategorie: QualificationKategorieQualifikation, Aktiv: true}
 
@@ -65,6 +70,8 @@ func TestQualificationTypeUpdateValidatesBeforeTouchingDatabase(t *testing.T) {
 		{"Name fehlt", QualificationTypeUpdate{Kategorie: QualificationKategorieQualifikation}, "default", "Name erforderlich"},
 		{"Kategorie unbekannt", QualificationTypeUpdate{Name: "X", Kategorie: "kurs"}, "default", "Ungültige Kategorie"},
 		{"Frist 0", QualificationTypeUpdate{Name: "X", Kategorie: QualificationKategorieUnterweisung, GueltigkeitMonate: &zero}, "default", "Gültigkeit muss größer als 0 sein"},
+		{"Bestaetigung 0", QualificationTypeUpdate{Name: "X", Kategorie: QualificationKategorieQualifikation, BestaetigungMonate: &zero}, "default", "Bestätigungsintervall muss größer als 0 sein"},
+		{"Bestaetigung nicht kuerzer als Frist", QualificationTypeUpdate{Name: "X", Kategorie: QualificationKategorieQualifikation, GueltigkeitMonate: &twelve, BestaetigungMonate: &twelve}, "default", "Bestätigungsintervall muss kürzer als die Gültigkeit sein"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

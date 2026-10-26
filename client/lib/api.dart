@@ -2376,7 +2376,8 @@ class ApiClient {
 
   // -------- Qualifikationskatalog pflegen (Backlog F.13.1, Routen F.2.5.1) --------
   // Neue Art: code, name, kategorie, gueltigkeit_monate (null =
-  // unbefristet), pflicht_fuer_alle, hinweis. Erwartet 201.
+  // unbefristet), bestaetigung_monate (null = keine Zwischenbestaetigung),
+  // pflicht_fuer_alle, hinweis. Erwartet 201.
   Future<Map<String, dynamic>> createQualificationType(Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.post(
@@ -2389,9 +2390,9 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
-  // Ersetzt eine Art VOLLSTAENDIG. Der Server verlangt alle sechs Felder
-  // (name, kategorie, gueltigkeit_monate, pflicht_fuer_alle, aktiv,
-  // hinweis); der Code ist nicht aenderbar.
+  // Ersetzt eine Art VOLLSTAENDIG. Der Server verlangt alle sieben Felder
+  // (name, kategorie, gueltigkeit_monate, bestaetigung_monate,
+  // pflicht_fuer_alle, aktiv, hinweis); der Code ist nicht aenderbar.
   Future<Map<String, dynamic>> updateQualificationType(String id, Map<String, dynamic> body) async {
     final r = await _sendWithAuth(
       (headers) => http.put(

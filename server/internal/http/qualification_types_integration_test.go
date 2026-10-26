@@ -53,14 +53,15 @@ func (c *catalogTenant) user(role string) string {
 }
 
 type qualificationTypeResponse struct {
-	ID                uuid.UUID `json:"id"`
-	Code              string    `json:"code"`
-	Name              string    `json:"name"`
-	Kategorie         string    `json:"kategorie"`
-	GueltigkeitMonate *int      `json:"gueltigkeit_monate"`
-	PflichtFuerAlle   bool      `json:"pflicht_fuer_alle"`
-	Aktiv             bool      `json:"aktiv"`
-	Hinweis           string    `json:"hinweis"`
+	ID                 uuid.UUID `json:"id"`
+	Code               string    `json:"code"`
+	Name               string    `json:"name"`
+	Kategorie          string    `json:"kategorie"`
+	GueltigkeitMonate  *int      `json:"gueltigkeit_monate"`
+	BestaetigungMonate *int      `json:"bestaetigung_monate"`
+	PflichtFuerAlle    bool      `json:"pflicht_fuer_alle"`
+	Aktiv              bool      `json:"aktiv"`
+	Hinweis            string    `json:"hinweis"`
 }
 
 func decodeQualificationType(t *testing.T, rec *httptest.ResponseRecorder, wantStatus int) qualificationTypeResponse {
@@ -99,46 +100,55 @@ func TestQualificationTypesHTTPFlow(t *testing.T) {
 	}
 
 	created := decodeQualificationType(t, do(http.MethodPost, qtPath,
-		`{"code":" schweisser_135 ","name":"Schweißerprüfung MAG","kategorie":"qualifikation","gueltigkeit_monate":36,"hinweis":"DIN EN ISO 9606-1"}`), http.StatusCreated)
-	if created.Code != "SCHWEISSER_135" || !created.Aktiv || created.GueltigkeitMonate == nil || *created.GueltigkeitMonate != 36 {
+		`{"code":" schweisser_135 ","name":"Schweißerprüfung MAG","kategorie":"qualifikation","gueltigkeit_monate":36,"bestaetigung_monate":6,"hinweis":"DIN EN ISO 9606-1"}`), http.StatusCreated)
+	if created.Code != "SCHWEISSER_135" || !created.Aktiv || created.GueltigkeitMonate == nil || *created.GueltigkeitMonate != 36 ||
+		created.BestaetigungMonate == nil || *created.BestaetigungMonate != 6 {
 		t.Fatalf("Art nicht wie angelegt: %+v", created)
 	}
 	got := decodeQualificationType(t, do(http.MethodGet, qtPath+created.ID.String(), ""), http.StatusOK)
-	if got.ID != created.ID || got.Hinweis != "DIN EN ISO 9606-1" {
+	if got.ID != created.ID || got.Hinweis != "DIN EN ISO 9606-1" || got.BestaetigungMonate == nil || *got.BestaetigungMonate != 6 {
 		t.Fatalf("Einzelabruf liefert nicht die angelegte Art: %+v", got)
 	}
 
 	// PUT ersetzt vollstaendig - auch die Frist auf "keine" (null).
 	updated := decodeQualificationType(t, do(http.MethodPut, qtPath+created.ID.String(),
-		`{"name":"Schweißerprüfung MAG (135)","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":"geaendert"}`), http.StatusOK)
-	if updated.GueltigkeitMonate != nil || updated.Name != "Schweißerprüfung MAG (135)" || updated.Code != "SCHWEISSER_135" {
+		`{"name":"Schweißerprüfung MAG (135)","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":"geaendert"}`), http.StatusOK)
+	if updated.GueltigkeitMonate != nil || updated.BestaetigungMonate != nil || updated.Name != "Schweißerprüfung MAG (135)" || updated.Code != "SCHWEISSER_135" {
 		t.Fatalf("Aenderung nicht wie angegeben: %+v", updated)
 	}
 
 	// Ein PUT, dem ein Feld fehlt, wird abgelehnt - nicht mit einem
 	// stillen Standardwert ausgefuehrt. Und nichts aendert sich.
 	for field, body := range map[string]string{
-		"aktiv":              `{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"hinweis":""}`,
-		"gueltigkeit_monate": `{"name":"X","kategorie":"qualifikation","pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`,
-		"hinweis":            `{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":12,"pflicht_fuer_alle":false,"aktiv":true}`,
+		"aktiv":              `{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"hinweis":""}`,
+		"gueltigkeit_monate": `{"name":"X","kategorie":"qualifikation","bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`,
+		"hinweis":            `{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":12,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true}`,
+		// Fehlt die Zwischenbestaetigung, waere sie sonst still entfernt.
+		"bestaetigung_monate": `{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":12,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`,
 	} {
 		t.Run("PUT ohne "+field, func(t *testing.T) {
 			wantAPIError(t, do(http.MethodPut, qtPath+created.ID.String(), body), http.StatusBadRequest, "validation_error", "Feld erforderlich: "+field)
 		})
 	}
 	wantAPIError(t, do(http.MethodPut, qtPath+created.ID.String(),
-		`{"code":"NEU","name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`),
+		`{"code":"NEU","name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`),
 		http.StatusBadRequest, "validation_error", "Der Code einer Qualifikationsart ist nicht änderbar")
 	wantAPIError(t, do(http.MethodPut, qtPath+created.ID.String(),
-		`{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":"","farbe":"rot"}`),
+		`{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":"","farbe":"rot"}`),
 		http.StatusBadRequest, "validation_error", "unbekanntes Feld: farbe")
 	if still := decodeQualificationType(t, do(http.MethodGet, qtPath+created.ID.String(), ""), http.StatusOK); still.Name != "Schweißerprüfung MAG (135)" || !still.Aktiv || still.Hinweis != "geaendert" {
 		t.Fatalf("abgelehnte PUTs haben die Art veraendert: %+v", still)
 	}
 
+	// PUT setzt die Zwischenbestaetigung auch neu (F.10.3).
+	if again := decodeQualificationType(t, do(http.MethodPut, qtPath+created.ID.String(),
+		`{"name":"Schweißerprüfung MAG (135)","kategorie":"qualifikation","gueltigkeit_monate":36,"bestaetigung_monate":3,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":"geaendert"}`), http.StatusOK); again.BestaetigungMonate == nil || *again.BestaetigungMonate != 3 {
+		t.Fatalf("Bestaetigung nicht gesetzt: %+v", again)
+	}
+
 	// Stilllegen, Liste mit und ohne inaktive.
 	decodeQualificationType(t, do(http.MethodPut, qtPath+created.ID.String(),
-		`{"name":"Schweißerprüfung MAG (135)","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":"geaendert"}`), http.StatusOK)
+		`{"name":"Schweißerprüfung MAG (135)","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":"geaendert"}`), http.StatusOK)
 	if list := decodeQualificationTypeList(t, do(http.MethodGet, qtPath, "")); len(list) != 0 {
 		t.Fatalf("Standardliste darf die stillgelegte Art nicht enthalten: %+v", list)
 	}
@@ -177,6 +187,12 @@ func TestQualificationTypesHTTPFlow(t *testing.T) {
 		http.StatusBadRequest, "validation_error", "Ungültige Kategorie")
 	wantAPIError(t, do(http.MethodPost, qtPath, `{"code":"X Y","name":"X","kategorie":"unterweisung"}`),
 		http.StatusBadRequest, "validation_error", "Ungültiger Code (erlaubt sind A-Z, 0-9 und _, höchstens 40 Zeichen)")
+	// Eine Bestaetigung, die erst mit oder nach dem Ablauf faellig wird,
+	// liefe ins Leere (F.10.3).
+	wantAPIError(t, do(http.MethodPost, qtPath, `{"code":"X","name":"X","kategorie":"qualifikation","gueltigkeit_monate":6,"bestaetigung_monate":6}`),
+		http.StatusBadRequest, "validation_error", "Bestätigungsintervall muss kürzer als die Gültigkeit sein")
+	wantAPIError(t, do(http.MethodPost, qtPath, `{"code":"X","name":"X","kategorie":"qualifikation","bestaetigung_monate":0}`),
+		http.StatusBadRequest, "validation_error", "Bestätigungsintervall muss größer als 0 sein")
 	wantAPIError(t, do(http.MethodPost, qtPath, `{"code":"X","name":"X","kategorie":"unterweisung","gueltigkeit_monate":0}`),
 		http.StatusBadRequest, "validation_error", "Gültigkeit muss größer als 0 sein")
 	wantAPIError(t, do(http.MethodPost, qtPath, `{"code":"X","name":" ","kategorie":"unterweisung"}`),
@@ -185,7 +201,7 @@ func TestQualificationTypesHTTPFlow(t *testing.T) {
 	wantAPIError(t, do(http.MethodGet, qtPath+uuid.NewString(), ""), http.StatusNotFound, "not_found", "Qualifikationsart nicht gefunden")
 	wantAPIError(t, do(http.MethodGet, qtPath+"kein-uuid", ""), http.StatusBadRequest, "validation_error", "Ungültige Qualifikationsart-ID")
 	wantAPIError(t, do(http.MethodPut, qtPath+uuid.NewString(),
-		`{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`),
+		`{"name":"X","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`),
 		http.StatusNotFound, "not_found", "Qualifikationsart nicht gefunden")
 }
 
@@ -200,7 +216,7 @@ func TestQualificationTypesHTTPPermissions(t *testing.T) {
 	tenant := newCatalogTenant(t, env, handler)
 	hrToken := tenant.user("hr")
 	existing := decodeQualificationType(t, doAuthedRequest(t, handler, hrToken, http.MethodPost, qtPath, `{"code":"ERSTHELFER","name":"Ersthelfer","kategorie":"qualifikation","gueltigkeit_monate":24}`), http.StatusCreated)
-	put := `{"name":"Geaendert","kategorie":"qualifikation","gueltigkeit_monate":24,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`
+	put := `{"name":"Geaendert","kategorie":"qualifikation","gueltigkeit_monate":24,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":true,"hinweis":""}`
 
 	type call struct{ method, path, body string }
 	reads := []call{{http.MethodGet, qtPath, ""}, {http.MethodGet, qtPath + existing.ID.String(), ""}}
@@ -263,7 +279,7 @@ func TestQualificationTypesHTTPAreIsolatedBetweenCompanies(t *testing.T) {
 	// sie nicht aendern.
 	wantAPIError(t, doAuthedRequest(t, handler, tokenTwo, http.MethodGet, qtPath+own.ID.String(), ""), http.StatusNotFound, "not_found", "Qualifikationsart nicht gefunden")
 	wantAPIError(t, doAuthedRequest(t, handler, tokenTwo, http.MethodPut, qtPath+own.ID.String(),
-		`{"name":"Fremd","kategorie":"qualifikation","gueltigkeit_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`),
+		`{"name":"Fremd","kategorie":"qualifikation","gueltigkeit_monate":null,"bestaetigung_monate":null,"pflicht_fuer_alle":false,"aktiv":false,"hinweis":""}`),
 		http.StatusNotFound, "not_found", "Qualifikationsart nicht gefunden")
 	if list := decodeQualificationTypeList(t, doAuthedRequest(t, handler, tokenTwo, http.MethodGet, qtPath+"?include_inactive=true", "")); len(list) != 0 {
 		t.Fatalf("Katalog des anderen Mandanten muss leer sein, bekommen %+v", list)

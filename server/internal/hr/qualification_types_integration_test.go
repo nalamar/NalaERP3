@@ -35,7 +35,7 @@ func TestQualificationTypeCreateGetListUpdateFlow(t *testing.T) {
 	// Der Code wird normalisiert: ohne Rand, in Grossbuchstaben.
 	created, err := svc.Create(ctx, QualificationTypeInput{
 		Code: "  schweisser_135 ", Name: "  Schweißerprüfung MAG  ", Kategorie: QualificationKategorieQualifikation,
-		GueltigkeitMonate: intPtr(36), Hinweis: "DIN EN ISO 9606-1",
+		GueltigkeitMonate: intPtr(36), BestaetigungMonate: intPtr(6), Hinweis: "DIN EN ISO 9606-1",
 	}, company)
 	if err != nil {
 		t.Fatalf("Anlegen: %v", err)
@@ -51,7 +51,8 @@ func TestQualificationTypeCreateGetListUpdateFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Laden: %v", err)
 	}
-	if got.Code != "SCHWEISSER_135" || got.Hinweis != "DIN EN ISO 9606-1" || got.Kategorie != QualificationKategorieQualifikation {
+	if got.Code != "SCHWEISSER_135" || got.Hinweis != "DIN EN ISO 9606-1" || got.Kategorie != QualificationKategorieQualifikation ||
+		got.BestaetigungMonate == nil || *got.BestaetigungMonate != 6 {
 		t.Fatalf("gespeicherte Art nicht wie angelegt: %+v", got)
 	}
 
@@ -63,7 +64,7 @@ func TestQualificationTypeCreateGetListUpdateFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Aendern: %v", err)
 	}
-	if updated.GueltigkeitMonate != nil || !updated.PflichtFuerAlle || updated.Name != "Schweißerprüfung MAG (135)" || updated.Hinweis != "geaendert" {
+	if updated.GueltigkeitMonate != nil || updated.BestaetigungMonate != nil || !updated.PflichtFuerAlle || updated.Name != "Schweißerprüfung MAG (135)" || updated.Hinweis != "geaendert" {
 		t.Fatalf("Aenderung nicht wie angegeben: %+v", updated)
 	}
 	// Der Code bleibt - er ist nicht aenderbar.

@@ -257,7 +257,7 @@ Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
    nein, nur Personalabteilung/Geschäftsführung; Teamleiter-Erweiterung
    vorbereiten. Status: beantwortet (ADR 0029, "Entscheidungen des Nutzers").
 
-## 2026-10-21 — F.10 Qualifikationen, Ergänzungen (offen)
+## 2026-10-21 — F.10 Qualifikationen, Ergänzungen (beantwortet)
 
 1. **Zwischenbestätigung der Schweißerprüfung** (DIN EN ISO 9606-1: alle
    sechs Monate bestätigt die Schweißaufsicht bzw. der Arbeitgeber, dass
@@ -267,14 +267,18 @@ Details und Begründung in `docs/adr/0029-abwesenheiten-urlaubskonto.md`.
    als eigene, unveränderliche Einträge am Nachweis (Datum, wer); der
    Stand zeigt "Bestätigung fällig am …"; **eine überfällige Bestätigung
    wirkt wie ein abgelaufener Nachweis**. Empfehlung: so umsetzen.
-   Status: offen.
+   Status: **beantwortet** am 2026-10-26 — "F.10.3 Vorschlag umsetzen".
 2. **Benachrichtigung über anstehende Erneuerungen.** Das Repo hat keine
    Versand-Infrastruktur. Optionen: (a) Hinweise im System (Dashboard-
    Hinweis mit Anzahl fälliger Nachweise und Prüfungen für die
    Personalabteilung, Hinweis auf eigene Fälligkeiten für Mitarbeiter);
    (b) E-Mail per SMTP (braucht Mailserver-Zugang, Versandprotokoll,
    Abmeldung). Empfehlung: zuerst (a); E-Mail als eigener Backlog-Punkt
-   für später. Status: offen.
+   für später. Status: **beantwortet** am 2026-10-26 — "Dashboard Hinweis
+   umsetzen, aber für Mailversand vorbereiten. SMTP Zugang als ToDo mit
+   aufnehmen." → F.10.4 (Hinweise so gebaut, dass ein späterer
+   E-Mail-Versand dieselben Hinweise verschickt), F.14 E-Mail-Versand
+   (wartet auf den SMTP-Zugang).
 
 ## 2026-10-24 — F.11 Stellen als Vorlagen für Qualifikationen (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 

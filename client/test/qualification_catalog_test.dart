@@ -56,6 +56,7 @@ class _FakeApi extends ApiClient {
 final _catalog = [
   {'id': 't1', 'code': 'ARBEITSSCHUTZ', 'name': 'Arbeitsschutz', 'kategorie': 'unterweisung', 'gueltigkeit_monate': 12, 'pflicht_fuer_alle': true, 'aktiv': true, 'hinweis': 'DGUV'},
   {'id': 't2', 'code': 'STAPLER_SCHEIN', 'name': 'Staplerschein', 'kategorie': 'qualifikation', 'gueltigkeit_monate': null, 'pflicht_fuer_alle': false, 'aktiv': true, 'hinweis': ''},
+  {'id': 't4', 'code': 'SCHWEISSERPRUEFUNG', 'name': 'Schweißerprüfung', 'kategorie': 'qualifikation', 'gueltigkeit_monate': 36, 'bestaetigung_monate': 6, 'pflicht_fuer_alle': false, 'aktiv': true, 'hinweis': ''},
   {'id': 't3', 'code': 'ALT', 'name': 'Alter Kurs', 'kategorie': 'beauftragung', 'gueltigkeit_monate': 1, 'pflicht_fuer_alle': false, 'aktiv': false, 'hinweis': ''},
 ];
 
@@ -91,15 +92,22 @@ void main() {
       expect(parseFrist('zwölf').ok, isFalse);
     });
 
-    test('buildQualificationTypeBody: POST mit Code, PUT mit aktiv und allen sechs Feldern', () {
+    test('buildQualificationTypeBody: POST mit Code, PUT mit aktiv und allen sieben Feldern', () {
       expect(
         buildQualificationTypeBody(code: ' leiter_pruefer ', name: ' Leiterprüfer ', kategorie: 'beauftragung', pflichtFuerAlle: false, hinweis: ' TRBS '),
-        {'code': 'LEITER_PRUEFER', 'name': 'Leiterprüfer', 'kategorie': 'beauftragung', 'gueltigkeit_monate': null, 'pflicht_fuer_alle': false, 'hinweis': 'TRBS'},
+        {'code': 'LEITER_PRUEFER', 'name': 'Leiterprüfer', 'kategorie': 'beauftragung', 'gueltigkeit_monate': null, 'bestaetigung_monate': null, 'pflicht_fuer_alle': false, 'hinweis': 'TRBS'},
       );
-      final put = buildQualificationTypeBody(name: 'X', kategorie: 'unterweisung', gueltigkeitMonate: 12, pflichtFuerAlle: true, aktiv: false);
-      expect(put.keys.toSet(), {'name', 'kategorie', 'gueltigkeit_monate', 'pflicht_fuer_alle', 'aktiv', 'hinweis'});
+      final put = buildQualificationTypeBody(name: 'X', kategorie: 'unterweisung', gueltigkeitMonate: 12, bestaetigungMonate: 6, pflichtFuerAlle: true, aktiv: false);
+      expect(put.keys.toSet(), {'name', 'kategorie', 'gueltigkeit_monate', 'bestaetigung_monate', 'pflicht_fuer_alle', 'aktiv', 'hinweis'});
       expect(put['aktiv'], isFalse);
       expect(put['gueltigkeit_monate'], 12);
+      expect(put['bestaetigung_monate'], 6);
+    });
+
+    test('bestaetigungLabel', () {
+      expect(bestaetigungLabel(6), 'Bestätigung alle 6 Monate');
+      expect(bestaetigungLabel(1), 'Bestätigung jeden Monat');
+      expect(bestaetigungLabel(null), isNull);
     });
   });
 
@@ -112,6 +120,7 @@ void main() {
     expect(find.text('Arbeitsschutz (ARBEITSSCHUTZ)'), findsOneWidget);
     expect(find.text('Unterweisung · alle 12 Monate · Pflicht für alle'), findsOneWidget);
     expect(find.text('Qualifikation · unbefristet'), findsOneWidget);
+    expect(find.text('Qualifikation · alle 36 Monate · Bestätigung alle 6 Monate'), findsOneWidget);
     expect(find.text('Alter Kurs (ALT)'), findsNothing);
     expect(find.byType(FloatingActionButton), findsNothing);
     expect(find.text('Vorschlagskatalog übernehmen'), findsNothing);
@@ -156,6 +165,16 @@ void main() {
     expect(api.created, isEmpty);
 
     await tester.enterText(find.widgetWithText(TextField, 'Gültigkeit in Monaten (leer = unbefristet)'), '36');
+    await tester.enterText(find.widgetWithText(TextField, 'Bestätigung alle … Monate (leer = keine)'), 'sechs');
+    await tester.tap(find.text('Anlegen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte die Bestätigung als ganze Zahl von Monaten angeben oder leer lassen.'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, 'Bestätigung alle … Monate (leer = keine)'), '36');
+    await tester.tap(find.text('Anlegen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Die Bestätigung muss kürzer als die Gültigkeit sein.'), findsOneWidget);
+    expect(api.created, isEmpty);
+    await tester.enterText(find.widgetWithText(TextField, 'Bestätigung alle … Monate (leer = keine)'), '6');
     await tester.tap(find.byType(DropdownButtonFormField<String>));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Qualifikation').last);
@@ -167,6 +186,7 @@ void main() {
       'name': 'Schweißerprüfung',
       'kategorie': 'qualifikation',
       'gueltigkeit_monate': 36,
+      'bestaetigung_monate': 6,
       'pflicht_fuer_alle': false,
       'hinweis': '',
     });
@@ -195,10 +215,26 @@ void main() {
       'name': 'Arbeitsschutz',
       'kategorie': 'unterweisung',
       'gueltigkeit_monate': null,
+      'bestaetigung_monate': null,
       'pflicht_fuer_alle': true,
       'aktiv': false,
       'hinweis': 'DGUV',
     });
+  });
+
+  testWidgets('Art bearbeiten: Bestaetigung vorbelegt und unveraendert mitgesendet', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: _rw, types: _copy());
+    await tester.pumpWidget(_wrap(QualificationCatalogPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Bearbeiten').at(2));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Bestätigung alle … Monate (leer = keine)')).controller!.text, '6');
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(api.updated.single.key, 't4');
+    expect(api.updated.single.value['bestaetigung_monate'], 6);
+    expect(api.updated.single.value['gueltigkeit_monate'], 36);
   });
 
   testWidgets('Vorschlagskatalog: Rueckfrage, Ergebnis gemeldet, Abbrechen ohne Aufruf', (tester) async {

@@ -60,7 +60,7 @@ func parseQualificationTypeID(w http.ResponseWriter, req *http.Request) (uuid.UU
 // unterscheiden: ein vergessenes "aktiv" legte die Art still, ein
 // vergessenes "gueltigkeit_monate" machte sie unbefristet - beides ohne
 // jede Rueckmeldung.
-var qualificationTypeUpdateFields = []string{"name", "kategorie", "gueltigkeit_monate", "pflicht_fuer_alle", "aktiv", "hinweis"}
+var qualificationTypeUpdateFields = []string{"name", "kategorie", "gueltigkeit_monate", "bestaetigung_monate", "pflicht_fuer_alle", "aktiv", "hinweis"}
 
 // decodeQualificationTypeUpdate liest den Body eines PUT. Bei false ist die
 // Antwort bereits geschrieben.

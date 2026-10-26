@@ -7,7 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3b** (2026-10-26, Server-Vorschlagskataloge:
+> Zuletzt abgeschlossen: **F.10.3.1** (2026-10-26, Migration 101 und Feld
+> "Bestätigung alle N Monate" an der Qualifikationsart, PUT mit sieben
+> Feldern, Client-Dialog). **Der Nutzer hat am 2026-10-26 F.10.3 ("Vorschlag
+> umsetzen") und F.10.4 ("Dashboard-Hinweis, für Mailversand vorbereiten,
+> SMTP-Zugang als ToDo" → F.14) AUSDRÜCKLICH entschieden** und "ansonsten
+> fortsetzen" gesagt; Reihenfolge F.10.3 → F.10.4 → G.3a ist meine Wahl
+> (ANNAHME: die frischen Entscheidungen zuerst). Davor **G.3b** (2026-10-26, Server-Vorschlagskataloge:
 > Qualifikationsart `FUEHRERSCHEINKONTROLLE`, Kategorie qualifikation,
 > 6 Monate, keine Kopie; Stelle `FAHRER`; G.3b vor G.3a gezogen,
 > "fortsetzen" als Zustimmung gewertet — ANNAHME). Davor **G.2.4.3** und damit **G.2** (2026-10-26,
@@ -68,9 +74,14 @@
 > Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
-> **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
-> (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.3a Fahrerzuordnung**, zuerst G.3a.1 (Server:
+> **F.10 offen: F.10.3.2–F.10.3.4 und F.10.4.1–F.10.4.2** (entschieden,
+> siehe oben). **Nächste Arbeit: F.10.3.2** (Server: Fachregel im Stand —
+> Bestätigung fällig am, überfällig wirkt wie abgelaufen, Vorwarnzeit wie
+> beim Ablauf; Service Bestätigungen erfassen/stornieren/lesen; Stand und
+> Fälligkeitsliste berücksichtigen sie; Vorschlagskatalog
+> `SCHWEISSERPRUEFUNG` mit 6 Monaten und angepasstem Hinweis). Danach
+> F.10.3.3, F.10.3.4, F.10.4.1, F.10.4.2. **F.14 E-Mail wartet auf den
+> SMTP-Zugang.** Danach G.3a Fahrerzuordnung, zuerst G.3a.1 (Server:
 > Migration + Service — Zuordnung Fahrzeug ↔ Mitarbeiter als Beleg mit
 > Beginn/Ende nach dem Muster der Betriebsmittel-Ausgabe; Sperre bei
 > gesperrtem HU/UVV-Termin, Hinweise bei überfälligem Termin und bei
@@ -79,7 +90,7 @@
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 354 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 356 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).

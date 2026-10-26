@@ -26,6 +26,14 @@ String fristLabel(Object? months) {
   return 'alle $m Monate';
 }
 
+// bestaetigungLabel: Zwischenbestaetigung (Backlog F.10.3), z. B. bei der
+// Schweisserpruefung "Bestätigung alle 6 Monate"; null = keine.
+String? bestaetigungLabel(Object? months) {
+  final m = months is num ? months.toInt() : null;
+  if (m == null) return null;
+  return m == 1 ? 'Bestätigung jeden Monat' : 'Bestätigung alle $m Monate';
+}
+
 // parseFrist liest die Frist in Monaten: leer = unbefristet (null), sonst
 // eine ganze Zahl > 0. ok=false bei ungueltiger Eingabe.
 ({bool ok, int? months}) parseFrist(String input) {
@@ -37,12 +45,13 @@ String fristLabel(Object? months) {
 }
 
 // buildQualificationTypeBody: fuer POST mit code, fuer PUT mit aktiv - der
-// Server verlangt beim PUT alle sechs Felder und lehnt "code" ab.
+// Server verlangt beim PUT alle sieben Felder und lehnt "code" ab.
 Map<String, dynamic> buildQualificationTypeBody({
   String? code,
   required String name,
   required String kategorie,
   int? gueltigkeitMonate,
+  int? bestaetigungMonate,
   required bool pflichtFuerAlle,
   bool? aktiv,
   String hinweis = '',
@@ -51,6 +60,7 @@ Map<String, dynamic> buildQualificationTypeBody({
     'name': name.trim(),
     'kategorie': kategorie,
     'gueltigkeit_monate': gueltigkeitMonate,
+    'bestaetigung_monate': bestaetigungMonate,
     'pflicht_fuer_alle': pflichtFuerAlle,
     'hinweis': hinweis.trim(),
   };
@@ -130,6 +140,7 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
     final codeCtrl = TextEditingController(text: type?['code']?.toString() ?? '');
     final nameCtrl = TextEditingController(text: type?['name']?.toString() ?? '');
     final fristCtrl = TextEditingController(text: type?['gueltigkeit_monate']?.toString() ?? '');
+    final bestaetigungCtrl = TextEditingController(text: type?['bestaetigung_monate']?.toString() ?? '');
     final hinweisCtrl = TextEditingController(text: type?['hinweis']?.toString() ?? '');
     String kategorie = type?['kategorie']?.toString() ?? 'unterweisung';
     bool pflicht = type?['pflicht_fuer_alle'] == true;
@@ -166,6 +177,12 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
                     controller: fristCtrl,
                     decoration: const InputDecoration(labelText: 'Gültigkeit in Monaten (leer = unbefristet)'),
                   ),
+                  TextField(
+                    controller: bestaetigungCtrl,
+                    decoration: const InputDecoration(
+                        labelText: 'Bestätigung alle … Monate (leer = keine)',
+                        helperText: 'z. B. Schweißerprüfung: 6. Eine überfällige Bestätigung wirkt wie ein Ablauf.'),
+                  ),
                   CheckboxListTile(
                     contentPadding: EdgeInsets.zero,
                     value: pflicht,
@@ -195,6 +212,7 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
             FilledButton(
               onPressed: () {
                 final frist = parseFrist(fristCtrl.text);
+                final bestaetigung = parseFrist(bestaetigungCtrl.text);
                 String? problem;
                 if (!editing && codeCtrl.text.trim().isEmpty) {
                   problem = 'Bitte einen Code angeben.';
@@ -202,6 +220,10 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
                   problem = 'Bitte einen Namen angeben.';
                 } else if (!frist.ok) {
                   problem = 'Bitte die Gültigkeit als ganze Zahl von Monaten angeben oder leer lassen.';
+                } else if (!bestaetigung.ok) {
+                  problem = 'Bitte die Bestätigung als ganze Zahl von Monaten angeben oder leer lassen.';
+                } else if (bestaetigung.months != null && frist.months != null && bestaetigung.months! >= frist.months!) {
+                  problem = 'Die Bestätigung muss kürzer als die Gültigkeit sein.';
                 }
                 if (problem != null) {
                   setStateDialog(() => dialogError = problem);
@@ -212,6 +234,7 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
                   name: nameCtrl.text,
                   kategorie: kategorie,
                   gueltigkeitMonate: frist.months,
+                  bestaetigungMonate: bestaetigung.months,
                   pflichtFuerAlle: pflicht,
                   aktiv: editing ? aktiv : null,
                   hinweis: hinweisCtrl.text,
@@ -283,6 +306,7 @@ class _QualificationCatalogPageState extends State<QualificationCatalogPage> {
                 final details = [
                   kategorieLabel(m['kategorie']?.toString()),
                   fristLabel(m['gueltigkeit_monate']),
+                  if (bestaetigungLabel(m['bestaetigung_monate']) != null) bestaetigungLabel(m['bestaetigung_monate'])!,
                   if (m['pflicht_fuer_alle'] == true) 'Pflicht für alle',
                   if (m['aktiv'] == false) 'stillgelegt',
                 ].join(' · ');

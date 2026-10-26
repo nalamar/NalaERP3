@@ -45,21 +45,25 @@ type QualificationType struct {
 	Kategorie string    `json:"kategorie"`
 	// GueltigkeitMonate ist die Frist, nach der ein Nachweis dieser Art
 	// erneuert werden muss. nil = unbefristet.
-	GueltigkeitMonate *int      `json:"gueltigkeit_monate"`
-	PflichtFuerAlle   bool      `json:"pflicht_fuer_alle"`
-	Aktiv             bool      `json:"aktiv"`
-	Hinweis           string    `json:"hinweis"`
-	CreatedAt         time.Time `json:"created_at"`
+	GueltigkeitMonate *int `json:"gueltigkeit_monate"`
+	// BestaetigungMonate: Zwischenbestaetigung alle N Monate (F.10.3,
+	// z. B. Schweisserpruefung). nil = keine.
+	BestaetigungMonate *int      `json:"bestaetigung_monate"`
+	PflichtFuerAlle    bool      `json:"pflicht_fuer_alle"`
+	Aktiv              bool      `json:"aktiv"`
+	Hinweis            string    `json:"hinweis"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // QualificationTypeInput sind die Angaben fuer eine neue Art.
 type QualificationTypeInput struct {
-	Code              string `json:"code"`
-	Name              string `json:"name"`
-	Kategorie         string `json:"kategorie"`
-	GueltigkeitMonate *int   `json:"gueltigkeit_monate"`
-	PflichtFuerAlle   bool   `json:"pflicht_fuer_alle"`
-	Hinweis           string `json:"hinweis"`
+	Code               string `json:"code"`
+	Name               string `json:"name"`
+	Kategorie          string `json:"kategorie"`
+	GueltigkeitMonate  *int   `json:"gueltigkeit_monate"`
+	BestaetigungMonate *int   `json:"bestaetigung_monate"`
+	PflichtFuerAlle    bool   `json:"pflicht_fuer_alle"`
+	Hinweis            string `json:"hinweis"`
 }
 
 // QualificationTypeUpdate ersetzt ALLE aenderbaren Angaben einer Art. Ein
@@ -67,12 +71,13 @@ type QualificationTypeInput struct {
 // sein kann: bei einem Patch waere "Frist nicht genannt" von "Frist
 // entfernen" nicht zu unterscheiden. Der Code fehlt hier mit Absicht.
 type QualificationTypeUpdate struct {
-	Name              string `json:"name"`
-	Kategorie         string `json:"kategorie"`
-	GueltigkeitMonate *int   `json:"gueltigkeit_monate"`
-	PflichtFuerAlle   bool   `json:"pflicht_fuer_alle"`
-	Aktiv             bool   `json:"aktiv"`
-	Hinweis           string `json:"hinweis"`
+	Name               string `json:"name"`
+	Kategorie          string `json:"kategorie"`
+	GueltigkeitMonate  *int   `json:"gueltigkeit_monate"`
+	BestaetigungMonate *int   `json:"bestaetigung_monate"`
+	PflichtFuerAlle    bool   `json:"pflicht_fuer_alle"`
+	Aktiv              bool   `json:"aktiv"`
+	Hinweis            string `json:"hinweis"`
 }
 
 type QualificationTypeService struct{ pg *pgxpool.Pool }
@@ -81,11 +86,11 @@ func NewQualificationTypeService(pg *pgxpool.Pool) *QualificationTypeService {
 	return &QualificationTypeService{pg: pg}
 }
 
-const qualificationTypeColumns = `id, code, name, kategorie, gueltigkeit_monate, pflicht_fuer_alle, aktiv, hinweis, created_at`
+const qualificationTypeColumns = `id, code, name, kategorie, gueltigkeit_monate, bestaetigung_monate, pflicht_fuer_alle, aktiv, hinweis, created_at`
 
 func scanQualificationType(row pgx.Row) (*QualificationType, error) {
 	var qt QualificationType
-	if err := row.Scan(&qt.ID, &qt.Code, &qt.Name, &qt.Kategorie, &qt.GueltigkeitMonate, &qt.PflichtFuerAlle, &qt.Aktiv, &qt.Hinweis, &qt.CreatedAt); err != nil {
+	if err := row.Scan(&qt.ID, &qt.Code, &qt.Name, &qt.Kategorie, &qt.GueltigkeitMonate, &qt.BestaetigungMonate, &qt.PflichtFuerAlle, &qt.Aktiv, &qt.Hinweis, &qt.CreatedAt); err != nil {
 		return nil, err
 	}
 	return &qt, nil
@@ -97,7 +102,7 @@ func normalizeQualificationCode(code string) string {
 	return strings.ToUpper(strings.TrimSpace(code))
 }
 
-func validateQualificationFields(name, kategorie string, gueltigkeitMonate *int) error {
+func validateQualificationFields(name, kategorie string, gueltigkeitMonate, bestaetigungMonate *int) error {
 	if strings.TrimSpace(name) == "" {
 		return errors.New("Name erforderlich")
 	}
@@ -106,6 +111,16 @@ func validateQualificationFields(name, kategorie string, gueltigkeitMonate *int)
 	}
 	if gueltigkeitMonate != nil && *gueltigkeitMonate <= 0 {
 		return errors.New("Gültigkeit muss größer als 0 sein")
+	}
+	if bestaetigungMonate != nil {
+		if *bestaetigungMonate <= 0 {
+			return errors.New("Bestätigungsintervall muss größer als 0 sein")
+		}
+		// Eine Bestaetigung, die erst nach dem Ablauf faellig wird, liefe
+		// ins Leere.
+		if gueltigkeitMonate != nil && *bestaetigungMonate >= *gueltigkeitMonate {
+			return errors.New("Bestätigungsintervall muss kürzer als die Gültigkeit sein")
+		}
 	}
 	return nil
 }
@@ -117,7 +132,7 @@ func validateQualificationTypeInput(in QualificationTypeInput) error {
 	if !qualificationCodePattern.MatchString(in.Code) {
 		return errors.New("Ungültiger Code (erlaubt sind A-Z, 0-9 und _, höchstens 40 Zeichen)")
 	}
-	return validateQualificationFields(in.Name, in.Kategorie, in.GueltigkeitMonate)
+	return validateQualificationFields(in.Name, in.Kategorie, in.GueltigkeitMonate, in.BestaetigungMonate)
 }
 
 func (s *QualificationTypeService) Create(ctx context.Context, in QualificationTypeInput, companyID string) (*QualificationType, error) {
@@ -130,10 +145,10 @@ func (s *QualificationTypeService) Create(ctx context.Context, in QualificationT
 		return nil, err
 	}
 	qt, err := scanQualificationType(s.pg.QueryRow(ctx, `
-		INSERT INTO hr_qualification_types (id, company_id, code, name, kategorie, gueltigkeit_monate, pflicht_fuer_alle, hinweis)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+		INSERT INTO hr_qualification_types (id, company_id, code, name, kategorie, gueltigkeit_monate, bestaetigung_monate, pflicht_fuer_alle, hinweis)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 		RETURNING `+qualificationTypeColumns,
-		uuid.New(), companyID, in.Code, in.Name, in.Kategorie, in.GueltigkeitMonate, in.PflichtFuerAlle, in.Hinweis))
+		uuid.New(), companyID, in.Code, in.Name, in.Kategorie, in.GueltigkeitMonate, in.BestaetigungMonate, in.PflichtFuerAlle, in.Hinweis))
 	if err != nil {
 		if isUniqueViolation(err, qualificationTypeCodeConstraint) {
 			return nil, errors.New("Qualifikationsart mit diesem Code existiert bereits")
@@ -188,15 +203,15 @@ func (s *QualificationTypeService) Update(ctx context.Context, id uuid.UUID, in 
 		return nil, errors.New("Mandant erforderlich")
 	}
 	in.Name = strings.TrimSpace(in.Name)
-	if err := validateQualificationFields(in.Name, in.Kategorie, in.GueltigkeitMonate); err != nil {
+	if err := validateQualificationFields(in.Name, in.Kategorie, in.GueltigkeitMonate, in.BestaetigungMonate); err != nil {
 		return nil, err
 	}
 	qt, err := scanQualificationType(s.pg.QueryRow(ctx, `
 		UPDATE hr_qualification_types
-		   SET name=$3, kategorie=$4, gueltigkeit_monate=$5, pflicht_fuer_alle=$6, aktiv=$7, hinweis=$8
+		   SET name=$3, kategorie=$4, gueltigkeit_monate=$5, bestaetigung_monate=$6, pflicht_fuer_alle=$7, aktiv=$8, hinweis=$9
 		 WHERE id=$1 AND company_id=$2
 		RETURNING `+qualificationTypeColumns,
-		id, companyID, in.Name, in.Kategorie, in.GueltigkeitMonate, in.PflichtFuerAlle, in.Aktiv, in.Hinweis))
+		id, companyID, in.Name, in.Kategorie, in.GueltigkeitMonate, in.BestaetigungMonate, in.PflichtFuerAlle, in.Aktiv, in.Hinweis))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Qualifikationsart nicht gefunden")
