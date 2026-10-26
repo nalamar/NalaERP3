@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"nalaerp3/internal/hr"
 	"nalaerp3/internal/testutil"
 )
 
@@ -147,8 +148,11 @@ func TestQualificationTypesHTTPFlow(t *testing.T) {
 
 	// Vorschlagskatalog uebernehmen: einmal alles, beim zweiten Mal nichts.
 	adopted := decodeQualificationTypeList(t, do(http.MethodPost, qtPath+"adopt-defaults", ""))
-	if len(adopted) != 18 {
-		t.Fatalf("erwartet 18 uebernommene Arten, bekommen %d", len(adopted))
+	// Anzahl aus dem Vorschlagskatalog selbst - eine Ergaenzung dort soll
+	// diesen Test nicht brechen.
+	all := len(hr.DefaultQualificationTypes())
+	if len(adopted) != all {
+		t.Fatalf("erwartet %d uebernommene Arten, bekommen %d", all, len(adopted))
 	}
 	var arbeitsschutz *qualificationTypeResponse
 	for i := range adopted {
@@ -162,8 +166,8 @@ func TestQualificationTypesHTTPFlow(t *testing.T) {
 	if again := decodeQualificationTypeList(t, do(http.MethodPost, qtPath+"adopt-defaults", "")); len(again) != 0 {
 		t.Fatalf("zweite Uebernahme darf nichts anlegen, bekommen %d", len(again))
 	}
-	if list := decodeQualificationTypeList(t, do(http.MethodGet, qtPath, "")); len(list) != 18 {
-		t.Fatalf("erwartet 18 aktive Arten im Katalog, bekommen %d", len(list))
+	if list := decodeQualificationTypeList(t, do(http.MethodGet, qtPath, "")); len(list) != all {
+		t.Fatalf("erwartet %d aktive Arten im Katalog, bekommen %d", all, len(list))
 	}
 
 	// Fehlerfaelle mit Status, Code und Text.
@@ -271,8 +275,8 @@ func TestQualificationTypesHTTPAreIsolatedBetweenCompanies(t *testing.T) {
 	// Die Uebernahme des Vorschlags wirkt nur im eigenen Mandanten - und
 	// laesst die schon vorhandene Art dort unberuehrt.
 	adopted := decodeQualificationTypeList(t, doAuthedRequest(t, handler, tokenTwo, http.MethodPost, qtPath+"adopt-defaults", ""))
-	if len(adopted) != 17 {
-		t.Fatalf("erwartet 17 neue Arten (STAPLER_SCHEIN war schon da), bekommen %d", len(adopted))
+	if want := len(hr.DefaultQualificationTypes()) - 1; len(adopted) != want {
+		t.Fatalf("erwartet %d neue Arten (STAPLER_SCHEIN war schon da), bekommen %d", want, len(adopted))
 	}
 	if list := decodeQualificationTypeList(t, doAuthedRequest(t, handler, tokenOne, http.MethodGet, qtPath, "")); len(list) != 1 || list[0].Name != "Stapler" {
 		t.Fatalf("Uebernahme im anderen Mandanten hat diesen Katalog veraendert: %+v", list)

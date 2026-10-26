@@ -77,5 +77,13 @@ func DefaultQualificationTypes() []QualificationTypeInput {
 		{Code: "GEFAHRSTOFFE", Name: "Gefahrstoffe – Unterweisung", Kategorie: u, GueltigkeitMonate: months(12), Hinweis: hinweisNichtGeprueft},
 		{Code: "ELEKTRO_UNTERWIESEN", Name: "Elektrotechnisch unterwiesene Person – Unterweisung", Kategorie: u, GueltigkeitMonate: months(12), Hinweis: hinweisNichtGeprueft},
 		{Code: "LADUNGSSICHERUNG", Name: "Ladungssicherung – Unterweisung", Kategorie: u, GueltigkeitMonate: months(12), Hinweis: hinweisNichtGeprueft},
+
+		// Fuhrpark (ADR 0032 §5, Entscheidung des Nutzers vom 2026-10-25):
+		// die Kontrolle der Fahrerlaubnis als Nachweis - die Feststellung
+		// "eingesehen am ..., Klassen ...", KEINE Kopie des Fuehrerscheins.
+		// Kategorie qualifikation: eine Beauftragung gilt bis Widerruf, eine
+		// Unterweisung ist es nicht; die Frist ist ein Vorschlag.
+		{Code: "FUEHRERSCHEINKONTROLLE", Name: "Führerscheinkontrolle (Einsicht in die Fahrerlaubnis)", Kategorie: q, GueltigkeitMonate: months(6),
+			Hinweis: "Halterpflicht (§21 StVG). Eine gesetzliche Frequenz gibt es nicht, halbjährlich ist Praxis. Nur Datum und Klassen festhalten (z. B. in der Nachweis-Nr.), keine Kopie des Führerscheins."},
 	}
 }

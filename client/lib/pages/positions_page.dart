@@ -135,7 +135,7 @@ class _PositionsPageState extends State<PositionsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Vorschläge übernehmen'),
-        content: const Text('Übernimmt typische Stellen (Monteur, Schweißer, Lagerist, Staplerfahrer, Kranführer). '
+        content: const Text('Übernimmt typische Stellen (Monteur, Schweißer, Lagerist, Staplerfahrer, Kranführer, Fahrer). '
             'Die Zuordnung der Qualifikationen ist ein Vorschlag, nicht recherchiert – bitte mit der Fachkraft für '
             'Arbeitssicherheit abgleichen.\n\n'
             'Qualifikationen werden nur zugeordnet, wenn sie im Katalog stehen: übernehmen Sie zuerst den '

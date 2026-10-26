@@ -198,6 +198,13 @@ zwei Dinge statt nur "Erledigungen":
   kein aktueller Kilometerstand bekannt ist.
 - Vorschläge für das Intervall: HU 24, UVV 12, Versicherung 12 Monate.
 
+Präzisierung G.3b (2026-10-26, technische Ausgestaltung von §5): die Art
+`FUEHRERSCHEINKONTROLLE` hat die Kategorie **`qualifikation`**, nicht
+`beauftragung` — eine Beauftragung gilt im Katalog bis Widerruf (ohne
+Frist), eine Unterweisung ist die Kontrolle nicht. Frist 6 Monate als
+Vorschlag; der Hinweis der Art sagt "nur Datum und Klassen, keine
+Kopie". Die Stelle `FAHRER` verlangt nur diese Art.
+
 Nachtrag G.2.2.3 (2026-10-26): nach einer HU oder UVV mit **Mängeln oder
 nicht bestanden** schlägt der Service **keinen** Folgetermin aus dem
 Intervall vor — dann steht eine Nachprüfung an, nicht der reguläre

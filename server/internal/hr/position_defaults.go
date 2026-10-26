@@ -46,5 +46,11 @@ func DefaultPositions() []PositionDefault {
 		{Code: "KRANFUEHRER", Name: "Kranführer", Hinweis: hinweisStelleNichtRecherchiert, TypeCodes: []string{
 			"KRANFUEHRER", "ANSCHLAEGER",
 		}},
+		// Wer Firmenfahrzeuge faehrt (ADR 0032 §5, Entscheidung des Nutzers
+		// vom 2026-10-25): die Fuehrerscheinkontrolle steht damit fuer jeden
+		// Fahrer im Stand.
+		{Code: "FAHRER", Name: "Fahrer (Firmenfahrzeuge)", Hinweis: hinweisStelleNichtRecherchiert, TypeCodes: []string{
+			"FUEHRERSCHEINKONTROLLE",
+		}},
 	}
 }

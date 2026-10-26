@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.2.4.3** und damit **G.2** (2026-10-26,
+> Zuletzt abgeschlossen: **G.3b** (2026-10-26, Server-Vorschlagskataloge:
+> Qualifikationsart `FUEHRERSCHEINKONTROLLE`, Kategorie qualifikation,
+> 6 Monate, keine Kopie; Stelle `FAHRER`; G.3b vor G.3a gezogen,
+> "fortsetzen" als Zustimmung gewertet — ANNAHME). Davor **G.2.4.3** und damit **G.2** (2026-10-26,
 > Client: Seite "Fällige Fahrzeugtermine" mit Dashboard-Karte; Zeile
 > öffnet das Fahrzeug). **Epic G: G.1 und G.2 fertig.** Davor **G.2.4.2** (2026-10-26, Client: Erledigungen
 > erfassen, ansehen, stornieren). Davor **G.2.4.1** (2026-10-26, Client: Termine am
@@ -67,16 +70,12 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 offen nur noch F.10.3 und F.10.4 — beide warten auf den Nutzer**
 > (open-questions 2026-10-21, jeweils mit Empfehlung). **Empfohlene
-> nächste Arbeit: G.3b vor G.3a** (Empfehlung: die Fahrerzuordnung G.3a
-> soll bei ungültiger Führerscheinkontrolle warnen — dafür braucht es
-> zuerst die Qualifikationsart `FUEHRERSCHEINKONTROLLE` (Kategorie,
-> Frist 6 Monate als Vorschlag, Hinweis "keine Kopie des Führerscheins")
-> im Qualifikations-Vorschlagskatalog und die Stelle `FAHRER` im
-> Stellen-Vorschlagskatalog, ADR 0032 §5, Entscheidung 2 des Nutzers;
-> Katalogtests anpassen — 18 Arten → 19, 5 Stellen → 6). Danach G.3a
-> (Zuordnung Fahrzeug ↔ Mitarbeiter wie Betriebsmittel-Ausgabe; Sperre
-> bei gesperrtem HU/UVV-Termin, Hinweis bei überfälligem Termin und bei
-> nicht gültiger Führerscheinkontrolle).
+> nächste Arbeit: G.3a Fahrerzuordnung**, zuerst G.3a.1 (Server:
+> Migration + Service — Zuordnung Fahrzeug ↔ Mitarbeiter als Beleg mit
+> Beginn/Ende nach dem Muster der Betriebsmittel-Ausgabe; Sperre bei
+> gesperrtem HU/UVV-Termin, Hinweise bei überfälligem Termin und bei
+> nicht gültiger `FUEHRERSCHEINKONTROLLE` des Mitarbeiters). Danach
+> G.3a.2 Routen, G.3a.3 Client.
 > Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf

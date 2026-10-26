@@ -146,6 +146,8 @@ func TestDefaultQualificationTypesFollowTheCatalogRules(t *testing.T) {
 		"STAPLER_SCHEIN", "STAPLER_UNTERWEISUNG", "STAPLER_BEAUFTRAGUNG",
 		"HUBARBEITSBUEHNE_SCHEIN", "HUBARBEITSBUEHNE_UNTERWEISUNG", "HUBARBEITSBUEHNE_BEAUFTRAGUNG",
 		"LEITERN_UNTERWEISUNG", "LEITERN_PRUEFER",
+		// Fuhrpark (ADR 0032 §5).
+		"FUEHRERSCHEINKONTROLLE",
 	} {
 		if !seen[code] {
 			t.Errorf("Vorschlagskatalog enthaelt %s nicht", code)
@@ -163,4 +165,23 @@ func TestDefaultQualificationTypesReturnsIndependentCopies(t *testing.T) {
 	if second[0].Name == "veraendert" || *second[0].GueltigkeitMonate == 99 {
 		t.Fatalf("Aenderung an einer Kopie wirkt auf die Vorlage: %+v", second[0])
 	}
+}
+
+// Fuehrerscheinkontrolle (ADR 0032 §5, Entscheidung des Nutzers vom
+// 2026-10-25): Frist 6 Monate als Vorschlag, keine Kopie des
+// Fuehrerscheins.
+func TestDefaultQualificationTypesFuehrerscheinkontrolle(t *testing.T) {
+	for _, d := range DefaultQualificationTypes() {
+		if d.Code != "FUEHRERSCHEINKONTROLLE" {
+			continue
+		}
+		if d.Kategorie != QualificationKategorieQualifikation || d.GueltigkeitMonate == nil || *d.GueltigkeitMonate != 6 || d.PflichtFuerAlle {
+			t.Fatalf("Fuehrerscheinkontrolle: %+v", d)
+		}
+		if !strings.Contains(d.Hinweis, "keine Kopie des Führerscheins") || !strings.Contains(d.Hinweis, "§21 StVG") {
+			t.Fatalf("Hinweis: %q", d.Hinweis)
+		}
+		return
+	}
+	t.Fatal("FUEHRERSCHEINKONTROLLE fehlt")
 }

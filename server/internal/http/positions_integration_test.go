@@ -310,8 +310,8 @@ func TestPositionsAdoptDefaultsWithoutQualificationCatalog(t *testing.T) {
 	c := newCatalogTenant(t, env, handler)
 	token := c.user("hr")
 	got := decodeAdoptedPositions(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath+"adopt-defaults", ""))
-	if len(got) != 5 {
-		t.Fatalf("erwartet 5 Stellen, bekommen %d", len(got))
+	if len(got) != 6 {
+		t.Fatalf("erwartet 6 Stellen, bekommen %d", len(got))
 	}
 	kran := got["KRANFUEHRER"]
 	if len(kran.TypeIDs) != 0 || strings.Join(kran.FehlendeArten, ",") != "KRANFUEHRER,ANSCHLAEGER" || kran.Name != "Kranführer" || !kran.Aktiv || !strings.HasPrefix(kran.Hinweis, "Vorschlag, nicht recherchiert") {
@@ -320,7 +320,7 @@ func TestPositionsAdoptDefaultsWithoutQualificationCatalog(t *testing.T) {
 	if again := decodeAdoptedPositions(t, doAuthedRequest(t, handler, token, http.MethodPost, positionsPath+"adopt-defaults", "")); len(again) != 0 {
 		t.Fatalf("zweiter Aufruf legt an: %v", again)
 	}
-	if l := decodePositions(t, doAuthedRequest(t, handler, token, http.MethodGet, positionsPath, "")); len(l) != 5 {
+	if l := decodePositions(t, doAuthedRequest(t, handler, token, http.MethodGet, positionsPath, "")); len(l) != 6 {
 		t.Fatalf("Liste: %d", len(l))
 	}
 }
@@ -349,8 +349,12 @@ func TestPositionsAdoptDefaultsMapsTypesAndKeepsExisting(t *testing.T) {
 	decodeAdoptedPositions(t, doAuthedRequest(t, handler, other.user("hr"), http.MethodPost, positionsPath+"adopt-defaults", ""))
 
 	got := decodeAdoptedPositions(t, do(http.MethodPost, positionsPath+"adopt-defaults", ""))
-	if len(got) != 3 {
-		t.Fatalf("erwartet SCHWEISSER, STAPLERFAHRER, KRANFUEHRER, bekommen %v", got)
+	if len(got) != 4 {
+		t.Fatalf("erwartet SCHWEISSER, STAPLERFAHRER, KRANFUEHRER, FAHRER, bekommen %v", got)
+	}
+	// Fahrer: die Fuehrerscheinkontrolle aus dem Qualifikationskatalog.
+	if f := got["FAHRER"]; !sameIDs(f.TypeIDs, []uuid.UUID{types["FUEHRERSCHEINKONTROLLE"]}) || len(f.FehlendeArten) != 0 {
+		t.Fatalf("Fahrer: %+v", f)
 	}
 	welder := got["SCHWEISSER"]
 	if !sameIDs(welder.TypeIDs, sortedIDs(types["SCHWEISSERPRUEFUNG"], types["BRANDSCHUTZHELFER"])) || strings.Join(welder.FehlendeArten, ",") != "GEFAHRSTOFFE" {
@@ -371,7 +375,7 @@ func TestPositionsAdoptDefaultsMapsTypesAndKeepsExisting(t *testing.T) {
 	if p := decodePosition(t, do(http.MethodGet, positionsPath+ownMonteur.ID.String(), ""), http.StatusOK); !sameIDs(p.TypeIDs, []uuid.UUID{types["ERSTHELFER"]}) {
 		t.Fatalf("eigene Stelle monteur veraendert: %+v", p)
 	}
-	if l := decodePositions(t, do(http.MethodGet, positionsPath, "")); len(l) != 5 {
+	if l := decodePositions(t, do(http.MethodGet, positionsPath, "")); len(l) != 6 {
 		t.Fatalf("Liste: %d", len(l))
 	}
 }

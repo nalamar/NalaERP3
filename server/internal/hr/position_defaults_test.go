@@ -41,8 +41,9 @@ func TestDefaultPositionsFollowTheCatalogRules(t *testing.T) {
 			seen[c] = true
 		}
 	}
-	if len(codes) != 5 {
-		t.Fatalf("erwartet 5 Stellen (ADR 0031), bekommen %d", len(codes))
+	// Fuenf aus ADR 0031, dazu "Fahrer" aus ADR 0032 §5.
+	if len(codes) != 6 || !codes["FAHRER"] {
+		t.Fatalf("erwartet 6 Stellen (ADR 0031, ADR 0032), bekommen %d", len(codes))
 	}
 }
 
