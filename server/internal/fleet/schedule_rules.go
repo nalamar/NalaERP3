@@ -134,6 +134,12 @@ func ValidateScheduleInput(art, bezeichnung string, startKm, intervallMonate, in
 	if art != TerminSonstige && bezeichnung != "" {
 		return errors.New("Bezeichnung nur bei sonstigen Terminen")
 	}
+	return ValidateScheduleNumbers(startKm, intervallMonate, intervallKm)
+}
+
+// ValidateScheduleNumbers prueft Start-km und Intervalle - beim Anlegen
+// und beim Aendern (dort sind Art und Bezeichnung fest).
+func ValidateScheduleNumbers(startKm, intervallMonate, intervallKm *int) error {
 	if startKm != nil && *startKm <= 0 {
 		return errors.New("Kilometerstand muss größer als 0 sein")
 	}
