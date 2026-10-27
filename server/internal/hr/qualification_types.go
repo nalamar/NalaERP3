@@ -243,11 +243,11 @@ func (s *QualificationTypeService) AdoptDefaults(ctx context.Context, companyID 
 		// ON CONFLICT DO NOTHING statt einer Vorabfrage: auch zwei
 		// gleichzeitige Uebernahmen legen jede Art nur einmal an.
 		qt, err := scanQualificationType(tx.QueryRow(ctx, `
-			INSERT INTO hr_qualification_types (id, company_id, code, name, kategorie, gueltigkeit_monate, pflicht_fuer_alle, hinweis)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			INSERT INTO hr_qualification_types (id, company_id, code, name, kategorie, gueltigkeit_monate, bestaetigung_monate, pflicht_fuer_alle, hinweis)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
 			ON CONFLICT (company_id, code) DO NOTHING
 			RETURNING `+qualificationTypeColumns,
-			uuid.New(), companyID, d.Code, d.Name, d.Kategorie, d.GueltigkeitMonate, d.PflichtFuerAlle, d.Hinweis))
+			uuid.New(), companyID, d.Code, d.Name, d.Kategorie, d.GueltigkeitMonate, d.BestaetigungMonate, d.PflichtFuerAlle, d.Hinweis))
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				continue // gab es schon

@@ -222,6 +222,13 @@ func TestQualificationTypeAdoptDefaults(t *testing.T) {
 	if b := byCode["STAPLER_BEAUFTRAGUNG"]; b.GueltigkeitMonate != nil || b.Kategorie != QualificationKategorieBeauftragung {
 		t.Fatalf("STAPLER_BEAUFTRAGUNG nicht wie in der Vorlage: %+v", b)
 	}
+	// Die Zwischenbestaetigung wird mit uebernommen (F.10.3).
+	if w := byCode["SCHWEISSERPRUEFUNG"]; w.BestaetigungMonate == nil || *w.BestaetigungMonate != 6 {
+		t.Fatalf("SCHWEISSERPRUEFUNG ohne Bestaetigungsintervall: %+v", w)
+	}
+	if e := byCode["ERSTHELFER"]; e.BestaetigungMonate != nil {
+		t.Fatalf("ERSTHELFER mit Bestaetigungsintervall: %+v", e)
+	}
 
 	// Der Mandant aendert eine uebernommene Art und legt eine still; eine
 	// zweite Uebernahme legt nichts an und stellt nichts zurueck.

@@ -64,8 +64,9 @@ func DefaultQualificationTypes() []QualificationTypeInput {
 			Hinweis: "Für die Person, die Leitern und Tritte prüft, nicht für jeden Benutzer (BetrSichV, TRBS 1203, DGUV Information 208-016)."},
 
 		// Weitere, recherchiert.
-		{Code: "SCHWEISSERPRUEFUNG", Name: "Schweißerprüfung (DIN EN ISO 9606-1)", Kategorie: q, GueltigkeitMonate: months(36),
-			Hinweis: "Drei Jahre gültig. Zusätzlich Bestätigung alle sechs Monate durch Arbeitgeber/Schweißaufsicht – diese Zwischenbestätigung wird hier NICHT überwacht."},
+		// Zwischenbestaetigung alle sechs Monate (F.10.3).
+		{Code: "SCHWEISSERPRUEFUNG", Name: "Schweißerprüfung (DIN EN ISO 9606-1)", Kategorie: q, GueltigkeitMonate: months(36), BestaetigungMonate: months(6),
+			Hinweis: "Drei Jahre gültig. Zusätzlich Bestätigung alle sechs Monate durch Arbeitgeber/Schweißaufsicht, dass im Geltungsbereich geschweißt wurde; ohne rechtzeitige Bestätigung gilt der Nachweis als abgelaufen."},
 		{Code: "BRANDSCHUTZHELFER", Name: "Brandschutzhelfer", Kategorie: q, GueltigkeitMonate: months(36),
 			Hinweis: "Wiederholung alle drei bis fünf Jahre bei normaler Brandgefährdung (ASR A2.2, DGUV Information 205-023); hier die kürzere Frist."},
 

@@ -192,3 +192,22 @@ func TestDefaultQualificationTypesFuehrerscheinkontrolle(t *testing.T) {
 	}
 	t.Fatal("FUEHRERSCHEINKONTROLLE fehlt")
 }
+
+// Schweisserpruefung (F.10.3): Zwischenbestaetigung alle sechs Monate, und
+// der Hinweis sagt nicht mehr, dass sie nicht ueberwacht wird.
+func TestDefaultQualificationTypesSchweisserpruefungBestaetigung(t *testing.T) {
+	for _, d := range DefaultQualificationTypes() {
+		if d.Code != "SCHWEISSERPRUEFUNG" {
+			if d.BestaetigungMonate != nil {
+				t.Fatalf("%s: unerwartete Zwischenbestaetigung", d.Code)
+			}
+			continue
+		}
+		if d.BestaetigungMonate == nil || *d.BestaetigungMonate != 6 || d.GueltigkeitMonate == nil || *d.GueltigkeitMonate != 36 {
+			t.Fatalf("Schweisserpruefung: %+v", d)
+		}
+		if strings.Contains(d.Hinweis, "NICHT") || !strings.Contains(d.Hinweis, "gilt der Nachweis als abgelaufen") {
+			t.Fatalf("Hinweis: %q", d.Hinweis)
+		}
+	}
+}

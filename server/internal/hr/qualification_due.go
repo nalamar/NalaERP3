@@ -27,6 +27,54 @@ type qualificationCatalog struct {
 	pflicht []uuid.UUID
 }
 
+// confirmationMonths sind die Arten mit Zwischenbestaetigung (F.10.3) und
+// ihr Intervall. Das Intervall gilt so, wie es HEUTE an der Art steht - anders
+// als gueltig_bis wird es nicht am Nachweis gespeichert.
+func (c qualificationCatalog) confirmationMonths() map[uuid.UUID]int {
+	out := make(map[uuid.UUID]int)
+	for id, qt := range c.types {
+		if qt.BestaetigungMonate != nil {
+			out[id] = *qt.BestaetigungMonate
+		}
+	}
+	return out
+}
+
+// loadConfirmationDates laedt die nicht stornierten Bestaetigungen (F.10.3)
+// der aktiven Nachweise - eines Mitarbeiters (employeeID) oder aller aktiven
+// Mitarbeiter des Mandanten (uuid.Nil) - je Nachweis.
+func (s *QualificationService) loadConfirmationDates(ctx context.Context, employeeID uuid.UUID, companyID string) (map[uuid.UUID][]time.Time, error) {
+	rows, err := s.pg.Query(ctx, `
+		SELECT c.qualification_id, c.bestaetigt_am
+		  FROM hr_qualification_confirmations c
+		  JOIN hr_employee_qualifications q ON q.id = c.qualification_id
+		  JOIN hr_employees e ON e.id = q.employee_id
+		 WHERE e.company_id=$1 AND c.status='active' AND q.status='active'
+		   AND (($2::uuid IS NULL AND e.active) OR e.id=$2)
+	`, companyID, nullableUUID(employeeID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[uuid.UUID][]time.Time)
+	for rows.Next() {
+		var qid uuid.UUID
+		var d time.Time
+		if err := rows.Scan(&qid, &d); err != nil {
+			return nil, err
+		}
+		out[qid] = append(out[qid], d)
+	}
+	return out, rows.Err()
+}
+
+func nullableUUID(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
+}
+
 func (s *QualificationService) loadActiveCatalog(ctx context.Context, companyID string) (qualificationCatalog, error) {
 	c := qualificationCatalog{types: make(map[uuid.UUID]QualificationType), pflicht: make([]uuid.UUID, 0)}
 	rows, err := s.pg.Query(ctx, `SELECT `+qualificationTypeColumns+` FROM hr_qualification_types WHERE company_id=$1 AND aktiv`, companyID)
@@ -57,7 +105,10 @@ func (s *QualificationService) loadActiveCatalog(ctx context.Context, companyID 
 //
 // Ergebnis mit Angaben zur Art, das Dringendste zuerst, darin nach Name.
 // Reine Funktion ohne Datenbank.
-func (c qualificationCatalog) evaluateEmployeeStanding(active bool, ownRequirements []uuid.UUID, records []EmployeeQualification, today time.Time, warnDays int) []EmployeeQualificationStanding {
+//
+// confirmations sind die Daten der Zwischenbestaetigungen je Nachweis
+// (F.10.3); das Intervall kommt aus dem Katalog.
+func (c qualificationCatalog) evaluateEmployeeStanding(active bool, ownRequirements []uuid.UUID, records []EmployeeQualification, confirmations map[uuid.UUID][]time.Time, today time.Time, warnDays int) []EmployeeQualificationStanding {
 	required := make([]uuid.UUID, 0, len(ownRequirements)+len(c.pflicht))
 	for _, id := range ownRequirements {
 		if _, ok := c.types[id]; ok {
@@ -74,7 +125,7 @@ func (c qualificationCatalog) evaluateEmployeeStanding(active bool, ownRequireme
 		}
 	}
 
-	standings := EvaluateQualifications(relevant, required, today, warnDays)
+	standings := EvaluateQualificationsWithConfirmations(relevant, QualificationConfirmations{Dates: confirmations, Months: c.confirmationMonths()}, required, today, warnDays)
 	out := make([]EmployeeQualificationStanding, 0, len(standings))
 	for _, st := range standings {
 		qt := c.types[st.TypeID]
@@ -115,7 +166,7 @@ type QualificationDueEntry struct {
 // was am laengsten ueberfaellig ist bzw. am fruehesten ablaeuft, dann nach
 // Name des Mitarbeiters und der Art.
 //
-// Die Daten werden in vier Abfragen fuer den ganzen Mandanten geladen,
+// Die Daten werden in fuenf Abfragen fuer den ganzen Mandanten geladen,
 // nicht je Mitarbeiter.
 func (s *QualificationService) DueList(ctx context.Context, today time.Time, warnDays int, companyID string) ([]QualificationDueEntry, error) {
 	if strings.TrimSpace(companyID) == "" {
@@ -199,9 +250,14 @@ func (s *QualificationService) DueList(ctx context.Context, today time.Time, war
 		return nil, err
 	}
 
+	confirmations, err := s.loadConfirmationDates(ctx, uuid.Nil, companyID)
+	if err != nil {
+		return nil, err
+	}
+
 	out := make([]QualificationDueEntry, 0)
 	for _, p := range people {
-		for _, st := range catalog.evaluateEmployeeStanding(true, requirements[p.id], records[p.id], today, warnDays) {
+		for _, st := range catalog.evaluateEmployeeStanding(true, requirements[p.id], records[p.id], confirmations, today, warnDays) {
 			if st.Status == QualificationStandGueltig {
 				continue
 			}

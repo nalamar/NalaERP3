@@ -257,5 +257,9 @@ func (s *QualificationService) Standing(ctx context.Context, employeeID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	return catalog.evaluateEmployeeStanding(employeeActive, ownRequirements, records, today, warnDays), nil
+	confirmations, err := s.loadConfirmationDates(ctx, employeeID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	return catalog.evaluateEmployeeStanding(employeeActive, ownRequirements, records, confirmations, today, warnDays), nil
 }
