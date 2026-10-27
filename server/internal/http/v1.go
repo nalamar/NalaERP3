@@ -5150,6 +5150,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "vollständig fakturiert"),
 		strings.Contains(msg, "muss größer als 0 sein"),
 		strings.Contains(msg, "bestätigungsintervall muss kürzer als die gültigkeit sein"),
+		strings.Contains(msg, "sieht keine zwischenbestätigung vor"),
 		strings.Contains(msg, "überschreitet die offene restmenge"),
 		strings.Contains(msg, "muss die gesamte restmenge"),
 		strings.Contains(msg, "können nicht erneut umgestellt werden"),

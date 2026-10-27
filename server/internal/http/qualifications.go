@@ -538,6 +538,77 @@ func mountQualificationRoutes(protected chi.Router, svc *hr.QualificationService
 			_, _ = io.Copy(w, rc)
 		})
 
+		// Zwischenbestaetigungen (F.10.3.3): lesen wie der Nachweis selbst,
+		// erfassen und stornieren mit qualifications.write.
+		r.Get("/{id}/confirmations", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := authorizeQualification(w, req)
+			if !ok {
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.ListConfirmations(req.Context(), id, req.URL.Query().Get("include_storniert") == "true", companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
+		r.With(write).Post("/{id}/confirmations", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachweis-ID")
+				return
+			}
+			var in struct {
+				BestaetigtAm    string `json:"bestaetigt_am"`
+				BestaetigtDurch string `json:"bestaetigt_durch"`
+				Note            string `json:"note"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			am, ok := parseOptionalDate(w, req, "bestaetigt_am", in.BestaetigtAm)
+			if !ok {
+				return
+			}
+			input := hr.QualificationConfirmationInput{BestaetigtDurch: in.BestaetigtDurch, Note: in.Note}
+			if am != nil {
+				input.BestaetigtAm = *am // fehlt es, meldet der Service "Bestätigungsdatum erforderlich"
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.CreateConfirmation(req.Context(), id, input, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+
+		// Storno ueber die ID der Bestaetigung (wie /fleet/completions/{id}/storno).
+		r.With(write).Post("/confirmations/{confirmationID}/storno", func(w http.ResponseWriter, req *http.Request) {
+			id, err := uuid.Parse(chi.URLParam(req, "confirmationID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Bestätigungs-ID")
+				return
+			}
+			var in struct {
+				Reason string `json:"reason"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.StornoConfirmation(req.Context(), id, in.Reason, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
+
 		r.With(write).Post("/{id}/storno", func(w http.ResponseWriter, req *http.Request) {
 			id, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
