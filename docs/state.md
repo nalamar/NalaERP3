@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.4.2** und damit **F.10.4** und **F.10**
+> Zuletzt abgeschlossen: **G.3a.1a** (2026-10-28, Server: Migration 102
+> `fleet_vehicle_assignments`, `AssignmentService.Assign/Get/List` — Sperre
+> bei HU/UVV mit Mängeln/nicht bestanden am Tag des Beginns, Hinweise bei
+> überfälligem Termin und ohne gültige Führerscheinkontrolle; ANNAHME: Art
+> am Code `FUEHRERSCHEINKONTROLLE` erkannt). G.3a.1 geteilt (Größe). Davor
+> **F.10.4.2** und damit **F.10.4** und **F.10**
 > bis auf F.14 (2026-10-28, Client: Hinweise auf dem Dashboard). Davor **F.10.4.1** (2026-10-28, Server: Paket
 > `internal/notices`, `GET /notices` je nach Rechten, nur Anzahlen;
 > `Sender`-Schnittstelle für F.14). Davor **F.10.3.4** und damit **F.10.3** (2026-10-28,
@@ -89,12 +94,9 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3a Fahrerzuordnung, zuerst G.3a.1** (Server:
-> Migration + Service — Zuordnung Fahrzeug ↔ Mitarbeiter als Beleg mit
-> Beginn/Ende nach dem Muster der Betriebsmittel-Ausgabe; Sperre bei
-> gesperrtem HU/UVV-Termin, Hinweise bei überfälligem Termin und bei
-> nicht gültiger `FUEHRERSCHEINKONTROLLE` des Mitarbeiters). Danach
-> G.3a.2 Routen, G.3a.3 Client.
+> Arbeit: G.3a.1b** (Server: Ende und Storno der Zuordnung, Wächtertest,
+> Abmelden nur ohne offene Zuordnung). Danach G.3a.2 Routen, G.3a.3
+> Client.
 > Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
@@ -124,7 +126,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 101, ADR 0033.
+> Nächste freie Migration 103, ADR 0033.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
