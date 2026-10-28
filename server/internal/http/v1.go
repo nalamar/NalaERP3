@@ -1755,6 +1755,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountAssetInspectionRoutes(protected, assetSvc)
 	mountFleetRoutes(protected, fleet.NewVehicleService(pg))
 	mountFleetScheduleRoutes(protected, fleet.NewScheduleService(pg))
+	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
 	mountNoticeRoutes(protected, notices.NewService(
 		notices.QualificationsDue{Svc: qualificationSvc},
 		notices.OwnQualifications{Svc: qualificationSvc},
@@ -5105,6 +5106,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "ist ausgemustert"),
 		strings.Contains(msg, "bereits ausgegeben"),
 		strings.Contains(msg, "asset ist gesperrt"),
+		strings.Contains(msg, "fahrzeug ist gesperrt"),
+		strings.Contains(msg, "bereits zugeordnet"),
 		strings.Contains(msg, "bereits zurückgegeben"),
 		strings.Contains(msg, "bereits abgemeldet"),
 		strings.Contains(msg, "fahrzeug ist abgemeldet"),

@@ -19,9 +19,11 @@ import (
 //
 // read/write haben nur Fuhrpark und Administrator, nicht die
 // Personalabteilung (Entscheidung des Nutzers vom 2026-10-25). fleet.self
-// greift erst mit Zuordnungen und Fahrtenbuch (G.3).
+// (alle Systemrollen) zeigt die eigenen Zuordnungen (G.3a.2), spaeter die
+// eigenen Fahrten (G.3c).
 
 const (
+	permFleetSelf  = "fleet.self"
 	permFleetRead  = "fleet.read"
 	permFleetWrite = "fleet.write"
 )
