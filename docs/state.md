@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3c.1** (2026-10-28, Server: Migration 103
+> Zuletzt abgeschlossen: **G.3c.2** (2026-10-28, Server: `TripService` —
+> Fahrt erfassen unter Fahrzeugsperre nur bei "Fahrtenbuch führen",
+> stornieren, Liste, km-Stand mit Lücken; Abmelden nicht vor der letzten
+> Fahrt; "fortsetzen" als Zustimmung zur Empfehlung G.3c.2 — ANNAHME).
+> Nächste: **G.3c.3** Routen. Davor **G.3c.1** (2026-10-28, Server: Migration 103
 > `fleet_trips`, Fachregeln `trip_rules.go` — lückenloser km-Stand,
 > Dienstfahrt mit Ziel und Zweck; Präzisierung in ADR 0032, ANNAHME:
 > Geschäftspartner nicht Pflicht). G.3c geteilt (Migration/Regeln,
@@ -104,9 +108,10 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3c.2** (Service Fahrtenbuch: erfassen unter Fahrzeugsperre,
-> stornieren, lesen mit Lücken, Wächtertest). Danach G.3c.3 Routen,
-> G.3c.4 Client, G.3d Kosten.
+> Arbeit: G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
+> eigene Fahrten, `fleet.read` alle, Storno mit `fleet.write` — ANNAHME;
+> neue Meldungen in `classifyDomainError`, u. a. "kein Fahrtenbuch" → 409).
+> Danach G.3c.4 Client, G.3d Kosten.
 > Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf

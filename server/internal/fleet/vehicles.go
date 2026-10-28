@@ -370,10 +370,13 @@ func (s *VehicleService) Deregister(ctx context.Context, id uuid.UUID, datum tim
 	// Fahrerzuordnung (G.3a): erst beenden, dann abmelden - wie beim
 	// Ausmustern von Betriebsmitteln. Die Fahrzeugzeile ist gesperrt; Assign
 	// nimmt dieselbe Sperre.
-	var offen, spaeter bool
+	// Fahrtenbuch (G.3c): keine Fahrt nach der Abmeldung. RecordTrip nimmt
+	// dieselbe Sperre.
+	var offen, spaeter, fahrtDanach bool
 	if err := tx.QueryRow(ctx, `SELECT
 		EXISTS(SELECT 1 FROM fleet_vehicle_assignments WHERE vehicle_id=$1 AND status='active' AND ende IS NULL),
-		EXISTS(SELECT 1 FROM fleet_vehicle_assignments WHERE vehicle_id=$1 AND status='active' AND ende > $2)`, id, dateOnly(datum)).Scan(&offen, &spaeter); err != nil {
+		EXISTS(SELECT 1 FROM fleet_vehicle_assignments WHERE vehicle_id=$1 AND status='active' AND ende > $2),
+		EXISTS(SELECT 1 FROM fleet_trips WHERE vehicle_id=$1 AND status='active' AND datum > $2)`, id, dateOnly(datum)).Scan(&offen, &spaeter, &fahrtDanach); err != nil {
 		return nil, err
 	}
 	if offen {
@@ -381,6 +384,9 @@ func (s *VehicleService) Deregister(ctx context.Context, id uuid.UUID, datum tim
 	}
 	if spaeter {
 		return nil, errors.New("Abmeldedatum darf nicht vor dem Ende einer Zuordnung liegen")
+	}
+	if fahrtDanach {
+		return nil, errors.New("Abmeldedatum darf nicht vor der letzten Fahrt liegen")
 	}
 	v, err := scanVehicle(tx.QueryRow(ctx, `UPDATE fleet_vehicles SET abgemeldet_am=$3, abgemeldet_grund=$4 WHERE id=$1 AND company_id=$2 RETURNING `+vehicleColumns,
 		id, companyID, dateOnly(datum), grund))
