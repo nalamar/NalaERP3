@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3a.2** (2026-10-28, Server: Routen
+> Zuletzt abgeschlossen: **G.3a.3** und damit **G.3a** (2026-10-28,
+> Client: Abschnitt "Fahrer" auf der Detailseite des Fahrzeugs — zuordnen
+> mit Hinweis-Dialog, beenden, stornieren). Davor **G.3a.2** (2026-10-28, Server: Routen
 > `/fleet/assignments` — zuordnen, Liste, Einzelabruf, beenden, stornieren;
 > `fleet.self` sieht nur die eigenen). Davor **G.3a.1b** und damit **G.3a.1** (2026-10-28,
 > Server: Zuordnung beenden und stornieren, Wächtertest; Abmelden nur ohne
@@ -98,13 +100,14 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3a.3** (Client: Fahrerzuordnung auf der Detailseite des
-> Fahrzeugs — aktuelle Zuordnung, Verlauf, zuordnen mit Hinweis-Dialog,
-> beenden, stornieren). Danach G.3c Fahrtenbuch.
+> Arbeit: G.3c Fahrtenbuch** (ADR 0032 §6: optional je Fahrzeug,
+> geschlossene Form, lückenloser km-Stand, Fahrer erfassen selbst mit
+> `fleet.self`) — zuerst G.3c.1 Migration und Fachregeln. Danach G.3d
+> Kosten.
 > Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
-> Wunsch). Client-Suite: 356 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
+> Wunsch). Client-Suite: 376 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23
 > zunächst aus, per Start-Process gestartet).
 > Davor: 0.48 (Client-Testsuite grün, 219 / 0) und Live-Stand gestartet
 > (lokaler Admin `admin@nala.local` per SQL angelegt, Dockerfile Go 1.25).

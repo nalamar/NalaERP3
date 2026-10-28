@@ -53,6 +53,9 @@ class _FakeApi extends ApiClient {
 
   @override
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) async => const [];
+
+  @override
+  Future<List<dynamic>> listFleetAssignments({String? vehicleId, String? employeeId, bool nurOffen = false, bool includeStorniert = false}) async => const [];
 }
 
 const _vehicle = {

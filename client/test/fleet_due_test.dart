@@ -40,6 +40,9 @@ class _FakeApi extends ApiClient {
     calls.add('schedules $vehicleId');
     return const [];
   }
+
+  @override
+  Future<List<dynamic>> listFleetAssignments({String? vehicleId, String? employeeId, bool nurOffen = false, bool includeStorniert = false}) async => const [];
 }
 
 Map<String, dynamic> _entry(String kz, String art, String status, {String bez = '', String vbez = '', String? faellig, int? tage}) => {
