@@ -13,7 +13,7 @@ import (
 	"nalaerp3/internal/testutil"
 )
 
-// Fahrerzuordnung gegen echtes Postgres (Backlog G.3a.1a). Feste Daten in
+// Fahrerzuordnung gegen echtes Postgres (Backlog G.3a.1a/b). Feste Daten in
 // der Vergangenheit (2026-01 bis 2026-09); nur "in der Zukunft" rechnet
 // mit heute.
 
@@ -282,5 +282,125 @@ func TestAssignmentTableConstraints(t *testing.T) {
 	}
 	if _, err := env.PG.Exec(ctx, `DELETE FROM fleet_vehicles WHERE id=$1`, v.ID); err == nil {
 		t.Fatal("Fahrzeug mit Zuordnungen geloescht")
+	}
+}
+
+// Ende, Storno und Abmeldung (Backlog G.3a.1b).
+func TestAssignmentEndStornoAndDeregistration(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	svc := NewAssignmentService(env.PG)
+	vehicles := NewVehicleService(env.PG)
+	company := seedCompany(t, env)
+	foreignCompany := seedCompany(t, env)
+	actor := testutil.SeedAuthUser(t, env, "ende-"+uuid.NewString()[:8]+"@example.test", "pw-123456789", "fleet")
+	anna := seedDriver(t, env, company, "Anna", true)
+	bert := seedDriver(t, env, company, "Bert", true)
+	v := seedVehicle(t, env, company, "M-EN 1")
+	isOpen := func(id uuid.UUID) bool {
+		g, err := svc.GetAssignment(ctx, id, company)
+		if err != nil {
+			t.Fatalf("Abruf: %v", err)
+		}
+		return g.Ende == nil && g.Status == AssignmentActive
+	}
+
+	a, err := svc.Assign(ctx, AssignInput{VehicleID: v.ID, EmployeeID: anna, Beginn: day(2026, 3, 1)}, "", company)
+	if err != nil {
+		t.Fatalf("Zuordnung: %v", err)
+	}
+	for name, tc := range map[string]struct {
+		id      uuid.UUID
+		ende    time.Time
+		company string
+		want    string
+	}{
+		"unbekannt":       {uuid.New(), day(2026, 3, 5), company, "Zuordnung nicht gefunden"},
+		"fremder Mandant": {a.ID, day(2026, 3, 5), foreignCompany, "Zuordnung nicht gefunden"},
+		"ohne Datum":      {a.ID, time.Time{}, company, "Ende erforderlich"},
+		"vor Beginn":      {a.ID, day(2026, 2, 28), company, "Ende darf nicht vor dem Beginn liegen"},
+		"Zukunft":         {a.ID, today().AddDate(0, 0, 1), company, "Ende darf nicht in der Zukunft liegen"},
+	} {
+		if _, err := svc.End(ctx, tc.id, tc.ende, "", tc.company); err == nil || err.Error() != tc.want {
+			t.Fatalf("Ende %s: %v", name, err)
+		}
+	}
+	if !isOpen(a.ID) {
+		t.Fatal("abgelehntes Ende hat gewirkt")
+	}
+
+	// Abmelden nur ohne offene Zuordnung.
+	if _, err := vehicles.Deregister(ctx, v.ID, day(2026, 3, 20), "verkauft", company); err == nil || err.Error() != "Fahrzeug ist noch zugeordnet - erst die Zuordnung beenden" {
+		t.Fatalf("Abmelden mit offener Zuordnung: %v", err)
+	}
+	if got, _ := vehicles.Get(ctx, v.ID, company); got.AbgemeldetAm != nil {
+		t.Fatal("trotz Ablehnung abgemeldet")
+	}
+
+	ended, err := svc.End(ctx, a.ID, day(2026, 3, 10), actor, company)
+	if err != nil || ended.Ende == nil || !ended.Ende.Equal(day(2026, 3, 10)) || ended.BeendetByUserID == nil || *ended.BeendetByUserID != actor || ended.Status != AssignmentActive {
+		t.Fatalf("Ende: %+v %v", ended, err)
+	}
+	if _, err := svc.End(ctx, a.ID, day(2026, 3, 11), "", company); err == nil || err.Error() != "Zuordnung ist bereits beendet" {
+		t.Fatalf("zweites Ende: %v", err)
+	}
+
+	// Neue Zuordnung am Tag des Endes; Storno gibt das Fahrzeug frei.
+	b, err := svc.Assign(ctx, AssignInput{VehicleID: v.ID, EmployeeID: bert, Beginn: day(2026, 3, 10)}, "", company)
+	if err != nil {
+		t.Fatalf("zweite Zuordnung: %v", err)
+	}
+	for name, tc := range map[string]struct {
+		id      uuid.UUID
+		reason  string
+		company string
+		want    string
+	}{
+		"ohne Grund":      {b.ID, " ", company, "Storno-Begründung erforderlich"},
+		"unbekannt":       {uuid.New(), "x", company, "Zuordnung nicht gefunden"},
+		"fremder Mandant": {b.ID, "x", foreignCompany, "Zuordnung nicht gefunden"},
+	} {
+		if _, err := svc.StornoAssignment(ctx, tc.id, tc.reason, "", tc.company); err == nil || err.Error() != tc.want {
+			t.Fatalf("Storno %s: %v", name, err)
+		}
+	}
+	if !isOpen(b.ID) {
+		t.Fatal("abgelehnter Storno hat gewirkt")
+	}
+	st, err := svc.StornoAssignment(ctx, b.ID, " falscher Fahrer ", actor, company)
+	if err != nil || st.Status != AssignmentStorniert || st.StornoReason != "falscher Fahrer" || st.StorniertAt == nil || st.StorniertByUserID == nil || *st.StorniertByUserID != actor {
+		t.Fatalf("Storno: %+v %v", st, err)
+	}
+	if _, err := svc.StornoAssignment(ctx, b.ID, "nochmal", "", company); err == nil || err.Error() != "Zuordnung ist bereits storniert" {
+		t.Fatalf("zweiter Storno: %v", err)
+	}
+	if _, err := svc.End(ctx, b.ID, day(2026, 3, 12), "", company); err == nil || err.Error() != "Zuordnung ist storniert" {
+		t.Fatalf("Ende nach Storno: %v", err)
+	}
+	c, err := svc.Assign(ctx, AssignInput{VehicleID: v.ID, EmployeeID: bert, Beginn: day(2026, 3, 12)}, "", company)
+	if err != nil {
+		t.Fatalf("nach Storno frei: %v", err)
+	}
+	if _, err := svc.End(ctx, c.ID, day(2026, 3, 15), "", company); err != nil {
+		t.Fatalf("Ende c: %v", err)
+	}
+
+	// Abmeldedatum nicht vor dem Ende einer nicht stornierten Zuordnung;
+	// am Tag des Endes zulaessig. Die stornierte offene zaehlt nicht.
+	if _, err := vehicles.Deregister(ctx, v.ID, day(2026, 3, 14), "verkauft", company); err == nil || err.Error() != "Abmeldedatum darf nicht vor dem Ende einer Zuordnung liegen" {
+		t.Fatalf("Abmelden vor dem Ende: %v", err)
+	}
+	if _, err := svc.StornoAssignment(ctx, c.ID, "doppelt", "", company); err != nil {
+		t.Fatalf("Storno c: %v", err)
+	}
+	if _, err := vehicles.Deregister(ctx, v.ID, day(2026, 3, 9), "verkauft", company); err == nil || err.Error() != "Abmeldedatum darf nicht vor dem Ende einer Zuordnung liegen" {
+		t.Fatalf("Abmelden vor dem Ende von a: %v", err)
+	}
+	if _, err := vehicles.Deregister(ctx, v.ID, day(2026, 3, 10), "verkauft", company); err != nil {
+		t.Fatalf("Abmelden am Tag des Endes: %v", err)
+	}
+	// Berichtigung der Historie auch am abgemeldeten Fahrzeug.
+	if _, err := svc.StornoAssignment(ctx, a.ID, "Berichtigung", "", company); err != nil {
+		t.Fatalf("Storno nach Abmeldung: %v", err)
 	}
 }

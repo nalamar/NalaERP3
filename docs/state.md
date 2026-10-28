@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3a.1a** (2026-10-28, Server: Migration 102
+> Zuletzt abgeschlossen: **G.3a.1b** und damit **G.3a.1** (2026-10-28,
+> Server: Zuordnung beenden und stornieren, Wächtertest; Abmelden nur ohne
+> offene Zuordnung und nicht vor ihrem Ende). Davor **G.3a.1a** (2026-10-28, Server: Migration 102
 > `fleet_vehicle_assignments`, `AssignmentService.Assign/Get/List` — Sperre
 > bei HU/UVV mit Mängeln/nicht bestanden am Tag des Beginns, Hinweise bei
 > überfälligem Termin und ohne gültige Führerscheinkontrolle; ANNAHME: Art
@@ -94,9 +96,9 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3a.1b** (Server: Ende und Storno der Zuordnung, Wächtertest,
-> Abmelden nur ohne offene Zuordnung). Danach G.3a.2 Routen, G.3a.3
-> Client.
+> Arbeit: G.3a.2** (HTTP-Routen der Fahrerzuordnung; Meldungen "bereits
+> zugeordnet", "gesperrt", "überschneidet sich", "ist storniert" in
+> `classifyDomainError` prüfen). Danach G.3a.3 Client.
 > Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf

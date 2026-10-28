@@ -229,14 +229,16 @@ func TestFleetVehiclesHTTPPermissions(t *testing.T) {
 
 func TestClassifyDomainErrorCoversFleetMessages(t *testing.T) {
 	cases := map[string]int{
-		"Fahrzeug ist bereits abgemeldet":                      http.StatusConflict,
-		"Fahrzeug nicht gefunden":                              http.StatusNotFound,
-		"Fahrzeug mit diesem Kennzeichen existiert bereits":    http.StatusBadRequest,
-		"Fahrzeug mit dieser FIN existiert bereits":            http.StatusBadRequest,
-		"Erstzulassung darf nicht nach der Abmeldung liegen":   http.StatusBadRequest,
-		"Abmeldedatum darf nicht vor der Erstzulassung liegen": http.StatusBadRequest,
-		"Grund der Abmeldung erforderlich":                     http.StatusBadRequest,
-		"Ungültige Fahrzeug-ID":                                http.StatusBadRequest,
+		"Fahrzeug ist bereits abgemeldet":                             http.StatusConflict,
+		"Fahrzeug nicht gefunden":                                     http.StatusNotFound,
+		"Fahrzeug mit diesem Kennzeichen existiert bereits":           http.StatusBadRequest,
+		"Fahrzeug mit dieser FIN existiert bereits":                   http.StatusBadRequest,
+		"Erstzulassung darf nicht nach der Abmeldung liegen":          http.StatusBadRequest,
+		"Abmeldedatum darf nicht vor der Erstzulassung liegen":        http.StatusBadRequest,
+		"Grund der Abmeldung erforderlich":                            http.StatusBadRequest,
+		"Ungültige Fahrzeug-ID":                                       http.StatusBadRequest,
+		"Fahrzeug ist noch zugeordnet - erst die Zuordnung beenden":   http.StatusConflict,
+		"Abmeldedatum darf nicht vor dem Ende einer Zuordnung liegen": http.StatusBadRequest,
 	}
 	for msg, want := range cases {
 		if got, _ := classifyDomainError(errors.New(msg)); got != want {

@@ -2,7 +2,10 @@ package fleet
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -11,7 +14,7 @@ import (
 	"nalaerp3/internal/hr"
 )
 
-// Regeln der Fahrerzuordnung ohne Datenbank (Backlog G.3a.1a).
+// Regeln der Fahrerzuordnung ohne Datenbank (Backlog G.3a.1a, G.3a.1b).
 
 func TestValidateAssignmentStart(t *testing.T) {
 	today := day(2026, 5, 10)
@@ -116,5 +119,82 @@ func TestAssignValidatesBeforeTouchingDatabase(t *testing.T) {
 	noEmployee.EmployeeID = uuid.Nil
 	if _, err := s.Assign(ctx, noEmployee, "", "c1"); err == nil || err.Error() != "employee_id erforderlich" {
 		t.Fatalf("ohne Mitarbeiter: %v", err)
+	}
+}
+
+func TestValidateAssignmentEnd(t *testing.T) {
+	today := day(2026, 5, 10)
+	beginn := day(2026, 3, 1)
+	for name, tc := range map[string]struct {
+		ende time.Time
+		want string
+	}{
+		"leer":          {time.Time{}, "Ende erforderlich"},
+		"Zukunft":       {day(2026, 5, 11), "Ende darf nicht in der Zukunft liegen"},
+		"vor Beginn":    {day(2026, 2, 28), "Ende darf nicht vor dem Beginn liegen"},
+		"Tag d. Beginn": {beginn, ""},
+		"heute":         {today, ""},
+	} {
+		err := ValidateAssignmentEnd(tc.ende, beginn, today)
+		if (tc.want == "" && err != nil) || (tc.want != "" && (err == nil || err.Error() != tc.want)) {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+}
+
+// Ende und Storno pruefen Mandant, ID und Begruendung vor Postgres.
+func TestEndAndStornoValidateBeforeTouchingDatabase(t *testing.T) {
+	s := NewAssignmentService(nil)
+	ctx := context.Background()
+	for name, err := range map[string][2]any{
+		"Ende ohne Mandant":    {errOf(s.End(ctx, uuid.New(), day(2026, 1, 1), "", "")), "Mandant erforderlich"},
+		"Ende ohne ID":         {errOf(s.End(ctx, uuid.Nil, day(2026, 1, 1), "", "c1")), "Zuordnungs-ID erforderlich"},
+		"Storno ohne Mandant":  {errOf(s.StornoAssignment(ctx, uuid.New(), "x", "", " ")), "Mandant erforderlich"},
+		"Storno ohne ID":       {errOf(s.StornoAssignment(ctx, uuid.Nil, "x", "", "c1")), "Zuordnungs-ID erforderlich"},
+		"Storno ohne Begruend": {errOf(s.StornoAssignment(ctx, uuid.New(), "  ", "", "c1")), "Storno-Begründung erforderlich"},
+	} {
+		if err[0] != err[1] {
+			t.Fatalf("%s: %v", name, err[0])
+		}
+	}
+}
+
+func errOf(_ *Assignment, err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+// Waechter: Zuordnungen werden nur ueber Ende und Storno geaendert und nie
+// geloescht (Muster der Ausgaben, ADR 0024/0028).
+func TestAssignmentsHaveNoOtherWritePaths(t *testing.T) {
+	src, err := os.ReadFile("assignments.go")
+	if err != nil {
+		t.Fatalf("Quelltext lesen: %v", err)
+	}
+	code := string(src)
+	if got := strings.Count(code, "UPDATE fleet_vehicle_assignments"); got != 2 {
+		t.Fatalf("erwartet genau 2 UPDATE (Ende, Storno), gefunden %d", got)
+	}
+	for _, want := range []string{
+		"UPDATE fleet_vehicle_assignments SET ende=$2, beendet_by_user_id=$3\n\t\t WHERE id=$1 AND status='active' AND ende IS NULL",
+		"UPDATE fleet_vehicle_assignments SET status='storniert', storniert_at=now(), storno_reason=$2, storniert_by_user_id=$3\n\t\t WHERE id=$1 AND status='active'",
+	} {
+		if !strings.Contains(code, want) {
+			t.Fatalf("erwartetes Fragment fehlt: %s", want)
+		}
+	}
+	all := ""
+	files, _ := filepath.Glob("*.go")
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		b, _ := os.ReadFile(f)
+		all += string(b)
+	}
+	if strings.Contains(all, "DELETE FROM fleet_vehicle_assignments") || strings.Count(all, "UPDATE fleet_vehicle_assignments") != 2 {
+		t.Fatal("Zuordnungen duerfen nur in assignments.go beendet oder storniert und nie geloescht werden")
 	}
 }

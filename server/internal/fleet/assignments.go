@@ -17,7 +17,7 @@ import (
 // Fahrerzuordnung (ADR 0032 §4, Backlog G.3a): ein Fahrzeug wird einem
 // Mitarbeiter zugeordnet - Muster der Ausgabe von Betriebsmitteln
 // (assets.Issue). Eine Zuordnung wird nicht geaendert und nicht geloescht;
-// erlaubt sind das einmalige Ende und das Storno (G.3a.1b).
+// erlaubt sind das einmalige Ende und das Storno.
 //
 // Eine HU oder UVV mit Maengeln oder nicht bestanden sperrt die Zuordnung.
 // Ein ueberfaelliger Termin und eine nicht gueltige Fuehrerscheinkontrolle
@@ -349,4 +349,123 @@ func (s *AssignmentService) ListAssignments(ctx context.Context, companyID strin
 		out = append(out, *x)
 	}
 	return out, rows.Err()
+}
+
+// ValidateAssignmentEnd prueft das Ende ohne Datenbank. Ende am Tag des
+// Beginns ist zulaessig.
+func ValidateAssignmentEnd(ende, beginn, today time.Time) error {
+	if ende.IsZero() {
+		return errors.New("Ende erforderlich")
+	}
+	if dateOnly(ende).After(dateOnly(today)) {
+		return errors.New("Ende darf nicht in der Zukunft liegen")
+	}
+	if dateOnly(ende).Before(dateOnly(beginn)) {
+		return errors.New("Ende darf nicht vor dem Beginn liegen")
+	}
+	return nil
+}
+
+// lockAssignment sperrt eine Zuordnung des Mandanten und liefert Status,
+// Beginn und Ende.
+func lockAssignment(ctx context.Context, tx pgx.Tx, id uuid.UUID, companyID string) (status string, beginn time.Time, ende *time.Time, err error) {
+	err = tx.QueryRow(ctx, `
+		SELECT x.status, x.beginn, x.ende
+		  FROM fleet_vehicle_assignments x
+		  JOIN fleet_vehicles v ON v.id = x.vehicle_id
+		 WHERE x.id=$1 AND v.company_id=$2
+		   FOR UPDATE OF x
+	`, id, companyID).Scan(&status, &beginn, &ende)
+	if errors.Is(err, pgx.ErrNoRows) {
+		err = errors.New("Zuordnung nicht gefunden")
+	}
+	return
+}
+
+// End beendet eine offene Zuordnung (der Mitarbeiter gibt das Fahrzeug
+// ab). Einmalig; eine stornierte Zuordnung kann nicht beendet werden.
+func (s *AssignmentService) End(ctx context.Context, id uuid.UUID, ende time.Time, actorUserID, companyID string) (*Assignment, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if id == uuid.Nil {
+		return nil, errors.New("Zuordnungs-ID erforderlich")
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	status, beginn, bereits, err := lockAssignment(ctx, tx, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if status == AssignmentStorniert {
+		return nil, errors.New("Zuordnung ist storniert")
+	}
+	if bereits != nil {
+		return nil, errors.New("Zuordnung ist bereits beendet")
+	}
+	if err := ValidateAssignmentEnd(ende, beginn, hr.WorkDateOf(time.Now())); err != nil {
+		return nil, err
+	}
+	ct, err := tx.Exec(ctx, `
+		UPDATE fleet_vehicle_assignments SET ende=$2, beendet_by_user_id=$3
+		 WHERE id=$1 AND status='active' AND ende IS NULL
+	`, id, dateOnly(ende), nullableUserID(actorUserID))
+	if err != nil {
+		return nil, err
+	}
+	if ct.RowsAffected() != 1 {
+		return nil, errors.New("Zuordnung ist bereits beendet")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.GetAssignment(ctx, id, companyID)
+}
+
+// StornoAssignment storniert eine falsch erfasste Zuordnung - offen oder
+// beendet, auch am abgemeldeten Fahrzeug (Berichtigung der Historie).
+// Einmalig, mit Begruendung. Eine stornierte offene Zuordnung gibt das
+// Fahrzeug wieder frei.
+func (s *AssignmentService) StornoAssignment(ctx context.Context, id uuid.UUID, reason, actorUserID, companyID string) (*Assignment, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return nil, errors.New("Mandant erforderlich")
+	}
+	if id == uuid.Nil {
+		return nil, errors.New("Zuordnungs-ID erforderlich")
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, errors.New("Storno-Begründung erforderlich")
+	}
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	status, _, _, err := lockAssignment(ctx, tx, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if status == AssignmentStorniert {
+		return nil, errors.New("Zuordnung ist bereits storniert")
+	}
+	ct, err := tx.Exec(ctx, `
+		UPDATE fleet_vehicle_assignments SET status='storniert', storniert_at=now(), storno_reason=$2, storniert_by_user_id=$3
+		 WHERE id=$1 AND status='active'
+	`, id, reason, nullableUserID(actorUserID))
+	if err != nil {
+		return nil, err
+	}
+	if ct.RowsAffected() != 1 {
+		return nil, errors.New("Zuordnung ist bereits storniert")
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return s.GetAssignment(ctx, id, companyID)
 }
