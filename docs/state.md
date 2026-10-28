@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.3.3** (2026-10-27, Server: Routen der
+> Zuletzt abgeschlossen: **F.10.3.4** und damit **F.10.3** (2026-10-28,
+> Client: Zwischenbestätigungen je Nachweis ansehen/erfassen/stornieren,
+> Stand nennt die Fälligkeit der Bestätigung). Davor **F.10.3.3** (2026-10-27, Server: Routen der
 > Bestätigungen — `GET/POST /qualifications/{id}/confirmations`,
 > `POST /qualifications/confirmations/{id}/storno`). Davor **F.10.3.2b** und damit **F.10.3.2** (2026-10-27,
 > Server: Bestätigungen erfassen, stornieren, je Nachweis lesen; verspätete
@@ -82,11 +84,11 @@
 > Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
-> **F.10 offen: F.10.3.4 und F.10.4.1–F.10.4.2** (entschieden,
-> siehe oben). **Nächste Arbeit: F.10.3.4** (Client: Bestätigungen am
-> Nachweis ansehen, erfassen, stornieren — Knopf je Nachweis einer Art mit
-> Intervall, Muster Dokumente-Dialog; im Stand "Bestätigung fällig am …"
-> und Ablaufgrund anzeigen). Danach F.10.4.1, F.10.4.2. **F.14 E-Mail wartet auf den
+> **F.10 offen: F.10.4.1–F.10.4.2** (entschieden,
+> siehe oben). **Nächste Arbeit: F.10.4.1** (Server: Hinweise für das
+> Dashboard — `GET /notices` je nach Rechten des Benutzers, z. B. fällige
+> Qualifikationen und Fahrzeugtermine; Absender-Schnittstelle so, dass
+> später der Mailversand F.14 andocken kann). Danach F.10.4.2. **F.14 E-Mail wartet auf den
 > SMTP-Zugang.** Danach G.3a Fahrerzuordnung, zuerst G.3a.1 (Server:
 > Migration + Service — Zuordnung Fahrzeug ↔ Mitarbeiter als Beleg mit
 > Beginn/Ende nach dem Muster der Betriebsmittel-Ausgabe; Sperre bei

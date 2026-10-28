@@ -16,10 +16,23 @@ String _date(String? iso) {
   return p.length == 3 ? '${p[2]}.${p[1]}.${p[0]}' : iso;
 }
 
-// qualificationStatusLabel beschreibt den Stand einer Art in Worten.
+// qualificationStatusLabel beschreibt den Stand einer Art in Worten. Haengt
+// der Stand an der Zwischenbestaetigung (ablauf_grund "bestaetigung",
+// F.10.3), nennt er deren Faelligkeit statt des Gueltig-bis.
 String qualificationStatusLabel(Map<String, dynamic> st) {
   final bis = _date(st['gueltig_bis']?.toString());
   final tage = st['tage_bis_ablauf'];
+  if (st['ablauf_grund'] == 'bestaetigung') {
+    final faellig = _date(st['bestaetigung_faellig_am']?.toString());
+    switch (st['status']) {
+      case 'abgelaufen':
+        return 'abgelaufen – Bestätigung war fällig am $faellig';
+      case 'laeuft_ab':
+        return tage == 0 ? 'Bestätigung heute fällig' : 'Bestätigung fällig am $faellig (in $tage Tagen)';
+      case 'gueltig':
+        return bis.isEmpty ? 'gültig, Bestätigung bis $faellig' : 'gültig bis $bis, Bestätigung bis $faellig';
+    }
+  }
   switch (st['status']) {
     case 'fehlt':
       return 'fehlt';
@@ -199,6 +212,32 @@ String qualificationDocumentLabel(Map<String, dynamic> d) {
   return parts.join(' · ');
 }
 
+// Zwischenbestaetigungen (Backlog F.10.3.4): z. B. halbjaehrlich bei der
+// Schweisserpruefung. Nur fuer Nachweise einer Art mit Intervall.
+
+// buildQualificationConfirmationBody baut den Body fuer POST
+// /qualifications/{id}/confirmations; eine leere Notiz entfaellt.
+Map<String, dynamic> buildQualificationConfirmationBody({
+  required String bestaetigtAm,
+  required String bestaetigtDurch,
+  String note = '',
+}) {
+  final body = <String, dynamic>{'bestaetigt_am': bestaetigtAm, 'bestaetigt_durch': bestaetigtDurch.trim()};
+  if (note.trim().isNotEmpty) body['note'] = note.trim();
+  return body;
+}
+
+// qualificationConfirmationLabel beschreibt eine Bestaetigung in einer Zeile.
+String qualificationConfirmationLabel(Map<String, dynamic> c) {
+  final parts = <String>['bestätigt ${_date(c['bestaetigt_am']?.toString())}'];
+  final durch = c['bestaetigt_durch']?.toString() ?? '';
+  if (durch.isNotEmpty) parts.add(durch);
+  final note = c['note']?.toString() ?? '';
+  if (note.isNotEmpty) parts.add(note);
+  if (c['status'] == 'storniert') parts.add('storniert: ${c['storno_reason'] ?? ''}');
+  return parts.join(' · ');
+}
+
 class EmployeeQualificationsSection extends StatefulWidget {
   const EmployeeQualificationsSection({super.key, required this.api, required this.employeeId, this.filePicker});
   final ApiClient api;
@@ -216,6 +255,8 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
   List<dynamic> records = [];
   // Namen aller Arten, auch stillgelegter - die Nachweise tragen nur die ID.
   Map<String, String> typeNames = {};
+  // Arten mit Zwischenbestaetigung (bestaetigung_monate gesetzt).
+  Set<String> confirmationTypes = {};
   // Stellen des Mitarbeiters (F.11.6); positionsError, wenn sie sich nicht
   // laden liessen - der Stand bleibt dann trotzdem sichtbar.
   List<dynamic> positions = [];
@@ -247,11 +288,16 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
         posError = 'Stellen konnten nicht geladen werden: $e';
       }
       Map<String, String> names = typeNames;
+      Set<String> confirm = confirmationTypes;
       try {
         final types = await widget.api.listQualificationTypes(includeInactive: true);
         names = {
           for (final t in types)
             (t as Map<String, dynamic>)['id'].toString(): t['name']?.toString() ?? t['id'].toString(),
+        };
+        confirm = {
+          for (final t in types)
+            if ((t as Map<String, dynamic>)['bestaetigung_monate'] != null) t['id'].toString(),
         };
       } catch (_) {
         // Ohne Katalog bleibt die Liste benutzbar; angezeigt wird dann die ID.
@@ -261,6 +307,7 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
           standing = st;
           records = recs;
           typeNames = names;
+          confirmationTypes = confirm;
           positions = pos;
           positionsError = posError;
         });
@@ -670,6 +717,174 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
     );
   }
 
+  Future<void> _confirmationsDialog(Map<String, dynamic> record) async {
+    final qualId = record['id'].toString();
+    final title = '${typeNames[record['type_id']?.toString()] ?? record['type_id']} – ${qualificationRecordLabel(record)}';
+    final amCtrl = TextEditingController();
+    final durchCtrl = TextEditingController();
+    final noteCtrl = TextEditingController();
+    List<dynamic> items = [];
+    String? dialogError;
+    bool busy = true;
+    bool started = false;
+    bool changed = false;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) {
+          void update(VoidCallback f) {
+            if (ctx.mounted) setStateDialog(f);
+          }
+
+          Future<void> reload() async {
+            try {
+              final out = await widget.api.listQualificationConfirmations(qualId, includeStorniert: true);
+              update(() {
+                items = out;
+                dialogError = null;
+              });
+            } catch (e) {
+              update(() => dialogError = 'Bestätigungen konnten nicht geladen werden: $e');
+            } finally {
+              update(() => busy = false);
+            }
+          }
+
+          Future<void> create() async {
+            final am = parseDateInput(amCtrl.text);
+            if (am == null) {
+              update(() => dialogError = 'Bitte das Bestätigungsdatum als TT.MM.JJJJ angeben.');
+              return;
+            }
+            if (durchCtrl.text.trim().isEmpty) {
+              update(() => dialogError = 'Bitte angeben, wer bestätigt hat.');
+              return;
+            }
+            update(() {
+              busy = true;
+              dialogError = null;
+            });
+            try {
+              await widget.api.createQualificationConfirmation(
+                  qualId, buildQualificationConfirmationBody(bestaetigtAm: am, bestaetigtDurch: durchCtrl.text, note: noteCtrl.text));
+            } catch (e) {
+              update(() {
+                busy = false;
+                dialogError = 'Fehler: $e';
+              });
+              return;
+            }
+            changed = true;
+            amCtrl.clear();
+            noteCtrl.clear();
+            await reload();
+          }
+
+          Future<void> storno(Map<String, dynamic> c) async {
+            final reasonCtrl = TextEditingController();
+            final reason = await showDialog<String>(
+              context: ctx,
+              builder: (ctx2) => StatefulBuilder(
+                builder: (ctx2, setStateReason) => AlertDialog(
+                  title: const Text('Bestätigung stornieren'),
+                  content: TextField(
+                    controller: reasonCtrl,
+                    decoration: const InputDecoration(labelText: 'Begründung'),
+                    onChanged: (_) => setStateReason(() {}),
+                  ),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.of(ctx2).pop(), child: const Text('Abbrechen')),
+                    FilledButton(
+                      onPressed: reasonCtrl.text.trim().isEmpty ? null : () => Navigator.of(ctx2).pop(reasonCtrl.text.trim()),
+                      child: const Text('Stornieren'),
+                    ),
+                  ],
+                ),
+              ),
+            );
+            if (reason == null) return;
+            update(() => busy = true);
+            try {
+              await widget.api.stornoQualificationConfirmation(c['id'].toString(), reason);
+            } catch (e) {
+              update(() {
+                busy = false;
+                dialogError = 'Fehler: $e';
+              });
+              return;
+            }
+            changed = true;
+            await reload();
+          }
+
+          if (!started) {
+            started = true;
+            reload();
+          }
+          return AlertDialog(
+            title: const Text('Zwischenbestätigungen'),
+            content: SizedBox(
+              width: 480,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title),
+                    const Text('Ohne rechtzeitige Bestätigung gilt der Nachweis als abgelaufen.'),
+                    const SizedBox(height: 8),
+                    if (busy) const LinearProgressIndicator(minHeight: 2),
+                    if (!busy && items.isEmpty && dialogError == null) const Text('Noch keine Bestätigung.'),
+                    for (final c in items)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              qualificationConfirmationLabel(c as Map<String, dynamic>),
+                              overflow: TextOverflow.ellipsis,
+                              style: c['status'] == 'storniert' ? const TextStyle(color: Colors.grey) : null,
+                            ),
+                          ),
+                          if (_canWrite && c['status'] != 'storniert')
+                            IconButton(
+                              tooltip: 'Bestätigung stornieren',
+                              icon: const Icon(Icons.block, size: 18),
+                              onPressed: busy ? null : () => storno(c),
+                            ),
+                        ],
+                      ),
+                    if (_canWrite) ...[
+                      const SizedBox(height: 8),
+                      TextField(controller: amCtrl, decoration: const InputDecoration(labelText: 'Bestätigt am (TT.MM.JJJJ)')),
+                      TextField(controller: durchCtrl, decoration: const InputDecoration(labelText: 'Bestätigt durch (z. B. Schweißaufsicht)')),
+                      TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'Notiz')),
+                    ],
+                    if (dialogError != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              if (_canWrite)
+                TextButton.icon(
+                  onPressed: busy ? null : create,
+                  icon: const Icon(Icons.verified_outlined),
+                  label: const Text('Bestätigung erfassen'),
+                ),
+              FilledButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Schließen')),
+            ],
+          );
+        },
+      ),
+    );
+    // Eine neue oder stornierte Bestaetigung aendert den Stand.
+    if (changed) await _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -732,6 +947,12 @@ class _EmployeeQualificationsSectionState extends State<EmployeeQualificationsSe
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (confirmationTypes.contains(r['type_id']?.toString()))
+                  IconButton(
+                    tooltip: 'Zwischenbestätigungen',
+                    icon: const Icon(Icons.verified_outlined, size: 18),
+                    onPressed: () => _confirmationsDialog(r),
+                  ),
                 IconButton(
                   tooltip: 'Dokumente',
                   icon: const Icon(Icons.attach_file, size: 18),

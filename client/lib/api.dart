@@ -2197,6 +2197,42 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Zwischenbestaetigungen eines Nachweises (Backlog F.10.3.4, Server-Routen
+  // aus F.10.3.3). Lesen wie der Nachweis selbst, erfassen und stornieren
+  // mit qualifications.write. Die juengsten zuerst.
+  Future<List<dynamic>> listQualificationConfirmations(String qualificationId,
+      {bool includeStorniert = false}) =>
+      _getList('/api/v1/qualifications/$qualificationId/confirmations',
+          includeStorniert ? {'include_storniert': 'true'} : null);
+
+  // body: bestaetigt_am JJJJ-MM-TT, bestaetigt_durch, optional note.
+  Future<Map<String, dynamic>> createQualificationConfirmation(
+      String qualificationId, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualifications/$qualificationId/confirmations'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Storniert eine Bestaetigung (einmalig, mit Begruendung).
+  Future<Map<String, dynamic>> stornoQualificationConfirmation(
+      String confirmationId, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/qualifications/confirmations/$confirmationId/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Nachweisdokumente (Backlog F.10.2, Server-Routen aus F.10.1). Lesen wie
   // der Nachweis selbst, hochladen mit qualifications.write. Der Server
   // nimmt nur PDF/JPEG/PNG bis 10 MB an und erkennt die Art am Inhalt.

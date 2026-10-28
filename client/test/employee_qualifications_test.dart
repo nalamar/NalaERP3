@@ -29,7 +29,10 @@ class _FakeQualApi extends ApiClient {
     Map<String, List<dynamic>>? employeePositions,
     this.activePositions = const [],
     this.positionsError,
-  })  : employeePositions = employeePositions ?? {},
+    Map<String, List<dynamic>>? confirmations,
+    this.confirmationError,
+  })  : confirmations = confirmations ?? {},
+        employeePositions = employeePositions ?? {},
         standing = standing ?? {},
         records = records ?? {},
         documents = documents ?? {},
@@ -60,8 +63,44 @@ class _FakeQualApi extends ApiClient {
   final Object? positionsError;
   final List<MapEntry<String, List<String>>> positionCalls = [];
 
+  // Zwischenbestaetigungen je Nachweis (F.10.3.4).
+  final Map<String, List<dynamic>> confirmations;
+  final Object? confirmationError;
+  final List<MapEntry<String, Map<String, dynamic>>> confirmationsCreated = [];
+  final List<MapEntry<String, String>> confirmationStornos = [];
+  final List<String> confirmationListCalls = [];
+
   final List<String> standingCalls = [];
   final List<MapEntry<String, List<String>>> setCalls = [];
+
+  @override
+  Future<List<dynamic>> listQualificationConfirmations(String qualificationId, {bool includeStorniert = false}) async {
+    confirmationListCalls.add(qualificationId);
+    return List<dynamic>.from(confirmations[qualificationId] ?? const []);
+  }
+
+  @override
+  Future<Map<String, dynamic>> createQualificationConfirmation(String qualificationId, Map<String, dynamic> body) async {
+    if (confirmationError != null) throw confirmationError!;
+    confirmationsCreated.add(MapEntry(qualificationId, body));
+    final c = <String, dynamic>{'id': 'c-neu', 'qualification_id': qualificationId, 'status': 'active', ...body};
+    confirmations.putIfAbsent(qualificationId, () => []).insert(0, c);
+    return c;
+  }
+
+  @override
+  Future<Map<String, dynamic>> stornoQualificationConfirmation(String confirmationId, String reason) async {
+    confirmationStornos.add(MapEntry(confirmationId, reason));
+    for (final list in confirmations.values) {
+      for (final c in list) {
+        if ((c as Map<String, dynamic>)['id'] == confirmationId) {
+          c['status'] = 'storniert';
+          c['storno_reason'] = reason;
+        }
+      }
+    }
+    return {'id': confirmationId, 'status': 'storniert'};
+  }
 
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
@@ -984,6 +1023,194 @@ void main() {
         await expectLater(
           mock({'error': {'code': 'conflict', 'message': 'Stelle ist stillgelegt'}}, () => api.setEmployeePositions('e1', ['x']), status: 409),
           throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Stelle ist stillgelegt')),
+        );
+      });
+    });
+  });
+
+  // Zwischenbestaetigungen (Backlog F.10.3.4).
+  group('Zwischenbestätigungen', () {
+    test('Stand mit Ablaufgrund Bestätigung', () {
+      Map<String, dynamic> st(String status, {String? bis, int? tage}) =>
+          {..._st('S', status, bis: bis, tage: tage), 'ablauf_grund': 'bestaetigung', 'bestaetigung_faellig_am': '2027-01-10T00:00:00Z'};
+      expect(qualificationStatusLabel(st('abgelaufen', bis: '2029-01-15', tage: -22)), 'abgelaufen – Bestätigung war fällig am 10.01.2027');
+      expect(qualificationStatusLabel(st('laeuft_ab', bis: '2029-01-15', tage: 40)), 'Bestätigung fällig am 10.01.2027 (in 40 Tagen)');
+      expect(qualificationStatusLabel(st('laeuft_ab', bis: '2029-01-15', tage: 0)), 'Bestätigung heute fällig');
+      expect(qualificationStatusLabel(st('gueltig', bis: '2029-01-15', tage: 131)), 'gültig bis 15.01.2029, Bestätigung bis 10.01.2027');
+      expect(qualificationStatusLabel(st('gueltig', tage: 131)), 'gültig, Bestätigung bis 10.01.2027');
+      // Ohne Ablaufgrund bleibt es beim Gueltig-bis, auch wenn eine Faelligkeit mitkommt.
+      expect(qualificationStatusLabel({..._st('S', 'gueltig', bis: '2029-01-15'), 'bestaetigung_faellig_am': '2029-06-01T00:00:00Z'}), 'gültig bis 15.01.2029');
+    });
+
+    test('Body und Zeile', () {
+      expect(buildQualificationConfirmationBody(bestaetigtAm: '2026-07-10', bestaetigtDurch: ' Schweißaufsicht ', note: '  '),
+          {'bestaetigt_am': '2026-07-10', 'bestaetigt_durch': 'Schweißaufsicht'});
+      expect(buildQualificationConfirmationBody(bestaetigtAm: '2026-07-10', bestaetigtDurch: 'A', note: ' Nord '),
+          {'bestaetigt_am': '2026-07-10', 'bestaetigt_durch': 'A', 'note': 'Nord'});
+      expect(qualificationConfirmationLabel({'bestaetigt_am': '2026-07-10T00:00:00Z', 'bestaetigt_durch': 'Schweißaufsicht', 'note': 'Nord'}),
+          'bestätigt 10.07.2026 · Schweißaufsicht · Nord');
+      expect(qualificationConfirmationLabel({'bestaetigt_am': '2026-07-10T00:00:00Z', 'bestaetigt_durch': 'A', 'status': 'storniert', 'storno_reason': 'Tippfehler'}),
+          'bestätigt 10.07.2026 · A · storniert: Tippfehler');
+    });
+
+    final weldTypes = [
+      {'id': 't1', 'name': 'Erste Hilfe'},
+      {'id': 'tw', 'name': 'Schweißerprüfung', 'bestaetigung_monate': 6},
+    ];
+    Map<String, List<dynamic>> weldRecords() => {
+          'e1': [
+            {'id': 'qw', 'type_id': 'tw', 'erworben_am': '2026-01-15T00:00:00Z', 'gueltig_bis': '2029-01-15T00:00:00Z'},
+            {'id': 'q1', 'type_id': 't1', 'erworben_am': '2026-03-15T00:00:00Z'},
+          ],
+        };
+
+    testWidgets('Knopf nur bei Arten mit Intervall; ohne Schreibrecht nur lesen', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(types: weldTypes, records: weldRecords(), confirmations: {
+        'qw': [
+          {'id': 'c1', 'bestaetigt_am': '2026-07-10T00:00:00Z', 'bestaetigt_durch': 'Schweißaufsicht', 'status': 'active'},
+        ],
+      });
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Zwischenbestätigungen'), findsOneWidget);
+      expect(find.byTooltip('Dokumente'), findsNWidgets(2));
+
+      await tester.tap(find.byTooltip('Zwischenbestätigungen'));
+      await tester.pumpAndSettle();
+      expect(api.confirmationListCalls, ['qw']);
+      expect(find.text('bestätigt 10.07.2026 · Schweißaufsicht'), findsOneWidget);
+      expect(find.text('Bestätigung erfassen'), findsNothing);
+      expect(find.byTooltip('Bestätigung stornieren'), findsNothing);
+      await tester.tap(find.text('Schließen'));
+      await tester.pumpAndSettle();
+      // Nichts geaendert: der Stand wird nicht neu geladen.
+      expect(api.standingCalls, ['e1']);
+    });
+
+    testWidgets('erfassen: ungültige Eingaben bleiben im Dialog, danach Liste und Stand neu geladen', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(
+          permissions: const {'qualifications.read', 'qualifications.write'}, types: weldTypes, records: weldRecords());
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Zwischenbestätigungen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Noch keine Bestätigung.'), findsOneWidget);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Bestätigt am (TT.MM.JJJJ)'), '31.02.2026');
+      await tester.tap(find.text('Bestätigung erfassen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bitte das Bestätigungsdatum als TT.MM.JJJJ angeben.'), findsOneWidget);
+      await tester.enterText(find.widgetWithText(TextField, 'Bestätigt am (TT.MM.JJJJ)'), '10.07.2026');
+      await tester.tap(find.text('Bestätigung erfassen'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bitte angeben, wer bestätigt hat.'), findsOneWidget);
+      expect(api.confirmationsCreated, isEmpty);
+
+      await tester.enterText(find.widgetWithText(TextField, 'Bestätigt durch (z. B. Schweißaufsicht)'), 'Schweißaufsicht');
+      await tester.tap(find.text('Bestätigung erfassen'));
+      await tester.pumpAndSettle();
+      expect(api.confirmationsCreated.single.key, 'qw');
+      expect(api.confirmationsCreated.single.value, {'bestaetigt_am': '2026-07-10', 'bestaetigt_durch': 'Schweißaufsicht'});
+      expect(api.confirmationListCalls, ['qw', 'qw']);
+      expect(find.text('Noch keine Bestätigung.'), findsNothing);
+
+      await tester.tap(find.text('Schließen'));
+      await tester.pumpAndSettle();
+      expect(api.standingCalls, ['e1', 'e1']);
+    });
+
+    testWidgets('Fehler des Servers bleibt im Dialog', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(
+        permissions: const {'qualifications.read', 'qualifications.write'},
+        types: weldTypes,
+        records: weldRecords(),
+        confirmationError: const ApiException(statusCode: 400, message: 'Bestätigungsdatum darf nicht vor dem Erwerbsdatum liegen'),
+      );
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Zwischenbestätigungen'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Bestätigt am (TT.MM.JJJJ)'), '01.01.2026');
+      await tester.enterText(find.widgetWithText(TextField, 'Bestätigt durch (z. B. Schweißaufsicht)'), 'A');
+      await tester.tap(find.text('Bestätigung erfassen'));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Bestätigungsdatum darf nicht vor dem Erwerbsdatum liegen'), findsOneWidget);
+      expect(find.text('Zwischenbestätigungen'), findsOneWidget);
+    });
+
+    testWidgets('stornieren nur mit Begründung; Abbrechen storniert nichts', (tester) async {
+      await _desktop(tester);
+      final api = _FakeQualApi(
+        permissions: const {'qualifications.read', 'qualifications.write'},
+        types: weldTypes,
+        records: weldRecords(),
+        confirmations: {
+          'qw': [
+            {'id': 'c1', 'bestaetigt_am': '2026-07-10T00:00:00Z', 'bestaetigt_durch': 'Schweißaufsicht', 'status': 'active'},
+          ],
+        },
+      );
+      await tester.pumpWidget(_wrap(EmployeeQualificationsSection(api: api, employeeId: 'e1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Zwischenbestätigungen'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byTooltip('Bestätigung stornieren'));
+      await tester.pumpAndSettle();
+      expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Stornieren')).onPressed, isNull);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(api.confirmationStornos, isEmpty);
+
+      await tester.tap(find.byTooltip('Bestätigung stornieren'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.widgetWithText(TextField, 'Begründung'), 'Falsches Datum');
+      await tester.pump();
+      await tester.tap(find.widgetWithText(FilledButton, 'Stornieren'));
+      await tester.pumpAndSettle();
+      expect(api.confirmationStornos.single, isA<MapEntry<String, String>>().having((e) => '${e.key}:${e.value}', 'storno', 'c1:Falsches Datum'));
+      expect(find.text('bestätigt 10.07.2026 · Schweißaufsicht · storniert: Falsches Datum'), findsOneWidget);
+      // Eine stornierte Bestaetigung laesst sich nicht noch einmal stornieren.
+      expect(find.byTooltip('Bestätigung stornieren'), findsNothing);
+    });
+
+    group('API-Methoden', () {
+      final api = ApiClient(baseUrl: 'http://api.test');
+      late List<http.Request> calls;
+
+      Future<T> mock<T>(Object body, Future<T> Function() call, {int status = 200}) {
+        final client = MockClient((req) async {
+          calls.add(req);
+          return http.Response.bytes(utf8.encode(jsonEncode(body)), status, headers: {'content-type': 'application/json'});
+        });
+        return http.runWithClient(call, () => client);
+      }
+
+      setUp(() => calls = []);
+
+      test('lesen, erfassen, stornieren; Fehler werden zur ApiException', () async {
+        await mock([], () => api.listQualificationConfirmations('q1'));
+        await mock([], () => api.listQualificationConfirmations('q1', includeStorniert: true));
+        final created = await mock({'id': 'c1'}, () => api.createQualificationConfirmation('q1', {'bestaetigt_am': '2026-07-10', 'bestaetigt_durch': 'A'}), status: 201);
+        final storno = await mock({'id': 'c1', 'status': 'storniert'}, () => api.stornoQualificationConfirmation('c1', 'falsch'));
+        expect(calls.map((c) => '${c.method} ${c.url.path}?${c.url.query}'), [
+          'GET /api/v1/qualifications/q1/confirmations?',
+          'GET /api/v1/qualifications/q1/confirmations?include_storniert=true',
+          'POST /api/v1/qualifications/q1/confirmations?',
+          'POST /api/v1/qualifications/confirmations/c1/storno?',
+        ]);
+        expect(jsonDecode(calls[2].body), {'bestaetigt_am': '2026-07-10', 'bestaetigt_durch': 'A'});
+        expect(jsonDecode(calls[3].body), {'reason': 'falsch'});
+        expect(calls[2].headers['content-type'], startsWith('application/json'));
+        expect(created['id'], 'c1');
+        expect(storno['status'], 'storniert');
+        await expectLater(mock({'id': 'c1'}, () => api.createQualificationConfirmation('q1', {}), status: 200), throwsA(isA<ApiException>()));
+        await expectLater(
+          mock({'error': {'code': 'conflict', 'message': 'Bestätigung ist bereits storniert'}}, () => api.stornoQualificationConfirmation('c1', 'x'), status: 409),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message', 'Bestätigung ist bereits storniert')),
         );
       });
     });
