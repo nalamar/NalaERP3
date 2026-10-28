@@ -210,3 +210,24 @@ nicht bestanden** schlägt der Service **keinen** Folgetermin aus dem
 Intervall vor — dann steht eine Nachprüfung an, nicht der reguläre
 Termin in 24 Monaten. Die Frist der Nachprüfung wird angegeben (bei der
 HU zum Monatsende) oder fehlt. Gefunden beim Test der Fälligkeitsliste.
+
+Präzisierung G.3c (2026-10-28, technische Ausgestaltung von §6, keine
+neue fachliche Entscheidung):
+
+- **Lückenlos** heißt: eine neue Fahrt beginnt genau am Ende ihrer
+  Vorgängerin (der nicht stornierten Fahrt mit dem höchsten Ende bis zu
+  ihrem Beginn); Kilometerbereiche überlappen nie; das Datum passt zur
+  Reihenfolge. Damit ein stornierter Eintrag **ersetzt** werden kann, darf
+  eine Fahrt in eine Lücke fallen (am Ende der Vorgängerin beginnend, ohne
+  die Nachfolgerin zu überlappen); eine verbleibende Lücke wird angezeigt,
+  nicht verschwiegen. Vor der ersten Fahrt darf nur nachgetragen werden,
+  wenn die Kette verbunden bleibt.
+- Dienstfahrt: **Reiseziel und Reisezweck Pflicht**, der aufgesuchte
+  Geschäftspartner soweit vorhanden (nicht jede Fahrt hat einen, z. B. zur
+  eigenen Baustelle) — ANNAHME. Privatfahrt: nur Kilometer; Arbeitsweg:
+  ohne Pflichtangaben.
+- Erfassungszeitpunkt wird gespeichert und nicht geändert (Nachweis
+  "zeitnah"); eine Frist wird nicht erzwungen.
+- Das Fahrtenbuch führt nur, wer am Fahrzeug "Fahrtenbuch führen" gesetzt
+  hat; Fahrten nach der Abmeldung oder vor der Erstzulassung werden
+  abgelehnt.

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3a.3** und damit **G.3a** (2026-10-28,
+> Zuletzt abgeschlossen: **G.3c.1** (2026-10-28, Server: Migration 103
+> `fleet_trips`, Fachregeln `trip_rules.go` — lückenloser km-Stand,
+> Dienstfahrt mit Ziel und Zweck; Präzisierung in ADR 0032, ANNAHME:
+> Geschäftspartner nicht Pflicht). G.3c geteilt (Migration/Regeln,
+> Service, Routen, Client). Davor **G.3a.3** und damit **G.3a** (2026-10-28,
 > Client: Abschnitt "Fahrer" auf der Detailseite des Fahrzeugs — zuordnen
 > mit Hinweis-Dialog, beenden, stornieren). Davor **G.3a.2** (2026-10-28, Server: Routen
 > `/fleet/assignments` — zuordnen, Liste, Einzelabruf, beenden, stornieren;
@@ -100,10 +104,9 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3c Fahrtenbuch** (ADR 0032 §6: optional je Fahrzeug,
-> geschlossene Form, lückenloser km-Stand, Fahrer erfassen selbst mit
-> `fleet.self`) — zuerst G.3c.1 Migration und Fachregeln. Danach G.3d
-> Kosten.
+> Arbeit: G.3c.2** (Service Fahrtenbuch: erfassen unter Fahrzeugsperre,
+> stornieren, lesen mit Lücken, Wächtertest). Danach G.3c.3 Routen,
+> G.3c.4 Client, G.3d Kosten.
 > Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
@@ -133,7 +136,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 103, ADR 0033.
+> Nächste freie Migration 104, ADR 0033.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
