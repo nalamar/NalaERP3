@@ -32,6 +32,7 @@ import (
 	"nalaerp3/internal/fleet"
 	"nalaerp3/internal/hr"
 	"nalaerp3/internal/materials"
+	"nalaerp3/internal/notices"
 	"nalaerp3/internal/pdfgen"
 	"nalaerp3/internal/projects"
 	"nalaerp3/internal/purchasing"
@@ -1754,6 +1755,12 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountAssetInspectionRoutes(protected, assetSvc)
 	mountFleetRoutes(protected, fleet.NewVehicleService(pg))
 	mountFleetScheduleRoutes(protected, fleet.NewScheduleService(pg))
+	mountNoticeRoutes(protected, notices.NewService(
+		notices.QualificationsDue{Svc: qualificationSvc},
+		notices.OwnQualifications{Svc: qualificationSvc},
+		notices.AssetInspectionsDue{Svc: assetSvc},
+		notices.FleetSchedulesDue{Svc: fleet.NewScheduleService(pg)},
+	), timeEntrySvc)
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
 	protected.Route("/bank-statements", func(r chi.Router) {
