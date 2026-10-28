@@ -3,6 +3,7 @@ import '../api.dart';
 import '../commercial_destinations.dart';
 import '../commercial_context.dart';
 import '../widgets/commercial_summary_widgets.dart';
+import '../widgets/dashboard_notices.dart';
 import 'contacts_screen.dart';
 import 'employees_page.dart';
 import 'absence_overview_page.dart';
@@ -322,17 +323,28 @@ class DashboardPage extends StatelessWidget {
           constraints: const BoxConstraints(maxWidth: 900),
           child: Padding(
             padding: const EdgeInsets.all(24),
-            child: cards.isEmpty
-                ? const Center(
-                    child: Text(
-                        'Für diesen Benutzer sind aktuell keine Bereiche freigeschaltet.'),
-                  )
-                : Wrap(
-                    alignment: WrapAlignment.center,
-                    runSpacing: 24,
-                    spacing: 24,
-                    children: cards,
-                  ),
+            // Hinweise (F.10.4.2) ueber den Karten; scrollbar, damit sie
+            // die Karten nicht aus dem Bild schieben.
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DashboardNotices(api: api),
+                  cards.isEmpty
+                      ? const Center(
+                          child: Text(
+                              'Für diesen Benutzer sind aktuell keine Bereiche freigeschaltet.'),
+                        )
+                      : Wrap(
+                          alignment: WrapAlignment.center,
+                          runSpacing: 24,
+                          spacing: 24,
+                          children: cards,
+                        ),
+                ],
+              ),
+            ),
           ),
         ),
       ),

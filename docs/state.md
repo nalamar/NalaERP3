@@ -7,7 +7,8 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.10.4.1** (2026-10-28, Server: Paket
+> Zuletzt abgeschlossen: **F.10.4.2** und damit **F.10.4** und **F.10**
+> bis auf F.14 (2026-10-28, Client: Hinweise auf dem Dashboard). Davor **F.10.4.1** (2026-10-28, Server: Paket
 > `internal/notices`, `GET /notices` je nach Rechten, nur Anzahlen;
 > `Sender`-Schnittstelle für F.14). Davor **F.10.3.4** und damit **F.10.3** (2026-10-28,
 > Client: Zwischenbestätigungen je Nachweis ansehen/erfassen/stornieren,
@@ -86,18 +87,15 @@
 > Upload PDF/JPEG/PNG bis 10 MB, eigene Routen, kein allgemeiner
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
-> **F.10 offen: F.10.4.2** (entschieden,
-> siehe oben). **Nächste Arbeit: F.10.4.2** (Client: Hinweise auf dem
-> Dashboard — `GET /notices` laden, je Art eine Zeile mit Anzahl und
-> Farbe nach Dringlichkeit, Klick öffnet die passende Liste; ohne
-> Hinweise nichts bzw. "Nichts fällig"). **F.14 E-Mail wartet auf den
-> SMTP-Zugang.** Danach G.3a Fahrerzuordnung, zuerst G.3a.1 (Server:
+> **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
+> siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
+> Arbeit: G.3a Fahrerzuordnung, zuerst G.3a.1** (Server:
 > Migration + Service — Zuordnung Fahrzeug ↔ Mitarbeiter als Beleg mit
 > Beginn/Ende nach dem Muster der Betriebsmittel-Ausgabe; Sperre bei
 > gesperrtem HU/UVV-Termin, Hinweise bei überfälligem Termin und bei
 > nicht gültiger `FUEHRERSCHEINKONTROLLE` des Mitarbeiters). Danach
 > G.3a.2 Routen, G.3a.3 Client.
-> Offen sonst: F.10.3/F.10.4 (warten auf Nutzer), F.11.7 und
+> Offen sonst: F.14 (wartet auf SMTP-Zugang), F.11.7 und
 > F.12 (später), F.6 (fachliche Klärung), 0.45 (DB-Trigger).
 > Live-Stand enthält F.10.1/F.10.2/F.10.5 noch nicht (Neubau nur auf
 > Wunsch). Client-Suite: 356 / 0. Docker Desktop muss für Integrationstests laufen (2026-10-23

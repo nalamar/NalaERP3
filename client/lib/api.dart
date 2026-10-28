@@ -2197,6 +2197,11 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Hinweise fuer den angemeldeten Benutzer (Backlog F.10.4.2, Server
+  // F.10.4.1): je Art Anzahlen nach Stand, nur Bereiche, die er sehen darf.
+  // Keine Namen - die stehen in den Listen, die ein Hinweis oeffnet.
+  Future<List<dynamic>> listNotices() => _getList('/api/v1/notices');
+
   // Zwischenbestaetigungen eines Nachweises (Backlog F.10.3.4, Server-Routen
   // aus F.10.3.3). Lesen wie der Nachweis selbst, erfassen und stornieren
   // mit qualifications.write. Die juengsten zuerst.
