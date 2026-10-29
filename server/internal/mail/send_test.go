@@ -430,6 +430,34 @@ func TestSendFailures(t *testing.T) {
 	}
 }
 
+// Mit RedirectTo geht jede Nachricht nur an die Umleitung; ungueltige
+// Nachrichten werden trotzdem abgelehnt.
+func TestSendRedirect(t *testing.T) {
+	f, cfg, s := startFake(t, func(f *fakeSMTP) { f.implicitTLS = true })
+	s.RedirectTo = "umleitung@example.test"
+	msg := testMsg
+	msg.To = []string{"a@example.test", "b@example.test"}
+	if err := s.Send(context.Background(), cfg, msg); err != nil {
+		t.Fatalf("umgeleitet: %v", err)
+	}
+	got := f.mails()
+	if len(got) != 1 || strings.Join(got[0].to, ",") != "umleitung@example.test" {
+		t.Fatalf("Empfaenger: %+v", got)
+	}
+	m, subj, _ := decode(t, got[0].data)
+	if subj != "[Umgeleitet] Fällige Nachweise" || m.Header.Get("To") != "umleitung@example.test" {
+		t.Fatalf("Kopf: %q %q", subj, m.Header.Get("To"))
+	}
+	bad := testMsg
+	bad.To = []string{"a@example.test\r\nRCPT TO:<b@example.test>"}
+	if err := s.Send(context.Background(), cfg, bad); err == nil || err.Error() != "Empfängeradresse ungültig" {
+		t.Fatalf("ungueltig umgeleitet: %v", err)
+	}
+	if len(f.mails()) != 1 {
+		t.Fatal("ungueltige Nachricht umgeleitet zugestellt")
+	}
+}
+
 // AUTH LOGIN gibt Benutzer und Passwort nie ueber eine unverschluesselte Verbindung.
 func TestLoginAuthRequiresTLS(t *testing.T) {
 	a := &loginAuth{user: fakeUser, pass: fakePass}
@@ -495,7 +523,11 @@ func TestSendLive(t *testing.T) {
 	port, _ := strconv.Atoi(os.Getenv("DEV_SMTP_PORT"))
 	cfg := SMTPConfig{Host: os.Getenv("DEV_SMTP_HOST"), Port: port, Sicherheit: os.Getenv("DEV_SMTP_SICHERHEIT"),
 		Benutzer: os.Getenv("DEV_SMTP_USER"), Passwort: os.Getenv("DEV_SMTP_PASSWORD"), AbsenderAdresse: os.Getenv("DEV_SMTP_FROM"), AbsenderName: "Nala ERP Test"}
-	to := cfg.AbsenderAdresse
+	// Empfaenger nur die vom Nutzer vorgegebene Testadresse (DEV_SMTP_TEST_TO).
+	to := os.Getenv("DEV_SMTP_TEST_TO")
+	if to == "" {
+		t.Fatal("DEV_SMTP_TEST_TO fehlt - Testmails nur an die vorgegebene Testadresse")
+	}
 	err := (&Sender{}).Send(context.Background(), cfg, Message{To: []string{to}, Subject: "Nala ERP: Testversand äöü", Text: "Testnachricht aus TestSendLive.\nUmlaute: äöüß"})
 	if err != nil {
 		t.Fatalf("Versand: %v", err)

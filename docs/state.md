@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.2b** (2026-10-29, Server: SMTP-Versand
+> Zuletzt abgeschlossen: **F.14.2c** und damit **F.14.2** (2026-10-29,
+> Server: Routen `/settings/mail` mit Testversand; **Vorgabe des Nutzers:
+> Testmails während der Entwicklung nur an die vorgegebene Testadresse** —
+> `MAIL_REDIRECT_TO` und `DEV_SMTP_TEST_TO` in der lokalen `.env`, nicht im
+> Repo). Nächste: **F.14.3** Client.
+> Davor **F.14.2b** (2026-10-29, Server: SMTP-Versand
 > `mail.Sender` — nur SSL oder STARTTLS, PLAIN/LOGIN, Fehler ohne
 > Serverantwort; Test-Mailserver im Testprozess; einmal echt an das
 > Entwicklungskonto über 465 und 587 versandt; "fortsetzen" als Zustimmung
@@ -124,8 +129,8 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail: Zugang liegt vor (2026-10-29), in Arbeit.** **Nächste
-> Arbeit: F.14.2c** (Routen, Testversand; F.14.2b SMTP-Versand erledigt), danach
-> F.14.3 Client, F.14.4 Versand der Hinweise (Umfang klären). Dann
+> Arbeit: F.14.3** (Client: Einstellungsseite mit Testversand; F.14.2 erledigt), danach
+> F.14.4 Versand der Hinweise (Umfang klären). Dann
 > **G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
 > eigene Fahrten, `fleet.read` alle, Storno mit `fleet.write` — ANNAHME;
 > neue Meldungen in `classifyDomainError`, u. a. "kein Fahrtenbuch" → 409).

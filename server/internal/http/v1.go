@@ -31,6 +31,7 @@ import (
 	"nalaerp3/internal/contacts"
 	"nalaerp3/internal/fleet"
 	"nalaerp3/internal/hr"
+	"nalaerp3/internal/mail"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/notices"
 	"nalaerp3/internal/pdfgen"
@@ -38,12 +39,15 @@ import (
 	"nalaerp3/internal/purchasing"
 	"nalaerp3/internal/quotes"
 	"nalaerp3/internal/sales"
+	"nalaerp3/internal/secretbox"
 	"nalaerp3/internal/settings"
 	"time"
 )
 
 type V1RouterOptions struct {
 	GAEBImportParser quotes.GAEBImportParser
+	// MailTransport verschickt Mails (nil: mail.Sender mit MAIL_REDIRECT_TO).
+	MailTransport MailTransport
 }
 
 func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
@@ -1763,6 +1767,19 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		notices.FleetSchedulesDue{Svc: fleet.NewScheduleService(pg)},
 	), timeEntrySvc)
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
+
+	// Mail-Zugang (F.14.2c). Ein ungueltiger Schluessel verhindert schon den
+	// Start (config.ValidateForStartup); hier gilt er dann als nicht eingerichtet.
+	settingsBox, err := secretbox.FromEnvValue(cfg.SettingsEncryptionKey)
+	if err != nil {
+		log.Printf("SETTINGS_ENCRYPTION_KEY unbrauchbar - verschluesselte Einstellungen nicht verfuegbar")
+		settingsBox = nil
+	}
+	mailTransport := options.MailTransport
+	if mailTransport == nil {
+		mailTransport = &mail.Sender{RedirectTo: cfg.MailRedirectTo}
+	}
+	mountMailSettingsRoutes(protected, mail.NewSettingsService(pg, settingsBox), mailTransport, cfg.MailRedirectTo != "")
 
 	protected.Route("/bank-statements", func(r chi.Router) {
 		r.With(requirePermission("bank.read")).Get("/", func(w http.ResponseWriter, req *http.Request) {
@@ -5111,6 +5128,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits zurückgegeben"),
 		strings.Contains(msg, "bereits abgemeldet"),
 		strings.Contains(msg, "fahrzeug ist abgemeldet"),
+		strings.Contains(msg, "nicht vollständig eingerichtet"),
+		strings.Contains(msg, "kein schlüssel für verschlüsselte einstellungen"),
+		strings.Contains(msg, "lässt sich nicht entschlüsseln"),
 		strings.Contains(msg, "mitarbeiter ist nicht aktiv"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
@@ -5186,7 +5206,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nicht überschreiten"),
 		strings.Contains(msg, "nur bei sonstigen terminen"),
 		strings.Contains(msg, "muss nach dem datum liegen"),
-		strings.Contains(msg, "muss über dem kilometerstand liegen"):
+		strings.Contains(msg, "muss über dem kilometerstand liegen"),
+		strings.Contains(msg, "entweder neu setzen oder löschen"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

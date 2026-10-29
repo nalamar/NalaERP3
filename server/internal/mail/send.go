@@ -68,7 +68,13 @@ type Sender struct {
 	Timeout time.Duration
 	// Now fuer die Date-Kopfzeile (nil: time.Now).
 	Now func() time.Time
+	// RedirectTo leitet jede Nachricht an genau diese Adresse um (Entwicklung:
+	// MAIL_REDIRECT_TO); der Betreff zeigt die Umleitung.
+	RedirectTo string
 }
+
+// RedirectSubjectPrefix steht vor dem Betreff umgeleiteter Nachrichten.
+const RedirectSubjectPrefix = "[Umgeleitet] "
 
 // BuildMessage erzeugt die Nachricht mit Kopfzeilen (RFC 5322, UTF-8,
 // quoted-printable). Empfaenger und Betreff werden vorher geprueft.
@@ -107,6 +113,9 @@ func messageID(from string) string {
 	_, _ = rand.Read(r)
 	return "<" + hex.EncodeToString(r) + "@" + domain + ">"
 }
+
+// ValidateMessage prueft Zugang und Nachricht wie Send vor dem Verbinden.
+func ValidateMessage(cfg SMTPConfig, msg Message) error { return validateMessage(cfg, msg) }
 
 func validateMessage(cfg SMTPConfig, msg Message) error {
 	if cfg.Host == "" || cfg.Benutzer == "" || cfg.Passwort == "" || cfg.AbsenderAdresse == "" || cfg.Port < 1 || cfg.Port > 65535 {
@@ -147,6 +156,13 @@ func (s *Sender) Send(ctx context.Context, cfg SMTPConfig, msg Message) error {
 	now := time.Now
 	if s.Now != nil {
 		now = s.Now
+	}
+	if s.RedirectTo != "" {
+		if err := validateMessage(cfg, msg); err != nil {
+			return err
+		}
+		msg.To = []string{s.RedirectTo}
+		msg.Subject = RedirectSubjectPrefix + msg.Subject
 	}
 	data, err := BuildMessage(cfg, msg, now())
 	if err != nil {

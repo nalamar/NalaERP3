@@ -67,3 +67,28 @@ func TestValidateForStartupSettingsEncryptionKey(t *testing.T) {
 		t.Fatal("SETTINGS_ENCRYPTION_KEY nicht gelesen")
 	}
 }
+
+func TestValidateForStartupMailRedirect(t *testing.T) {
+	for name, tc := range map[string]struct {
+		env, to string
+		wantErr bool
+	}{
+		"leer":               {"development", "", false},
+		"gueltig":            {"development", "test@example.test", false},
+		"leer in Produktion": {"production", "", false},
+		"in Produktion":      {"production", "test@example.test", true},
+		"Produktion gross":   {"Production", "test@example.test", true},
+		"mit Namen":          {"development", "Test <test@example.test>", true},
+		"Liste":              {"development", "a@example.test, b@example.test", true},
+		"keine Adresse":      {"development", "kein-at", true},
+	} {
+		cfg := &Config{AppEnv: tc.env, JWTSecret: "a-sufficiently-long-random-secret-value-1234567890", MailRedirectTo: tc.to}
+		if err := ValidateForStartup(cfg); (err != nil) != tc.wantErr {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	t.Setenv("MAIL_REDIRECT_TO", " test@example.test ")
+	if cfg := Load(); cfg.MailRedirectTo != "test@example.test" {
+		t.Fatalf("MAIL_REDIRECT_TO: %q", cfg.MailRedirectTo)
+	}
+}

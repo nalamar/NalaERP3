@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	netmail "net/mail"
 	"os"
 	"strconv"
 	"strings"
@@ -26,6 +27,10 @@ type Config struct {
 	// Schluessel fuer verschluesselte Einstellungen, z. B. das Passwort des
 	// Mail-Zugangs (ADR 0033): Base64, 32 Byte. Leer = nicht eingerichtet.
 	SettingsEncryptionKey string
+
+	// Leitet jede ausgehende Mail an diese eine Adresse um (Entwicklung,
+	// Backlog F.14.2c). Leer = keine Umleitung; in Produktion verboten.
+	MailRedirectTo string
 
 	// Rate-Limiting fuer /auth/login (Subtask 0.5.2): Anzahl fehlgeschlagener
 	// Anmeldeversuche pro IP-Adresse, bevor sie fuer die Fensterdauer gesperrt wird.
@@ -69,6 +74,7 @@ func Load() *Config {
 	}
 	cfg.JWTSecret = getenv("JWT_SECRET", "dev-secret-change-me")
 	cfg.SettingsEncryptionKey = os.Getenv("SETTINGS_ENCRYPTION_KEY")
+	cfg.MailRedirectTo = strings.TrimSpace(os.Getenv("MAIL_REDIRECT_TO"))
 	cfg.AccessTokenTTLMinutes = 15
 	if v := os.Getenv("ACCESS_TOKEN_TTL_MINUTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -147,6 +153,15 @@ func ValidateForStartup(cfg *Config) error {
 	// fehlt er, laesst sich nur kein Passwort speichern (ADR 0033).
 	if _, err := secretbox.FromEnvValue(cfg.SettingsEncryptionKey); err != nil {
 		return err
+	}
+	// Eine Umleitung in Produktion wuerde jede Mail still verschlucken.
+	if cfg.MailRedirectTo != "" {
+		if strings.EqualFold(cfg.AppEnv, "production") {
+			return errors.New("MAIL_REDIRECT_TO ist in Produktivumgebung (APP_ENV=production) nicht erlaubt")
+		}
+		if a, err := netmail.ParseAddress(cfg.MailRedirectTo); err != nil || a.Address != cfg.MailRedirectTo {
+			return errors.New("MAIL_REDIRECT_TO ist keine gültige E-Mail-Adresse")
+		}
 	}
 	return nil
 }
