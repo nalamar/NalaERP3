@@ -19,6 +19,7 @@ import 'asset_inspections_due_page.dart';
 import 'fleet_page.dart';
 import 'fleet_due_page.dart';
 import 'my_trips_page.dart';
+import 'notice_mail_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -312,6 +313,11 @@ class DashboardPage extends StatelessWidget {
         backgroundColor: color,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => NoticeMailPrefsPage(api: api))),
+            icon: const Icon(Icons.mark_email_unread_rounded),
+            tooltip: 'Hinweis-Mails',
+          ),
           IconButton(
             onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => ChangePasswordPage(api: api))),
             icon: const Icon(Icons.password_rounded),

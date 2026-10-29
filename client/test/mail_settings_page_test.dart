@@ -58,6 +58,9 @@ class _FakeApi extends ApiClient {
   }
 
   @override
+  Future<List<dynamic>> listNoticeMailLog({int? limit}) async => const [];
+
+  @override
   Future<Map<String, dynamic>> sendMailTest(String an) async {
     tests.add(an);
     if (testError != null) throw testError!;

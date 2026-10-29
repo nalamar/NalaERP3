@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.4c1** (2026-10-30, Server: `/notice-mails/me` eigene
+> Zuletzt abgeschlossen: **F.14.4c2** und damit **F.14.4** und **F.14** (2026-10-30,
+> Client: Seite "Hinweis-Mails", Versandprotokoll auf "E-Mail-Versand").
+> Auftrag des Nutzers erledigt: G.3 beendet, F.14.4 wie vorgeschlagen.
+> Nächste: Entscheidung des Nutzers (offen aus ADR 0032: Fälligkeit von
+> Terminen nach km aus dem Fahrtenbuch; sonst nächstes Epic laut Backlog).
+> Davor **F.14.4c1** (2026-10-30, Server: `/notice-mails/me` eigene
 > Abbestellung, `/notice-mails/log` Protokoll). Nächste: **F.14.4c2** Client.
 > Davor **F.14.4b** (2026-10-30, Server: Zeitsteuerung werktags 7:00 im
 > API-Prozess, `NOTICE_MAILS_DISABLED`). Nächste: **F.14.4c** Routen und

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
+import 'notice_mail_page.dart';
 
 // E-Mail-Versand (ADR 0033, Backlog F.14.3), Routen aus F.14.2c, alles mit
 // settings.manage:
@@ -331,6 +332,8 @@ class _MailSettingsPageState extends State<MailSettingsPage> {
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(testResult!, style: TextStyle(color: testFailed ? const Color(0xFFB00020) : const Color(0xFF2E7D32))),
                       ),
+                    const Divider(height: 32),
+                    NoticeMailLogSection(api: widget.api),
                   ],
                 ),
     );

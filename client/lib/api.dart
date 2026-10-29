@@ -3207,6 +3207,27 @@ class ApiClient {
   Future<Map<String, dynamic>> sendMailTest(String an) async =>
       (await _postJson('/api/v1/settings/mail/test', {'an': an})) as Map<String, dynamic>;
 
+  // -------- Hinweis-Mails (Backlog F.14.4c2, Routen F.14.4c1) --------
+  // Eigene Abbestellung - jeder angemeldete Benutzer fuer sich.
+  Future<bool> getNoticeMailOptOut() async =>
+      (await _getJson('/api/v1/notice-mails/me'))['abbestellt'] == true;
+
+  Future<bool> setNoticeMailOptOut(bool abbestellt) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/notice-mails/me'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'abbestellt': abbestellt}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return (jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>)['abbestellt'] == true;
+  }
+
+  // Versandprotokoll (settings.manage), juengste zuerst; ohne Inhalt.
+  Future<List<dynamic>> listNoticeMailLog({int? limit}) =>
+      _getList('/api/v1/notice-mails/log', limit == null ? null : {'limit': '$limit'});
+
   // Betriebliche freie Tage (Betriebsruhe) - leave_requests.decide.
   Future<List<dynamic>> listCompanyDays({int? year}) =>
       _getList('/api/v1/holidays/company-days', year == null ? null : {'year': '$year'});
