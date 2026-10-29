@@ -231,3 +231,28 @@ neue fachliche Entscheidung):
 - Das Fahrtenbuch führt nur, wer am Fahrzeug "Fahrtenbuch führen" gesetzt
   hat; Fahrten nach der Abmeldung oder vor der Erstzulassung werden
   abgelehnt.
+
+Präzisierung G.3d (2026-10-29, technische Ausgestaltung von §7, keine
+neue fachliche Entscheidung; ANNAHMEN, vom Nutzer mit "Beende G3"
+beauftragt):
+
+- Ein Kosteneintrag ist ein **Beleg in geschlossener Form** wie
+  Fahrtenbuch und Erledigungen: nie geändert, nie gelöscht, Fehler nur
+  über ein Storno mit Begründung.
+- Kostenarten: Kraftstoff, Wartung, Reparatur, Versicherung, Steuer,
+  Leasing, Sonstiges (dann mit Bezeichnung). Wartung ist ergänzt, weil
+  sie neben der Reparatur der häufigste Werkstattbeleg ist.
+- Erfasst wird der **Nettobetrag** (> 0, Cent genau); die Vorsteuer
+  gehört in die Buchhaltung. Gutschriften werden als Storno des Belegs
+  abgebildet, nicht als negativer Betrag.
+- Optional: Lieferant, Belegnummer, km-Stand, Liter (nur Kraftstoff).
+- Die **Kostenstelle wird beim Erfassen festgehalten** (ohne Angabe die
+  des Fahrzeugs); eine spätere Änderung am Fahrzeug verschiebt keine
+  gebuchten Kosten.
+- Datum: Pflicht, nicht in der Zukunft; vor der Erstzulassung (Leasing,
+  Versicherung) und nach der Abmeldung (Schlussrechnung) zulässig.
+- Lesen mit `fleet.read`, erfassen und stornieren mit `fleet.write`
+  (Kosten sind keine personenbezogenen Bewegungsdaten).
+- Auswertung: Summen je Kostenart und gesamt, nach Fahrzeug, Zeitraum
+  und Kostenart filterbar; stornierte zählen nie.
+- Die Anbindung an Eingangsrechnungen (Epic E) bleibt offen.
