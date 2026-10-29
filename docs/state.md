@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.2c** und damit **F.14.2** (2026-10-29,
+> Zuletzt abgeschlossen: **F.14.3** (2026-10-29, Client: Einstellungsseite
+> "E-Mail-Versand" mit Testversand; "fortsetzen" als Zustimmung zur
+> Empfehlung F.14.3 — ANNAHME). Nächste: **F.14.4** — braucht vorher die
+> Entscheidung des Nutzers; bis dahin **G.3c.3**.
+> Davor **F.14.2c** und damit **F.14.2** (2026-10-29,
 > Server: Routen `/settings/mail` mit Testversand; **Vorgabe des Nutzers:
 > Testmails während der Entwicklung nur an die vorgegebene Testadresse** —
 > `MAIL_REDIRECT_TO` und `DEV_SMTP_TEST_TO` in der lokalen `.env`, nicht im
@@ -129,7 +133,7 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail: Zugang liegt vor (2026-10-29), in Arbeit.** **Nächste
-> Arbeit: F.14.3** (Client: Einstellungsseite mit Testversand; F.14.2 erledigt), danach
+> Arbeit: F.14.4** nach Entscheidung des Nutzers (F.14.1–F.14.3 erledigt), sonst
 > F.14.4 Versand der Hinweise (Umfang klären). Dann
 > **G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
 > eigene Fahrten, `fleet.read` alle, Storno mit `fleet.write` — ANNAHME;

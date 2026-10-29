@@ -3075,6 +3075,26 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Mail-Zugang des Mandanten (F.14.2c) - settings.manage. Das Passwort
+  // wird nur gesendet, nie geliefert ("passwort_gesetzt", "passwort_lesbar").
+  Future<Map<String, dynamic>> getMailSettings() => _getJson('/api/v1/settings/mail/');
+
+  Future<Map<String, dynamic>> saveMailSettings(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/settings/mail/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Testversand mit dem gespeicherten Zugang: {"gesendet", "umgeleitet"}.
+  Future<Map<String, dynamic>> sendMailTest(String an) async =>
+      (await _postJson('/api/v1/settings/mail/test', {'an': an})) as Map<String, dynamic>;
+
   // Betriebliche freie Tage (Betriebsruhe) - leave_requests.decide.
   Future<List<dynamic>> listCompanyDays({int? year}) =>
       _getList('/api/v1/holidays/company-days', year == null ? null : {'year': '$year'});

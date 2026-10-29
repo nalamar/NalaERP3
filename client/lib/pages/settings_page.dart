@@ -3,6 +3,7 @@ import '../api.dart';
 import '../commercial_destinations.dart';
 import '../web/browser.dart' as browser;
 import 'hr_calendar_page.dart';
+import 'mail_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key, required this.api});
@@ -1366,6 +1367,14 @@ class _SettingsPageState extends State<SettingsPage> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => HrCalendarPage(api: widget.api))),
               ),
+              // E-Mail-Versand (Backlog F.14.3): eigene Seite, nur mit settings.manage.
+              if (widget.api.hasPermission('settings.manage'))
+                ListTile(
+                  title: _buildSectionTitle('E-Mail-Versand'),
+                  subtitle: const Text('Mail-Server, Zugangsdaten und Absender, Testversand'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MailSettingsPage(api: widget.api))),
+                ),
               const SizedBox(height: 12),
               ExpansionTile(
                 title: _buildSectionTitle('Nummernkreise'),
