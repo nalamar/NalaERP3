@@ -32,6 +32,12 @@ type Config struct {
 	// Backlog F.14.2c). Leer = keine Umleitung; in Produktion verboten.
 	MailRedirectTo string
 
+	// Schaltet den zeitgesteuerten Versand der Hinweis-Mails ab (Backlog
+	// F.14.4b), z. B. fuer eine zweite Instanz oder lokale Entwicklung.
+	// NOTICE_MAILS_DISABLED=true; sonst laeuft er, sobald ein Mandant den
+	// Versand eingeschaltet hat.
+	NoticeMailsDisabled bool
+
 	// Rate-Limiting fuer /auth/login (Subtask 0.5.2): Anzahl fehlgeschlagener
 	// Anmeldeversuche pro IP-Adresse, bevor sie fuer die Fensterdauer gesperrt wird.
 	LoginRateLimitMaxAttempts   int
@@ -75,6 +81,7 @@ func Load() *Config {
 	cfg.JWTSecret = getenv("JWT_SECRET", "dev-secret-change-me")
 	cfg.SettingsEncryptionKey = os.Getenv("SETTINGS_ENCRYPTION_KEY")
 	cfg.MailRedirectTo = strings.TrimSpace(os.Getenv("MAIL_REDIRECT_TO"))
+	cfg.NoticeMailsDisabled = strings.EqualFold(strings.TrimSpace(os.Getenv("NOTICE_MAILS_DISABLED")), "true")
 	cfg.AccessTokenTTLMinutes = 15
 	if v := os.Getenv("ACCESS_TOKEN_TTL_MINUTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {

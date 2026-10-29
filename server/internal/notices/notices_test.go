@@ -197,3 +197,28 @@ func TestServiceOrdersCriticalFirstAndPropagatesErrors(t *testing.T) {
 		t.Fatalf("Fehler erwartet: %v %+v", err, got)
 	}
 }
+
+// NewDefaultService enthaelt alle vier Quellen in fester Reihenfolge - so
+// liefern Dashboard und E-Mail-Versand dieselben Hinweise.
+func TestNewDefaultServiceHasAllSources(t *testing.T) {
+	q := struct {
+		*fakeQualDue
+		*fakeStanding
+	}{&fakeQualDue{}, &fakeStanding{}}
+	s := NewDefaultService(q, fakeAssetDue{}, fakeFleetDue{})
+	if len(s.sources) != 4 {
+		t.Fatalf("Quellen: %d", len(s.sources))
+	}
+	if _, ok := s.sources[0].(QualificationsDue); !ok {
+		t.Fatalf("1: %T", s.sources[0])
+	}
+	if _, ok := s.sources[1].(OwnQualifications); !ok {
+		t.Fatalf("2: %T", s.sources[1])
+	}
+	if _, ok := s.sources[2].(AssetInspectionsDue); !ok {
+		t.Fatalf("3: %T", s.sources[2])
+	}
+	if _, ok := s.sources[3].(FleetSchedulesDue); !ok {
+		t.Fatalf("4: %T", s.sources[3])
+	}
+}

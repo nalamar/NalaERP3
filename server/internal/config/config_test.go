@@ -92,3 +92,13 @@ func TestValidateForStartupMailRedirect(t *testing.T) {
 		t.Fatalf("MAIL_REDIRECT_TO: %q", cfg.MailRedirectTo)
 	}
 }
+
+// Hinweis-Mails laufen, solange sie nicht ausdruecklich abgeschaltet sind.
+func TestLoadNoticeMailsDisabled(t *testing.T) {
+	for value, want := range map[string]bool{"": false, "false": false, "1": false, "true": true, " TRUE ": true} {
+		t.Setenv("NOTICE_MAILS_DISABLED", value)
+		if got := Load().NoticeMailsDisabled; got != want {
+			t.Errorf("%q: %v", value, got)
+		}
+	}
+}

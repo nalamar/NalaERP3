@@ -1762,12 +1762,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
 	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
 	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
-	mountNoticeRoutes(protected, notices.NewService(
-		notices.QualificationsDue{Svc: qualificationSvc},
-		notices.OwnQualifications{Svc: qualificationSvc},
-		notices.AssetInspectionsDue{Svc: assetSvc},
-		notices.FleetSchedulesDue{Svc: fleet.NewScheduleService(pg)},
-	), timeEntrySvc)
+	mountNoticeRoutes(protected, notices.NewDefaultService(qualificationSvc, assetSvc, fleet.NewScheduleService(pg)), timeEntrySvc)
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
 	// Mail-Zugang (F.14.2c). Ein ungueltiger Schluessel verhindert schon den

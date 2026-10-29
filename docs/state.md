@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.4a** (2026-10-30, Server: Migration 106 Abbestellungen
+> Zuletzt abgeschlossen: **F.14.4b** (2026-10-30, Server: Zeitsteuerung werktags 7:00 im
+> API-Prozess, `NOTICE_MAILS_DISABLED`). Nächste: **F.14.4c** Routen und
+> Client.
+> Davor **F.14.4a** (2026-10-30, Server: Migration 106 Abbestellungen
 > und Versandprotokoll, Paket `noticemail` mit Sammelmail und Versandlauf;
 > F.14.4 wie vom Nutzer beauftragt nach meinem Vorschlag). Nächste:
 > **F.14.4b** Zeitsteuerung.

@@ -92,6 +92,12 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		log.Printf("Erster Administrator angelegt: Benutzer %q - das Passwort muss bei der ersten Anmeldung geändert werden", auth.BootstrapAdminUsername)
 	}
 
+	// Hinweis-Mails werktags 7:00 (F.14.4b) - nur im API-Prozess, die
+	// Tests bauen den Router ohne app.New.
+	if sch := newNoticeMailScheduler(pgConn, cfg); sch != nil {
+		sch.Start(context.Background())
+	}
+
 	// Router mit Abhängigkeiten
 	mux := httpx.NewRouterWithDeps(pgConn, mgConn, rdConn, cfg)
 

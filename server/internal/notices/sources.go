@@ -111,3 +111,21 @@ func (f FleetSchedulesDue) Notices(ctx context.Context, r Recipient, today time.
 	return countNotice(KindFleetSchedulesDue, "Fällige Fahrzeugtermine", statuses,
 		map[string]bool{fleet.TerminstandGesperrt: true, fleet.TerminstandUeberfaellig: true}), nil
 }
+
+// qualificationSource: hr.QualificationService erfuellt beides.
+type qualificationSource interface {
+	qualificationDueLister
+	qualificationStanding
+}
+
+// NewDefaultService baut den Service mit allen Quellen - an EINER Stelle,
+// damit GET /notices und der E-Mail-Versand (F.14.4) dieselben Hinweise
+// liefern.
+func NewDefaultService(q qualificationSource, a assetDueLister, f scheduleDueLister) *Service {
+	return NewService(
+		QualificationsDue{Svc: q},
+		OwnQualifications{Svc: q},
+		AssetInspectionsDue{Svc: a},
+		FleetSchedulesDue{Svc: f},
+	)
+}
