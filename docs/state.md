@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.2a** (2026-10-29, Server: Paket
+> Zuletzt abgeschlossen: **F.14.2b** (2026-10-29, Server: SMTP-Versand
+> `mail.Sender` — nur SSL oder STARTTLS, PLAIN/LOGIN, Fehler ohne
+> Serverantwort; Test-Mailserver im Testprozess; einmal echt an das
+> Entwicklungskonto über 465 und 587 versandt; "fortsetzen" als Zustimmung
+> zur Empfehlung F.14.2b — ANNAHME). Nächste: **F.14.2c** Routen.
+> Davor **F.14.2a** (2026-10-29, Server: Paket
 > `internal/mail` — Mail-Einstellungen lesen/speichern, Passwort nur
 > verschlüsselt und nie ausgegeben; "fortsetzen" als Zustimmung zur
 > Empfehlung F.14.2 — ANNAHME). F.14.2 geteilt (Dienst, SMTP, Routen).
@@ -119,7 +124,7 @@
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
 > siehe oben). **F.14 E-Mail: Zugang liegt vor (2026-10-29), in Arbeit.** **Nächste
-> Arbeit: F.14.2b** (SMTP-Versand), dann F.14.2c (Routen, Testversand), danach
+> Arbeit: F.14.2c** (Routen, Testversand; F.14.2b SMTP-Versand erledigt), danach
 > F.14.3 Client, F.14.4 Versand der Hinweise (Umfang klären). Dann
 > **G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
 > eigene Fahrten, `fleet.read` alle, Storno mit `fleet.write` — ANNAHME;
