@@ -3,10 +3,11 @@ import '../api.dart';
 import 'fleet_page.dart' show vehicleDetails;
 import 'vehicle_assignments_section.dart';
 import 'vehicle_schedules_section.dart';
+import 'vehicle_trips_section.dart';
 
-// Detailseite eines Fahrzeugs (Backlog G.2.4.1, G.3a.3): Stammdaten,
-// Fahrer und Termine. Bearbeitet werden die Stammdaten weiter in der
-// Fuhrpark-Liste; das Fahrtenbuch kommt mit G.3c.
+// Detailseite eines Fahrzeugs (Backlog G.2.4.1, G.3a.3, G.3c.4a):
+// Stammdaten, Fahrer, Fahrtenbuch (nur wenn geführt) und Termine.
+// Bearbeitet werden die Stammdaten weiter in der Fuhrpark-Liste.
 
 class VehicleDetailPage extends StatelessWidget {
   const VehicleDetailPage({super.key, required this.api, required this.vehicle});
@@ -35,6 +36,11 @@ class VehicleDetailPage extends StatelessWidget {
               vehicleId: vehicle['id'].toString(),
               deregistered: vehicle['abgemeldet_am'] != null,
             ),
+            // Das Fahrtenbuch nur, wenn es für das Fahrzeug geführt wird.
+            if (vehicle['fahrtenbuch'] == true) ...[
+              const Divider(height: 32),
+              VehicleTripsSection(api: api, vehicleId: vehicle['id'].toString()),
+            ],
             const Divider(height: 32),
             VehicleSchedulesSection(
               api: api,

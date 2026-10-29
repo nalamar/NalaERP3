@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3c.3** (2026-10-29, Server: Routen
+> Zuletzt abgeschlossen: **G.3c.4a** (2026-10-29, Client: Abschnitt
+> "Fahrtenbuch" auf der Detailseite des Fahrzeugs — km-Stand, Lücken,
+> erfassen, stornieren; "fortsetzen" als Zustimmung zur Empfehlung G.3c.4 —
+> ANNAHME). G.3c.4 geteilt; Nächste: **G.3c.4b** eigene Fahrten.
+> Davor **G.3c.3** (2026-10-29, Server: Routen
 > `/fleet/trips` — erfassen mit `fleet.self` für sich, mit `fleet.write`
 > für jeden; lesen eigene/alle; km-Stand `/fleet/trips/chain`; Storno nur
 > `fleet.write`; "fortsetzen" ohne Entscheidung zu F.14.4 = weiter mit

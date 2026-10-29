@@ -2774,6 +2774,57 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Fahrtenbuch (Backlog G.3c.4, Routen G.3c.3) --------
+  // Fahrten, die juengsten zuerst. Mit fleet.read alle, mit fleet.self nur
+  // die eigenen. von/bis als JJJJ-MM-TT.
+  Future<List<dynamic>> listFleetTrips({
+    String? vehicleId,
+    String? employeeId,
+    String? von,
+    String? bis,
+    bool includeStorniert = false,
+  }) {
+    final qp = <String, String>{};
+    if (vehicleId != null && vehicleId.isNotEmpty) qp['vehicle_id'] = vehicleId;
+    if (employeeId != null && employeeId.isNotEmpty) qp['employee_id'] = employeeId;
+    if (von != null && von.isNotEmpty) qp['von'] = von;
+    if (bis != null && bis.isNotEmpty) qp['bis'] = bis;
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getList('/api/v1/fleet/trips/', qp.isEmpty ? null : qp);
+  }
+
+  // km-Stand ("km_stand", null ohne Fahrt) und Luecken ("luecken":
+  // [{von_km, bis_km}]) eines Fahrzeugs.
+  Future<Map<String, dynamic>> getFleetTripChain(String vehicleId) =>
+      _getJson('/api/v1/fleet/trips/chain', {'vehicle_id': vehicleId});
+
+  // Fahrt erfassen. body wie POST /fleet/trips; ohne employee_id gilt sie
+  // dem eigenen Mitarbeiter. Erwartet 201.
+  Future<Map<String, dynamic>> recordFleetTrip(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/trips/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Fahrt stornieren (falsch erfasst), mit Begruendung; nur fleet.write.
+  Future<Map<String, dynamic>> stornoFleetTrip(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/trips/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
