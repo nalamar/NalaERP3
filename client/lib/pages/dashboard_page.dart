@@ -18,6 +18,7 @@ import 'assets_page.dart';
 import 'asset_inspections_due_page.dart';
 import 'fleet_page.dart';
 import 'fleet_due_page.dart';
+import 'my_trips_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 
@@ -273,6 +274,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => FleetDuePage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('fleet.self'))
+        _DashCard(
+          title: 'Meine Fahrten',
+          icon: Icons.route_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => MyTripsPage(api: api),
               ),
             );
           },

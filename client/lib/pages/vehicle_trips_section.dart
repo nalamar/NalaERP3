@@ -9,6 +9,8 @@ import 'employee_qualifications_section.dart' show parseDateInput;
 // Geschlossene Form - eine Fahrt wird nie geändert, nur mit Begründung
 // storniert. Erfassen mit fleet.write für einen gewählten Mitarbeiter,
 // mit nur fleet.self für sich selbst; stornieren nur mit fleet.write.
+// ownOnly (G.3c.4b, "Meine Fahrten"): nur die eigenen Fahrten, erfassen
+// für sich selbst, kein Storno - auch für Benutzer mit fleet.write.
 
 const tripFahrtarten = {
   'dienstlich': 'Dienstfahrt',
@@ -114,10 +116,20 @@ String tripLine(Map<String, dynamic> t) {
 
 class VehicleTripsSection extends StatefulWidget {
   const VehicleTripsSection(
-      {super.key, required this.api, required this.vehicleId, this.now});
+      {super.key,
+      required this.api,
+      required this.vehicleId,
+      this.now,
+      this.ownOnly = false,
+      this.title = 'Fahrtenbuch',
+      this.onChanged});
   final ApiClient api;
   final String vehicleId;
   final DateTime Function()? now;
+  final bool ownOnly;
+  final String title;
+  // Nach erfolgreichem Erfassen oder Stornieren.
+  final VoidCallback? onChanged;
 
   @override
   State<VehicleTripsSection> createState() => _VehicleTripsSectionState();
@@ -129,7 +141,8 @@ class _VehicleTripsSectionState extends State<VehicleTripsSection> {
   bool loading = false;
   String? error;
 
-  bool get _canWrite => widget.api.hasPermission('fleet.write');
+  bool get _canWrite =>
+      !widget.ownOnly && widget.api.hasPermission('fleet.write');
   bool get _canRecord => _canWrite || widget.api.hasPermission('fleet.self');
   int? get _kmStand => (chain?['km_stand'] as num?)?.toInt();
 
@@ -151,8 +164,11 @@ class _VehicleTripsSectionState extends State<VehicleTripsSection> {
     });
     try {
       final results = await Future.wait<Object>([
-        widget.api.listFleetTrips(
-            vehicleId: widget.vehicleId, includeStorniert: true),
+        widget.ownOnly
+            ? widget.api.listOwnFleetTrips(
+                vehicleId: widget.vehicleId, includeStorniert: true)
+            : widget.api.listFleetTrips(
+                vehicleId: widget.vehicleId, includeStorniert: true),
         widget.api.getFleetTripChain(widget.vehicleId),
       ]);
       if (!mounted) return;
@@ -313,6 +329,7 @@ class _VehicleTripsSectionState extends State<VehicleTripsSection> {
       await widget.api.recordFleetTrip(body);
       _snack('Fahrt erfasst');
       await _load();
+      widget.onChanged?.call();
     } on ApiException catch (e) {
       _snack('Fehler: ${e.message}');
     } catch (e) {
@@ -365,6 +382,7 @@ class _VehicleTripsSectionState extends State<VehicleTripsSection> {
       await widget.api.stornoFleetTrip(t['id'].toString(), reason);
       _snack('Fahrt storniert');
       await _load();
+      widget.onChanged?.call();
     } on ApiException catch (e) {
       _snack('Fehler: ${e.message}');
     } catch (e) {
@@ -379,7 +397,7 @@ class _VehicleTripsSectionState extends State<VehicleTripsSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Fahrtenbuch',
+        Text(widget.title,
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         if (loading) const LinearProgressIndicator(minHeight: 2),
         if (error != null)

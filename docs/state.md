@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3c.4b1** (2026-10-29, Server: `fahrtenbuch`
+> Zuletzt abgeschlossen: **G.3c.4b2** und damit **G.3c** (2026-10-29,
+> Client: Seite "Meine Fahrten"). **Auftrag des Nutzers (2026-10-29):
+> "Beende G3 und dann setze F.14.4 so um, wie du es vorgeschlagen hast."**
+> — mehrere Subtasks in einer Antwort auf ausdrücklichen Wunsch, je eigener
+> Commit. Nächste: **G.3d** Kosten, dann **F.14.4**.
+> Davor **G.3c.4b1** (2026-10-29, Server: `fahrtenbuch`
 > in der Zuordnung, Filter `nur_eigene=true` für Zuordnungen und Fahrten;
 > "fortsetzen" als Zustimmung zum Vorschlag "Fahrzeugauswahl über die
 > eigene Zuordnung" — ANNAHME). G.3c.4b geteilt; Nächste: **G.3c.4b2**

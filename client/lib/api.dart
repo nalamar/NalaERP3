@@ -2793,6 +2793,19 @@ class ApiClient {
     return _getList('/api/v1/fleet/trips/', qp.isEmpty ? null : qp);
   }
 
+  // Nur die eigenen Fahrten - auch mit fleet.read (nur_eigene, G.3c.4b).
+  Future<List<dynamic>> listOwnFleetTrips({String? vehicleId, bool includeStorniert = false}) {
+    final qp = <String, String>{'nur_eigene': 'true'};
+    if (vehicleId != null && vehicleId.isNotEmpty) qp['vehicle_id'] = vehicleId;
+    if (includeStorniert) qp['include_storniert'] = 'true';
+    return _getList('/api/v1/fleet/trips/', qp);
+  }
+
+  // Nur die eigenen Zuordnungen - auch mit fleet.read (nur_eigene); jede
+  // enthaelt "fahrtenbuch" des Fahrzeugs.
+  Future<List<dynamic>> listOwnFleetAssignments({bool nurOffen = false}) =>
+      _getList('/api/v1/fleet/assignments/', {'nur_eigene': 'true', if (nurOffen) 'nur_offen': 'true'});
+
   // km-Stand ("km_stand", null ohne Fahrt) und Luecken ("luecken":
   // [{von_km, bis_km}]) eines Fahrzeugs.
   Future<Map<String, dynamic>> getFleetTripChain(String vehicleId) =>
