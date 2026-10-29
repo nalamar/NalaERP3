@@ -1761,6 +1761,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetScheduleRoutes(protected, fleet.NewScheduleService(pg))
 	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
 	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
+	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
 	mountNoticeRoutes(protected, notices.NewService(
 		notices.QualificationsDue{Svc: qualificationSvc},
 		notices.OwnQualifications{Svc: qualificationSvc},
@@ -5211,7 +5212,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "muss über dem kilometerstand liegen"),
 		strings.Contains(msg, "entweder neu setzen oder löschen"),
 		strings.Contains(msg, "muss über dem beginn liegen"),
-		strings.Contains(msg, "km sein ("):
+		strings.Contains(msg, "km sein ("),
+		strings.Contains(msg, "nur bei kraftstoff"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

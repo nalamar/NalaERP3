@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3d.1** (2026-10-29, Server: Migration 105 `fleet_costs`, Regeln und
+> Zuletzt abgeschlossen: **G.3d.2** (2026-10-29, Server: Routen `/fleet/costs`). Nächste:
+> **G.3d.3** Client.
+> Davor **G.3d.1** (2026-10-29, Server: Migration 105 `fleet_costs`, Regeln und
 > `CostService`; Präzisierung ADR 0032). Nächste: **G.3d.2** Routen.
 > Davor **G.3c.4b2** und damit **G.3c** (2026-10-29,
 > Client: Seite "Meine Fahrten"). **Auftrag des Nutzers (2026-10-29):
