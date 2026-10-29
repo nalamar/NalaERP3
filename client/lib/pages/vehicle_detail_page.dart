@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'fleet_page.dart' show vehicleDetails;
 import 'vehicle_assignments_section.dart';
+import 'vehicle_costs_section.dart';
 import 'vehicle_schedules_section.dart';
 import 'vehicle_trips_section.dart';
 
-// Detailseite eines Fahrzeugs (Backlog G.2.4.1, G.3a.3, G.3c.4a):
-// Stammdaten, Fahrer, Fahrtenbuch (nur wenn geführt) und Termine.
+// Detailseite eines Fahrzeugs (Backlog G.2.4.1, G.3a.3, G.3c.4a, G.3d.3):
+// Stammdaten, Fahrer, Fahrtenbuch (nur wenn geführt), Termine und Kosten.
 // Bearbeitet werden die Stammdaten weiter in der Fuhrpark-Liste.
 
 class VehicleDetailPage extends StatelessWidget {
@@ -47,6 +48,8 @@ class VehicleDetailPage extends StatelessWidget {
               vehicleId: vehicle['id'].toString(),
               deregistered: vehicle['abgemeldet_am'] != null,
             ),
+            const Divider(height: 32),
+            VehicleCostsSection(api: api, vehicleId: vehicle['id'].toString()),
           ],
         ),
       ),

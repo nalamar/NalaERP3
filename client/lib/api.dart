@@ -2838,6 +2838,54 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Fahrzeugkosten (Backlog G.3d.3, Routen G.3d.2) --------
+  // Belege, die juengsten zuerst (fleet.read). von/bis als JJJJ-MM-TT.
+  Map<String, String> _fleetCostQuery(String? vehicleId, String? kostenart, String? von, String? bis, bool includeStorniert) => {
+        if (vehicleId != null && vehicleId.isNotEmpty) 'vehicle_id': vehicleId,
+        if (kostenart != null && kostenart.isNotEmpty) 'kostenart': kostenart,
+        if (von != null && von.isNotEmpty) 'von': von,
+        if (bis != null && bis.isNotEmpty) 'bis': bis,
+        if (includeStorniert) 'include_storniert': 'true',
+      };
+
+  Future<List<dynamic>> listFleetCosts({String? vehicleId, String? kostenart, String? von, String? bis, bool includeStorniert = false}) {
+    final qp = _fleetCostQuery(vehicleId, kostenart, von, bis, includeStorniert);
+    return _getList('/api/v1/fleet/costs/', qp.isEmpty ? null : qp);
+  }
+
+  // Summen je Kostenart ("summen": [{kostenart, anzahl, betrag_netto}])
+  // und "gesamt"; stornierte zaehlen nie.
+  Future<Map<String, dynamic>> getFleetCostSummary({String? vehicleId, String? kostenart, String? von, String? bis}) {
+    final qp = _fleetCostQuery(vehicleId, kostenart, von, bis, false);
+    return _getJson('/api/v1/fleet/costs/summary', qp.isEmpty ? null : qp);
+  }
+
+  // Beleg erfassen (fleet.write); body wie POST /fleet/costs. Erwartet 201.
+  Future<Map<String, dynamic>> recordFleetCost(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/costs/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Beleg stornieren (falsch erfasst), mit Begruendung; fleet.write.
+  Future<Map<String, dynamic>> stornoFleetCost(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/fleet/costs/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Kostenstellen (cost_centers.read); ohne includeInactive nur aktive.
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);

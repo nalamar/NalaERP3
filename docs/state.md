@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3d.2** (2026-10-29, Server: Routen `/fleet/costs`). Nächste:
+> Zuletzt abgeschlossen: **G.3d.3** und damit **G.3d** und **G.3** (2026-10-29, Client:
+> Abschnitt "Kosten" am Fahrzeug). Nächste: **F.14.4** wie vorgeschlagen
+> (Auftrag des Nutzers). Offen aus ADR 0032 (nicht im Backlog G.3):
+> Fälligkeit von Terminen nach km aus dem Fahrtenbuch.
+> Davor **G.3d.2** (2026-10-29, Server: Routen `/fleet/costs`). Nächste:
 > **G.3d.3** Client.
 > Davor **G.3d.1** (2026-10-29, Server: Migration 105 `fleet_costs`, Regeln und
 > `CostService`; Präzisierung ADR 0032). Nächste: **G.3d.2** Routen.
