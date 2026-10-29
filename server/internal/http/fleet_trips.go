@@ -71,8 +71,8 @@ func mountFleetTripRoutes(protected chi.Router, svc *fleet.TripService, resolver
 		})
 
 		// Liste, die juengsten zuerst. Filter: vehicle_id, employee_id,
-		// von, bis (JJJJ-MM-TT, einschliesslich), include_storniert=true.
-		// Ohne fleet.read nur die eigenen - eine fremde employee_id ist
+		// von, bis (JJJJ-MM-TT, einschliesslich), include_storniert=true,
+		// nur_eigene=true. Ohne fleet.read nur die eigenen - eine fremde employee_id ist
 		// dann verboten.
 		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 			vehicleID, ok := optionalQueryUUID(w, req, "vehicle_id")
@@ -92,12 +92,8 @@ func mountFleetTripRoutes(protected chi.Router, svc *fleet.TripService, resolver
 			if !ok {
 				return
 			}
-			if !hasPermission(req, permFleetRead) {
-				own, ok := resolveOwnOrPermittedEmployee(w, req, resolver, employeeID, permFleetRead, permFleetSelf)
-				if !ok {
-					return
-				}
-				employeeID = &own
+			if employeeID, ok = ownFleetEmployee(w, req, resolver, employeeID); !ok {
+				return
 			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.ListTrips(req.Context(), companyID, fleet.TripFilter{

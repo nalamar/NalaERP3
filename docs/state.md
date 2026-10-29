@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3c.4a** (2026-10-29, Client: Abschnitt
+> Zuletzt abgeschlossen: **G.3c.4b1** (2026-10-29, Server: `fahrtenbuch`
+> in der Zuordnung, Filter `nur_eigene=true` für Zuordnungen und Fahrten;
+> "fortsetzen" als Zustimmung zum Vorschlag "Fahrzeugauswahl über die
+> eigene Zuordnung" — ANNAHME). G.3c.4b geteilt; Nächste: **G.3c.4b2**
+> Client "Meine Fahrten".
+> Davor **G.3c.4a** (2026-10-29, Client: Abschnitt
 > "Fahrtenbuch" auf der Detailseite des Fahrzeugs — km-Stand, Lücken,
 > erfassen, stornieren; "fortsetzen" als Zustimmung zur Empfehlung G.3c.4 —
 > ANNAHME). G.3c.4 geteilt; Nächste: **G.3c.4b** eigene Fahrten.

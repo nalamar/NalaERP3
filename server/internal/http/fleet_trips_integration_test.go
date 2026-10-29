@@ -248,6 +248,22 @@ func TestFleetTripsHTTPPermissions(t *testing.T) {
 	}
 	decodeJSON[fleetTripResponse](t, doAuthedRequest(t, handler, readOnly, http.MethodGet, fleetTripsPath+foreign.ID.String(), ""), http.StatusOK)
 	decodeJSON[fleetTripChainResponse](t, doAuthedRequest(t, handler, readOnly, http.MethodGet, fleetTripsPath+"chain?vehicle_id="+v.String(), ""), http.StatusOK)
+
+	// nur_eigene=true: auch mit fleet.read nur die eigenen (G.3c.4b).
+	leser := c.linkedUser("itest-ft-readonly", "Leser")
+	bl, el := next()
+	mine := decodeJSON[fleetTripResponse](t, doAuthedRequest(t, handler, fleetToken, http.MethodPost, fleetTripsPath, tripBody(v, leser.EmployeeID, "2026-03-01", bl, el)), http.StatusCreated)
+	if list := decodeJSON[[]fleetTripResponse](t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetTripsPath+"?nur_eigene=true", ""), http.StatusOK); len(list) != 1 || list[0].ID != mine.ID {
+		t.Fatalf("nur_eigene mit read: %+v", list)
+	}
+	if list := decodeJSON[[]fleetTripResponse](t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetTripsPath, ""), http.StatusOK); len(list) != 4 {
+		t.Fatalf("ohne nur_eigene alle: %+v", list)
+	}
+	wantAPIError(t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetTripsPath+"?nur_eigene=true&employee_id="+fremd.String(), ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
+	wantAPIError(t, doAuthedRequest(t, handler, readOnly, http.MethodGet, fleetTripsPath+"?nur_eigene=true", ""), http.StatusForbidden, "forbidden", "Kein Mitarbeiter mit diesem Benutzer verknüpft")
+	if list := decodeJSON[[]fleetTripResponse](t, doAuthedRequest(t, handler, monteur.Token, http.MethodGet, fleetTripsPath+"?nur_eigene=true", ""), http.StatusOK); len(list) != 2 {
+		t.Fatalf("nur_eigene mit self: %+v", list)
+	}
 	wantAPIError(t, doAuthedRequest(t, handler, readOnly, http.MethodPost, fleetTripsPath, tripBody(v, fremd, "2026-03-01", e2, e2+10)), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 	wantAPIError(t, doAuthedRequest(t, handler, readOnly, http.MethodPost, fleetTripsPath+foreign.ID.String()+"/storno", `{"reason":"x"}`), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 
@@ -261,6 +277,7 @@ func TestFleetTripsHTTPPermissions(t *testing.T) {
 	none := c.user("itest-ft-none")
 	for _, tok := range []string{writeOnly, none} {
 		wantAPIError(t, doAuthedRequest(t, handler, tok, http.MethodGet, fleetTripsPath, ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
+		wantAPIError(t, doAuthedRequest(t, handler, tok, http.MethodGet, fleetTripsPath+"?nur_eigene=true", ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 		wantAPIError(t, doAuthedRequest(t, handler, tok, http.MethodGet, fleetTripsPath+own.ID.String(), ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 		wantAPIError(t, doAuthedRequest(t, handler, tok, http.MethodGet, fleetTripsPath+"chain?vehicle_id="+v.String(), ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 	}

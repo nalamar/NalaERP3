@@ -52,8 +52,9 @@ func mountFleetAssignmentRoutes(protected chi.Router, svc *fleet.AssignmentServi
 		})
 
 		// Liste, die juengsten zuerst. Filter: vehicle_id, employee_id,
-		// nur_offen=true, include_storniert=true. Ohne fleet.read nur die
-		// eigenen - eine fremde employee_id ist dann verboten.
+		// nur_offen=true, include_storniert=true, nur_eigene=true. Ohne
+		// fleet.read nur die eigenen - eine fremde employee_id ist dann
+		// verboten.
 		r.Get("/", func(w http.ResponseWriter, req *http.Request) {
 			vehicleID, ok := optionalQueryUUID(w, req, "vehicle_id")
 			if !ok {
@@ -63,14 +64,10 @@ func mountFleetAssignmentRoutes(protected chi.Router, svc *fleet.AssignmentServi
 			if !ok {
 				return
 			}
-			if !hasPermission(req, permFleetRead) {
-				own, ok := resolveOwnOrPermittedEmployee(w, req, resolver, employeeID, permFleetRead, permFleetSelf)
-				if !ok {
-					return
-				}
-				employeeID = &own
-			}
 			q := req.URL.Query()
+			if employeeID, ok = ownFleetEmployee(w, req, resolver, employeeID); !ok {
+				return
+			}
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := svc.ListAssignments(req.Context(), companyID, fleet.AssignmentFilter{
 				VehicleID: vehicleID, EmployeeID: employeeID,
@@ -155,4 +152,38 @@ func mountFleetAssignmentRoutes(protected chi.Router, svc *fleet.AssignmentServi
 			writeJSON(w, http.StatusOK, out)
 		})
 	})
+}
+
+// ownFleetEmployee schraenkt eine Liste auf den eigenen Mitarbeiter ein:
+// ohne fleet.read immer, mit nur_eigene=true auch fuer Benutzer mit
+// fleet.read (G.3c.4b - "Meine Fahrten" eines Fuhrparkleiters). Eine
+// genannte employee_id muss dann die eigene sein. Bei false ist die
+// Antwort bereits geschrieben.
+func ownFleetEmployee(w http.ResponseWriter, req *http.Request, resolver employeeForUser, employeeID *uuid.UUID) (*uuid.UUID, bool) {
+	if req.URL.Query().Get("nur_eigene") != "true" {
+		if hasPermission(req, permFleetRead) {
+			return employeeID, true
+		}
+		own, ok := resolveOwnOrPermittedEmployee(w, req, resolver, employeeID, permFleetRead, permFleetSelf)
+		return &own, ok
+	}
+	if !hasPermission(req, permFleetRead) && !hasPermission(req, permFleetSelf) {
+		writeAPIError(w, req, http.StatusForbidden, "forbidden", "Keine Berechtigung")
+		return nil, false
+	}
+	companyID, _ := companyIDFromContext(req.Context())
+	own, linked, err := resolver.EmployeeIDForUser(req.Context(), actorUserIDFromContext(req.Context()), companyID)
+	if err != nil {
+		writeDomainError(w, req, err)
+		return nil, false
+	}
+	if !linked {
+		writeAPIError(w, req, http.StatusForbidden, "forbidden", "Kein Mitarbeiter mit diesem Benutzer verknüpft")
+		return nil, false
+	}
+	if employeeID != nil && *employeeID != own {
+		writeAPIError(w, req, http.StatusForbidden, "forbidden", "Keine Berechtigung")
+		return nil, false
+	}
+	return &own, true
 }

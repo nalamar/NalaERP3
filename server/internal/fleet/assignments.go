@@ -38,10 +38,13 @@ const oneOpenAssignmentIndex = "idx_fleet_vehicle_assignments_one_open"
 const LicenseCheckCode = "FUEHRERSCHEINKONTROLLE"
 
 type Assignment struct {
-	ID                 uuid.UUID  `json:"id"`
-	VehicleID          uuid.UUID  `json:"vehicle_id"`
-	Kennzeichen        string     `json:"kennzeichen"`
-	Fahrzeug           string     `json:"fahrzeug"`
+	ID          uuid.UUID `json:"id"`
+	VehicleID   uuid.UUID `json:"vehicle_id"`
+	Kennzeichen string    `json:"kennzeichen"`
+	Fahrzeug    string    `json:"fahrzeug"`
+	// Fahrtenbuch: wird fuer das Fahrzeug eines gefuehrt (G.3c.4b - der
+	// Fahrer waehlt darueber, wofuer er Fahrten erfassen kann).
+	Fahrtenbuch        bool       `json:"fahrtenbuch"`
 	EmployeeID         uuid.UUID  `json:"employee_id"`
 	MitarbeiterName    string     `json:"mitarbeiter_name"`
 	Beginn             time.Time  `json:"beginn"`
@@ -84,7 +87,7 @@ func NewAssignmentService(pg *pgxpool.Pool) *AssignmentService {
 	return &AssignmentService{pg: pg, quals: hr.NewQualificationService(pg)}
 }
 
-const assignmentColumns = `x.id, x.vehicle_id, v.kennzeichen, v.bezeichnung, x.employee_id,
+const assignmentColumns = `x.id, x.vehicle_id, v.kennzeichen, v.bezeichnung, v.fahrtenbuch, x.employee_id,
 	btrim(e.first_name || ' ' || e.last_name), x.beginn, x.ende, x.notiz, x.status, x.storno_reason,
 	x.storniert_at, x.storniert_by_user_id, x.zugeordnet_by_user_id, x.beendet_by_user_id, x.created_at`
 
@@ -95,7 +98,7 @@ const assignmentFrom = `
 
 func scanAssignment(row pgx.Row) (*Assignment, error) {
 	var x Assignment
-	if err := row.Scan(&x.ID, &x.VehicleID, &x.Kennzeichen, &x.Fahrzeug, &x.EmployeeID,
+	if err := row.Scan(&x.ID, &x.VehicleID, &x.Kennzeichen, &x.Fahrzeug, &x.Fahrtenbuch, &x.EmployeeID,
 		&x.MitarbeiterName, &x.Beginn, &x.Ende, &x.Notiz, &x.Status, &x.StornoReason,
 		&x.StorniertAt, &x.StorniertByUserID, &x.ZugeordnetByUserID, &x.BeendetByUserID, &x.CreatedAt); err != nil {
 		return nil, err

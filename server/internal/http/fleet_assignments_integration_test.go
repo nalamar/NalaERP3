@@ -27,6 +27,7 @@ type fleetAssignmentResponse struct {
 	ID                 uuid.UUID `json:"id"`
 	VehicleID          uuid.UUID `json:"vehicle_id"`
 	Kennzeichen        string    `json:"kennzeichen"`
+	Fahrtenbuch        bool      `json:"fahrtenbuch"`
 	EmployeeID         uuid.UUID `json:"employee_id"`
 	MitarbeiterName    string    `json:"mitarbeiter_name"`
 	Beginn             string    `json:"beginn"`
@@ -68,7 +69,7 @@ func TestFleetAssignmentsHTTPFlow(t *testing.T) {
 	// Zuordnen mit Hinweisen: UVV ueberfaellig, keine Kontrolle.
 	a := decodeJSON[fleetAssignmentResponse](t, do(http.MethodPost, fleetAssignmentsPath, `{"vehicle_id":"`+v.ID.String()+`","employee_id":"`+anna.String()+`","beginn":"2026-03-01","notiz":" Dienstwagen "}`), http.StatusCreated)
 	if a.VehicleID != v.ID || a.Kennzeichen != "M-ZH 1" || a.EmployeeID != anna || a.MitarbeiterName != "Quali Anna" || !strings.HasPrefix(a.Beginn, "2026-03-01") ||
-		a.Ende != nil || a.Notiz != "Dienstwagen" || a.Status != "active" || a.ZugeordnetByUserID == nil {
+		a.Ende != nil || a.Notiz != "Dienstwagen" || a.Status != "active" || a.ZugeordnetByUserID == nil || a.Fahrtenbuch {
 		t.Fatalf("Zuordnung: %+v", a)
 	}
 	if got := strings.Join(a.Hinweise, "|"); got != "UVV-Prüfung überfällig seit 28.02.2026|Keine gültige Führerscheinkontrolle erfasst" {
@@ -112,8 +113,13 @@ func TestFleetAssignmentsHTTPFlow(t *testing.T) {
 	wantAPIError(t, do(http.MethodPost, fleetAssignmentsPath, assignBody(w.ID, anna, "2026-03-01")), http.StatusConflict, "conflict", "Fahrzeug ist gesperrt: Hauptuntersuchung mit Mängeln")
 
 	// Liste mit Filtern (jüngste zuerst).
-	x := decodeVehicle(t, do(http.MethodPost, vehiclesPath, `{"kennzeichen":"M-ZH 3","art":"pkw"}`), http.StatusCreated)
-	decodeJSON[fleetAssignmentResponse](t, do(http.MethodPost, fleetAssignmentsPath, assignBody(x.ID, bert, "2026-04-01")), http.StatusCreated)
+	x := decodeVehicle(t, do(http.MethodPost, vehiclesPath, `{"kennzeichen":"M-ZH 3","art":"pkw","fahrtenbuch":true}`), http.StatusCreated)
+	if xa := decodeJSON[fleetAssignmentResponse](t, do(http.MethodPost, fleetAssignmentsPath, assignBody(x.ID, bert, "2026-04-01")), http.StatusCreated); !xa.Fahrtenbuch {
+		t.Fatalf("Fahrtenbuch fehlt in der Zuordnung: %+v", xa)
+	}
+	if got := decodeJSON[[]fleetAssignmentResponse](t, do(http.MethodGet, fleetAssignmentsPath+"?vehicle_id="+x.ID.String(), ""), http.StatusOK); len(got) != 1 || !got[0].Fahrtenbuch {
+		t.Fatalf("Fahrtenbuch fehlt in der Liste: %+v", got)
+	}
 	list := func(query string) string {
 		return fleetAssignmentPlates(decodeJSON[[]fleetAssignmentResponse](t, do(http.MethodGet, fleetAssignmentsPath+query, ""), http.StatusOK))
 	}
@@ -210,6 +216,24 @@ func TestFleetAssignmentsHTTPPermissions(t *testing.T) {
 		t.Fatalf("read: alle: %+v", list)
 	}
 	decodeJSON[fleetAssignmentResponse](t, doAuthedRequest(t, handler, readOnly, http.MethodGet, fleetAssignmentsPath+foreign.ID.String(), ""), http.StatusOK)
+
+	// nur_eigene=true: auch mit fleet.read nur die eigenen (G.3c.4b).
+	leser := c.linkedUser("itest-fa-readonly", "Leser")
+	mine := decodeJSON[fleetAssignmentResponse](t, doAuthedRequest(t, handler, fleetToken, http.MethodPost, fleetAssignmentsPath, assignBody(vehicle(), leser.EmployeeID, "2026-03-01")), http.StatusCreated)
+	if list := decodeJSON[[]fleetAssignmentResponse](t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true", ""), http.StatusOK); len(list) != 1 || list[0].ID != mine.ID {
+		t.Fatalf("nur_eigene mit read: %+v", list)
+	}
+	if list := decodeJSON[[]fleetAssignmentResponse](t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetAssignmentsPath, ""), http.StatusOK); len(list) != 3 {
+		t.Fatalf("ohne nur_eigene alle: %+v", list)
+	}
+	decodeJSON[[]fleetAssignmentResponse](t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true&employee_id="+leser.EmployeeID.String(), ""), http.StatusOK)
+	wantAPIError(t, doAuthedRequest(t, handler, leser.Token, http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true&employee_id="+fremd.String(), ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
+	wantAPIError(t, doAuthedRequest(t, handler, readOnly, http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true", ""), http.StatusForbidden, "forbidden", "Kein Mitarbeiter mit diesem Benutzer verknüpft")
+	if list := decodeJSON[[]fleetAssignmentResponse](t, doAuthedRequest(t, handler, monteur.Token, http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true", ""), http.StatusOK); len(list) != 1 || list[0].ID != own.ID {
+		t.Fatalf("nur_eigene mit self: %+v", list)
+	}
+	wantAPIError(t, doAuthedRequest(t, handler, c.user("itest-fa-none"), http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true", ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
+	wantAPIError(t, doAuthedRequest(t, handler, c.user("itest-fa-writeonly"), http.MethodGet, fleetAssignmentsPath+"?nur_eigene=true", ""), http.StatusForbidden, "forbidden", "Keine Berechtigung")
 	writeOnly := c.user("itest-fa-writeonly")
 	none := c.user("itest-fa-none")
 	for _, tok := range []string{writeOnly, none} {
