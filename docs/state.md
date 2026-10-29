@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3d.3** und damit **G.3d** und **G.3** (2026-10-29, Client:
+> Zuletzt abgeschlossen: **F.14.4a** (2026-10-30, Server: Migration 106 Abbestellungen
+> und Versandprotokoll, Paket `noticemail` mit Sammelmail und Versandlauf;
+> F.14.4 wie vom Nutzer beauftragt nach meinem Vorschlag). Nächste:
+> **F.14.4b** Zeitsteuerung.
+> Davor **G.3d.3** und damit **G.3d** und **G.3** (2026-10-29, Client:
 > Abschnitt "Kosten" am Fahrzeug). Nächste: **F.14.4** wie vorgeschlagen
 > (Auftrag des Nutzers). Offen aus ADR 0032 (nicht im Backlog G.3):
 > Fälligkeit von Terminen nach km aus dem Fahrtenbuch.
