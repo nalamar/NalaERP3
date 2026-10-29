@@ -1760,6 +1760,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetRoutes(protected, fleet.NewVehicleService(pg))
 	mountFleetScheduleRoutes(protected, fleet.NewScheduleService(pg))
 	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
+	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
 	mountNoticeRoutes(protected, notices.NewService(
 		notices.QualificationsDue{Svc: qualificationSvc},
 		notices.OwnQualifications{Svc: qualificationSvc},
@@ -5131,7 +5132,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nicht vollständig eingerichtet"),
 		strings.Contains(msg, "kein schlüssel für verschlüsselte einstellungen"),
 		strings.Contains(msg, "lässt sich nicht entschlüsseln"),
-		strings.Contains(msg, "mitarbeiter ist nicht aktiv"):
+		strings.Contains(msg, "mitarbeiter ist nicht aktiv"),
+		strings.Contains(msg, "kein fahrtenbuch geführt"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5207,7 +5209,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nur bei sonstigen terminen"),
 		strings.Contains(msg, "muss nach dem datum liegen"),
 		strings.Contains(msg, "muss über dem kilometerstand liegen"),
-		strings.Contains(msg, "entweder neu setzen oder löschen"):
+		strings.Contains(msg, "entweder neu setzen oder löschen"),
+		strings.Contains(msg, "muss über dem beginn liegen"),
+		strings.Contains(msg, "km sein ("):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

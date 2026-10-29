@@ -7,7 +7,14 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.3** (2026-10-29, Client: Einstellungsseite
+> Zuletzt abgeschlossen: **G.3c.3** (2026-10-29, Server: Routen
+> `/fleet/trips` — erfassen mit `fleet.self` für sich, mit `fleet.write`
+> für jeden; lesen eigene/alle; km-Stand `/fleet/trips/chain`; Storno nur
+> `fleet.write`; "fortsetzen" ohne Entscheidung zu F.14.4 = weiter mit
+> G.3c.3 wie angekündigt — ANNAHME; ANNAHME: Fahrer dürfen jedes Fahrzeug
+> mit Fahrtenbuch erfassen). Nächste: **G.3c.4** Client; **F.14.4** wartet
+> weiter auf die Entscheidung des Nutzers.
+> Davor **F.14.3** (2026-10-29, Client: Einstellungsseite
 > "E-Mail-Versand" mit Testversand; "fortsetzen" als Zustimmung zur
 > Empfehlung F.14.3 — ANNAHME). Nächste: **F.14.4** — braucht vorher die
 > Entscheidung des Nutzers; bis dahin **G.3c.3**.
