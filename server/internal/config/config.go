@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"nalaerp3/internal/secretbox"
 )
 
 type Config struct {
@@ -20,6 +22,10 @@ type Config struct {
 	JWTSecret             string
 	AccessTokenTTLMinutes int
 	SessionTTLHours       int
+
+	// Schluessel fuer verschluesselte Einstellungen, z. B. das Passwort des
+	// Mail-Zugangs (ADR 0033): Base64, 32 Byte. Leer = nicht eingerichtet.
+	SettingsEncryptionKey string
 
 	// Rate-Limiting fuer /auth/login (Subtask 0.5.2): Anzahl fehlgeschlagener
 	// Anmeldeversuche pro IP-Adresse, bevor sie fuer die Fensterdauer gesperrt wird.
@@ -62,6 +68,7 @@ func Load() *Config {
 		}
 	}
 	cfg.JWTSecret = getenv("JWT_SECRET", "dev-secret-change-me")
+	cfg.SettingsEncryptionKey = os.Getenv("SETTINGS_ENCRYPTION_KEY")
 	cfg.AccessTokenTTLMinutes = 15
 	if v := os.Getenv("ACCESS_TOKEN_TTL_MINUTES"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -135,6 +142,11 @@ const minProductionJWTSecretLength = 32
 func ValidateForStartup(cfg *Config) error {
 	if strings.EqualFold(cfg.AppEnv, "production") && len(cfg.JWTSecret) < minProductionJWTSecretLength {
 		return errors.New("JWT_SECRET ist in Produktivumgebung (APP_ENV=production) nicht gesetzt oder zu kurz (mindestens 32 Zeichen erforderlich) - bitte einen sicheren, zufälligen Wert setzen, z.B. via 'openssl rand -base64 32'")
+	}
+	// Ein gesetzter, aber unbrauchbarer Schluessel ist ein Konfigurationsfehler;
+	// fehlt er, laesst sich nur kein Passwort speichern (ADR 0033).
+	if _, err := secretbox.FromEnvValue(cfg.SettingsEncryptionKey); err != nil {
+		return err
 	}
 	return nil
 }

@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"encoding/base64"
+	"testing"
+)
 
 func TestValidateForStartupRejectsShortJWTSecretInProduction(t *testing.T) {
 	cases := []struct {
@@ -38,5 +41,29 @@ func TestLoadDefaultsAppEnvToDevelopment(t *testing.T) {
 	cfg := Load()
 	if cfg.AppEnv != "development" {
 		t.Fatalf("expected default AppEnv 'development', got %q", cfg.AppEnv)
+	}
+}
+
+// SETTINGS_ENCRYPTION_KEY (ADR 0033): leer erlaubt, gesetzt nur gueltig -
+// in jeder Umgebung.
+func TestValidateForStartupSettingsEncryptionKey(t *testing.T) {
+	good := base64.StdEncoding.EncodeToString(make([]byte, 32))
+	for name, tc := range map[string]struct {
+		key     string
+		wantErr bool
+	}{
+		"leer":        {"", false},
+		"gueltig":     {good, false},
+		"zu kurz":     {base64.StdEncoding.EncodeToString(make([]byte, 16)), true},
+		"kein Base64": {"nicht-base64!", true},
+	} {
+		cfg := &Config{AppEnv: "development", SettingsEncryptionKey: tc.key}
+		if err := ValidateForStartup(cfg); (err != nil) != tc.wantErr {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	t.Setenv("SETTINGS_ENCRYPTION_KEY", good)
+	if cfg := Load(); cfg.SettingsEncryptionKey != good {
+		t.Fatal("SETTINGS_ENCRYPTION_KEY nicht gelesen")
 	}
 }

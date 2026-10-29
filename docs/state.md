@@ -7,7 +7,14 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3c.2** (2026-10-28, Server: `TripService` —
+> Zuletzt abgeschlossen: **F.14.1** (2026-10-29, ADR 0033: Mail-Zugang in
+> den Einstellungen statt nur als Umgebungsvariablen — ausdrückliche
+> Entscheidung des Nutzers; Migration 104, Paket `secretbox`,
+> `SETTINGS_ENCRYPTION_KEY`). F.14 geteilt (Entscheidung/Tabelle,
+> Server, Client, Versand der Hinweise). Entwicklungskonto nur in der
+> lokalen `.env` (`DEV_SMTP_*`). Reihenfolge F.14 vor G.3c.3 ist meine
+> Wahl (ANNAHME: die frische Vorgabe des Nutzers zuerst).
+> Davor **G.3c.2** (2026-10-28, Server: `TripService` —
 > Fahrt erfassen unter Fahrzeugsperre nur bei "Fahrtenbuch führen",
 > stornieren, Liste, km-Stand mit Lücken; Abmelden nicht vor der letzten
 > Fahrt; "fortsetzen" als Zustimmung zur Empfehlung G.3c.2 — ANNAHME).
@@ -107,8 +114,10 @@
 > Download; Migration 096). Davor 0.49 vollständig; Live-Stand am
 > 2026-10-21 mit 0.49 neu gebaut ("fortsetzen" als Zustimmung gewertet).
 > **F.10 fertig** (E-Mail-Versand separat als F.14) (entschieden,
-> siehe oben). **F.14 E-Mail wartet auf den SMTP-Zugang.** **Nächste
-> Arbeit: G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
+> siehe oben). **F.14 E-Mail: Zugang liegt vor (2026-10-29), in Arbeit.** **Nächste
+> Arbeit: F.14.2** (Server: Mail-Einstellungen und Testversand), danach
+> F.14.3 Client, F.14.4 Versand der Hinweise (Umfang klären). Dann
+> **G.3c.3** (Routen Fahrtenbuch: `fleet.self` erfasst und liest
 > eigene Fahrten, `fleet.read` alle, Storno mit `fleet.write` — ANNAHME;
 > neue Meldungen in `classifyDomainError`, u. a. "kein Fahrtenbuch" → 409).
 > Danach G.3c.4 Client, G.3d Kosten.
@@ -141,7 +150,7 @@
 > veraltet, löschen.
 > Offene Fragen an den Nutzer: 2 (F.10.3, F.10.4; open-questions 2026-10-21).
 > **Ebenfalls offen:** F.6, F.10, F.11, F.12, 0.45, 0.47.
-> Nächste freie Migration 104, ADR 0033.
+> Nächste freie Migration 105, ADR 0034.
 > **Vor JEDEM Gesamtlauf die Test-DB frisch aufsetzen.**
 >
 > *Vorheriger Stand (2026-09-24):*
