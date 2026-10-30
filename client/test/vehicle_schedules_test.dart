@@ -112,6 +112,42 @@ void main() {
       expect(terminstandLabel('wartung', {'status': 'ok', 'faellig_am': '2027-10-01', 'faellig_km': 60000}), 'fällig am 01.10.2027 oder bei 60000 km');
       expect(terminstandLabel('wartung', {'status': 'ohne_termin', 'faellig_km': 60000}), 'fällig bei 60000 km');
       expect(terminstandLabel('leasing', {'status': 'ohne_termin'}), 'kein Termin');
+      // Faelligkeit nach km (G.3e).
+      expect(terminstandLabel('wartung', {'status': 'ok', 'faellig_km': 60000, 'km_stand': 44000, 'km_bis_faellig': 16000}),
+          'fällig bei 60000 km (noch 16000 km)');
+      expect(terminstandLabel('wartung', {'status': 'ok', 'faellig_am': '2027-10-01', 'faellig_km': 60000, 'km_bis_faellig': 16000}),
+          'fällig am 01.10.2027 oder bei 60000 km (noch 16000 km)');
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald', 'faellig_km': 60000, 'km_bis_faellig': 800}), 'noch 800 km (fällig bei 60000 km)');
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald', 'faellig_km': 60000, 'km_bis_faellig': 0}), 'km-Stand erreicht (fällig bei 60000 km)');
+      expect(
+          terminstandLabel('wartung',
+              {'status': 'faellig_bald', 'faellig_am': '2026-11-05', 'tage_bis_faellig': 6, 'faellig_km': 60000, 'km_bis_faellig': 800}),
+          'fällig am 05.11.2026 (in 6 Tagen) · noch 800 km (fällig bei 60000 km)');
+      expect(terminstandLabel('wartung', {'status': 'ueberfaellig', 'faellig_km': 60000, 'km_bis_faellig': -1200}),
+          '1200 km überschritten (fällig bei 60000 km)');
+      // Ueberfaellig nach km, das Datum liegt noch vorn: nur der km-Teil.
+      expect(
+          terminstandLabel('wartung',
+              {'status': 'ueberfaellig', 'faellig_am': '2027-10-01', 'tage_bis_faellig': 336, 'faellig_km': 60000, 'km_bis_faellig': -1}),
+          '1 km überschritten (fällig bei 60000 km)');
+      // Ueberfaellig nach Datum, km noch weit: nur der Datumsteil.
+      expect(
+          terminstandLabel('wartung',
+              {'status': 'ueberfaellig', 'faellig_am': '2026-10-01', 'tage_bis_faellig': -29, 'faellig_km': 60000, 'km_bis_faellig': 5000}),
+          'überfällig seit 01.10.2026');
+      expect(
+          terminstandLabel('wartung',
+              {'status': 'ueberfaellig', 'faellig_am': '2026-10-01', 'tage_bis_faellig': -29, 'faellig_km': 60000, 'km_bis_faellig': -5}),
+          'überfällig seit 01.10.2026 · 5 km überschritten (fällig bei 60000 km)');
+      expect(terminstandLabel('wartung', {'status': 'ueberfaellig'}), 'überfällig');
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald'}), 'bald fällig');
+      expect(terminstandLabel('wartung', {'status': 'ok'}), 'ok');
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald', 'faellig_km': 60000}), 'bald fällig');
+      // Unvollstaendige Angaben ergeben keinen halben Text.
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald', 'tage_bis_faellig': 3}), 'bald fällig');
+      expect(terminstandLabel('wartung', {'status': 'faellig_bald', 'km_bis_faellig': 5}), 'bald fällig');
+      // Ohne km-Stand bleibt die Faelligkeit nach km ohne Rest.
+      expect(terminstandLabel('wartung', {'status': 'ok', 'faellig_km': 60000}), 'fällig bei 60000 km');
       expect(terminstandIsBad('gesperrt'), isTrue);
       expect(terminstandIsBad('ueberfaellig'), isTrue);
       expect(terminstandIsBad('faellig_bald'), isFalse);

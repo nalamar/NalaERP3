@@ -56,6 +56,12 @@ final _entries = [
   _entry('M-C 1', 'sonstige', 'faellig_bald', bez: 'Tachograph', faellig: '2026-11-05T00:00:00Z', tage: 10),
 ];
 
+// Ein nach km faelliger Termin (G.3e): der Stand traegt km_bis_faellig.
+final _kmEntry = {
+  'vehicle_id': 'v-km', 'kennzeichen': 'M-KM 1', 'vehicle_bezeichnung': '', 'schedule_id': 's-km', 'art': 'wartung', 'bezeichnung': '',
+  'standing': {'status': 'ueberfaellig', 'faellig_km': 60000, 'km_stand': 61200, 'km_bis_faellig': -1200},
+};
+
 Widget _wrap(Widget child) => MaterialApp(theme: ThemeData(useMaterial3: true, splashFactory: InkRipple.splashFactory), home: child);
 
 Future<void> _desktop(WidgetTester tester) async {
@@ -70,6 +76,14 @@ void main() {
     expect(dueStatusCounts(_entries), {'gesperrt': 1, 'ueberfaellig': 1, 'faellig_bald': 1});
     expect(dueStatusCounts([..._entries, _entries[1]]), {'gesperrt': 1, 'ueberfaellig': 2, 'faellig_bald': 1});
     expect(dueStatusCounts([]), {'gesperrt': 0, 'ueberfaellig': 0, 'faellig_bald': 0});
+  });
+
+  testWidgets('nach km überfällig: Text mit km', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: const {'fleet.read'}, entries: [_kmEntry]);
+    await tester.pumpWidget(_wrap(FleetDuePage(api: api)));
+    await tester.pumpAndSettle();
+    expect(find.text('1200 km überschritten (fällig bei 60000 km)'), findsOneWidget);
   });
 
   testWidgets('listet die Einträge in der Reihenfolge des Servers mit Stand und Zählern', (tester) async {

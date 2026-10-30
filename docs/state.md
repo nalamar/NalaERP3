@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3e.1** (2026-10-30, Server: Fälligkeit von
+> Zuletzt abgeschlossen: **G.3e.2** und damit **G.3e** (2026-10-30, Client:
+> "noch N km" / "N km überschritten" am Termin und in der Fälligkeitsliste).
+> Nächste: Entscheidung des Nutzers (nächstes Epic laut Backlog).
+> Davor **G.3e.1** (2026-10-30, Server: Fälligkeit von
 > Terminen nach km — höchster km-Stand aus Fahrten und Erledigungen,
 > Vorwarnung 1000 km, das Dringendere aus Datum und km; "fortsetzen" als
 > Zustimmung zum ersten Vorschlag "Fälligkeit nach km" — ANNAHME; ebenso

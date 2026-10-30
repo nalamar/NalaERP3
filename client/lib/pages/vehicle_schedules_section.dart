@@ -35,22 +35,46 @@ String dueDateLabel(String? art, String? iso) {
   return d.substring(3).replaceAll('.', '/');
 }
 
-// terminstandLabel beschreibt den Stand eines Termins in Worten.
+// terminstandLabel beschreibt den Stand eines Termins in Worten. Fällig
+// kann ein Termin nach Datum oder nach km sein (G.3e) - der Server liefert
+// dann km_bis_faellig gegen den bekannten km-Stand des Fahrzeugs.
 String terminstandLabel(String? art, Map<String, dynamic> st) {
   final due = dueDateLabel(art, st['faellig_am']?.toString());
   final tage = st['tage_bis_faellig'];
   final km = st['faellig_km'];
-  final kmText = km is num ? ' oder bei ${km.toInt()} km' : '';
+  final rest = st['km_bis_faellig'];
+  final am = art == 'hu' ? 'im' : 'am';
+  String? datePart() {
+    if (due.isEmpty || tage is! num) return null;
+    if (tage < 0) return 'überfällig seit $due';
+    if (tage == 0) return 'heute fällig';
+    return 'fällig $am $due (in $tage Tagen)';
+  }
+
+  String? kmPart() {
+    if (km is! num || rest is! num) return null;
+    if (rest < 0) return '${-rest.toInt()} km überschritten (fällig bei ${km.toInt()} km)';
+    if (rest == 0) return 'km-Stand erreicht (fällig bei ${km.toInt()} km)';
+    return 'noch ${rest.toInt()} km (fällig bei ${km.toInt()} km)';
+  }
+
   switch (st['status']) {
     case 'gesperrt':
       final grund = st['letztes_ergebnis'] == 'maengel' ? 'mit Mängeln' : 'nicht bestanden';
       return due.isEmpty ? 'gesperrt – letzte Prüfung $grund' : 'gesperrt – letzte Prüfung $grund, Nachprüfung bis $due';
     case 'ueberfaellig':
-      return 'überfällig seit $due';
+      final d = datePart();
+      final k = kmPart();
+      final parts = [if (d != null && tage is num && tage < 0) d, if (k != null && rest is num && rest < 0) k];
+      if (parts.isNotEmpty) return parts.join(' · ');
+      return due.isEmpty ? 'überfällig' : 'überfällig seit $due';
     case 'faellig_bald':
-      return tage == 0 ? 'heute fällig' : 'fällig ${art == 'hu' ? 'im' : 'am'} $due (in $tage Tagen)';
+      final parts = [datePart(), kmPart()].whereType<String>().toList();
+      return parts.isEmpty ? 'bald fällig' : parts.join(' · ');
     case 'ok':
-      return 'fällig ${art == 'hu' ? 'im' : 'am'} $due$kmText';
+      final kmRest = rest is num ? ' (noch ${rest.toInt()} km)' : '';
+      if (due.isEmpty) return km is num ? 'fällig bei ${km.toInt()} km$kmRest' : 'ok';
+      return km is num ? 'fällig $am $due oder bei ${km.toInt()} km$kmRest' : 'fällig $am $due';
     case 'ohne_termin':
       return km is num ? 'fällig bei ${km.toInt()} km' : 'kein Termin';
     default:
