@@ -1921,7 +1921,8 @@
 
 ## Epic H — Produktionssteuerung
 
-- [ ] H.1 Fertigungsaufträge aus Projektpositionen — todo
+- [ ] H.1 Fertigungsaufträge aus Projektpositionen — wip (gestartet 2026-10-30; "fortsetzen" als Zustimmung zur Empfehlung "Epic H mit ADR beginnen" — ANNAHME), geteilt
+  - [x] H.1.0 ADR: Bestandsaufnahme, Recherche, Optionen — done (Entwurf), siehe `docs/adr/0034-fertigungsauftraege.md`. Reine Recherche-/ADR-Arbeit, kein Produktivcode. Belegt: keine Fertigungstabellen (Gap-Analyse §H); Projektstruktur aus Logikal (Phase → Position → Variante → Profile/Artikel/Glas), **durch erneuten Import veränderlich** (Material ersetzt, Varianten gelöscht, CASCADE); Lager mit Chargen, Reservierungen je Projekt, Reststücken; Rolle `role-production` ohne eigene Rechte. Recherche (Sekundärquellen): EN 1090 WPK, ab EXC2 auftragsbezogene Rückverfolgbarkeit der Materialzeugnisse; Logikal liefert Bearbeitungsdaten selbst. Empfehlungen: Auftrag je Position mit Stückzahl, **Kopie der Stückliste bei Freigabe**, Status Entwurf/freigegeben/in Arbeit/fertig/storniert, Hinweis statt Sperre ohne Kundenauftrag, Reservierung optional, Ausführungsklasse optional, Rechte `production.read/write`. Sechs Fragen in `docs/open-questions.md` (2026-10-30) — **offen**.
 - [ ] H.2 Stücklisten/Arbeitsgänge/Kapazitäten — todo
 - [ ] H.3 BDE, Kommissionierung, Montageplanung — todo
 

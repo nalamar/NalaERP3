@@ -323,3 +323,29 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
 5. **Wer pflegt den Fuhrpark**: Rolle Fuhrpark und Administrator
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
+
+## 2026-10-30 — Epic H Fertigungsaufträge (offen)
+
+Details, Bestand, Recherche und Begründung in `docs/adr/0034-fertigungsauftraege.md`.
+
+1. **Ein Fertigungsauftrag je Projektposition** (Logikal-Position) mit
+   Stückzahl und gewählter Variante; Teillose erlaubt, mehr als die
+   Positionsmenge nur mit Hinweis? Empfehlung: ja. Status: **offen**.
+2. **Kopie bei Freigabe**: Maße und Materialliste der Variante werden in
+   den Auftrag kopiert und bleiben unverändert, auch wenn Logikal neu
+   importiert wird; bei späterer Änderung der Position nur ein Hinweis?
+   Empfehlung: ja. Status: **offen**.
+3. **Ablauf** Entwurf → freigegeben → in Arbeit → fertig, Storno mit
+   Begründung bis vor "fertig"; Arbeitsgänge und Rückmeldungen erst in
+   H.2/H.3? Empfehlung: ja. Status: **offen**.
+4. **Kundenauftrag und Lager**: Freigabe auch ohne Kundenauftrag (nur
+   Hinweis); Material bei der Freigabe auf Wunsch für das Projekt
+   reservieren, Fehlmengen als Hinweis? Empfehlung: ja. Status: **offen**.
+5. **EN 1090**: Fertigt der Betrieb tragende Bauteile nach EN 1090, und in
+   welcher Ausführungsklasse (EXC1–EXC4)? Empfehlung: Klasse als optionales
+   Feld am Auftrag; ab EXC2 später Charge bei der Entnahme Pflicht.
+   Status: **offen**.
+6. **Rechte**: neue Rechte `production.read`/`production.write` für die
+   Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
+   lesen? Empfehlung: ja. Status: **offen**.
+

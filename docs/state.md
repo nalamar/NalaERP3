@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **G.3e.2** und damit **G.3e** (2026-10-30, Client:
+> Zuletzt abgeschlossen: **H.1.0** (2026-10-30, ADR 0034 Entwurf
+> Fertigungsaufträge; "fortsetzen" als Zustimmung zur Empfehlung "Epic H
+> mit ADR beginnen" — ANNAHME). Nächste: **Antworten des Nutzers** auf die
+> sechs Fragen in `docs/open-questions.md` (2026-10-30); vorher kein Code in H.
+> Davor **G.3e.2** und damit **G.3e** (2026-10-30, Client:
 > "noch N km" / "N km überschritten" am Termin und in der Fälligkeitsliste).
 > Nächste: Entscheidung des Nutzers (nächstes Epic laut Backlog).
 > Davor **G.3e.1** (2026-10-30, Server: Fälligkeit von
