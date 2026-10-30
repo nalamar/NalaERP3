@@ -217,6 +217,46 @@ func loadActiveCompletions(ctx context.Context, q interface {
 	return out, rows.Err()
 }
 
+// loadKmStand liefert je Fahrzeug den zuletzt bekannten Kilometerstand
+// (G.3e): den hoechsten aus nicht stornierten Fahrten und nicht
+// stornierten Erledigungen mit km-Stand. Fahrzeuge ohne Angabe fehlen.
+func loadKmStand(ctx context.Context, q interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}, vehicleIDs []uuid.UUID) (map[uuid.UUID]int, error) {
+	out := make(map[uuid.UUID]int)
+	if len(vehicleIDs) == 0 {
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `SELECT vehicle_id, max(km) FROM (
+		SELECT t.vehicle_id, t.km_ende AS km FROM fleet_trips t WHERE t.vehicle_id = ANY($1) AND t.status='active'
+		UNION ALL
+		SELECT s.vehicle_id, c.km_stand FROM fleet_vehicle_completions c JOIN fleet_vehicle_schedules s ON s.id = c.schedule_id
+		 WHERE s.vehicle_id = ANY($1) AND c.status='active' AND c.km_stand IS NOT NULL
+	) k GROUP BY vehicle_id`, vehicleIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		var km int
+		if err := rows.Scan(&id, &km); err != nil {
+			return nil, err
+		}
+		out[id] = km
+	}
+	return out, rows.Err()
+}
+
+// kmOf liefert den km-Stand als Zeiger oder nil, wenn keiner bekannt ist.
+func kmOf(m map[uuid.UUID]int, id uuid.UUID) *int {
+	km, ok := m[id]
+	if !ok {
+		return nil
+	}
+	return &km
+}
+
 const completionColumns = `c.id, c.schedule_id, c.erledigt_am, c.ergebnis, c.km_stand, c.naechster_termin, c.naechster_km, c.pruefer, c.notiz,
 	c.status, c.storno_reason, c.storniert_at, c.storniert_by_user_id, c.created_by_user_id, c.created_at`
 
@@ -267,11 +307,16 @@ func (s *ScheduleService) ListSchedules(ctx context.Context, vehicleID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
+	kms, err := loadKmStand(ctx, s.pg, []uuid.UUID{vehicleID})
+	if err != nil {
+		return nil, err
+	}
 	out := make([]ScheduleWithStanding, 0, len(schedules))
 	for _, sc := range schedules {
+		st := EvaluateSchedule(sc.Art, sc.Starttermin, sc.StartKm, completions[sc.ID], today, warnDays)
 		out = append(out, ScheduleWithStanding{
 			Schedule: sc,
-			Standing: EvaluateSchedule(sc.Art, sc.Starttermin, sc.StartKm, completions[sc.ID], today, warnDays),
+			Standing: ApplyKmDue(st, kmOf(kms, vehicleID), DefaultScheduleWarnKm),
 		})
 	}
 	return out, nil

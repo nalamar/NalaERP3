@@ -61,6 +61,10 @@ const (
 // Betriebsmittel (ADR 0032 §3).
 const DefaultScheduleWarnDays = 30
 
+// DefaultScheduleWarnKm: Vorwarnung 1000 km vor der Folge-km (G.3e,
+// ANNAHME - etwa ein bis zwei Wochen Fahrleistung eines Dienstwagens).
+const DefaultScheduleWarnKm = 1000
+
 // DefaultIntervalMonths ist der Vorschlag fuer das Intervall einer neuen
 // Terminart (aenderbar am Termin): HU 24 Monate (Pkw nach der ersten HU;
 // Fristen je Fahrzeugart sind verzweigt - der Folgetermin wird deshalb beim
@@ -223,6 +227,10 @@ type ScheduleStanding struct {
 	LetzteErledigungID *uuid.UUID `json:"letzte_erledigung_id,omitempty"`
 	LetzteErledigungAm *time.Time `json:"letzte_erledigung_am,omitempty"`
 	LetztesErgebnis    string     `json:"letztes_ergebnis,omitempty"`
+	// KmStand: der zuletzt bekannte Kilometerstand des Fahrzeugs (G.3e);
+	// KmBisFaellig: bis FaelligKm, negativ, wenn ueberschritten.
+	KmStand      *int `json:"km_stand,omitempty"`
+	KmBisFaellig *int `json:"km_bis_faellig,omitempty"`
 }
 
 // EvaluateSchedule berechnet den Stand eines Termins am Tag today.
@@ -274,6 +282,55 @@ func EvaluateSchedule(art string, starttermin *time.Time, startKm *int, completi
 		st.Status = TerminstandOK
 	}
 	return st
+}
+
+// ApplyKmDue ergaenzt den Stand um die Faelligkeit nach Kilometern (ADR
+// 0032, G.3e): kmStand ist der zuletzt bekannte Kilometerstand des
+// Fahrzeugs (Fahrtenbuch, Erledigungen). Ueberfaellig, wenn er die
+// Folge-km ueberschreitet; faellig bald ab warnKm davor (die Folge-km
+// selbst eingeschlossen, wie "heute" beim Datum). Es gilt das Dringendere
+// aus Datum und km; eine Sperre bleibt. Ohne bekannten km-Stand oder ohne
+// Folge-km bleibt der Stand unveraendert.
+func ApplyKmDue(st ScheduleStanding, kmStand *int, warnKm int) ScheduleStanding {
+	if warnKm < 0 {
+		warnKm = 0
+	}
+	if kmStand == nil {
+		return st
+	}
+	km := *kmStand
+	st.KmStand = &km
+	if st.FaelligKm == nil {
+		return st
+	}
+	rest := *st.FaelligKm - km
+	st.KmBisFaellig = &rest
+	if st.Status == TerminstandGesperrt {
+		return st
+	}
+	kmStatus := TerminstandOK
+	switch {
+	case rest < 0:
+		kmStatus = TerminstandUeberfaellig
+	case rest <= warnKm:
+		kmStatus = TerminstandFaelligBald
+	}
+	if urgency(kmStatus) > urgency(st.Status) {
+		st.Status = kmStatus
+	}
+	return st
+}
+
+func urgency(status string) int {
+	switch status {
+	case TerminstandUeberfaellig:
+		return 3
+	case TerminstandFaelligBald:
+		return 2
+	case TerminstandOK:
+		return 1
+	}
+	return 0
 }
 
 func completionIsNewer(a, b Completion) bool {

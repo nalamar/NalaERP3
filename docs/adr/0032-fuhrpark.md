@@ -256,3 +256,22 @@ beauftragt):
 - Auswertung: Summen je Kostenart und gesamt, nach Fahrzeug, Zeitraum
   und Kostenart filterbar; stornierte zählen nie.
 - Die Anbindung an Eingangsrechnungen (Epic E) bleibt offen.
+
+Präzisierung G.3e (2026-10-30, technische Ausgestaltung von §3, keine
+neue fachliche Entscheidung — löst "Fälligkeit nach km kommt mit dem
+Fahrtenbuch" ein):
+
+- **Aktueller km-Stand** eines Fahrzeugs = der höchste bekannte aus nicht
+  stornierten Fahrten (km Ende) und nicht stornierten Erledigungen (km-Stand).
+  Der km-Stand aus Kostenbelegen zählt nicht — er wird nicht gegen die
+  Kette geprüft (ANNAHME).
+- Ein Termin mit Folge-km (bzw. Start-km) ist **überfällig**, wenn der
+  km-Stand sie überschreitet, und **bald fällig** ab 1000 km davor, die
+  Folge-km selbst eingeschlossen (ANNAHME: Vorwarnung 1000 km).
+- Es gilt das **Dringendere** aus Datum und km; eine Sperre bleibt. Ein
+  Termin nur mit km ist damit nicht mehr "ohne Termin", sobald ein km-Stand
+  bekannt ist. Ohne bekannten km-Stand bleibt alles beim Datum.
+- Stand am Fahrzeug, Fälligkeitsliste und damit Dashboard-Hinweis und
+  Hinweis-Mail zählen gleich. Die Hinweise beim Zuordnen eines Fahrers
+  bleiben beim Datum (Stand am Tag des Beginns; ein km-Stand an einem
+  vergangenen Tag ist nicht sicher bekannt).

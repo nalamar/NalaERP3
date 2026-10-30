@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.4d** (2026-10-30, Live-Prüfung der Sammelmail:
+> Zuletzt abgeschlossen: **G.3e.1** (2026-10-30, Server: Fälligkeit von
+> Terminen nach km — höchster km-Stand aus Fahrten und Erledigungen,
+> Vorwarnung 1000 km, das Dringendere aus Datum und km; "fortsetzen" als
+> Zustimmung zum ersten Vorschlag "Fälligkeit nach km" — ANNAHME; ebenso
+> ANNAHME: die Hinweis-Mail kam an, ohne Rückmeldung). Nächste: **G.3e.2** Client.
+> Davor **F.14.4d** (2026-10-30, Live-Prüfung der Sammelmail:
 > `TestDigestLive` nur mit `NALA_SMTP_LIVE=1`, eine echte Mail an die
 > vorgegebene Testadresse; "fortsetzen" als Zustimmung zum Vorschlag
 > "echte Hinweis-Mail über die Umleitung prüfen" — ANNAHME). Nächste:

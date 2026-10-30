@@ -13,7 +13,7 @@ import (
 // Betriebsweite Faelligkeitsliste der Fuhrpark-Termine (ADR 0032 §3,
 // Backlog G.2.2.3): die Arbeitsliste des Fuhrparks - was gesperrt,
 // ueberfaellig oder innerhalb der Vorwarnzeit faellig ist. Dieselbe
-// Auswertung wie ListSchedules (EvaluateSchedule);
+// Auswertung wie ListSchedules (EvaluateSchedule, ApplyKmDue);
 // TestScheduleDueListMatchesStanding wacht darueber.
 
 // ScheduleDueEntry ist ein offener Punkt: ein Termin eines Fahrzeugs.
@@ -87,10 +87,19 @@ func (s *ScheduleService) DueList(ctx context.Context, today time.Time, warnDays
 	if err != nil {
 		return nil, err
 	}
+	vehicleIDs := make([]uuid.UUID, len(items))
+	for i, r := range items {
+		vehicleIDs[i] = r.sc.VehicleID
+	}
+	kms, err := loadKmStand(ctx, s.pg, vehicleIDs)
+	if err != nil {
+		return nil, err
+	}
 
 	out := make([]ScheduleDueEntry, 0)
 	for _, r := range items {
-		st := EvaluateSchedule(r.sc.Art, r.sc.Starttermin, r.sc.StartKm, completions[r.sc.ID], today, warnDays)
+		st := ApplyKmDue(EvaluateSchedule(r.sc.Art, r.sc.Starttermin, r.sc.StartKm, completions[r.sc.ID], today, warnDays),
+			kmOf(kms, r.sc.VehicleID), DefaultScheduleWarnKm)
 		if st.Status != TerminstandGesperrt && st.Status != TerminstandUeberfaellig && st.Status != TerminstandFaelligBald {
 			continue
 		}
