@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **F.14.4c2** und damit **F.14.4** und **F.14** (2026-10-30,
+> Zuletzt abgeschlossen: **F.14.4d** (2026-10-30, Live-Prüfung der Sammelmail:
+> `TestDigestLive` nur mit `NALA_SMTP_LIVE=1`, eine echte Mail an die
+> vorgegebene Testadresse; "fortsetzen" als Zustimmung zum Vorschlag
+> "echte Hinweis-Mail über die Umleitung prüfen" — ANNAHME). Nächste:
+> Entscheidung des Nutzers (Fälligkeit nach km aus ADR 0032 oder nächstes Epic).
+> Davor **F.14.4c2** und damit **F.14.4** und **F.14** (2026-10-30,
 > Client: Seite "Hinweis-Mails", Versandprotokoll auf "E-Mail-Versand").
 > Auftrag des Nutzers erledigt: G.3 beendet, F.14.4 wie vorgeschlagen.
 > Nächste: Entscheidung des Nutzers (offen aus ADR 0032: Fälligkeit von
