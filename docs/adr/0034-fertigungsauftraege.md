@@ -1,8 +1,10 @@
 # ADR 0034 — Produktionssteuerung: Fertigungsaufträge aus Projektpositionen
 
 Datum: 2026-10-30
-Status: **Entwurf** — sechs Fragen an den Nutzer in `docs/open-questions.md`
-(2026-10-30); vor der Antwort kein Code.
+Status: **Angenommen** (2026-10-31) — der Nutzer hat alle sechs
+Empfehlungen angenommen ("Alle deine Fragen mit deinen Empfehlungen
+umsetzen"). Zu Frage 5 also: Ausführungsklasse optional, ohne Wirkung in
+H.1; ob der Betrieb nach EN 1090 fertigt, bleibt offen.
 Bezug: `aufgabe.md` §1 Domäne H; Backlog H.1–H.3; `docs/01-gap-analysis.md`
 §H; ADR 0032 (Muster: Beleg in geschlossener Form, Storno).
 
@@ -114,3 +116,32 @@ fertigt der Betrieb tragende Bauteile nach EN 1090, und in welcher Klasse?
   mit Kopie, Status, Storno, Hinweis "geändert"), H.1.3 Routen, H.1.4
   Client (Auftrag aus der Position anlegen, Liste, Detail mit Stückliste).
 - Reservierungen bei Freigabe als eigene Teilaufgabe H.1.5.
+
+## Präzisierung H.1.1 (2026-10-31, Migration 107)
+
+- **Verweise mit SET NULL**: der Logikal-Import löscht Positionen und
+  Varianten (`import_logikal.go`); `elevation_id` und
+  `single_elevation_id` werden dann leer, der Auftrag bleibt. Das Projekt
+  mit RESTRICT. Ohne Verweis zeigt der Service später
+  `position_entfernt`.
+- **Statusverlauf als Spalten** (`freigegeben_at/_by`, `begonnen_at/_by`,
+  `fertig_at/_by`, `storniert_at/_by` mit Grund) statt eigener Tabelle:
+  der Ablauf ist linear, jeder Übergang passiert höchstens einmal. Die
+  Datenbank prüft Zeitpunkte je Status und ihre Reihenfolge.
+- **Fingerabdruck** (`inhalt_hash`, SHA-256) über Phase, Position,
+  Variante, Maße und Materialliste; gerundet wie die Spalten und
+  unabhängig von der Reihenfolge. Abweichung → Hinweis
+  `position_geaendert`.
+- **Stückzahl ganzzahlig** (1–10 000) — ANNAHME: gefertigt werden ganze
+  Elemente; die Positionsmenge aus Logikal ist `REAL`, der Vergleich
+  toleriert Rundungsrauschen.
+- **Menge je Stück** in der Fertigungsstückliste wie aus Logikal für ein
+  Element der Variante — ANNAHME; der Bedarf ist Menge × Stückzahl. Ohne
+  Preise (Kalkulationsdaten).
+- **Rechte**: `production.read` an Administrator, Produktion und Vertrieb;
+  `production.write` an Administrator und Produktion. Eine Rolle
+  "Projektleitung" gibt es nicht (`017_auth.sql`).
+- **Nummernkreis** `production_order`, Muster `FA-{YYYY}-{NNNN}`, nur für
+  den Mandanten `default` angelegt. Der bekannte Fallback "PO-" in
+  `settings.NumberingService.Next` (siehe 079) betrifft weitere Mandanten
+  — der Service in H.1.2 muss das berücksichtigen.

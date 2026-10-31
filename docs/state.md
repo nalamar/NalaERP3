@@ -7,7 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.0** (2026-10-30, ADR 0034 Entwurf
+> Zuletzt abgeschlossen: **H.1.1** (2026-10-31, Migration 107
+> Fertigungsaufträge und Stückliste, Rechte, Nummernkreis; Paket
+> `production` mit Fachregeln). Auftrag des Nutzers: "Alle deine Fragen mit
+> deinen Empfehlungen umsetzen" — ADR 0034 angenommen, Umsetzung in
+> Subtasks H.1.1–H.1.5. ANNAHMEN: Stückzahl ganzzahlig; Menge je Stück je
+> Element. Nächste: **H.1.2** Service.
+> Davor **H.1.0** (2026-10-30, ADR 0034 Entwurf
 > Fertigungsaufträge; "fortsetzen" als Zustimmung zur Empfehlung "Epic H
 > mit ADR beginnen" — ANNAHME). Nächste: **Antworten des Nutzers** auf die
 > sechs Fragen in `docs/open-questions.md` (2026-10-30); vorher kein Code in H.
