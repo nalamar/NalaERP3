@@ -71,13 +71,16 @@ final _items = [
 ];
 
 class _FakeApi extends ApiClient {
-  _FakeApi({required this.permissions, required this.order, this.list = const [], this.failStep}) : super(baseUrl: 'http://localhost:8080');
+  _FakeApi({required this.permissions, required this.order, this.list = const [], this.failStep, this.failCreate})
+      : super(baseUrl: 'http://localhost:8080');
 
   final Set<String> permissions;
   Map<String, dynamic> order;
-  final List<dynamic> list;
+  List<dynamic> list;
   final String? failStep;
+  final String? failCreate;
   final List<String> calls = [];
+  String? listScope;
 
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
@@ -86,7 +89,16 @@ class _FakeApi extends ApiClient {
   Future<List<dynamic>> listProductionOrders(
       {String? projectId, String? elevationId, String? status, bool includeStorniert = false}) async {
     calls.add('list $status');
+    listScope = '$projectId/$elevationId';
     return list;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createProductionOrder(Map<String, dynamic> body) async {
+    calls.add('create ${jsonEncode(body)}');
+    if (failCreate != null) throw ApiException(statusCode: 400, message: failCreate!);
+    list = [...list, order];
+    return order;
   }
 
   @override
@@ -375,6 +387,128 @@ void main() {
     await tester.tap(find.text('Fertigungsaufträge'));
     await tester.pumpAndSettle();
     expect(find.byType(ProductionOrdersPage), findsOneWidget);
+  });
+
+  // An der Variante im Projekt (Backlog H.1.4b).
+  test('Vorschlag Stückzahl und Aufträge der Variante', () {
+    expect(defaultProductionStueckzahl(3), '3');
+    expect(defaultProductionStueckzahl(2.0), '2');
+    expect(defaultProductionStueckzahl('4'), '4');
+    expect(defaultProductionStueckzahl('2,0'), '2');
+    expect(defaultProductionStueckzahl(10000), '10000');
+    expect(defaultProductionStueckzahl(1), '1');
+    expect(defaultProductionStueckzahl(1.5), '');
+    expect(defaultProductionStueckzahl(0), '');
+    expect(defaultProductionStueckzahl(10001), '');
+    expect(defaultProductionStueckzahl(null), '');
+    expect(defaultProductionStueckzahl('x'), '');
+    final orders = [
+      {'id': 'a', 'single_elevation_id': 'v1'},
+      {'id': 'b', 'single_elevation_id': 'v2'},
+      {'id': 'c', 'single_elevation_id': 'v1'},
+      'kein Auftrag',
+    ];
+    expect(productionOrdersOfVariant(orders, 'v1').map((o) => o['id']), ['a', 'c']);
+    expect(productionOrdersOfVariant(orders, 'v3'), isEmpty);
+  });
+
+  Widget variantSection(_FakeApi api, {Key? key}) => _wrap(
+        Scaffold(body: VariantProductionOrders(api: api, projectId: 'p1', elevationId: 'e1', variantId: 'v1', variantMenge: 2)),
+        key: key,
+      );
+
+  testWidgets('Variante: Aufträge lesen, ohne Anlegen', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: const {'production.read'}, order: _order(), list: [
+      {
+        ..._order(hinweise: ['menge_ueberschritten']),
+        'single_elevation_id': 'v1'
+      },
+      {..._order(), 'id': 'o2', 'nummer': 'FA-2026-0002', 'single_elevation_id': 'v2'},
+    ]);
+    await tester.pumpWidget(variantSection(api));
+    await tester.pumpAndSettle();
+    expect(api.listScope, 'p1/e1');
+    expect(find.text('FA-2026-0001 · Pos. 3 Fenster (links)'), findsOneWidget);
+    expect(find.textContaining('FA-2026-0002'), findsNothing);
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.text('Fertigungsauftrag anlegen'), findsNothing);
+    await tester.tap(find.text('FA-2026-0001 · Pos. 3 Fenster (links)'));
+    await tester.pumpAndSettle();
+    expect(find.byType(ProductionOrderDetailPage), findsOneWidget);
+    expect(api.calls, contains('get o1'));
+  });
+
+  testWidgets('Variante: ohne Recht nichts, leer mit Hinweis', (tester) async {
+    await _desktop(tester);
+    final none = _FakeApi(permissions: const {}, order: _order());
+    await tester.pumpWidget(variantSection(none));
+    await tester.pumpAndSettle();
+    expect(find.text('Fertigungsaufträge'), findsNothing);
+    expect(none.calls, isEmpty);
+    final empty = _FakeApi(permissions: const {'production.read'}, order: _order());
+    await tester.pumpWidget(variantSection(empty, key: const ValueKey('leer')));
+    await tester.pumpAndSettle();
+    expect(find.text('Noch kein Fertigungsauftrag zu dieser Variante.'), findsOneWidget);
+    // Nur Schreibrecht: Anlegen ja, keine Liste.
+    final writer = _FakeApi(permissions: const {'production.write'}, order: _order());
+    await tester.pumpWidget(variantSection(writer, key: const ValueKey('schreiben')));
+    await tester.pumpAndSettle();
+    expect(find.text('Fertigungsauftrag anlegen'), findsOneWidget);
+    expect(find.text('Noch kein Fertigungsauftrag zu dieser Variante.'), findsNothing);
+    expect(writer.calls, isEmpty);
+  });
+
+  testWidgets('Variante: anlegen mit Prüfung, danach Detail', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: const {'production.read', 'production.write'}, order: {..._order(), 'single_elevation_id': 'v1'});
+    await tester.pumpWidget(variantSection(api));
+    await tester.pumpAndSettle();
+    // Abbrechen legt nichts an.
+    await tester.tap(find.text('Fertigungsauftrag anlegen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.calls.where((c) => c.startsWith('create')), isEmpty);
+    await tester.tap(find.text('Fertigungsauftrag anlegen'));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('Fertigungsauftrag anlegen')), findsOneWidget);
+    final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
+    expect(tester.widget<TextField>(fields.at(0)).controller!.text, '2');
+    await tester.enterText(fields.at(1), '31.02.2026');
+    await tester.tap(find.text('Anlegen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte den Liefertermin als TT.MM.JJJJ angeben.'), findsOneWidget);
+    expect(api.calls.where((c) => c.startsWith('create')), isEmpty);
+    await tester.enterText(fields.at(0), '3');
+    await tester.enterText(fields.at(1), '01.12.2026');
+    await tester.tap(find.text('Anlegen'));
+    await tester.pumpAndSettle();
+    expect(
+        api.calls.where((c) => c.startsWith('create')).single,
+        'create {"stueckzahl":3,"liefertermin":"2026-12-01","ausfuehrungsklasse":"","notiz":"",'
+        '"project_id":"p1","elevation_id":"e1","single_elevation_id":"v1"}');
+    expect(find.text('Fertigungsauftrag FA-2026-0001 angelegt'), findsOneWidget);
+    expect(find.byType(ProductionOrderDetailPage), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('FA-2026-0001 · Pos. 3 Fenster (links)'), findsOneWidget);
+  });
+
+  testWidgets('Variante: Fehler beim Anlegen als Meldung', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(
+        permissions: const {'production.read', 'production.write'}, order: _order(), failCreate: 'Variante ist nicht an der Position');
+    await tester.pumpWidget(variantSection(api));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fertigungsauftrag anlegen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Anlegen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fehler: Variante ist nicht an der Position'), findsOneWidget);
+    expect(find.byType(ProductionOrderDetailPage), findsNothing);
+    final button = find.ancestor(of: find.text('Fertigungsauftrag anlegen'), matching: find.byWidgetPredicate((w) => w is TextButton));
+    expect(tester.widget<TextButton>(button).onPressed, isNotNull);
   });
 
   group('API-Methoden', () {

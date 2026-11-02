@@ -7,6 +7,7 @@ import '../project_material_flow_actions.dart';
 import '../project_navigation.dart';
 import '../widgets/commercial_summary_widgets.dart';
 import '../web/browser.dart' as browser;
+import 'production_orders_page.dart' show VariantProductionOrders;
 import 'dart:convert';
 
 String _projectErrorMessage(Object error,
@@ -1311,6 +1312,16 @@ class _VariantTileState extends State<_VariantTile> {
               ),
             ]),
           ),
+        // Fertigungsaufträge der Variante (H.1.4b); ohne production.* leer.
+        Padding(
+          padding: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+          child: VariantProductionOrders(
+              api: widget.api,
+              projectId: widget.projectId,
+              elevationId: widget.elevationId,
+              variantId: widget.variant['id'] as String,
+              variantMenge: widget.variant['menge']),
+        ),
       ],
     );
   }

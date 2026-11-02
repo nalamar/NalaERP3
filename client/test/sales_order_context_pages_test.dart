@@ -263,6 +263,19 @@ class _FakeApiClient extends ApiClient {
           String projectId, String elevationId) async =>
       elevationVariants[elevationId] ?? const [];
 
+  // Fertigungsaufträge an der Variante (H.1.4b).
+  final List<String> productionOrderScopes = [];
+
+  @override
+  Future<List<dynamic>> listProductionOrders(
+      {String? projectId,
+      String? elevationId,
+      String? status,
+      bool includeStorniert = false}) async {
+    productionOrderScopes.add('$projectId/$elevationId');
+    return const [];
+  }
+
   @override
   Future<Map<String, dynamic>> getVariantMaterials(
           String projectId, String variantId) async =>
@@ -5641,6 +5654,61 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+      'ProjectDetailPage shows production orders at the variant only with production rights',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    Future<_FakeApiClient> openVariant(Set<String> permissions) async {
+      final api = _FakeApiClient(
+        permissions: permissions,
+        projectPhases: const [
+          {'id': 'phase-1', 'name': 'Los 1', 'nummer': '1'},
+        ],
+        phaseElevations: const {
+          'phase-1': [
+            {'id': 'elev-1', 'nummer': '1', 'name': 'Position 1', 'menge': 1},
+          ],
+        },
+        elevationVariants: const {
+          'elev-1': [
+            {'id': 'variant-1', 'name': 'Variante A', 'menge': 3},
+          ],
+        },
+      );
+      await tester.pumpWidget(MaterialApp(
+        key: UniqueKey(),
+        home: ProjectDetailPage(
+          api: api,
+          project: const {'id': 'project-1', 'name': 'Tor 1', 'nummer': 'PRJ-0101'},
+          canWrite: false,
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Los 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.textContaining('1: Position 1'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Variante A'));
+      await tester.pumpAndSettle();
+      return api;
+    }
+
+    final none = await openVariant(const {});
+    expect(find.text('Fertigungsaufträge'), findsNothing);
+    expect(none.productionOrderScopes, isEmpty);
+
+    final writer =
+        await openVariant(const {'production.read', 'production.write'});
+    expect(writer.productionOrderScopes, ['project-1/elev-1']);
+    expect(find.text('Noch kein Fertigungsauftrag zu dieser Variante.'),
+        findsOneWidget);
+    await tester.tap(find.text('Fertigungsauftrag anlegen'));
+    await tester.pumpAndSettle();
+    final stueck = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    expect(tester.widget<TextField>(stueck.first).controller!.text, '3');
   });
 
   testWidgets(

@@ -142,6 +142,90 @@ List<String> productionStatusHistory(Map<String, dynamic> o) {
   );
 }
 
+// defaultProductionStueckzahl schlägt die Menge der Variante als Stückzahl
+// vor, wenn sie eine ganze Zahl von 1 bis 10000 ist; sonst bleibt das Feld
+// leer.
+String defaultProductionStueckzahl(Object? menge) {
+  final n = menge is num ? menge : num.tryParse(menge?.toString().trim().replaceAll(',', '.') ?? '');
+  if (n == null || n != n.roundToDouble() || n < 1 || n > 10000) return '';
+  return n.round().toString();
+}
+
+// productionOrdersOfVariant: die Aufträge einer Variante aus der Liste der
+// Position.
+List<Map<String, dynamic>> productionOrdersOfVariant(List<dynamic> orders, String variantId) => orders
+    .whereType<Map<String, dynamic>>()
+    .where((o) => o['single_elevation_id']?.toString() == variantId)
+    .toList();
+
+// showProductionDraftDialog fragt Stückzahl, Liefertermin, Klasse und Notiz
+// ab (anlegen und Entwurf ändern) und liefert den geprüften Body oder null.
+Future<Map<String, dynamic>?> showProductionDraftDialog(
+  BuildContext context, {
+  required String title,
+  required String saveLabel,
+  String stueckzahl = '',
+  String liefertermin = '',
+  String ausfuehrungsklasse = '',
+  String notiz = '',
+}) {
+  final stueckCtrl = TextEditingController(text: stueckzahl);
+  final terminCtrl = TextEditingController(text: liefertermin);
+  final notizCtrl = TextEditingController(text: notiz);
+  String exc = ausfuehrungsklasse;
+  String? dialogError;
+  return showDialog<Map<String, dynamic>>(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setStateDialog) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                  controller: stueckCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Stückzahl')),
+              TextField(controller: terminCtrl, decoration: const InputDecoration(labelText: 'Liefertermin (TT.MM.JJJJ, optional)')),
+              DropdownButtonFormField<String>(
+                key: const ValueKey('productionExc'),
+                initialValue: exc,
+                decoration: const InputDecoration(labelText: 'Ausführungsklasse (EN 1090)'),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('keine')),
+                  for (final k in productionAusfuehrungsklassen) DropdownMenuItem(value: k, child: Text(k)),
+                ],
+                onChanged: (v) => setStateDialog(() => exc = v ?? ''),
+              ),
+              TextField(controller: notizCtrl, decoration: const InputDecoration(labelText: 'Notiz')),
+              if (dialogError != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+          FilledButton(
+            onPressed: () {
+              final r = buildProductionDraftBody(
+                  stueckzahl: stueckCtrl.text, liefertermin: terminCtrl.text, ausfuehrungsklasse: exc, notiz: notizCtrl.text);
+              if (r.error != null) {
+                setStateDialog(() => dialogError = r.error);
+                return;
+              }
+              Navigator.of(ctx).pop(r.body);
+            },
+            child: Text(saveLabel),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class ProductionOrdersPage extends StatefulWidget {
   const ProductionOrdersPage({super.key, required this.api});
   final ApiClient api;
@@ -339,60 +423,14 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
 
   Future<void> _editDialog() async {
     final o = order!;
-    final stueckCtrl = TextEditingController(text: '${o['stueckzahl'] ?? ''}');
-    final terminCtrl = TextEditingController(text: isoToGerman(o['liefertermin']?.toString()));
-    final notizCtrl = TextEditingController(text: o['notiz']?.toString() ?? '');
-    String exc = o['ausfuehrungsklasse']?.toString() ?? '';
-    String? dialogError;
-    final body = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setStateDialog) => AlertDialog(
-          title: const Text('Entwurf ändern'),
-          content: SizedBox(
-            width: 420,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: stueckCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Stückzahl')),
-                TextField(controller: terminCtrl, decoration: const InputDecoration(labelText: 'Liefertermin (TT.MM.JJJJ, optional)')),
-                DropdownButtonFormField<String>(
-                  key: const ValueKey('productionExc'),
-                  initialValue: exc,
-                  decoration: const InputDecoration(labelText: 'Ausführungsklasse (EN 1090)'),
-                  items: [
-                    const DropdownMenuItem(value: '', child: Text('keine')),
-                    for (final k in productionAusfuehrungsklassen) DropdownMenuItem(value: k, child: Text(k)),
-                  ],
-                  onChanged: (v) => setStateDialog(() => exc = v ?? ''),
-                ),
-                TextField(controller: notizCtrl, decoration: const InputDecoration(labelText: 'Notiz')),
-                if (dialogError != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(dialogError!, style: const TextStyle(color: Color(0xFFB00020))),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
-            FilledButton(
-              onPressed: () {
-                final r = buildProductionDraftBody(
-                    stueckzahl: stueckCtrl.text, liefertermin: terminCtrl.text, ausfuehrungsklasse: exc, notiz: notizCtrl.text);
-                if (r.error != null) {
-                  setStateDialog(() => dialogError = r.error);
-                  return;
-                }
-                Navigator.of(ctx).pop(r.body);
-              },
-              child: const Text('Speichern'),
-            ),
-          ],
-        ),
-      ),
+    final body = await showProductionDraftDialog(
+      context,
+      title: 'Entwurf ändern',
+      saveLabel: 'Speichern',
+      stueckzahl: '${o['stueckzahl'] ?? ''}',
+      liefertermin: isoToGerman(o['liefertermin']?.toString()),
+      ausfuehrungsklasse: o['ausfuehrungsklasse']?.toString() ?? '',
+      notiz: o['notiz']?.toString() ?? '',
     );
     if (body == null) return;
     await _run(() => widget.api.updateProductionOrderDraft(widget.orderId, body), 'Entwurf gespeichert');
@@ -507,6 +545,123 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
           ],
         ],
       ),
+    );
+  }
+}
+
+// VariantProductionOrders zeigt an der Variante im Projekt ihre
+// Fertigungsaufträge (production.read) und legt einen neuen Entwurf an
+// (production.write); danach öffnet sich das Detail.
+class VariantProductionOrders extends StatefulWidget {
+  const VariantProductionOrders({
+    super.key,
+    required this.api,
+    required this.projectId,
+    required this.elevationId,
+    required this.variantId,
+    this.variantMenge,
+  });
+  final ApiClient api;
+  final String projectId;
+  final String elevationId;
+  final String variantId;
+  final Object? variantMenge;
+
+  @override
+  State<VariantProductionOrders> createState() => _VariantProductionOrdersState();
+}
+
+class _VariantProductionOrdersState extends State<VariantProductionOrders> {
+  List<Map<String, dynamic>>? orders;
+  String? error;
+  bool busy = false;
+
+  bool get _canRead => widget.api.hasPermission('production.read');
+  bool get _canWrite => widget.api.hasPermission('production.write');
+
+  @override
+  void initState() {
+    super.initState();
+    if (_canRead) _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await widget.api.listProductionOrders(projectId: widget.projectId, elevationId: widget.elevationId);
+      if (mounted) {
+        setState(() {
+          orders = productionOrdersOfVariant(list, widget.variantId);
+          error = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = 'Fertigungsaufträge konnten nicht geladen werden: $e');
+    }
+  }
+
+  Future<void> _open(String id) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductionOrderDetailPage(api: widget.api, orderId: id)));
+    if (mounted && _canRead) await _load();
+  }
+
+  Future<void> _create() async {
+    final body = await showProductionDraftDialog(
+      context,
+      title: 'Fertigungsauftrag anlegen',
+      saveLabel: 'Anlegen',
+      stueckzahl: defaultProductionStueckzahl(widget.variantMenge),
+    );
+    if (body == null || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final o = await widget.api.createProductionOrder({
+        ...body,
+        'project_id': widget.projectId,
+        'elevation_id': widget.elevationId,
+        'single_elevation_id': widget.variantId,
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fertigungsauftrag ${o['nummer'] ?? ''} angelegt')));
+      await _open(o['id'].toString());
+    } on ApiException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: ${e.message}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_canRead && !_canWrite) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        Row(children: [
+          const Expanded(child: Text('Fertigungsaufträge', style: TextStyle(fontWeight: FontWeight.bold))),
+          if (_canWrite)
+            TextButton.icon(
+              onPressed: busy ? null : _create,
+              icon: const Icon(Icons.precision_manufacturing_rounded),
+              label: const Text('Fertigungsauftrag anlegen'),
+            ),
+        ]),
+        if (error != null) Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
+        if (_canRead && orders != null && orders!.isEmpty) const Text('Noch kein Fertigungsauftrag zu dieser Variante.'),
+        for (final o in orders ?? const <Map<String, dynamic>>[])
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: productionHints(o).isEmpty
+                ? const Icon(Icons.assignment_rounded)
+                : Icon(Icons.warning_amber_rounded, color: Colors.orange.shade800),
+            title: Text(productionOrderTitle(o)),
+            subtitle: Text(productionOrderSubtitle(o)),
+            onTap: () => _open(o['id'].toString()),
+          ),
+      ],
     );
   }
 }
