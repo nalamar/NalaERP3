@@ -2890,6 +2890,76 @@ class ApiClient {
   Future<List<dynamic>> listCostCenters({bool includeInactive = false}) =>
       _getList('/api/v1/cost-centers/', includeInactive ? {'include_inactive': 'true'} : null);
 
+  // -------- Fertigungsauftraege (Backlog H.1.4, Routen H.1.3) --------
+  // Liste nach Liefertermin (production.read). Stornierte nur mit
+  // includeStorniert oder status=storniert. Jeder Auftrag traegt
+  // "hinweise" (kein_kundenauftrag, menge_ueberschritten,
+  // position_entfernt, position_geaendert).
+  Future<List<dynamic>> listProductionOrders({String? projectId, String? elevationId, String? status, bool includeStorniert = false}) {
+    final qp = <String, String>{
+      if (projectId != null) 'project_id': projectId,
+      if (elevationId != null) 'elevation_id': elevationId,
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (includeStorniert) 'include_storniert': 'true',
+    };
+    return _getList('/api/v1/production/orders/', qp.isEmpty ? null : qp);
+  }
+
+  // Ein Auftrag, ab der Freigabe mit "items" (Fertigungsstueckliste).
+  Future<Map<String, dynamic>> getProductionOrder(String id) => _getJson('/api/v1/production/orders/$id');
+
+  // Entwurf anlegen (production.write): project_id, elevation_id,
+  // single_elevation_id, stueckzahl, optional liefertermin (JJJJ-MM-TT),
+  // ausfuehrungsklasse, notiz. Erwartet 201.
+  Future<Map<String, dynamic>> createProductionOrder(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/production/orders/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Entwurf aendern: stueckzahl, liefertermin, ausfuehrungsklasse, notiz -
+  // immer alle, leer heisst "keine Angabe".
+  Future<Map<String, dynamic>> updateProductionOrderDraft(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/production/orders/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Statusschritt ohne Eingabe: aktion = freigeben, beginnen oder
+  // fertigmelden.
+  Future<Map<String, dynamic>> productionOrderStep(String id, String aktion) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(_u('/api/v1/production/orders/$id/$aktion'), headers: headers),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Storno mit Begruendung, aus jedem Status vor "fertig".
+  Future<Map<String, dynamic>> stornoProductionOrder(String id, String reason) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/production/orders/$id/storno'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({'reason': reason}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Ausgabe von Betriebsmitteln (Backlog F.13.4.1, Routen F.3.6.2) --------
   // Ausgeben an einen Mitarbeiter (Datum JJJJ-MM-TT). Die Antwort enthaelt
   // ggf. "hinweise" (Pruefung ueberfaellig, nie geprueft); ein gesperrtes

@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.3** (2026-11-02, Routen
+> Zuletzt abgeschlossen: **H.1.4a** (2026-11-02, Client: Liste und
+> Detail der Fertigungsaufträge, Dashboard-Kachel). H.1.4 geteilt.
+> Nächste: **H.1.4b** Anlegen an der Variante im Projekt.
+> Davor **H.1.3** (2026-11-02, Routen
 > `/production/orders` mit production.read/write). EN 1090: der Nutzer
 > lässt recherchieren, ob der Betrieb danach fertigt — offen, vor H.3
 > klären. Nächste: **H.1.4** Client.

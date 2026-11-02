@@ -22,6 +22,7 @@ import 'my_trips_page.dart';
 import 'notice_mail_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
+import 'production_orders_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -63,6 +64,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProjectsPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('production.read'))
+        _DashCard(
+          title: 'Fertigungsaufträge',
+          icon: Icons.precision_manufacturing_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ProductionOrdersPage(api: api),
               ),
             );
           },
