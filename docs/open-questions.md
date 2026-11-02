@@ -361,11 +361,14 @@ fertigt, ist damit nicht beantwortet.
    der Lieferung ablegen (Bezug zum Projekt)? Bisher gibt es dafür nichts
    (Nachweise nur für Mitarbeiter, ADR 0027). Empfehlung: ja, als eigener
    Punkt im Einkauf mit eigenem ADR **nach** H.1; kein Bezug zum
-   Fertigungsauftrag. Status: **offen**.
+   Fertigungsauftrag. Status: **ANNAHME 2026-11-02 — wie empfohlen**
+   ("fortsetzen" nach der Frage mit Empfehlung): Backlog H.4, eigenes ADR
+   nach Abschluss von H.1.
 8. **Feld "Ausführungsklasse" am Fertigungsauftrag** (neu, 2026-11-02):
    Für die eigene Fertigung ohne Bedeutung. Empfehlung: in Datenbank und
    API unverändert lassen; im Client nicht mehr zur Eingabe anbieten und
-   nur anzeigen, wenn ein Wert gesetzt ist. Status: **offen**.
+   nur anzeigen, wenn ein Wert gesetzt ist. Status: **ANNAHME 2026-11-02
+   — wie empfohlen** ("fortsetzen"): Backlog H.1.6.
 6. **Rechte**: neue Rechte `production.read`/`production.write` für die
    Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
    lesen? Empfehlung: ja. Status: **beantwortet 2026-10-31 — wie empfohlen**.

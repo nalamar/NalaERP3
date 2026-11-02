@@ -2,6 +2,8 @@ package production
 
 import (
 	"context"
+	"math"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -11,8 +13,9 @@ import (
 	"nalaerp3/internal/testutil"
 )
 
-// Reservierungen bei der Freigabe (Backlog H.1.5a): Migration 108 und die
-// Hilfen in materials, die in der Transaktion der Freigabe laufen.
+// Reservierungen bei der Freigabe (Backlog H.1.5): Migration 108, die
+// Hilfen in materials, die in der Transaktion der Freigabe laufen (a), und
+// Freigabe mit Lager, Storno und Lesen im Service (b).
 
 // seedStock legt Material und Lager im Mandanten an, mit Bestand qty
 // (0: ohne Bewegung).
@@ -193,7 +196,7 @@ func TestProductionReservationColumns(t *testing.T) {
 	if _, err := env.PG.Exec(ctx, `UPDATE production_orders SET reservierung_lager_id=$2 WHERE id=$1`, o.ID, wh); err == nil {
 		t.Fatal("Reservierungslager im Entwurf angenommen")
 	}
-	if _, err := svc.Release(ctx, o.ID, "", p.company); err != nil {
+	if _, err := svc.Release(ctx, o.ID, "", "", p.company); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := env.PG.Exec(ctx, `UPDATE production_orders SET reservierung_lager_id=$2 WHERE id=$1`, o.ID, wh); err != nil {
@@ -247,5 +250,215 @@ func TestProductionReservationColumns(t *testing.T) {
 	}
 	if gotMat != nil || gotResv != nil {
 		t.Fatalf("Bezug nach Materialloeschung: %v %v", gotMat, gotResv)
+	}
+}
+
+// addMaterial legt ein Material im Mandanten mit Bestand qty im Lager an.
+func addMaterial(t *testing.T, env *testutil.IntegrationEnv, company, einheit, warehouse string, qty float64) string {
+	t.Helper()
+	ctx := context.Background()
+	material := "mat-" + uuid.NewString()[:12]
+	if _, err := env.PG.Exec(ctx, `INSERT INTO materials (id, nummer, bezeichnung, typ, einheit, company_id) VALUES ($1,$1,'Testmaterial','artikel',$2,$3)`,
+		material, einheit, company); err != nil {
+		t.Fatalf("Material: %v", err)
+	}
+	if _, err := env.PG.Exec(ctx, `INSERT INTO stock_movements (id, material_id, warehouse_id, quantity, uom, movement_type) VALUES ($1,$2,$3,$4,$5,'purchase')`,
+		uuid.NewString(), material, warehouse, qty, einheit); err != nil {
+		t.Fatalf("Bestand: %v", err)
+	}
+	return material
+}
+
+func itemOf(t *testing.T, o *Order, art string) Item {
+	t.Helper()
+	for _, it := range o.Items {
+		if it.Art == art {
+			return it
+		}
+	}
+	t.Fatalf("keine Zeile %s", art)
+	return Item{}
+}
+
+func near(p *float64, want float64) bool { return p != nil && math.Abs(*p-want) < 1e-9 }
+
+func TestReleaseReservesFromWarehouse(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	svc := NewService(env.PG)
+	p := seedPosition(t, env)
+	other := seedPosition(t, env)
+	seedMaterials(t, env, p.variant)
+	profMat, wh := seedStock(t, env, p.company, "m", 10)
+	artMat := addMaterial(t, env, p.company, "Stk", wh, 4)
+	glasMat := addMaterial(t, env, p.company, "m²", wh, 100)
+	otherMat, otherWh := seedStock(t, env, other.company, "Stk", 10)
+	link := func(table, material string) {
+		t.Helper()
+		if _, err := env.PG.Exec(ctx, `UPDATE `+table+` SET material_id=$2 WHERE single_elevation_id=$1`, p.variant, material); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link("single_elevation_profiles", profMat)
+	link("single_elevation_articles", artMat)
+	// Material eines fremden Mandanten an der Projektzeile: nicht kopiert,
+	// nicht reserviert (Einheit "Stk" waere sonst reservierbar).
+	link("single_elevation_glass", otherMat)
+	create := func(n int) *Order {
+		t.Helper()
+		o, err := svc.Create(ctx, OrderInput{ProjectID: p.project, ElevationID: p.elevation, SingleElevationID: p.variant, Stueckzahl: n}, "", p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+	// aktive und alle Reservierungen eines Auftrags
+	count := func(nummer string) (aktiv, alle int) {
+		t.Helper()
+		if err := env.PG.QueryRow(ctx, `SELECT count(*) FILTER (WHERE status='aktiv'), count(*) FROM stock_reservations WHERE referenz=$1 AND project_id=$2`,
+			nummer, p.project).Scan(&aktiv, &alle); err != nil {
+			t.Fatal(err)
+		}
+		return aktiv, alle
+	}
+
+	o1 := create(3)
+	// Negativfaelle: unbekanntes und fremdes Lager - nichts freigegeben.
+	for _, lager := range []string{"gibt-es-nicht", otherWh} {
+		if _, err := svc.Release(ctx, o1.ID, lager, "", p.company); err == nil || err.Error() != "Lager nicht gefunden" {
+			t.Fatalf("Lager %s: %v", lager, err)
+		}
+	}
+	if got, _ := svc.Get(ctx, o1.ID, p.company); got.Status != StatusEntwurf || got.ReservierungLagerID != nil {
+		t.Fatalf("nach abgelehnter Freigabe: %s %v", got.Status, got.ReservierungLagerID)
+	}
+	if _, alle := count(o1.Nummer); alle != 0 {
+		t.Fatalf("Reservierungen nach abgelehnter Freigabe: %d", alle)
+	}
+
+	r1, err := svc.Release(ctx, o1.ID, " "+wh+" ", "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1.ReservierungLagerID == nil || *r1.ReservierungLagerID != wh {
+		t.Fatalf("Reservierungslager: %v", r1.ReservierungLagerID)
+	}
+	// Profil: 2 Stueck je Element x 3 x 1,2304 m = 7,3824 m, alles da.
+	prof := itemOf(t, r1, ArtProfil)
+	if prof.MaterialID == nil || *prof.MaterialID != profMat || prof.MaterialEinheit != "m" ||
+		!near(prof.Bedarf, 7.3824) || !near(prof.Reserviert, 7.3824) || !near(prof.Fehlmenge, 0) {
+		t.Fatalf("Profil: %+v", prof)
+	}
+	// Artikel: 1,5 x 3 = 4,5 Stk, 4 da - Fehlmenge 0,5.
+	art := itemOf(t, r1, ArtArtikel)
+	if art.MaterialID == nil || *art.MaterialID != artMat || !near(art.Bedarf, 4.5) || !near(art.Reserviert, 4) || !near(art.Fehlmenge, 0.5) {
+		t.Fatalf("Artikel: %+v", art)
+	}
+	if glas := itemOf(t, r1, ArtGlas); glas.MaterialID != nil || glas.Bedarf != nil {
+		t.Fatalf("Glas mit fremdem Material: %+v", glas)
+	}
+	if !slices.Contains(r1.Hinweise, HintFehlmenge) {
+		t.Fatalf("Hinweise: %v", r1.Hinweise)
+	}
+	var grund, projekt string
+	if err := env.PG.QueryRow(ctx, `SELECT DISTINCT grund, project_id::text FROM stock_reservations r
+		JOIN warehouses w ON w.id = r.warehouse_id WHERE r.referenz=$1 AND w.company_id=$2`, o1.Nummer, p.company).
+		Scan(&grund, &projekt); err != nil {
+		t.Fatal(err)
+	}
+	if grund != ReservierungGrund || projekt != p.project.String() {
+		t.Fatalf("Reservierung: %s %s", grund, projekt)
+	}
+	if aktiv, alle := count(o1.Nummer); aktiv != 2 || alle != 2 {
+		t.Fatalf("Reservierungen: %d/%d", aktiv, alle)
+	}
+
+	// Ein geaenderter Materialbezug ist keine geaenderte Position.
+	link("single_elevation_glass", glasMat)
+	if got, _ := svc.Get(ctx, o1.ID, p.company); slices.Contains(got.Hinweise, HintPositionGeaendert) {
+		t.Fatalf("Hinweise nach Materialbezug: %v", got.Hinweise)
+	}
+
+	// Zweiter Auftrag: Profil 2,4608 m vom Rest 2,6176 m, Artikel nichts
+	// mehr frei; Glas auf m² wird kopiert, aber nicht reserviert.
+	o2 := create(1)
+	r2, err := svc.Release(ctx, o2.ID, wh, "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prof := itemOf(t, r2, ArtProfil); !near(prof.Reserviert, 2.4608) || !near(prof.Fehlmenge, 0) {
+		t.Fatalf("Profil 2: %+v", prof)
+	}
+	if art := itemOf(t, r2, ArtArtikel); !near(art.Reserviert, 0) || !near(art.Fehlmenge, 1.5) {
+		t.Fatalf("Artikel 2: %+v", art)
+	}
+	if glas := itemOf(t, r2, ArtGlas); glas.MaterialID == nil || *glas.MaterialID != glasMat || glas.Bedarf != nil {
+		t.Fatalf("Glas 2: %+v", glas)
+	}
+	if aktiv, _ := count(o2.Nummer); aktiv != 1 {
+		t.Fatalf("Reservierungen 2: %d", aktiv)
+	}
+	// "fertig" laesst die Reservierungen stehen, ohne Fehlmengen-Hinweis.
+	if _, err := svc.Start(ctx, o2.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	f2, err := svc.Finish(ctx, o2.ID, "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aktiv, _ := count(o2.Nummer); aktiv != 1 || slices.Contains(f2.Hinweise, HintFehlmenge) {
+		t.Fatalf("nach fertig: %d %v", aktiv, f2.Hinweise)
+	}
+
+	// Im Lager freigegeben (nicht ueber den Auftrag): zaehlt nicht mehr
+	// als reserviert, der Bedarf ist Fehlmenge.
+	var rid string
+	if err := env.PG.QueryRow(ctx, `SELECT stock_reservation_id FROM production_order_items WHERE order_id=$1 AND art='profil'`, o2.ID).Scan(&rid); err != nil {
+		t.Fatal(err)
+	}
+	if err := inTx(t, env, func(tx pgx.Tx) error {
+		_, err := materials.ReleaseReservationTx(ctx, tx, p.company, rid)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if g2, _ := svc.Get(ctx, o2.ID, p.company); !near(itemOf(t, g2, ArtProfil).Reserviert, 0) || !near(itemOf(t, g2, ArtProfil).Fehlmenge, 2.4608) {
+		t.Fatalf("Profil nach Freigabe im Lager: %+v", itemOf(t, g2, ArtProfil))
+	}
+
+	// Storno gibt frei; danach ist der Artikel fuer einen neuen Auftrag da.
+	s1, err := svc.Cancel(ctx, o1.ID, "Kunde storniert", "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aktiv, alle := count(o1.Nummer); aktiv != 0 || alle != 2 {
+		t.Fatalf("nach Storno: %d/%d", aktiv, alle)
+	}
+	if art := itemOf(t, s1, ArtArtikel); art.MaterialID == nil || art.Bedarf != nil || art.Fehlmenge != nil {
+		t.Fatalf("Artikel storniert: %+v", art)
+	}
+	o3 := create(1)
+	r3, err := svc.Release(ctx, o3.ID, wh, "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if art := itemOf(t, r3, ArtArtikel); !near(art.Reserviert, 1.5) || slices.Contains(r3.Hinweise, HintFehlmenge) {
+		t.Fatalf("Artikel nach Storno: %+v %v", art, r3.Hinweise)
+	}
+
+	// Ohne Lager: Material kopiert, keine Reservierung, keine Fehlmenge.
+	o4 := create(1)
+	r4, err := svc.Release(ctx, o4.ID, "", "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if art := itemOf(t, r4, ArtArtikel); r4.ReservierungLagerID != nil || art.MaterialID == nil || art.Bedarf != nil {
+		t.Fatalf("ohne Lager: %v %+v", r4.ReservierungLagerID, art)
+	}
+	if _, alle := count(o4.Nummer); alle != 0 {
+		t.Fatalf("Reservierungen ohne Lager: %d", alle)
+	}
+	if _, err := svc.Cancel(ctx, o4.ID, "doppelt", "", p.company); err != nil {
+		t.Fatal(err)
 	}
 }

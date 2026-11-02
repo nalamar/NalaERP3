@@ -7,7 +7,15 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-02 EN 1090 beantwortet:** "Wir fertigen selbst nicht in EN
+> **2026-11-02 H.1.5b** erledigt: Freigabe mit optionalem Lager
+> reserviert je passender Zeile das Verfügbare, Fehlmenge als Hinweis,
+> Storno gibt frei; Route `/freigeben` mit `lager_id`. "fortsetzen" als
+> Zustimmung zu den Empfehlungen der Fragen 7 und 8 — ANNAHME: H.4
+> (Nachweise der Zulieferer, eigenes ADR nach H.1) und H.1.6 (Feld
+> Ausführungsklasse im Client nur anzeigen). Nächste: **H.1.5c** Client.
+> Offen: der Hinweis `fehlmenge` fehlt in der Liste (keine Stückliste
+> dort); Hinweise der Liste weiter je Auftrag einzeln berechnet.
+> Davor **EN 1090 beantwortet:** "Wir fertigen selbst nicht in EN
 > 1090, haben aber Zulieferer, die das tun." Eingetragen in
 > `open-questions.md` (5), ADR 0034 (Präzisierung EN 1090), Backlog H.3/H.4.
 > Neue Fragen 7 (Nachweise der Zulieferer) und 8 (Feld im Client) offen —

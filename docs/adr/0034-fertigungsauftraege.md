@@ -219,6 +219,18 @@ Lagerhilfen), H.1.5b (Freigabe und Storno im Service, Route) und H.1.5c
   Auftragsnummer; die Zeile verweist auf ihre Reservierung
   (`production_order_items.stock_reservation_id`, höchstens eine je Zeile).
 
+Ergänzt mit H.1.5b (ANNAHMEN, nicht in der Empfehlung geregelt):
+
+- Ein Material eines anderen Mandanten an der Projektzeile wird nicht
+  kopiert und nicht reserviert; ein unbekanntes oder fremdes Lager lehnt
+  die Freigabe ab ("Lager nicht gefunden"), nichts wird freigegeben.
+- Der Materialbezug gehört nicht zum Fingerabdruck: ein in Logikal
+  geändertes Material ist kein Hinweis `position_geaendert`.
+- "Reserviert" ist die **aktive** Reservierung der Zeile; der Bedarf wird
+  mit der heutigen Einheit des Materials gerechnet.
+- Der Hinweis `fehlmenge` steht nur in der Einzelansicht (die Liste lädt
+  keine Stückliste) und nur bei "freigegeben" und "in Arbeit".
+
 ## Präzisierung EN 1090 (2026-11-02, Antwort des Nutzers)
 
 "Wir fertigen selbst nicht in EN 1090, haben aber Zulieferer, die das tun."
@@ -228,9 +240,12 @@ Lagerhilfen), H.1.5b (Freigabe und Storno im Service, Route) und H.1.5c
   **entfällt** für H.3.
 - Das Feld `ausfuehrungsklasse` (Migration 107) bleibt in Datenbank und
   API (keine Löschung bestehender Funktionalität); es hat keine Wirkung.
-  Ob der Client es weiter zur Eingabe anbietet: offene Frage 8.
+  Ob der Client es weiter zur Eingabe anbietet: Frage 8 — ANNAHME
+  (2026-11-02, "fortsetzen"): nicht mehr zur Eingabe, nur anzeigen, wenn
+  gesetzt (H.1.6).
 - EN 1090 betrifft den Betrieb über den **Einkauf**: zugekaufte tragende
   Bauteile kommen von zertifizierten Zulieferern. Nachweise der
   Zulieferer (Zertifikat am Lieferanten, Leistungserklärung am
   Wareneingang) sind ein eigenes Thema außerhalb der Fertigungsaufträge:
-  offene Frage 7, eigenes ADR.
+  Frage 7 — ANNAHME (2026-11-02, "fortsetzen"): eigenes ADR nach H.1
+  (Backlog H.4).

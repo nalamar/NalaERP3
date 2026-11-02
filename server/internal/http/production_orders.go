@@ -3,6 +3,8 @@ package apihttp
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -50,7 +52,7 @@ func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
 	read := requirePermission(permProductionRead)
 	write := requirePermission(permProductionWrite)
 
-	// action: ein Schritt ohne Eingabe (freigeben, beginnen, fertigmelden).
+	// action: ein Schritt ohne Eingabe (beginnen, fertigmelden).
 	action := func(do func(ctx context.Context, id uuid.UUID, actorUserID, companyID string) (*production.Order, error)) http.HandlerFunc {
 		return func(w http.ResponseWriter, req *http.Request) {
 			id, ok := parseUUIDParam(w, req, "id", "Ungültige Auftrags-ID")
@@ -158,7 +160,28 @@ func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
 			writeJSON(w, http.StatusOK, out)
 		})
 
-		r.With(write).Post("/{id}/freigeben", action(svc.Release))
+		// Freigeben; optional {"lager_id": "..."} - dann wird aus diesem Lager
+		// reserviert (H.1.5). Ohne Body: ohne Reservierung.
+		r.With(write).Post("/{id}/freigeben", func(w http.ResponseWriter, req *http.Request) {
+			id, ok := parseUUIDParam(w, req, "id", "Ungültige Auftrags-ID")
+			if !ok {
+				return
+			}
+			var in struct {
+				LagerID string `json:"lager_id"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := svc.Release(req.Context(), id, in.LagerID, actorUserIDFromContext(req.Context()), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(write).Post("/{id}/beginnen", action(svc.Start))
 		r.With(write).Post("/{id}/fertigmelden", action(svc.Finish))
 

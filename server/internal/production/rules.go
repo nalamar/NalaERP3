@@ -38,6 +38,11 @@ const (
 	HintMengeUeberschritten = "menge_ueberschritten"
 	HintPositionGeaendert   = "position_geaendert"
 	HintPositionEntfernt    = "position_entfernt"
+	// Bei der Freigabe war nicht alles verfuegbar (H.1.5).
+	HintFehlmenge = "fehlmenge"
+
+	// Grund der Reservierungen eines Auftrags; Referenz ist die Nummer.
+	ReservierungGrund = "Fertigungsauftrag"
 )
 
 var Ausfuehrungsklassen = []string{"EXC1", "EXC2", "EXC3", "EXC4"}
@@ -195,6 +200,9 @@ type SnapshotItem struct {
 	AreaM2        *float64 `json:"area_m2"`
 	MengeJeStueck float64  `json:"menge_je_stueck"`
 	Unit          string   `json:"unit"`
+	// Lagermaterial der Projektzeile (leer: keins). Nicht im Fingerabdruck:
+	// ein geaenderter Materialbezug aendert nicht, was gefertigt wird.
+	MaterialID string `json:"-"`
 }
 
 func roundTo(p *float64, digits int) *float64 {
@@ -297,4 +305,15 @@ func ReservationQty(art, zeilenEinheit, materialEinheit string, lengthMM *float6
 		return mengeGesamt, true
 	}
 	return 0, false
+}
+
+// Shortfall: Bedarf minus Reserviertes, auf die 6 Stellen der Spalte
+// gerundet (das Abrunden der Reservierung erzeugt sonst Rauschen), nie
+// negativ.
+func Shortfall(bedarf, reserviert float64) float64 {
+	d := math.Round((bedarf-reserviert)*1e6) / 1e6
+	if d <= 0 {
+		return 0
+	}
+	return d
 }

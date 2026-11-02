@@ -187,7 +187,7 @@ func TestOrderCreateAndDraft(t *testing.T) {
 	if g, _ := svc.Get(ctx, o.ID, p.company); hasHint(g, HintKeinKundenauftrag) {
 		t.Fatalf("mit Kundenauftrag: %v", g.Hinweise)
 	}
-	if _, err := svc.Release(ctx, o2.ID, "", p.company); err != nil {
+	if _, err := svc.Release(ctx, o2.ID, "", "", p.company); err != nil {
 		t.Fatalf("freigeben: %v", err)
 	}
 	_, err = svc.UpdateDraft(ctx, o2.ID, DraftUpdate{Stueckzahl: 1}, p.company)
@@ -212,17 +212,17 @@ func TestOrderReleaseCopyAndLifecycle(t *testing.T) {
 	wantErr(t, "beginnen im Entwurf", err, "Aktion im aktuellen Status nicht erlaubt")
 	_, err = svc.Finish(ctx, o.ID, actor, p.company)
 	wantErr(t, "fertig im Entwurf", err, "Aktion im aktuellen Status nicht erlaubt")
-	if _, err := svc.Release(ctx, o.ID, actor, other.company); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.Release(ctx, o.ID, "", actor, other.company); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("fremd freigeben: %v", err)
 	}
 	if _, err := svc.Get(ctx, o.ID, other.company); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("fremd lesen: %v", err)
 	}
-	if _, err := svc.Release(ctx, uuid.New(), actor, p.company); !errors.Is(err, ErrNotFound) {
+	if _, err := svc.Release(ctx, uuid.New(), "", actor, p.company); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("unbekannt: %v", err)
 	}
 
-	r, err := svc.Release(ctx, o.ID, actor, p.company)
+	r, err := svc.Release(ctx, o.ID, "", actor, p.company)
 	if err != nil {
 		t.Fatalf("freigeben: %v", err)
 	}
@@ -257,7 +257,7 @@ func TestOrderReleaseCopyAndLifecycle(t *testing.T) {
 		len(hash) != 64 || guid != "g-pos" {
 		t.Fatalf("Kopie: %q %q %v", hash, guid, err)
 	}
-	_, err = svc.Release(ctx, o.ID, actor, p.company)
+	_, err = svc.Release(ctx, o.ID, "", actor, p.company)
 	wantErr(t, "zweimal freigeben", err, "Aktion im aktuellen Status nicht erlaubt")
 	var items int
 	if err := env.PG.QueryRow(ctx, `SELECT count(*) FROM production_order_items WHERE order_id=$1`, o.ID).Scan(&items); err != nil || items != 3 {
@@ -304,7 +304,7 @@ func TestOrderReleaseCopyAndLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := svc.Release(ctx, c.ID, actor, p.company); err != nil {
+	if _, err := svc.Release(ctx, c.ID, "", actor, p.company); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := svc.Start(ctx, c.ID, actor, p.company); err != nil {
@@ -344,7 +344,7 @@ func TestOrderReleaseCopyAndLifecycle(t *testing.T) {
 	if g, _ := svc.Get(ctx, o.ID, p.company); !hasHint(g, HintPositionEntfernt) || hasHint(g, HintPositionGeaendert) {
 		t.Fatalf("Variante verschoben: %v", g.Hinweise)
 	}
-	_, err = svc.Release(ctx, d.ID, actor, p.company)
+	_, err = svc.Release(ctx, d.ID, "", actor, p.company)
 	wantErr(t, "Variante verschoben", err, "Position oder Variante ist nicht mehr im Projekt")
 	if _, err := env.PG.Exec(ctx, `UPDATE project_single_elevations SET elevation_id=$1 WHERE id=$2`, p.elevation, p.variant); err != nil {
 		t.Fatal(err)
@@ -355,7 +355,7 @@ func TestOrderReleaseCopyAndLifecycle(t *testing.T) {
 	if g, _ := svc.Get(ctx, o.ID, p.company); !hasHint(g, HintPositionEntfernt) || len(g.Items) != 3 || g.PositionNummer != "3" {
 		t.Fatalf("nach Re-Import: %v %d", g.Hinweise, len(g.Items))
 	}
-	_, err = svc.Release(ctx, d.ID, actor, p.company)
+	_, err = svc.Release(ctx, d.ID, "", actor, p.company)
 	wantErr(t, "Variante entfernt", err, "Position oder Variante ist nicht mehr im Projekt")
 	if g, _ := svc.Get(ctx, d.ID, p.company); g.Status != StatusEntwurf || !hasHint(g, HintPositionEntfernt) {
 		t.Fatalf("Entwurf nach Re-Import: %+v", g)
@@ -393,7 +393,7 @@ func TestOrderList(t *testing.T) {
 		t.Fatal(err)
 	}
 	foreign := mk(other, &d2)
-	if _, err := svc.Release(ctx, early.ID, "", p.company); err != nil {
+	if _, err := svc.Release(ctx, early.ID, "", "", p.company); err != nil {
 		t.Fatal(err)
 	}
 	ids := func(f OrderFilter) []uuid.UUID {

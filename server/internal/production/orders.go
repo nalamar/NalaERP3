@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"nalaerp3/internal/materials"
 	"nalaerp3/internal/settings"
 )
 
@@ -55,6 +56,9 @@ type Order struct {
 	StorniertByUserID   *string    `json:"storniert_by_user_id,omitempty"`
 	CreatedByUserID     *string    `json:"created_by_user_id"`
 	CreatedAt           time.Time  `json:"created_at"`
+	// Lager, aus dem bei der Freigabe reserviert wurde (leer: ohne
+	// Reservierung freigegeben).
+	ReservierungLagerID *string `json:"reservierung_lager_id"`
 
 	// Hinweise (HintKeinKundenauftrag ...), keine Sperren.
 	Hinweise []string `json:"hinweise"`
@@ -80,6 +84,15 @@ type Item struct {
 	// Bedarf des Auftrags: menge_je_stueck * stueckzahl.
 	MengeGesamt float64 `json:"menge_gesamt"`
 	Unit        string  `json:"unit"`
+	// Lagermaterial der Projektzeile, bei der Freigabe kopiert.
+	MaterialID      *string `json:"material_id"`
+	MaterialEinheit string  `json:"material_einheit"`
+	// Nur mit Reservierungslager und passender Einheit (ReservationQty),
+	// nicht bei stornierten Auftraegen: Bedarf in der Einheit des
+	// Materials, davon aktiv reserviert, Rest als Fehlmenge.
+	Bedarf     *float64 `json:"bedarf"`
+	Reserviert *float64 `json:"reserviert"`
+	Fehlmenge  *float64 `json:"fehlmenge"`
 }
 
 // OrderFilter: ohne Angaben alle nicht stornierten Auftraege des Mandanten.
@@ -121,7 +134,7 @@ const orderColumns = `o.id, o.nummer, o.project_id, p.nummer, p.name, o.elevatio
 	o.liefertermin, o.ausfuehrungsklasse, o.notiz, o.status, o.phase_name, o.position_nummer, o.position_name,
 	o.variante_name, o.width_mm::float8, o.height_mm::float8, o.inhalt_hash,
 	o.freigegeben_at, o.freigegeben_by_user_id, o.begonnen_at, o.begonnen_by_user_id, o.fertig_at, o.fertig_by_user_id,
-	o.storno_reason, o.storniert_at, o.storniert_by_user_id, o.created_by_user_id, o.created_at`
+	o.storno_reason, o.storniert_at, o.storniert_by_user_id, o.created_by_user_id, o.created_at, o.reservierung_lager_id`
 
 const orderFrom = `
 	  FROM production_orders o
@@ -133,7 +146,7 @@ func scanOrder(row pgx.Row) (*Order, error) {
 		&x.Stueckzahl, &x.Liefertermin, &x.Ausfuehrungsklasse, &x.Notiz, &x.Status, &x.PhaseName, &x.PositionNummer,
 		&x.PositionName, &x.VarianteName, &x.WidthMM, &x.HeightMM, &x.inhaltHash,
 		&x.FreigegebenAt, &x.FreigegebenByUserID, &x.BegonnenAt, &x.BegonnenByUserID, &x.FertigAt, &x.FertigByUserID,
-		&x.StornoReason, &x.StorniertAt, &x.StorniertByUserID, &x.CreatedByUserID, &x.CreatedAt); err != nil {
+		&x.StornoReason, &x.StorniertAt, &x.StorniertByUserID, &x.CreatedByUserID, &x.CreatedAt, &x.ReservierungLagerID); err != nil {
 		return nil, err
 	}
 	return &x, nil
@@ -257,15 +270,15 @@ func loadSnapshot(ctx context.Context, q querier, elevationID, variantID uuid.UU
 	}
 	rows, err := q.Query(ctx, `
 		SELECT 'profil', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
-		       length_mm::float8, NULL::float8, NULL::float8, NULL::float8, qty::float8, COALESCE(unit,'')
+		       length_mm::float8, NULL::float8, NULL::float8, NULL::float8, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
 		  FROM single_elevation_profiles WHERE single_elevation_id=$1
 		UNION ALL
 		SELECT 'artikel', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
-		       NULL, NULL, NULL, NULL, qty::float8, COALESCE(unit,'')
+		       NULL, NULL, NULL, NULL, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
 		  FROM single_elevation_articles WHERE single_elevation_id=$1
 		UNION ALL
 		SELECT 'glas', '', '', COALESCE(description,''), COALESCE(configuration,''),
-		       NULL, width_mm::float8, height_mm::float8, area_m2::float8, qty::float8, COALESCE(unit,'')
+		       NULL, width_mm::float8, height_mm::float8, area_m2::float8, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
 		  FROM single_elevation_glass WHERE single_elevation_id=$1`, variantID)
 	if err != nil {
 		return s, false, err
@@ -275,7 +288,7 @@ func loadSnapshot(ctx context.Context, q querier, elevationID, variantID uuid.UU
 	for rows.Next() {
 		var it SnapshotItem
 		if err := rows.Scan(&it.Art, &it.SupplierCode, &it.ArticleCode, &it.Description, &it.Configuration,
-			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit); err != nil {
+			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit, &it.MaterialID); err != nil {
 			return s, false, err
 		}
 		s.Items = append(s.Items, it)
@@ -285,8 +298,11 @@ func loadSnapshot(ctx context.Context, q querier, elevationID, variantID uuid.UU
 
 // Release gibt einen Entwurf frei: Position, Variante und Materialliste
 // werden kopiert (in der Reihenfolge des Fingerabdrucks) und danach nie
-// mehr geaendert.
-func (s *Service) Release(ctx context.Context, id uuid.UUID, actorUserID, companyID string) (*Order, error) {
+// mehr geaendert. Mit Lager (optional, H.1.5) wird je Zeile mit
+// Lagermaterial und passender Einheit das Verfuegbare reserviert; eine
+// Fehlmenge verhindert die Freigabe nicht.
+func (s *Service) Release(ctx context.Context, id uuid.UUID, lagerID, actorUserID, companyID string) (*Order, error) {
+	lagerID = strings.TrimSpace(lagerID)
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -298,6 +314,15 @@ func (s *Service) Release(ctx context.Context, id uuid.UUID, actorUserID, compan
 	}
 	if _, err := NextStatus(cur.status, AktionFreigeben); err != nil {
 		return nil, err
+	}
+	if lagerID != "" {
+		var ok bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM warehouses WHERE id=$1 AND company_id=$2)`, lagerID, companyID).Scan(&ok); err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, errors.New("Lager nicht gefunden")
+		}
 	}
 	if cur.elevationID == nil || cur.variantID == nil {
 		return nil, errors.New("Position oder Variante ist nicht mehr im Projekt")
@@ -313,22 +338,45 @@ func (s *Service) Release(ctx context.Context, id uuid.UUID, actorUserID, compan
 		return nil, err
 	}
 	c := canonical(snap)
+	einheiten, err := materialUnits(ctx, tx, c.Items, companyID)
+	if err != nil {
+		return nil, err
+	}
+	var lager *string
+	if lagerID != "" {
+		lager = &lagerID
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE production_orders SET status=$2, phase_name=$3, position_nummer=$4, position_name=$5, position_guid=$6,
 			variante_name=$7, variante_guid=$8, width_mm=$9, height_mm=$10, inhalt_hash=$11,
-			freigegeben_at=now(), freigegeben_by_user_id=$12
+			freigegeben_at=now(), freigegeben_by_user_id=$12, reservierung_lager_id=$13
 		 WHERE id=$1`,
 		id, StatusFreigegeben, c.PhaseName, c.PositionNummer, c.PositionName, c.PositionGUID, c.VarianteName, c.VarianteGUID,
-		c.WidthMM, c.HeightMM, Fingerprint(snap), nullableUserID(actorUserID)); err != nil {
+		c.WidthMM, c.HeightMM, Fingerprint(snap), nullableUserID(actorUserID), lager); err != nil {
 		return nil, err
 	}
 	for i, it := range c.Items {
+		// Nur Material des Mandanten wird kopiert und reserviert.
+		var material, reservierung *string
+		if einheit, ok := einheiten[it.MaterialID]; ok {
+			m := it.MaterialID
+			material = &m
+			if want, ok := ReservationQty(it.Art, it.Unit, einheit, it.LengthMM, it.MengeJeStueck*float64(cur.stueckzahl)); ok && lager != nil {
+				rid, _, err := materials.ReserveAvailableTx(ctx, tx, companyID, m, lagerID, cur.projectID.String(), want, ReservierungGrund, cur.nummer)
+				if err != nil {
+					return nil, err
+				}
+				if rid != "" {
+					reservierung = &rid
+				}
+			}
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO production_order_items (id, order_id, pos, art, supplier_code, article_code, description, configuration,
-				length_mm, width_mm, height_mm, area_m2, menge_je_stueck, unit)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+				length_mm, width_mm, height_mm, area_m2, menge_je_stueck, unit, material_id, stock_reservation_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
 			uuid.New(), id, i+1, it.Art, it.SupplierCode, it.ArticleCode, it.Description, it.Configuration,
-			it.LengthMM, it.WidthMM, it.HeightMM, it.AreaM2, it.MengeJeStueck, it.Unit); err != nil {
+			it.LengthMM, it.WidthMM, it.HeightMM, it.AreaM2, it.MengeJeStueck, it.Unit, material, reservierung); err != nil {
 			return nil, err
 		}
 	}
@@ -338,15 +386,46 @@ func (s *Service) Release(ctx context.Context, id uuid.UUID, actorUserID, compan
 	return s.Get(ctx, id, companyID)
 }
 
+// materialUnits: Einheit je Lagermaterial der Zeilen, nur Material des
+// Mandanten.
+func materialUnits(ctx context.Context, q querier, items []SnapshotItem, companyID string) (map[string]string, error) {
+	ids := make([]string, 0)
+	for _, it := range items {
+		if it.MaterialID != "" {
+			ids = append(ids, it.MaterialID)
+		}
+	}
+	out := make(map[string]string)
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := q.Query(ctx, `SELECT id, einheit FROM materials WHERE company_id=$1 AND id = ANY($2)`, companyID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, einheit string
+		if err := rows.Scan(&id, &einheit); err != nil {
+			return nil, err
+		}
+		out[id] = einheit
+	}
+	return out, rows.Err()
+}
+
 type lockedOrder struct {
 	status                 string
+	nummer                 string
+	projectID              uuid.UUID
+	stueckzahl             int
 	elevationID, variantID *uuid.UUID
 }
 
 func lockOrder(ctx context.Context, tx pgx.Tx, id uuid.UUID, companyID string) (*lockedOrder, error) {
 	var x lockedOrder
-	err := tx.QueryRow(ctx, `SELECT status, elevation_id, single_elevation_id FROM production_orders
-		WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&x.status, &x.elevationID, &x.variantID)
+	err := tx.QueryRow(ctx, `SELECT status, nummer, project_id, stueckzahl, elevation_id, single_elevation_id FROM production_orders
+		WHERE id=$1 AND company_id=$2 FOR UPDATE`, id, companyID).Scan(&x.status, &x.nummer, &x.projectID, &x.stueckzahl, &x.elevationID, &x.variantID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -388,7 +467,8 @@ func (s *Service) step(ctx context.Context, id uuid.UUID, aktion, set, actorUser
 }
 
 // Cancel storniert mit Begruendung - aus jedem Status vor "fertig". Der
-// Auftrag und seine Stueckliste bleiben sichtbar.
+// Auftrag und seine Stueckliste bleiben sichtbar; aktive Reservierungen
+// werden freigegeben.
 func (s *Service) Cancel(ctx context.Context, id uuid.UUID, reason, actorUserID, companyID string) (*Order, error) {
 	r, err := ValidateStornoReason(reason)
 	if err != nil {
@@ -411,6 +491,20 @@ func (s *Service) Cancel(ctx context.Context, id uuid.UUID, reason, actorUserID,
 		 WHERE id=$1`, id, next, r, nullableUserID(actorUserID)); err != nil {
 		return nil, err
 	}
+	rows, err := tx.Query(ctx, `SELECT stock_reservation_id FROM production_order_items
+		WHERE order_id=$1 AND stock_reservation_id IS NOT NULL`, id)
+	if err != nil {
+		return nil, err
+	}
+	reservierungen, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	for _, rid := range reservierungen {
+		if _, err := materials.ReleaseReservationTx(ctx, tx, companyID, rid); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
@@ -431,8 +525,16 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Ord
 		return nil, err
 	}
 	if x.FreigegebenAt != nil {
-		if x.Items, err = s.items(ctx, x.ID, x.Stueckzahl); err != nil {
+		if x.Items, err = s.items(ctx, x); err != nil {
 			return nil, err
+		}
+	}
+	if x.Status == StatusFreigegeben || x.Status == StatusInArbeit {
+		for _, it := range x.Items {
+			if it.Fehlmenge != nil && *it.Fehlmenge > 0 {
+				x.Hinweise = append(x.Hinweise, HintFehlmenge)
+				break
+			}
 		}
 	}
 	return x, nil
@@ -473,10 +575,16 @@ func (s *Service) List(ctx context.Context, companyID string, f OrderFilter) ([]
 	return out, nil
 }
 
-func (s *Service) items(ctx context.Context, orderID uuid.UUID, stueckzahl int) ([]Item, error) {
-	rows, err := s.pg.Query(ctx, `SELECT pos, art, supplier_code, article_code, description, configuration,
-		length_mm::float8, width_mm::float8, height_mm::float8, area_m2::float8, menge_je_stueck::float8, unit
-		  FROM production_order_items WHERE order_id=$1 ORDER BY pos`, orderID)
+// items liest die Fertigungsstueckliste mit Material und - bei einem
+// Reservierungslager - Bedarf, aktiv Reserviertem und Fehlmenge.
+func (s *Service) items(ctx context.Context, x *Order) ([]Item, error) {
+	rows, err := s.pg.Query(ctx, `SELECT i.pos, i.art, i.supplier_code, i.article_code, i.description, i.configuration,
+		i.length_mm::float8, i.width_mm::float8, i.height_mm::float8, i.area_m2::float8, i.menge_je_stueck::float8, i.unit,
+		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0)
+		  FROM production_order_items i
+		  LEFT JOIN materials m ON m.id = i.material_id
+		  LEFT JOIN stock_reservations r ON r.id = i.stock_reservation_id AND r.status = 'aktiv'
+		 WHERE i.order_id=$1 ORDER BY i.pos`, x.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -484,11 +592,19 @@ func (s *Service) items(ctx context.Context, orderID uuid.UUID, stueckzahl int) 
 	out := make([]Item, 0)
 	for rows.Next() {
 		var it Item
+		var reserviert float64
 		if err := rows.Scan(&it.Pos, &it.Art, &it.SupplierCode, &it.ArticleCode, &it.Description, &it.Configuration,
-			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit); err != nil {
+			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit,
+			&it.MaterialID, &it.MaterialEinheit, &reserviert); err != nil {
 			return nil, err
 		}
-		it.MengeGesamt = it.MengeJeStueck * float64(stueckzahl)
+		it.MengeGesamt = it.MengeJeStueck * float64(x.Stueckzahl)
+		if x.ReservierungLagerID != nil && it.MaterialID != nil && x.Status != StatusStorniert {
+			if bedarf, ok := ReservationQty(it.Art, it.Unit, it.MaterialEinheit, it.LengthMM, it.MengeGesamt); ok {
+				fehl := Shortfall(bedarf, reserviert)
+				it.Bedarf, it.Reserviert, it.Fehlmenge = &bedarf, &reserviert, &fehl
+			}
+		}
 		out = append(out, it)
 	}
 	return out, rows.Err()

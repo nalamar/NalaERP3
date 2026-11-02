@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -333,5 +334,69 @@ func TestClassifyDomainErrorCoversProductionOrderMessages(t *testing.T) {
 		if got, _ := classifyDomainError(errors.New(msg)); got != want {
 			t.Errorf("%q: erwartet %d, bekommen %d", msg, want, got)
 		}
+	}
+}
+
+// Freigeben mit Lager (Backlog H.1.5b): reserviert das Verfuegbare, der
+// Rest ist Fehlmenge; Storno gibt frei.
+func TestProductionOrdersHTTPReservation(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	token := c.user("production")
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		return doAuthedRequest(t, handler, token, method, path, body)
+	}
+	ctx := context.Background()
+	p := seedProductionPosition(t, env, c.company)
+	mat, wh := "mat-"+uuid.NewString()[:12], "wh-"+uuid.NewString()[:12]
+	for _, q := range []struct {
+		sql  string
+		args []any
+	}{
+		{`INSERT INTO materials (id, nummer, bezeichnung, typ, einheit, company_id) VALUES ($1,$1,'Profil','profil','m',$2)`, []any{mat, c.company}},
+		{`INSERT INTO warehouses (id, code, name, company_id) VALUES ($1,$1,'Halle',$2)`, []any{wh, c.company}},
+		{`INSERT INTO stock_movements (id, material_id, warehouse_id, quantity, uom, movement_type) VALUES ($1,$2,$3,10,'m','purchase')`,
+			[]any{uuid.NewString(), mat, wh}},
+		{`UPDATE single_elevation_profiles SET material_id=$2 WHERE single_elevation_id=$1`, []any{p.variant, mat}},
+	} {
+		if _, err := env.PG.Exec(ctx, q.sql, q.args...); err != nil {
+			t.Fatalf("Testdaten: %v", err)
+		}
+	}
+	type reservationResponse struct {
+		Status              string   `json:"status"`
+		ReservierungLagerID *string  `json:"reservierung_lager_id"`
+		Hinweise            []string `json:"hinweise"`
+		Items               []struct {
+			MaterialID *string  `json:"material_id"`
+			Bedarf     *float64 `json:"bedarf"`
+			Reserviert *float64 `json:"reserviert"`
+			Fehlmenge  *float64 `json:"fehlmenge"`
+		} `json:"items"`
+	}
+
+	// 2 Stueck je Element x 6 x 1,2 m = 14,4 m Bedarf, 10 m im Lager.
+	o := decodeJSON[productionOrderResponse](t, do(http.MethodPost, productionOrdersPath, p.body(6, "")), http.StatusCreated)
+	path := productionOrdersPath + o.ID.String() + "/freigeben"
+	wantAPIError(t, do(http.MethodPost, path, `{`), http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+	wantAPIError(t, do(http.MethodPost, path, `{"lager_id":"gibt-es-nicht"}`), http.StatusNotFound, "not_found", "Lager nicht gefunden")
+	r := decodeJSON[reservationResponse](t, do(http.MethodPost, path, `{"lager_id":"`+wh+`"}`), http.StatusOK)
+	if r.Status != "freigegeben" || r.ReservierungLagerID == nil || *r.ReservierungLagerID != wh || len(r.Items) != 1 {
+		t.Fatalf("freigegeben: %+v", r)
+	}
+	it := r.Items[0]
+	if it.MaterialID == nil || *it.MaterialID != mat || it.Bedarf == nil || *it.Bedarf != 14.4 || it.Reserviert == nil || *it.Reserviert != 10 ||
+		it.Fehlmenge == nil || *it.Fehlmenge != 4.4 || !slices.Contains(r.Hinweise, "fehlmenge") {
+		t.Fatalf("Zeile: %+v %v", it, r.Hinweise)
+	}
+
+	decodeJSON[productionOrderResponse](t, do(http.MethodPost, productionOrdersPath+o.ID.String()+"/storno", `{"reason":"doppelt"}`), http.StatusOK)
+	var aktiv int
+	if err := env.PG.QueryRow(ctx, `SELECT count(*) FROM stock_reservations WHERE material_id=$1 AND status='aktiv'`, mat).Scan(&aktiv); err != nil {
+		t.Fatal(err)
+	}
+	if aktiv != 0 {
+		t.Fatalf("aktive Reservierungen nach Storno: %d", aktiv)
 	}
 }

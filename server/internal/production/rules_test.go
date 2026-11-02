@@ -265,3 +265,23 @@ func TestReservationQty(t *testing.T) {
 		}
 	}
 }
+
+func TestShortfall(t *testing.T) {
+	for _, c := range []struct {
+		name                     string
+		bedarf, reserviert, want float64
+	}{
+		{"alles reserviert", 4.5, 4.5, 0},
+		{"Teil fehlt", 4.5, 4, 0.5},
+		{"nichts reserviert", 7.3824, 0, 7.3824},
+		{"Rauschen durch Abrunden", 2.0 / 3, 0.666666, 0.000001},
+		{"Rest unter 6 Stellen", 0.6666664, 0.666666, 0},
+		// Negativfall: mehr reserviert als Bedarf (z. B. Einheit geaendert)
+		// ist keine negative Fehlmenge.
+		{"mehr reserviert", 2, 3, 0},
+	} {
+		if got := Shortfall(c.bedarf, c.reserviert); math.Abs(got-c.want) > 1e-12 {
+			t.Errorf("%s: %v, erwartet %v", c.name, got, c.want)
+		}
+	}
+}
