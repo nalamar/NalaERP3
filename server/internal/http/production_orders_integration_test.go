@@ -400,3 +400,29 @@ func TestProductionOrdersHTTPReservation(t *testing.T) {
 		t.Fatalf("aktive Reservierungen nach Storno: %d", aktiv)
 	}
 }
+
+// Die Rolle Produktion liest die Lagerliste fuer die Freigabe
+// (Migration 109, Backlog H.1.7), legt aber keine Lager an; Vertrieb
+// (liest Fertigungsauftraege) bekommt die Lager nicht.
+func TestProductionRoleReadsWarehouses(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	handler := NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg)
+	c := newCatalogTenant(t, env, handler)
+	wh := "wh-" + uuid.NewString()[:12]
+	if _, err := env.PG.Exec(context.Background(), `INSERT INTO warehouses (id, code, name, company_id) VALUES ($1,$1,'Halle',$2)`, wh, c.company); err != nil {
+		t.Fatal(err)
+	}
+	production, sales := c.user("production"), c.user("sales")
+
+	rec := doAuthedRequest(t, handler, production, http.MethodGet, "/api/v1/warehouses", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), wh) {
+		t.Fatalf("Lagerliste Produktion: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := doAuthedRequest(t, handler, production, http.MethodGet, "/api/v1/warehouses/"+wh+"/locations", ""); rec.Code != http.StatusOK {
+		t.Fatalf("Lagerplaetze Produktion: %d %s", rec.Code, rec.Body.String())
+	}
+	wantAPIError(t, doAuthedRequest(t, handler, production, http.MethodPost, "/api/v1/warehouses", `{"code":"X","name":"X"}`),
+		http.StatusForbidden, "forbidden", "Keine Berechtigung")
+	wantAPIError(t, doAuthedRequest(t, handler, sales, http.MethodGet, "/api/v1/warehouses", ""),
+		http.StatusForbidden, "forbidden", "Keine Berechtigung")
+}

@@ -376,7 +376,7 @@ fertigt, ist damit nicht beantwortet.
    Rolle Produktion `warehouses.read` geben (Migration 109, nur Lesen der
    Lagerliste; Bestände und Buchungen bleiben bei der Rolle Lager).
    Status: **ANNAHME 2026-11-02 — wie empfohlen** ("fortsetzen" nach der
-   Frage mit Empfehlung): Backlog H.1.7.
+   Frage mit Empfehlung): Backlog H.1.7, umgesetzt mit Migration 109.
 6. **Rechte**: neue Rechte `production.read`/`production.write` für die
    Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
    lesen? Empfehlung: ja. Status: **beantwortet 2026-10-31 — wie empfohlen**.
