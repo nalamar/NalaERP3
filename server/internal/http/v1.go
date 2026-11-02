@@ -36,6 +36,7 @@ import (
 	"nalaerp3/internal/noticemail"
 	"nalaerp3/internal/notices"
 	"nalaerp3/internal/pdfgen"
+	"nalaerp3/internal/production"
 	"nalaerp3/internal/projects"
 	"nalaerp3/internal/purchasing"
 	"nalaerp3/internal/quotes"
@@ -1763,6 +1764,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
 	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
 	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
+	mountProductionOrderRoutes(protected, production.NewService(pg))
 	mountNoticeRoutes(protected, notices.NewDefaultService(qualificationSvc, assetSvc, fleet.NewScheduleService(pg)), timeEntrySvc)
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 
@@ -5131,7 +5133,12 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "kein schlüssel für verschlüsselte einstellungen"),
 		strings.Contains(msg, "lässt sich nicht entschlüsseln"),
 		strings.Contains(msg, "mitarbeiter ist nicht aktiv"),
-		strings.Contains(msg, "kein fahrtenbuch geführt"):
+		strings.Contains(msg, "kein fahrtenbuch geführt"),
+		strings.Contains(msg, "im aktuellen status nicht erlaubt"),
+		strings.Contains(msg, "kann nicht storniert werden"),
+		strings.Contains(msg, "nur ein entwurf kann"),
+		strings.Contains(msg, "ist nicht mehr im projekt"),
+		strings.Contains(msg, "kann nicht freigegeben werden"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5210,7 +5217,10 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "entweder neu setzen oder löschen"),
 		strings.Contains(msg, "muss über dem beginn liegen"),
 		strings.Contains(msg, "km sein ("),
-		strings.Contains(msg, "nur bei kraftstoff"):
+		strings.Contains(msg, "nur bei kraftstoff"),
+		strings.Contains(msg, "ist zu groß"),
+		strings.Contains(msg, "nicht im projekt"),
+		strings.Contains(msg, "nicht an der position"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

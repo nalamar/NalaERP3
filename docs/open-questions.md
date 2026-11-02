@@ -348,7 +348,9 @@ fertigt, ist damit nicht beantwortet.
 5. **EN 1090**: Fertigt der Betrieb tragende Bauteile nach EN 1090, und in
    welcher Ausführungsklasse (EXC1–EXC4)? Empfehlung: Klasse als optionales
    Feld am Auftrag; ab EXC2 später Charge bei der Entnahme Pflicht.
-   Status: **beantwortet 2026-10-31 — wie empfohlen**.
+   Status: **Feld wie empfohlen umgesetzt (2026-10-31); ob der Betrieb nach
+   EN 1090 fertigt, ist offen — der Nutzer lässt es recherchieren
+   (2026-11-02). Spätestens vor H.3 (Charge Pflicht ab EXC2) klären.**
 6. **Rechte**: neue Rechte `production.read`/`production.write` für die
    Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
    lesen? Empfehlung: ja. Status: **beantwortet 2026-10-31 — wie empfohlen**.

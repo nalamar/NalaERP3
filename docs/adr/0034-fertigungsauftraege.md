@@ -4,7 +4,8 @@ Datum: 2026-10-30
 Status: **Angenommen** (2026-10-31) — der Nutzer hat alle sechs
 Empfehlungen angenommen ("Alle deine Fragen mit deinen Empfehlungen
 umsetzen"). Zu Frage 5 also: Ausführungsklasse optional, ohne Wirkung in
-H.1; ob der Betrieb nach EN 1090 fertigt, bleibt offen.
+H.1; ob der Betrieb nach EN 1090 fertigt, bleibt offen — der Nutzer lässt
+es recherchieren (2026-11-02); vor H.3 klären.
 Bezug: `aufgabe.md` §1 Domäne H; Backlog H.1–H.3; `docs/01-gap-analysis.md`
 §H; ADR 0032 (Muster: Beleg in geschlossener Form, Storno).
 
@@ -172,3 +173,21 @@ fertigt der Betrieb tragende Bauteile nach EN 1090, und in welcher Klasse?
 - **Im Entwurf** zeigt der Auftrag die aktuellen Werte der Position (noch
   keine Kopie); die Liste lädt keine Stückliste.
 - **Bedarf** je Zeile `menge_gesamt = menge_je_stueck × stueckzahl`.
+
+## Präzisierung H.1.3 (2026-11-02, Routen)
+
+`/api/v1/production/orders`:
+
+| Methode und Pfad | Recht | Wirkung |
+|---|---|---|
+| `POST /` | write | Entwurf anlegen (201) |
+| `GET /` | read | Liste; Filter `project_id`, `elevation_id`, `status`, `include_storniert=true` |
+| `GET /{id}` | read | Auftrag mit Hinweisen, ab Freigabe mit Stückliste |
+| `PUT /{id}` | write | Entwurf ändern (alle änderbaren Angaben auf einmal) |
+| `POST /{id}/freigeben`, `/beginnen`, `/fertigmelden` | write | Statusschritt |
+| `POST /{id}/storno` | write | Storno mit `reason` |
+
+Fehler: unzulässiger Statusschritt, Änderung nach dem Entwurf, Storno
+nach "fertig" und Freigabe einer entfernten Position → 409; Position
+nicht im Projekt oder Variante nicht an der Position → 400; fremder
+Mandant → 404.

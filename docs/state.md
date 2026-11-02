@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.2** (2026-11-02, Service der
+> Zuletzt abgeschlossen: **H.1.3** (2026-11-02, Routen
+> `/production/orders` mit production.read/write). EN 1090: der Nutzer
+> lässt recherchieren, ob der Betrieb danach fertigt — offen, vor H.3
+> klären. Nächste: **H.1.4** Client.
+> Davor **H.1.2** (2026-11-02, Service der
 > Fertigungsaufträge: anlegen, Entwurf ändern, freigeben mit Kopie,
 > beginnen, fertig, stornieren, lesen mit Hinweisen). Der Nutzer hat die
 > Annahmen aus H.1.1 bestätigt (2026-11-02, "Annahmen sind okay, es kann
