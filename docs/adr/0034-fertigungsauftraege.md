@@ -4,8 +4,9 @@ Datum: 2026-10-30
 Status: **Angenommen** (2026-10-31) — der Nutzer hat alle sechs
 Empfehlungen angenommen ("Alle deine Fragen mit deinen Empfehlungen
 umsetzen"). Zu Frage 5 also: Ausführungsklasse optional, ohne Wirkung in
-H.1; ob der Betrieb nach EN 1090 fertigt, bleibt offen — der Nutzer lässt
-es recherchieren (2026-11-02); vor H.3 klären.
+H.1. EN 1090 beantwortet (2026-11-02): "Wir fertigen selbst nicht in
+EN 1090, haben aber Zulieferer, die das tun." — siehe Präzisierung
+EN 1090 am Ende.
 Bezug: `aufgabe.md` §1 Domäne H; Backlog H.1–H.3; `docs/01-gap-analysis.md`
 §H; ADR 0032 (Muster: Beleg in geschlossener Form, Storno).
 
@@ -217,3 +218,19 @@ Lagerhilfen), H.1.5b (Freigabe und Storno im Service, Route) und H.1.5c
 - Die Reservierung trägt `grund` "Fertigungsauftrag" und `referenz` = die
   Auftragsnummer; die Zeile verweist auf ihre Reservierung
   (`production_order_items.stock_reservation_id`, höchstens eine je Zeile).
+
+## Präzisierung EN 1090 (2026-11-02, Antwort des Nutzers)
+
+"Wir fertigen selbst nicht in EN 1090, haben aber Zulieferer, die das tun."
+
+- Der Betrieb hat keine werkseigene Produktionskontrolle nach EN 1090;
+  die Empfehlung aus Abschnitt 5 "ab EXC2 bei der Entnahme Charge Pflicht"
+  **entfällt** für H.3.
+- Das Feld `ausfuehrungsklasse` (Migration 107) bleibt in Datenbank und
+  API (keine Löschung bestehender Funktionalität); es hat keine Wirkung.
+  Ob der Client es weiter zur Eingabe anbietet: offene Frage 8.
+- EN 1090 betrifft den Betrieb über den **Einkauf**: zugekaufte tragende
+  Bauteile kommen von zertifizierten Zulieferern. Nachweise der
+  Zulieferer (Zertifikat am Lieferanten, Leistungserklärung am
+  Wareneingang) sind ein eigenes Thema außerhalb der Fertigungsaufträge:
+  offene Frage 7, eigenes ADR.

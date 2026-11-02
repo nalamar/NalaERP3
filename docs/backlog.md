@@ -1934,7 +1934,8 @@
     - [ ] H.1.5b Freigabe mit Lager und Storno im Service, Route — todo
     - [ ] H.1.5c Client: Lager bei der Freigabe, reserviert/Fehlmenge je Zeile — todo
 - [ ] H.2 Stücklisten/Arbeitsgänge/Kapazitäten — todo
-- [ ] H.3 BDE, Kommissionierung, Montageplanung — todo
+- [ ] H.3 BDE, Kommissionierung, Montageplanung — todo. EN 1090 (2026-11-02): der Betrieb fertigt selbst nicht danach → keine Chargenpflicht ab EXC2 bei der Entnahme (ADR 0034, Präzisierung EN 1090).
+- [ ] H.4 Nachweise der Zulieferer nach EN 1090 (Zertifikat am Lieferanten, Leistungserklärung am Wareneingang) — Vorschlag, wartet auf Antwort zu Frage 7 in `docs/open-questions.md`; eigenes ADR nach H.1.
 
 ## Epic I — KI-gestützte Angebotserzeugung aus GAEB (Zielwert des Systems)
 

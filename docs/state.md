@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.5a** (2026-11-02, Migration 108,
+> **2026-11-02 EN 1090 beantwortet:** "Wir fertigen selbst nicht in EN
+> 1090, haben aber Zulieferer, die das tun." Eingetragen in
+> `open-questions.md` (5), ADR 0034 (Präzisierung EN 1090), Backlog H.3/H.4.
+> Neue Fragen 7 (Nachweise der Zulieferer) und 8 (Feld im Client) offen —
+> H.1.5b hängt nicht davon ab.
+> Davor abgeschlossen: **H.1.5a** (2026-11-02, Migration 108,
 > `ReservationQty`, Lagerhilfen; "fortsetzen" als Zustimmung zu H.1.5 —
 > ANNAHMEN zu Lager, Einheiten, Fehlmenge und Storno in ADR 0034,
 > Präzisierung H.1.5). H.1.5 geteilt. Nächste: **H.1.5b** Service und Route.

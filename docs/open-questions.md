@@ -348,9 +348,24 @@ fertigt, ist damit nicht beantwortet.
 5. **EN 1090**: Fertigt der Betrieb tragende Bauteile nach EN 1090, und in
    welcher Ausführungsklasse (EXC1–EXC4)? Empfehlung: Klasse als optionales
    Feld am Auftrag; ab EXC2 später Charge bei der Entnahme Pflicht.
-   Status: **Feld wie empfohlen umgesetzt (2026-10-31); ob der Betrieb nach
-   EN 1090 fertigt, ist offen — der Nutzer lässt es recherchieren
-   (2026-11-02). Spätestens vor H.3 (Charge Pflicht ab EXC2) klären.**
+   Status: **beantwortet 2026-11-02: "Wir fertigen selbst nicht in EN 1090,
+   haben aber Zulieferer, die das tun."** Folgen: keine werkseigene
+   Produktionskontrolle im Betrieb, also **keine** Chargenpflicht ab EXC2
+   bei der Entnahme in H.3. Das Feld am Auftrag bleibt (Migration 107,
+   keine Löschung); zu seiner Anzeige und zu den Nachweisen der
+   Zulieferer siehe Fragen 7 und 8.
+7. **Nachweise der Zulieferer nach EN 1090** (neu, 2026-11-02): Am
+   Lieferanten das EN-1090-Zertifikat erfassen (Ausführungsklasse bis,
+   gültig bis, Datei) mit Hinweis bei einer Bestellung, wenn es fehlt oder
+   abgelaufen ist; am Wareneingang die Leistungserklärung bzw. das Zeugnis
+   der Lieferung ablegen (Bezug zum Projekt)? Bisher gibt es dafür nichts
+   (Nachweise nur für Mitarbeiter, ADR 0027). Empfehlung: ja, als eigener
+   Punkt im Einkauf mit eigenem ADR **nach** H.1; kein Bezug zum
+   Fertigungsauftrag. Status: **offen**.
+8. **Feld "Ausführungsklasse" am Fertigungsauftrag** (neu, 2026-11-02):
+   Für die eigene Fertigung ohne Bedeutung. Empfehlung: in Datenbank und
+   API unverändert lassen; im Client nicht mehr zur Eingabe anbieten und
+   nur anzeigen, wenn ein Wert gesetzt ist. Status: **offen**.
 6. **Rechte**: neue Rechte `production.read`/`production.write` für die
    Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
    lesen? Empfehlung: ja. Status: **beantwortet 2026-10-31 — wie empfohlen**.
