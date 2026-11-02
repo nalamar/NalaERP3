@@ -188,8 +188,10 @@ List<Map<String, dynamic>> productionOrdersOfVariant(List<dynamic> orders, Strin
     .where((o) => o['single_elevation_id']?.toString() == variantId)
     .toList();
 
-// showProductionDraftDialog fragt Stückzahl, Liefertermin, Klasse und Notiz
-// ab (anlegen und Entwurf ändern) und liefert den geprüften Body oder null.
+// showProductionDraftDialog fragt Stückzahl, Liefertermin und Notiz ab
+// (anlegen und Entwurf ändern) und liefert den geprüften Body oder null.
+// Die Ausführungsklasse wird nicht abgefragt, eine vorhandene geht
+// unverändert in den Body (H.1.6).
 Future<Map<String, dynamic>?> showProductionDraftDialog(
   BuildContext context, {
   required String title,
@@ -202,7 +204,7 @@ Future<Map<String, dynamic>?> showProductionDraftDialog(
   final stueckCtrl = TextEditingController(text: stueckzahl);
   final terminCtrl = TextEditingController(text: liefertermin);
   final notizCtrl = TextEditingController(text: notiz);
-  String exc = ausfuehrungsklasse;
+  final exc = ausfuehrungsklasse.trim();
   String? dialogError;
   return showDialog<Map<String, dynamic>>(
     context: context,
@@ -217,16 +219,17 @@ Future<Map<String, dynamic>?> showProductionDraftDialog(
               TextField(
                   controller: stueckCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Stückzahl')),
               TextField(controller: terminCtrl, decoration: const InputDecoration(labelText: 'Liefertermin (TT.MM.JJJJ, optional)')),
-              DropdownButtonFormField<String>(
-                key: const ValueKey('productionExc'),
-                initialValue: exc,
-                decoration: const InputDecoration(labelText: 'Ausführungsklasse (EN 1090)'),
-                items: [
-                  const DropdownMenuItem(value: '', child: Text('keine')),
-                  for (final k in productionAusfuehrungsklassen) DropdownMenuItem(value: k, child: Text(k)),
-                ],
-                onChanged: (v) => setStateDialog(() => exc = v ?? ''),
-              ),
+              // Ausführungsklasse nicht mehr zur Eingabe (ADR 0034,
+              // Präzisierung EN 1090, Frage 8): ein gesetzter Wert bleibt
+              // beim Speichern erhalten und wird nur angezeigt.
+              if (exc.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Ausführungsklasse: $exc (bleibt erhalten)', style: const TextStyle(color: Colors.black54)),
+                  ),
+                ),
               TextField(controller: notizCtrl, decoration: const InputDecoration(labelText: 'Notiz')),
               if (dialogError != null)
                 Padding(

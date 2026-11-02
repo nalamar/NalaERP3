@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-02 H.1.5c** und damit **H.1.5** erledigt: Client wählt bei
+> **2026-11-02 H.1.6** erledigt: Ausführungsklasse im Client nicht mehr
+> zur Eingabe, ein gesetzter Wert bleibt erhalten und wird angezeigt.
+> "fortsetzen" als Zustimmung zur Empfehlung von Frage 9 — ANNAHME:
+> H.1.7 (Migration 109, `warehouses.read` für die Rolle Produktion).
+> Nächste: **H.1.7**.
+> Davor **H.1.5c** und damit **H.1.5** erledigt: Client wählt bei
 > der Freigabe das Lager (mit `warehouses.read`) und zeigt je Zeile
 > Bedarf, reserviert, Fehlmenge. Neue Frage 9: Rolle Produktion ohne
 > `warehouses.read` (Empfehlung: Migration 109 gibt es ihr). Nächste:

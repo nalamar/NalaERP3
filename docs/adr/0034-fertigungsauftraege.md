@@ -242,7 +242,8 @@ Ergänzt mit H.1.5b (ANNAHMEN, nicht in der Empfehlung geregelt):
   API (keine Löschung bestehender Funktionalität); es hat keine Wirkung.
   Ob der Client es weiter zur Eingabe anbietet: Frage 8 — ANNAHME
   (2026-11-02, "fortsetzen"): nicht mehr zur Eingabe, nur anzeigen, wenn
-  gesetzt (H.1.6).
+  gesetzt (H.1.6, umgesetzt 2026-11-02: ein vorhandener Wert bleibt beim
+  Ändern des Entwurfs erhalten).
 - EN 1090 betrifft den Betrieb über den **Einkauf**: zugekaufte tragende
   Bauteile kommen von zertifizierten Zulieferern. Nachweise der
   Zulieferer (Zertifikat am Lieferanten, Leistungserklärung am

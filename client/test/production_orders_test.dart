@@ -475,6 +475,10 @@ void main() {
     final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
     expect(tester.widget<TextField>(fields.at(0)).controller!.text, '4');
     expect(tester.widget<TextField>(fields.at(1)).controller!.text, '01.12.2026');
+    // Ausführungsklasse nur angezeigt, nicht wählbar (H.1.6).
+    expect(find.text('Ausführungsklasse: EXC2 (bleibt erhalten)'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(DropdownButtonFormField<String>)), findsNothing);
+    expect(fields, findsNWidgets(3));
     await tester.enterText(fields.at(0), '0');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
@@ -606,6 +610,9 @@ void main() {
     expect(find.descendant(of: find.byType(AlertDialog), matching: find.text('Fertigungsauftrag anlegen')), findsOneWidget);
     final fields = find.descendant(of: find.byType(AlertDialog), matching: find.byType(TextField));
     expect(tester.widget<TextField>(fields.at(0)).controller!.text, '2');
+    // Negativfall: beim Anlegen keine Ausführungsklasse, weder Auswahl noch Anzeige.
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.textContaining('Ausführungsklasse')), findsNothing);
+    expect(find.descendant(of: find.byType(AlertDialog), matching: find.byType(DropdownButtonFormField<String>)), findsNothing);
     await tester.enterText(fields.at(1), '31.02.2026');
     await tester.tap(find.text('Anlegen'));
     await tester.pumpAndSettle();
