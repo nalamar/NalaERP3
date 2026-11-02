@@ -233,3 +233,35 @@ func TestValidateSnapshot(t *testing.T) {
 		}
 	}
 }
+
+func TestReservationQty(t *testing.T) {
+	l := fPtr(1230.4)
+	for _, c := range []struct {
+		name, art, zeile, material string
+		length                     *float64
+		menge, want                float64
+		ok                         bool
+	}{
+		{"Artikel gleiche Einheit", ArtArtikel, "Stk", "Stk", nil, 6, 6, true},
+		{"Artikel Stk auf pcs", ArtArtikel, "Stk", "pcs", nil, 6, 6, true},
+		{"Artikel ohne Einheit auf Stück", ArtArtikel, "", " STÜCK ", nil, 1.5, 1.5, true},
+		{"Artikel m auf m", ArtArtikel, "m", "M", nil, 2.5, 2.5, true},
+		{"Artikel m auf Stk", ArtArtikel, "m", "Stk", nil, 2.5, 0, false},
+		{"Artikel kg auf Stk", ArtArtikel, "kg", "pcs", nil, 1, 0, false},
+		{"Profil auf m", ArtProfil, "Stk", "m", l, 8, 9.8432, true},
+		{"Profil auf mm", ArtProfil, "", "mm", l, 8, 9843.2, true},
+		{"Profil auf Stangen", ArtProfil, "Stk", "Stk", l, 8, 0, false},
+		{"Profil in m auf m", ArtProfil, "m", "m", l, 8, 0, false},
+		{"Profil ohne Länge gleiche Einheit", ArtProfil, "Stk", "Stk", nil, 8, 8, true},
+		{"Profil Länge 0", ArtProfil, "Stk", "Stk", fPtr(0), 8, 8, true},
+		{"Glas Stk auf Stk", ArtGlas, "", "Stk", nil, 4, 4, true},
+		{"Glas auf m²", ArtGlas, "", "m2", nil, 4, 0, false},
+		{"Menge 0", ArtArtikel, "Stk", "Stk", nil, 0, 0, false},
+		{"Menge negativ", ArtArtikel, "Stk", "Stk", nil, -1, 0, false},
+	} {
+		got, ok := ReservationQty(c.art, c.zeile, c.material, c.length, c.menge)
+		if ok != c.ok || math.Abs(got-c.want) > 1e-9 {
+			t.Errorf("%s: %v, %v; erwartet %v, %v", c.name, got, ok, c.want, c.ok)
+		}
+	}
+}

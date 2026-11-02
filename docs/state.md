@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.4b** und damit **H.1.4** (2026-11-02,
+> Zuletzt abgeschlossen: **H.1.5a** (2026-11-02, Migration 108,
+> `ReservationQty`, Lagerhilfen; "fortsetzen" als Zustimmung zu H.1.5 —
+> ANNAHMEN zu Lager, Einheiten, Fehlmenge und Storno in ADR 0034,
+> Präzisierung H.1.5). H.1.5 geteilt. Nächste: **H.1.5b** Service und Route.
+> Davor **H.1.4b** und damit **H.1.4** (2026-11-02,
 > Client: Fertigungsaufträge an der Variante im Projekt anzeigen und
 > anlegen; "fortsetzen" als Zustimmung zur Empfehlung H.1.4b — ANNAHME).
 > Nächste: **H.1.5** Reservierungen bei Freigabe.

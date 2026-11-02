@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -833,6 +834,70 @@ func (s *Service) ReleaseReservation(ctx context.Context, id string, companyID s
 		return nil, err
 	}
 	return out, nil
+}
+
+// ReserveAvailableTx reserviert in einer offenen Transaktion des Aufrufers
+// bis zu want Einheiten fuer ein Projekt (Fertigungsauftraege, Backlog
+// H.1.5): dieselbe Regel und Sperre wie CreateReservation, aber statt
+// Ablehnung nur das Verfuegbare. Liefert die Reservierung und die
+// reservierte Menge; ist nichts verfuegbar, entsteht keine Zeile (id leer,
+// qty 0). Material, Lager und Projekt muessen zum Mandanten gehoeren.
+func ReserveAvailableTx(ctx context.Context, tx pgx.Tx, companyID, materialID, warehouseID, projectID string, want float64, grund, referenz string) (string, float64, error) {
+	if strings.TrimSpace(companyID) == "" {
+		return "", 0, errors.New("Mandant erforderlich")
+	}
+	if want <= 0 {
+		return "", 0, errors.New("Menge muss größer als 0 sein")
+	}
+	var materialOwned, warehouseOwned, projectOwned bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM materials WHERE id=$1 AND company_id=$2),
+	        EXISTS(SELECT 1 FROM warehouses WHERE id=$3 AND company_id=$2),
+	        EXISTS(SELECT 1 FROM projects WHERE id::text=$4 AND company_id=$2)`,
+		materialID, companyID, warehouseID, projectID).Scan(&materialOwned, &warehouseOwned, &projectOwned); err != nil {
+		return "", 0, err
+	}
+	switch {
+	case !materialOwned:
+		return "", 0, errors.New("Material nicht gefunden")
+	case !warehouseOwned:
+		return "", 0, errors.New("Lager nicht gefunden")
+	case !projectOwned:
+		return "", 0, errors.New("Projekt nicht gefunden")
+	}
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))`, materialID, warehouseID); err != nil {
+		return "", 0, err
+	}
+	available, err := availableStockTx(ctx, tx, materialID, warehouseID)
+	if err != nil {
+		return "", 0, err
+	}
+	// Abrunden auf die 6 Stellen der Spalte, damit nie mehr als verfuegbar
+	// reserviert wird.
+	qty := math.Floor(math.Min(want, available)*1e6+1e-9) / 1e6
+	if qty <= 0 {
+		return "", 0, nil
+	}
+	id := uuid.NewString()
+	if _, err := tx.Exec(ctx, `
+        INSERT INTO stock_reservations (id, material_id, warehouse_id, project_id, qty, grund, referenz)
+        VALUES ($1,$2,$3,$4::uuid,$5,$6,$7)`, id, materialID, warehouseID, projectID, qty, grund, referenz); err != nil {
+		return "", 0, err
+	}
+	return id, qty, nil
+}
+
+// ReleaseReservationTx gibt eine Reservierung in einer offenen
+// Transaktion frei (aktiv -> freigegeben). false: gibt es nicht (mehr) im
+// Mandanten oder war schon freigegeben - fuer den Aufrufer kein Fehler.
+func ReleaseReservationTx(ctx context.Context, tx pgx.Tx, companyID, id string) (bool, error) {
+	tag, err := tx.Exec(ctx, `
+        UPDATE stock_reservations r SET status='freigegeben', released_at=now()
+          FROM warehouses w
+         WHERE r.id=$1 AND w.id=r.warehouse_id AND w.company_id=$2 AND r.status='aktiv'`, id, companyID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 func (s *Service) ListReservations(ctx context.Context, f StockReservationFilter, companyID string) ([]StockReservation, error) {

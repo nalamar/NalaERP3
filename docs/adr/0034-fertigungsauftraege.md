@@ -191,3 +191,29 @@ Fehler: unzulässiger Statusschritt, Änderung nach dem Entwurf, Storno
 nach "fertig" und Freigabe einer entfernten Position → 409; Position
 nicht im Projekt oder Variante nicht an der Position → 400; fremder
 Mandant → 404.
+
+## Präzisierung H.1.5 (2026-11-02, Reservierungen bei Freigabe)
+
+Umsetzung der Empfehlung aus Abschnitt 4 ("optional reservieren,
+Fehlmengen als Hinweis"), geteilt in H.1.5a (Migration 108, Regel,
+Lagerhilfen), H.1.5b (Freigabe und Storno im Service, Route) und H.1.5c
+(Client). ANNAHMEN, weil die Empfehlung sie offenließ:
+
+- **Lager**: bei der Freigabe optional ein Lager wählen
+  (`production_orders.reservierung_lager_id`); ohne Lager keine
+  Reservierung. Reservierungen sind je Material und Lager (075), ein
+  Auftrag reserviert aus genau einem Lager.
+- **Welche Zeilen**: nur Zeilen mit Lagermaterial (`material_id` der
+  Projektzeile, bei der Freigabe mitkopiert) und passender Einheit
+  (`ReservationQty`): gleiche Einheit (Stk/pcs/Stück/leer gelten als
+  Stück); Profile mit Länge nur auf Material in m oder mm
+  (Gesamtlänge). Profilstücke auf Stangen und Glas auf m² werden **nicht**
+  reserviert — die Umrechnung wäre geraten (Verschnitt, Fläche je Stück).
+- **Fehlmenge**: reserviert wird das Verfügbare (physischer Bestand minus
+  aktive Reservierungen, wie `CreateReservation`), der Rest ist Fehlmenge
+  und erscheint als Hinweis; die Freigabe scheitert nicht daran.
+- **Storno** gibt die aktiven Reservierungen des Auftrags frei; "fertig"
+  lässt sie stehen (Entnahme erst in H.3).
+- Die Reservierung trägt `grund` "Fertigungsauftrag" und `referenz` = die
+  Auftragsnummer; die Zeile verweist auf ihre Reservierung
+  (`production_order_items.stock_reservation_id`, höchstens eine je Zeile).

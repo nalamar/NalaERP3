@@ -255,3 +255,46 @@ func ValidateSnapshot(s Snapshot) error {
 	}
 	return nil
 }
+
+// Einheiten, die "Stueck" bedeuten (Logikal schreibt "Stk", die
+// Stammdaten kennen "pcs"); verglichen ohne Gross-/Kleinschreibung.
+var stueckEinheiten = map[string]bool{"": true, "stk": true, "stk.": true, "st": true, "st.": true, "stück": true, "stueck": true, "pcs": true, "pc": true}
+
+func normEinheit(u string) string {
+	u = strings.ToLower(strings.TrimSpace(u))
+	if stueckEinheiten[u] {
+		return "stk"
+	}
+	return u
+}
+
+// ReservationQty rechnet den Bedarf einer Zeile der Fertigungsstueckliste
+// (mengeGesamt = Menge je Stueck x Stueckzahl) in die Einheit des
+// Lagermaterials um (Backlog H.1.5). Gleiche Einheit: unveraendert; leere
+// Zeileneinheit zaehlt als Stueck. Profile mit Laenge nur auf Material in
+// m oder mm (Gesamtlaenge). Alles andere (z. B. Profilstueck auf Stangen,
+// Glas auf m²) laesst sich nicht sicher umrechnen: ok=false, die Zeile
+// wird nicht reserviert.
+func ReservationQty(art, zeilenEinheit, materialEinheit string, lengthMM *float64, mengeGesamt float64) (float64, bool) {
+	if mengeGesamt <= 0 {
+		return 0, false
+	}
+	z, m := normEinheit(zeilenEinheit), normEinheit(materialEinheit)
+	if art == ArtProfil && lengthMM != nil && *lengthMM > 0 {
+		// Zugeschnittene Stuecke sind keine Stangen: nur Laengeneinheiten.
+		if z != "stk" {
+			return 0, false
+		}
+		switch m {
+		case "m":
+			return mengeGesamt * *lengthMM / 1000, true
+		case "mm":
+			return mengeGesamt * *lengthMM, true
+		}
+		return 0, false
+	}
+	if z == m {
+		return mengeGesamt, true
+	}
+	return 0, false
+}
