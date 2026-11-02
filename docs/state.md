@@ -7,7 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> Zuletzt abgeschlossen: **H.1.1** (2026-10-31, Migration 107
+> Zuletzt abgeschlossen: **H.1.2** (2026-11-02, Service der
+> Fertigungsaufträge: anlegen, Entwurf ändern, freigeben mit Kopie,
+> beginnen, fertig, stornieren, lesen mit Hinweisen). Der Nutzer hat die
+> Annahmen aus H.1.1 bestätigt (2026-11-02, "Annahmen sind okay, es kann
+> fortgesetzt werden"). ANNAHME: nach der Freigabe keine Änderung, auch
+> nicht am Liefertermin. Nächste: **H.1.3** Routen.
+> Davor **H.1.1** (2026-10-31, Migration 107
 > Fertigungsaufträge und Stückliste, Rechte, Nummernkreis; Paket
 > `production` mit Fachregeln). Auftrag des Nutzers: "Alle deine Fragen mit
 > deinen Empfehlungen umsetzen" — ADR 0034 angenommen, Umsetzung in

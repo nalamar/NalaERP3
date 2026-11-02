@@ -145,3 +145,30 @@ fertigt der Betrieb tragende Bauteile nach EN 1090, und in welcher Klasse?
   den Mandanten `default` angelegt. Der bekannte Fallback "PO-" in
   `settings.NumberingService.Next` (siehe 079) betrifft weitere Mandanten
   — der Service in H.1.2 muss das berücksichtigen.
+
+## Präzisierung H.1.2 (2026-11-02, Service)
+
+- **Nummer beim Anlegen** des Entwurfs. Fehlt der Nummernkreis des
+  Mandanten, legt der Service ihn mit `FA-{YYYY}-{NNNN}` an, bevor er
+  `NumberingService.Next` ruft — kein "PO-" bei weiteren Mandanten. Die
+  Nummer wird außerhalb der Schreib-Transaktion vergeben; scheitert das
+  Anlegen danach, bleibt eine Lücke (wie bei Kundenaufträgen).
+- **Im Entwurf änderbar**: Stückzahl, Liefertermin, Ausführungsklasse,
+  Notiz — ANNAHME: danach nichts mehr, auch nicht der Liefertermin
+  (Änderung über Storno und neuen Auftrag). Position und Variante bleiben
+  fest.
+- **Freigabe** liest Position, Variante und Material in derselben
+  Transaktion (Auftrag `FOR UPDATE`), prüft, dass die Variante noch an der
+  Position hängt, kopiert in kanonischer Reihenfolge (Pos 1..n) und setzt
+  den Fingerabdruck.
+- **Hinweise** bei jedem Lesen (Einzelansicht und Liste), nie bei
+  stornierten Aufträgen:
+  - `kein_kundenauftrag`: kein Kundenauftrag zum Projekt außer `canceled`;
+  - `menge_ueberschritten`: Summe der nicht stornierten Lose zur Position
+    über der Positionsmenge (nicht mehr bei `fertig`);
+  - `position_entfernt`: Position oder Variante weg oder Variante an
+    anderer Position — dann kein Mengen-/Änderungshinweis;
+  - `position_geaendert`: ab Freigabe, Fingerabdruck weicht ab.
+- **Im Entwurf** zeigt der Auftrag die aktuellen Werte der Position (noch
+  keine Kopie); die Liste lädt keine Stückliste.
+- **Bedarf** je Zeile `menge_gesamt = menge_je_stueck × stueckzahl`.

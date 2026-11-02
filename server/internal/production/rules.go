@@ -128,13 +128,18 @@ func ValidateOrderInput(in OrderInput) error {
 	if in.SingleElevationID == uuid.Nil {
 		return errors.New("Variante erforderlich")
 	}
-	if in.Stueckzahl <= 0 {
+	return ValidateOrderDetails(in.Stueckzahl, in.Ausfuehrungsklasse)
+}
+
+// ValidateOrderDetails prueft die im Entwurf aenderbaren Angaben.
+func ValidateOrderDetails(stueckzahl int, ausfuehrungsklasse *string) error {
+	if stueckzahl <= 0 {
 		return errors.New("Stückzahl muss größer als 0 sein")
 	}
-	if in.Stueckzahl > MaxStueckzahl {
+	if stueckzahl > MaxStueckzahl {
 		return errors.New("Stückzahl ist zu groß")
 	}
-	if in.Ausfuehrungsklasse != nil && !validExc(*in.Ausfuehrungsklasse) {
+	if ausfuehrungsklasse != nil && !validExc(*ausfuehrungsklasse) {
 		return errors.New("Ungültige Ausführungsklasse")
 	}
 	return nil
