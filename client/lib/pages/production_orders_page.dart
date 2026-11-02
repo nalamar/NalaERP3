@@ -7,7 +7,9 @@ import 'employee_qualifications_section.dart' show parseDateInput;
 // Liste nach Liefertermin und Detail mit Hinweisen, Fertigungsstückliste
 // und Statusschritten. Lesen mit production.read; anlegen, ändern,
 // freigeben, Status und Storno mit production.write. Angelegt wird an der
-// Variante im Projekt (H.1.4b).
+// Variante im Projekt (H.1.4b). Bei der Freigabe optional ein Lager für die
+// Reservierung (mit warehouses.read), je Zeile Bedarf, reserviert und
+// Fehlmenge (H.1.5c).
 
 const productionStatusLabels = {
   'entwurf': 'Entwurf',
@@ -22,6 +24,7 @@ const productionHintLabels = {
   'menge_ueberschritten': 'Zusammen mehr Stück als die Positionsmenge',
   'position_entfernt': 'Position oder Variante nicht mehr im Projekt',
   'position_geaendert': 'Position nach der Freigabe geändert',
+  'fehlmenge': 'Nicht alles Material im Lager verfügbar (Fehlmenge)',
 };
 
 const productionAusfuehrungsklassen = ['EXC1', 'EXC2', 'EXC3', 'EXC4'];
@@ -93,6 +96,33 @@ String productionItemLine(Map<String, dynamic> it) {
     '${formatQty(it['menge_je_stueck'])} je Stück',
     'gesamt ${formatQty(it['menge_gesamt'])}${unit.isEmpty ? '' : ' $unit'}',
   ].join(' · ');
+}
+
+// productionReservationLine: "Bedarf 4,5 Stk · reserviert 4 Stk · Fehlmenge
+// 0,5 Stk" in der Einheit des Lagermaterials (H.1.5); null, wenn die Zeile
+// nicht reserviert wird (ohne Lager, ohne Material, Einheit passt nicht).
+String? productionReservationLine(Map<String, dynamic> it) {
+  if (it['bedarf'] is! num) return null;
+  final unit = it['material_einheit']?.toString() ?? '';
+  String q(Object? v) => '${formatQty(v is num ? v : 0)}${unit.isEmpty ? '' : ' $unit'}';
+  final fehl = it['fehlmenge'];
+  return [
+    'Bedarf ${q(it['bedarf'])}',
+    'reserviert ${q(it['reserviert'])}',
+    if (fehl is num && fehl > 0) 'Fehlmenge ${q(fehl)}',
+  ].join(' · ');
+}
+
+bool productionItemHasShortfall(Map<String, dynamic> it) => it['fehlmenge'] is num && (it['fehlmenge'] as num) > 0;
+
+// productionWarehouseLabel: "HL – Halle" aus der Lagerliste, sonst die ID.
+String productionWarehouseLabel(String id, List<dynamic> warehouses) {
+  for (final w in warehouses) {
+    if (w is Map && w['id']?.toString() == id) {
+      return [w['code'], w['name']].map((x) => x?.toString() ?? '').where((x) => x.isNotEmpty).join(' – ');
+    }
+  }
+  return id;
 }
 
 // productionStatusHistory: "Freigegeben 02.11.2026", ... in der Reihenfolge
@@ -354,13 +384,27 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
   bool loading = false;
   bool busy = false;
   String? error;
+  // Lager für die Reservierung bei der Freigabe; nur mit warehouses.read.
+  List<dynamic> warehouses = const [];
+  String? warehousesError;
 
   bool get _canWrite => widget.api.hasPermission('production.write');
+  bool get _canReadWarehouses => widget.api.hasPermission('warehouses.read');
 
   @override
   void initState() {
     super.initState();
     _load();
+    if (_canReadWarehouses) _loadWarehouses();
+  }
+
+  Future<void> _loadWarehouses() async {
+    try {
+      final list = await widget.api.listWarehouses();
+      if (mounted) setState(() => warehouses = list);
+    } catch (e) {
+      if (mounted) setState(() => warehousesError = 'Lager konnten nicht geladen werden: $e');
+    }
   }
 
   Future<void> _load() async {
@@ -401,22 +445,59 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
 
   Future<void> _step(String aktion, String label) async {
     if (aktion == 'freigeben') {
-      final ok = await showDialog<bool>(
+      // null: abgebrochen; '': ohne Reservierung.
+      var lager = '';
+      final lagerId = await showDialog<String>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Auftrag freigeben'),
-          content: const SizedBox(
-            width: 420,
-            child: Text('Position, Maße und Materialliste werden jetzt in den Auftrag kopiert. '
-                'Danach lässt sich der Auftrag nicht mehr ändern – nur stornieren und neu anlegen.'),
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setStateDialog) => AlertDialog(
+            title: const Text('Auftrag freigeben'),
+            content: SizedBox(
+              width: 420,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Position, Maße und Materialliste werden jetzt in den Auftrag kopiert. '
+                      'Danach lässt sich der Auftrag nicht mehr ändern – nur stornieren und neu anlegen.'),
+                  const SizedBox(height: 12),
+                  if (_canReadWarehouses && warehouses.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      initialValue: lager,
+                      isExpanded: true,
+                      decoration: const InputDecoration(labelText: 'Material reservieren aus'),
+                      items: [
+                        const DropdownMenuItem(value: '', child: Text('Ohne Reservierung')),
+                        for (final w in warehouses)
+                          if (w is Map && w['id'] != null)
+                            DropdownMenuItem(
+                              value: w['id'].toString(),
+                              child: Text(productionWarehouseLabel(w['id'].toString(), warehouses), overflow: TextOverflow.ellipsis),
+                            ),
+                      ],
+                      onChanged: (v) => setStateDialog(() => lager = v ?? ''),
+                    )
+                  else
+                    Text(
+                      warehousesError ??
+                          (_canReadWarehouses
+                              ? 'Kein Lager angelegt – Freigabe ohne Reservierung.'
+                              : 'Ohne Leserecht für Lager wird ohne Reservierung freigegeben.'),
+                      style: const TextStyle(color: Colors.black54),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Abbrechen')),
+              FilledButton(onPressed: () => Navigator.of(ctx).pop(lager), child: const Text('Freigeben')),
+            ],
           ),
-          actions: [
-            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Abbrechen')),
-            FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Freigeben')),
-          ],
         ),
       );
-      if (ok != true) return;
+      if (lagerId == null) return;
+      await _run(() => widget.api.releaseProductionOrder(widget.orderId, lagerId: lagerId.isEmpty ? null : lagerId), '$label: erledigt');
+      return;
     }
     await _run(() => widget.api.productionOrderStep(widget.orderId, aktion), '$label: erledigt');
   }
@@ -489,7 +570,17 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
               padding: const EdgeInsets.only(top: 8, bottom: 4),
               child: Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
-            for (final it in items.where((it) => it['art'] == art)) Text(productionItemLine(it)),
+            for (final it in items.where((it) => it['art'] == art)) ...[
+              Text(productionItemLine(it)),
+              if (productionReservationLine(it) case final line?)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 2),
+                  child: Text(
+                    line,
+                    style: TextStyle(fontSize: 12, color: productionItemHasShortfall(it) ? Colors.orange.shade900 : Colors.black54),
+                  ),
+                ),
+            ],
           ],
       ],
     );
@@ -519,6 +610,8 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
             if ((o['phase_name']?.toString() ?? '').isNotEmpty) Text('Los: ${o['phase_name']}'),
             if (o['width_mm'] is num && o['height_mm'] is num) Text('Maße: ${formatQty(o['width_mm'])} × ${formatQty(o['height_mm'])} mm'),
             if ((o['notiz']?.toString() ?? '').isNotEmpty) Text('Notiz: ${o['notiz']}'),
+            if ((o['reservierung_lager_id']?.toString() ?? '').isNotEmpty)
+              Text('Reserviert aus Lager: ${productionWarehouseLabel(o['reservierung_lager_id'].toString(), warehouses)}'),
             for (final h in productionHints(o))
               Padding(
                 padding: const EdgeInsets.only(top: 6),

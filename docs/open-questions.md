@@ -369,6 +369,13 @@ fertigt, ist damit nicht beantwortet.
    API unverändert lassen; im Client nicht mehr zur Eingabe anbieten und
    nur anzeigen, wenn ein Wert gesetzt ist. Status: **ANNAHME 2026-11-02
    — wie empfohlen** ("fortsetzen"): Backlog H.1.6.
+9. **Leserecht Lager für die Rolle Produktion** (neu, 2026-11-02, H.1.5c):
+   Die Systemrolle Produktion hat `production.write`, aber nicht
+   `warehouses.read` (Migration 017) — sie kann bei der Freigabe kein
+   Lager wählen und gibt dann ohne Reservierung frei. Empfehlung: der
+   Rolle Produktion `warehouses.read` geben (Migration 109, nur Lesen der
+   Lagerliste; Bestände und Buchungen bleiben bei der Rolle Lager).
+   Status: **offen**.
 6. **Rechte**: neue Rechte `production.read`/`production.write` für die
    Rolle Produktion und Administrator, Vertrieb und Projektleitung nur
    lesen? Empfehlung: ja. Status: **beantwortet 2026-10-31 — wie empfohlen**.

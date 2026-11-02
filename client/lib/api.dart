@@ -2947,6 +2947,20 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Freigeben; mit lagerId wird aus diesem Lager reserviert (H.1.5),
+  // ohne wie productionOrderStep(id, 'freigeben').
+  Future<Map<String, dynamic>> releaseProductionOrder(String id, {String? lagerId}) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/production/orders/$id/freigeben'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode({if (lagerId != null && lagerId.isNotEmpty) 'lager_id': lagerId}),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Storno mit Begruendung, aus jedem Status vor "fertig".
   Future<Map<String, dynamic>> stornoProductionOrder(String id, String reason) async {
     final r = await _sendWithAuth(

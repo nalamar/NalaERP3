@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-02 H.1.5b** erledigt: Freigabe mit optionalem Lager
+> **2026-11-02 H.1.5c** und damit **H.1.5** erledigt: Client wählt bei
+> der Freigabe das Lager (mit `warehouses.read`) und zeigt je Zeile
+> Bedarf, reserviert, Fehlmenge. Neue Frage 9: Rolle Produktion ohne
+> `warehouses.read` (Empfehlung: Migration 109 gibt es ihr). Nächste:
+> **H.1.6** (Feld Ausführungsklasse im Client), danach Frage 9.
+> Davor **H.1.5b** erledigt: Freigabe mit optionalem Lager
 > reserviert je passender Zeile das Verfügbare, Fehlmenge als Hinweis,
 > Storno gibt frei; Route `/freigeben` mit `lager_id`. "fortsetzen" als
 > Zustimmung zu den Empfehlungen der Fragen 7 und 8 — ANNAHME: H.4

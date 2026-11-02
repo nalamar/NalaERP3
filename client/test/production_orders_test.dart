@@ -71,7 +71,14 @@ final _items = [
 ];
 
 class _FakeApi extends ApiClient {
-  _FakeApi({required this.permissions, required this.order, this.list = const [], this.failStep, this.failCreate})
+  _FakeApi(
+      {required this.permissions,
+      required this.order,
+      this.list = const [],
+      this.failStep,
+      this.failCreate,
+      this.warehouses = const [],
+      this.failWarehouses = false})
       : super(baseUrl: 'http://localhost:8080');
 
   final Set<String> permissions;
@@ -79,6 +86,8 @@ class _FakeApi extends ApiClient {
   List<dynamic> list;
   final String? failStep;
   final String? failCreate;
+  final List<dynamic> warehouses;
+  final bool failWarehouses;
   final List<String> calls = [];
   String? listScope;
 
@@ -116,6 +125,21 @@ class _FakeApi extends ApiClient {
       'status': {'freigeben': 'freigegeben', 'beginnen': 'in_arbeit', 'fertigmelden': 'fertig'}[aktion]
     };
     return order;
+  }
+
+  @override
+  Future<Map<String, dynamic>> releaseProductionOrder(String id, {String? lagerId}) async {
+    calls.add('release $id ${lagerId ?? '-'}');
+    if (failStep != null) throw ApiException(statusCode: 409, message: failStep!);
+    order = {...order, 'status': 'freigegeben', 'reservierung_lager_id': lagerId};
+    return order;
+  }
+
+  @override
+  Future<List<dynamic>> listWarehouses() async {
+    calls.add('warehouses');
+    if (failWarehouses) throw ApiException(statusCode: 500, message: 'kaputt');
+    return warehouses;
   }
 
   @override
@@ -272,15 +296,18 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Freigeben'));
     await tester.pumpAndSettle();
     expect(find.text('Auftrag freigeben'), findsOneWidget);
+    expect(find.text('Ohne Leserecht für Lager wird ohne Reservierung freigegeben.'), findsOneWidget);
     await tester.tap(find.text('Abbrechen'));
     await tester.pumpAndSettle();
-    expect(api.calls.where((c) => c.startsWith('step')), isEmpty);
+    expect(api.calls.where((c) => c.startsWith('step') || c.startsWith('release')), isEmpty);
+    // Ohne warehouses.read: kein Lager laden, Hinweis im Dialog.
+    expect(api.calls, isNot(contains('warehouses')));
 
     await tester.tap(find.widgetWithText(FilledButton, 'Freigeben'));
     await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(FilledButton, 'Freigeben').last);
     await tester.pumpAndSettle();
-    expect(api.calls, contains('step o1 freigeben'));
+    expect(api.calls, contains('release o1 -'));
     expect(find.widgetWithText(FilledButton, 'Beginnen'), findsOneWidget);
     expect(find.text('Entwurf ändern'), findsNothing);
   });
@@ -314,6 +341,110 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Fehler: Position oder Variante ist nicht mehr im Projekt'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Freigeben'), findsOneWidget); // Status unverändert
+  });
+
+  test('Reservierung je Zeile und Lagername', () {
+    expect(productionReservationLine({'bedarf': 4.5, 'reserviert': 4, 'fehlmenge': 0.5, 'material_einheit': 'Stk'}),
+        'Bedarf 4,5 Stk · reserviert 4 Stk · Fehlmenge 0,5 Stk');
+    expect(productionReservationLine({'bedarf': 7.3824, 'reserviert': 7.3824, 'fehlmenge': 0, 'material_einheit': 'm'}),
+        'Bedarf 7,382 m · reserviert 7,382 m');
+    expect(productionReservationLine({'bedarf': 2, 'reserviert': null, 'fehlmenge': 2, 'material_einheit': ''}),
+        'Bedarf 2 · reserviert 0 · Fehlmenge 2');
+    // Negativfall: ohne Bedarf (nicht reserviert) keine Zeile.
+    expect(productionReservationLine({'bedarf': null, 'material_id': 'm1'}), isNull);
+    expect(productionReservationLine(<String, dynamic>{}), isNull);
+    expect(productionItemHasShortfall({'fehlmenge': 0.5}), isTrue);
+    expect(productionItemHasShortfall({'fehlmenge': 0}), isFalse);
+    expect(productionItemHasShortfall({'fehlmenge': null}), isFalse);
+    final lager = [
+      {'id': 'wh1', 'code': 'HL', 'name': 'Halle'},
+      {'id': 'wh2', 'code': '', 'name': 'Außenlager'},
+    ];
+    expect(productionWarehouseLabel('wh1', lager), 'HL – Halle');
+    expect(productionWarehouseLabel('wh2', lager), 'Außenlager');
+    expect(productionWarehouseLabel('wh9', lager), 'wh9');
+  });
+
+  testWidgets('Freigabe mit Lager', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(
+      permissions: const {'production.write', 'warehouses.read'},
+      order: _order(),
+      warehouses: const [
+        {'id': 'wh1', 'code': 'HL', 'name': 'Halle'},
+        {'id': 'wh2', 'code': 'AL', 'name': 'Außenlager'},
+      ],
+    );
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('warehouses'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Freigeben'));
+    await tester.pumpAndSettle();
+    expect(find.text('Material reservieren aus'), findsOneWidget);
+    expect(find.text('Ohne Reservierung'), findsOneWidget);
+    await tester.tap(find.text('Ohne Reservierung'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('AL – Außenlager').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Freigeben').last);
+    await tester.pumpAndSettle();
+    expect(api.calls.last, 'release o1 wh2');
+    expect(find.text('Reserviert aus Lager: AL – Außenlager'), findsOneWidget);
+  });
+
+  testWidgets('Freigabe: vorbelegt ohne Reservierung, kein Lager, Fehler', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: const {'production.write', 'warehouses.read'}, order: _order(), warehouses: const [
+      {'id': 'wh1', 'code': 'HL', 'name': 'Halle'},
+    ]);
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Freigeben'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Freigeben').last);
+    await tester.pumpAndSettle();
+    expect(api.calls.last, 'release o1 -');
+    expect(find.textContaining('Reserviert aus Lager'), findsNothing);
+
+    for (final (fake, text) in [
+      (_FakeApi(permissions: const {'production.write', 'warehouses.read'}, order: _order()), 'Kein Lager angelegt – Freigabe ohne Reservierung.'),
+      (
+        _FakeApi(permissions: const {'production.write', 'warehouses.read'}, order: _order(), failWarehouses: true),
+        'Lager konnten nicht geladen werden: kaputt'
+      ),
+    ]) {
+      await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: fake, orderId: 'o1'), key: ValueKey(text)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Freigeben'));
+      await tester.pumpAndSettle();
+      expect(find.text(text), findsOneWidget);
+      expect(find.text('Material reservieren aus'), findsNothing);
+      await tester.tap(find.widgetWithText(FilledButton, 'Freigeben').last);
+      await tester.pumpAndSettle();
+      expect(fake.calls.last, 'release o1 -');
+    }
+  });
+
+  testWidgets('Detail: reserviert und Fehlmenge je Zeile', (tester) async {
+    await _desktop(tester);
+    final items = [
+      {..._items[0], 'material_id': 'm1', 'material_einheit': 'Stk', 'bedarf': 6, 'reserviert': 4, 'fehlmenge': 2},
+      {..._items[1], 'material_id': 'm2', 'material_einheit': 'm²', 'bedarf': null},
+      {..._items[2], 'material_id': 'm3', 'material_einheit': 'm', 'bedarf': 9.8432, 'reserviert': 9.8432, 'fehlmenge': 0},
+    ];
+    final api = _FakeApi(
+        permissions: const {'production.read'},
+        order: {..._order(status: 'freigegeben', hinweise: ['fehlmenge'], items: items), 'reservierung_lager_id': 'wh1'});
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Nicht alles Material im Lager verfügbar (Fehlmenge)'), findsOneWidget);
+    // Ohne warehouses.read: die ID statt des Namens.
+    expect(find.text('Reserviert aus Lager: wh1'), findsOneWidget);
+    final fehl = tester.widget<Text>(find.text('Bedarf 6 Stk · reserviert 4 Stk · Fehlmenge 2 Stk'));
+    expect(fehl.style?.color, Colors.orange.shade900);
+    final voll = tester.widget<Text>(find.text('Bedarf 9,843 m · reserviert 9,843 m'));
+    expect(voll.style?.color, Colors.black54);
+    expect(find.textContaining('Bedarf'), findsNWidgets(2));
   });
 
   testWidgets('Detail: freigegeben ohne Material', (tester) async {
@@ -534,6 +665,9 @@ void main() {
       await mock({'id': 'o1'}, () => api.updateProductionOrderDraft('o1', {'stueckzahl': 2}));
       await mock({'id': 'o1'}, () => api.productionOrderStep('o1', 'beginnen'));
       await mock({'id': 'o1'}, () => api.stornoProductionOrder('o1', 'x'));
+      await mock({'id': 'o1'}, () => api.releaseProductionOrder('o1', lagerId: 'wh1'));
+      await mock({'id': 'o1'}, () => api.releaseProductionOrder('o1'));
+      await mock({'id': 'o1'}, () => api.releaseProductionOrder('o1', lagerId: ''));
       expect(calls.map((c) => '${c.method} ${c.url.path}?${c.url.query}'), [
         'GET /api/v1/production/orders/?',
         'GET /api/v1/production/orders/?project_id=p1&elevation_id=e1&status=fertig&include_storniert=true',
@@ -543,7 +677,13 @@ void main() {
         'PUT /api/v1/production/orders/o1?',
         'POST /api/v1/production/orders/o1/beginnen?',
         'POST /api/v1/production/orders/o1/storno?',
+        'POST /api/v1/production/orders/o1/freigeben?',
+        'POST /api/v1/production/orders/o1/freigeben?',
+        'POST /api/v1/production/orders/o1/freigeben?',
       ]);
+      expect(calls[8].body, '{"lager_id":"wh1"}');
+      expect(calls[9].body, '{}');
+      expect(calls[10].body, '{}');
       expect(calls[4].body, '{"stueckzahl":1}');
       expect(calls[5].body, '{"stueckzahl":2}');
       expect(calls[7].body, '{"reason":"x"}');
@@ -568,6 +708,7 @@ void main() {
         () => api.getProductionOrder('o1'),
         () => api.updateProductionOrderDraft('o1', {}),
         () => api.stornoProductionOrder('o1', 'x'),
+        () => api.releaseProductionOrder('o1', lagerId: 'wh9'),
       ]) {
         await expectLater(
             mock({
