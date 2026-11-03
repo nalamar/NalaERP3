@@ -7,7 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-02 H.1.7** und damit **H.1** erledigt: Migration 109 gibt
+> **2026-11-03 H.4.0** erledigt: ADR 0035 (Entwurf) mit Bestandsaufnahme,
+> Recherche und sechs Fragen (`open-questions.md`, 2026-11-03).
+> "fortsetzen" als Zustimmung zur Empfehlung "H.4 mit ADR 0035" — ANNAHME.
+> Befund: Wareneingang im Client ohne Bestellposition (Backlog H.4.x).
+> Nächste: **Entscheidung des Nutzers zu den Fragen 1–6**, danach H.4.1
+> (Migration 110). Unabhängig davon möglich: H.4.x.
+> Davor **2026-11-02 H.1.7** und damit **H.1** erledigt: Migration 109 gibt
 > der Rolle Produktion `warehouses.read` (Frage 9, ANNAHME wie empfohlen).
 > Nächste: **Entscheidung des Nutzers** — H.4 (Nachweise der Zulieferer,
 > zuerst ADR 0035; Frage 7 ANNAHME) oder H.2/H.3 oder ein anderes Epic.
