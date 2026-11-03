@@ -1766,6 +1766,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
 	mountProductionOrderRoutes(protected, production.NewService(pg))
 	mountSupplierCertificateRoutes(protected, purchasing.NewCertificateService(pg, mg, cfg.MongoDB))
+	mountPurchaseOrderPaperRoutes(protected, purchasing.NewPaperService(pg, mg, cfg.MongoDB))
 	mountNoticeRoutes(protected, notices.NewDefaultService(qualificationSvc, assetSvc, fleet.NewScheduleService(pg)), timeEntrySvc)
 	mountHRCalendarRoutes(protected, hr.NewCalendarService(pg))
 

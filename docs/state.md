@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.3a** erledigt: Service der Lieferpapiere an der
+> **2026-11-03 H.4.3b** erledigt: Routen `/purchase-orders/{id}/papers`
+> (lesen `purchase_orders.read`, pflegen `purchase_orders.write`).
+> Nächste: **H.4.3c** Projekt, Prüfung des Lieferanten, Hinweise.
+> Davor **2026-11-03 H.4.3a** erledigt: Service der Lieferpapiere an der
 > Bestellung (`purchasing/delivery_papers.go`). H.4.3 geteilt in a/b/c.
 > Nächste: **H.4.3b** Routen der Lieferpapiere.
 > Davor **2026-11-03 H.4.2b** und damit **H.4.2** erledigt: Routen

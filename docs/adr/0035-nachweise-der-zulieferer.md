@@ -202,3 +202,10 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   leer heißt "gilt für die ganze Bestellung" (wie in H.4.1b).
 - Ein storniertes Lieferpapier bleibt mit Datei lesbar (Nachweis, warum
   es ersetzt wurde).
+
+## Präzisierung H.4.3b (2026-11-03, Routen der Lieferpapiere)
+
+- Pfad `/purchase-orders/{id}/papers` unter der Bestellung (Rechte des
+  Einkaufs wie die Bestellung selbst). Upload als Multipart: Datei im
+  Feld `file`, Angaben `art`, `position_id`, `charge`, `notiz` als
+  Formularfelder.
