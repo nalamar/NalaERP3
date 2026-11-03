@@ -71,7 +71,7 @@ func day(t time.Time) time.Time {
 func NormalizeCertificate(c *Certificate) error {
 	c.Art = strings.ToLower(strings.TrimSpace(c.Art))
 	if !slices.Contains(ZertifikatArten, c.Art) {
-		return errors.New("Art des Zertifikats unbekannt")
+		return errors.New("Ungültige Art des Zertifikats")
 	}
 	if c.ExcBis != nil {
 		v := strings.ToUpper(strings.TrimSpace(*c.ExcBis))
@@ -85,13 +85,13 @@ func NormalizeCertificate(c *Certificate) error {
 			return errors.New("Ausführungsklasse erforderlich")
 		}
 		if !slices.Contains(EXCKlassen, *c.ExcBis) {
-			return errors.New("Ausführungsklasse unbekannt")
+			return errors.New("Ungültige Ausführungsklasse")
 		}
 	} else if c.ExcBis != nil {
-		return errors.New("Ausführungsklasse nur bei EN 1090")
+		return errors.New("Ungültige Ausführungsklasse: nur bei EN 1090")
 	}
 	if c.GueltigVon != nil && c.GueltigBis != nil && day(*c.GueltigBis).Before(day(*c.GueltigVon)) {
-		return errors.New("Gültig bis liegt vor gültig von")
+		return errors.New("Ungültiger Zeitraum: gültig bis liegt vor gültig von")
 	}
 	return nil
 }

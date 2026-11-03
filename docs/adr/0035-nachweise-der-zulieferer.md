@@ -180,3 +180,15 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Leistungserklärung ohne Position gilt für die ganze Bestellung;
   Zeugnisse ersetzen sie nicht.
 - Eine stornierte Bestellung (`canceled`) hat keine Hinweise.
+
+## Präzisierung H.4.2 (2026-11-03, Service und Routen der Zertifikate)
+
+- Pfad `/supplier-certificates` (Liste mit `lieferant_id`) statt
+  `/contacts/{id}/certificates`: die Kontaktrouten hängen an
+  `contacts.*`, die Nachweise am Einkauf (§6).
+- Lieferant heißt: Kontakt im Mandanten mit Rolle `supplier` oder
+  `both`; sonst "Lieferant nicht gefunden".
+- Die Liste zeigt stornierte Zertifikate nur auf Wunsch; der Hinweis
+  "läuft ab" rechnet sie nie mit.
+- Meldungen der Regeln beginnen mit "Ungültig…", damit sie als 400
+  ankommen (die Fehlerzuordnung arbeitet über Textbausteine).

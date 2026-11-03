@@ -28,12 +28,12 @@ func TestNormalizeCertificate(t *testing.T) {
 		{"EN 1090 mit EXC, getrimmt", Certificate{Art: " EN1090 ", ExcBis: sp(" exc2 ")}, "", sp("EXC2")},
 		{"ISO 3834, leere EXC wird nil", Certificate{Art: "iso3834", ExcBis: sp("  ")}, "", nil},
 		{"gleicher Tag", Certificate{Art: "sonstiges", GueltigVon: d("2026-01-01"), GueltigBis: d("2026-01-01")}, "", nil},
-		{"Art unbekannt", Certificate{Art: "iso9001"}, "Art des Zertifikats unbekannt", nil},
+		{"Art unbekannt", Certificate{Art: "iso9001"}, "Ungültige Art des Zertifikats", nil},
 		{"EN 1090 ohne EXC", Certificate{Art: "en1090"}, "Ausführungsklasse erforderlich", nil},
 		{"EN 1090 leere EXC", Certificate{Art: "en1090", ExcBis: sp(" ")}, "Ausführungsklasse erforderlich", nil},
-		{"EXC unbekannt", Certificate{Art: "en1090", ExcBis: sp("EXC5")}, "Ausführungsklasse unbekannt", nil},
-		{"EXC bei ISO 3834", Certificate{Art: "iso3834", ExcBis: sp("EXC2")}, "Ausführungsklasse nur bei EN 1090", nil},
-		{"bis vor von", Certificate{Art: "sonstiges", GueltigVon: d("2026-02-01"), GueltigBis: d("2026-01-31")}, "Gültig bis liegt vor gültig von", nil},
+		{"EXC unbekannt", Certificate{Art: "en1090", ExcBis: sp("EXC5")}, "Ungültige Ausführungsklasse", nil},
+		{"EXC bei ISO 3834", Certificate{Art: "iso3834", ExcBis: sp("EXC2")}, "Ungültige Ausführungsklasse: nur bei EN 1090", nil},
+		{"bis vor von", Certificate{Art: "sonstiges", GueltigVon: d("2026-02-01"), GueltigBis: d("2026-01-31")}, "Ungültiger Zeitraum: gültig bis liegt vor gültig von", nil},
 	} {
 		in := c.in
 		err := NormalizeCertificate(&in)

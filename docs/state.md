@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.2a** erledigt: Service der Zertifikate am Lieferanten
+> **2026-11-03 H.4.2b** und damit **H.4.2** erledigt: Routen
+> `/supplier-certificates` (lesen `purchase_orders.read`, pflegen
+> `purchase_orders.write`). Nächste: **H.4.3** Lieferpapiere an der
+> Bestellung, Hinweise, Projekt, Prüfung des Lieferanten.
+> Davor **2026-11-03 H.4.2a** erledigt: Service der Zertifikate am Lieferanten
 > mit Dateien (`purchasing/certificates.go`). H.4.2 geteilt. Befund: die
 > Bestellung prüft ihren Lieferanten nicht auf Mandant/Rolle (H.4.3).
 > Nächste: **H.4.2b** Routen.
