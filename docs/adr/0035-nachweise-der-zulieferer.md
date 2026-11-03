@@ -159,3 +159,24 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
 - Fund beim Test: `exc_bis IN (...)` ist bei NULL selbst NULL, und ein
   CHECK lässt NULL durch; die Bedingung prüft darum ausdrücklich
   `exc_bis IS NOT NULL`.
+
+## Präzisierung H.4.1b (2026-11-03, Fachregeln)
+
+`purchasing/evidence.go`. ANNAHMEN (aus den Empfehlungen abgeleitet):
+
+- **Zeitraum**: ein Zertifikat muss vom Bestelldatum bis zum Stichtag
+  gelten; Stichtag ist der späteste Liefertermin der Positionen, ohne
+  Liefertermin das Bestelldatum. Tagesgenau, Grenzen einschließlich.
+- Zwei Hinweise statt einem: `zertifikat_fehlt` (kein nicht storniertes
+  EN-1090-Zertifikat) und `zertifikat_ungueltig` (vorhanden, deckt den
+  Zeitraum aber nicht — abgelaufen **oder noch nicht gültig**). Nur
+  EN-1090-Zertifikate zählen für die Bestellung.
+- Die **Ausführungsklasse** wird nicht verglichen: das Kennzeichen am
+  Material hat keine Klasse (Frage 2). EXC bis wird nur dokumentiert.
+- `zertifikat_laeuft_ab` am Lieferanten für jede Art: endet heute bis in
+  60 Tagen und kein anderes Zertifikat derselben Art gilt am Tag danach.
+  Schon abgelaufene geben diesen Hinweis nicht.
+- `leistungserklaerung_fehlt` nur im Status `received`; eine
+  Leistungserklärung ohne Position gilt für die ganze Bestellung;
+  Zeugnisse ersetzen sie nicht.
+- Eine stornierte Bestellung (`canceled`) hat keine Hinweise.

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.1a** erledigt: Migration 110 (Zertifikate am
+> **2026-11-03 H.4.1b** und damit **H.4.1** erledigt: Fachregeln der
+> Nachweise (`purchasing/evidence.go`, ANNAHMEN in ADR 0035, Präzisierung
+> H.4.1b). Nächste: **H.4.2** Service und Routen Zertifikate am
+> Lieferanten.
+> Davor **2026-11-03 H.4.1a** erledigt: Migration 110 (Zertifikate am
 > Lieferanten, Lieferpapiere an der Bestellung, Kennzeichen am Material,
 > Projekt an der Bestellung). "fortsetzen" als Zustimmung zu den
 > Fragen 1–6 (2026-11-03) — ANNAHME, ADR 0035 angenommen. H.4.1 geteilt.
