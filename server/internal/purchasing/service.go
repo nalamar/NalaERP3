@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"nalaerp3/internal/auditlog"
 	"nalaerp3/internal/settings"
@@ -58,6 +59,7 @@ type PurchaseOrder struct {
 	Currency   string    `json:"waehrung"`
 	Status     string    `json:"status"`
 	Note       string    `json:"notiz"`
+	ProjectID  *string   `json:"projekt_id"`
 	Angelegt   time.Time `json:"angelegt_am"`
 }
 
@@ -81,6 +83,7 @@ type PurchaseOrderCreate struct {
 	Currency   string                   `json:"waehrung"`
 	Status     string                   `json:"status"`
 	Note       string                   `json:"notiz"`
+	ProjectID  *string                  `json:"projekt_id"`
 	Items      []PurchaseOrderItemInput `json:"positionen"`
 }
 
@@ -100,6 +103,48 @@ type PurchaseOrderFilter struct {
 	Status     string
 	Limit      int
 	Offset     int
+}
+
+// Spalten und Scan der Bestellung an einer Stelle.
+const orderColumns = `id, supplier_id, number, order_date, currency, status, COALESCE(note,''), project_id::text, angelegt_am`
+
+func scanOrder(row pgx.Row, po *PurchaseOrder) error {
+	return row.Scan(&po.ID, &po.SupplierID, &po.Number, &po.OrderDate, &po.Currency, &po.Status, &po.Note, &po.ProjectID, &po.Angelegt)
+}
+
+// checkSupplier: der Lieferant einer Bestellung ist ein Kontakt im
+// Mandanten mit Rolle supplier/both (Backlog H.4.3c, Befund aus H.4.2a).
+func (s *Service) checkSupplier(ctx context.Context, supplierID, companyID string) error {
+	var ok bool
+	if err := s.pg.QueryRow(ctx, `
+        SELECT EXISTS(SELECT 1 FROM contacts WHERE id=$1 AND company_id=$2 AND rolle IN ('supplier','both'))
+    `, supplierID, companyID).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return errors.New("Lieferant nicht gefunden")
+	}
+	return nil
+}
+
+// projectRef prueft ein Projekt der Bestellung: leer = ohne Projekt,
+// sonst ein Projekt im Mandanten (ADR 0035 §5).
+func (s *Service) projectRef(ctx context.Context, projectID *string, companyID string) (*uuid.UUID, error) {
+	if projectID == nil || strings.TrimSpace(*projectID) == "" {
+		return nil, nil
+	}
+	id, err := uuid.Parse(strings.TrimSpace(*projectID))
+	if err != nil {
+		return nil, errors.New("Ungültige Projekt-ID")
+	}
+	var ok bool
+	if err := s.pg.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM projects WHERE id=$1 AND company_id=$2)`, id, companyID).Scan(&ok); err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, errors.New("Projekt nicht gefunden")
+	}
+	return &id, nil
 }
 
 func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID string) (*PurchaseOrder, []PurchaseOrderItem, error) {
@@ -123,6 +168,14 @@ func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID 
 			return nil, nil, errors.New("Ungültige Position")
 		}
 	}
+	in.SupplierID = strings.TrimSpace(in.SupplierID)
+	if err := s.checkSupplier(ctx, in.SupplierID, companyID); err != nil {
+		return nil, nil, err
+	}
+	project, err := s.projectRef(ctx, in.ProjectID, companyID)
+	if err != nil {
+		return nil, nil, err
+	}
 	id := uuid.NewString()
 	date := time.Now()
 	if in.OrderDate != nil {
@@ -141,13 +194,10 @@ func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID 
 			in.Number = n
 		}
 	}
-	if err := tx.QueryRow(ctx, `
-        INSERT INTO purchase_orders (id, supplier_id, number, order_date, currency, status, note, company_id)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-        RETURNING id, supplier_id, number, order_date, currency, status, COALESCE(note,''), angelegt_am
-    `, id, in.SupplierID, in.Number, date, in.Currency, in.Status, in.Note, companyID).Scan(
-		&po.ID, &po.SupplierID, &po.Number, &po.OrderDate, &po.Currency, &po.Status, &po.Note, &po.Angelegt,
-	); err != nil {
+	if err := scanOrder(tx.QueryRow(ctx, `
+        INSERT INTO purchase_orders (id, supplier_id, number, order_date, currency, status, note, company_id, project_id)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        RETURNING `+orderColumns, id, in.SupplierID, in.Number, date, in.Currency, in.Status, in.Note, companyID, project), &po); err != nil {
 		return nil, nil, err
 	}
 	items := make([]PurchaseOrderItem, 0, len(in.Items))
@@ -178,9 +228,7 @@ func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID 
 
 func (s *Service) Get(ctx context.Context, id string, companyID string) (*PurchaseOrder, []PurchaseOrderItem, error) {
 	var po PurchaseOrder
-	if err := s.pg.QueryRow(ctx, `SELECT id, supplier_id, number, order_date, currency, status, COALESCE(note,''), angelegt_am FROM purchase_orders WHERE id=$1 AND company_id=$2`, id, companyID).Scan(
-		&po.ID, &po.SupplierID, &po.Number, &po.OrderDate, &po.Currency, &po.Status, &po.Note, &po.Angelegt,
-	); err != nil {
+	if err := scanOrder(s.pg.QueryRow(ctx, `SELECT `+orderColumns+` FROM purchase_orders WHERE id=$1 AND company_id=$2`, id, companyID), &po); err != nil {
 		return nil, nil, err
 	}
 	rows, err := s.pg.Query(ctx, `SELECT id, order_id, position, material_id, COALESCE(description,''), qty, uom, unit_price, currency, delivery_date FROM purchase_order_items WHERE order_id=$1 ORDER BY position ASC`, id)
@@ -209,7 +257,7 @@ func (s *Service) List(ctx context.Context, f PurchaseOrderFilter, companyID str
 	}
 	off := f.Offset
 	sb := strings.Builder{}
-	sb.WriteString(`SELECT id, supplier_id, number, order_date, currency, status, COALESCE(note,''), angelegt_am FROM purchase_orders`)
+	sb.WriteString(`SELECT ` + orderColumns + ` FROM purchase_orders`)
 	conds := []string{"company_id=$1"}
 	args := []any{companyID}
 	idx := 2
@@ -242,7 +290,7 @@ func (s *Service) List(ctx context.Context, f PurchaseOrderFilter, companyID str
 	out := make([]PurchaseOrder, 0, lim)
 	for rows.Next() {
 		var po PurchaseOrder
-		if err := rows.Scan(&po.ID, &po.SupplierID, &po.Number, &po.OrderDate, &po.Currency, &po.Status, &po.Note, &po.Angelegt); err != nil {
+		if err := scanOrder(rows, &po); err != nil {
 			return nil, err
 		}
 		out = append(out, po)
@@ -258,6 +306,8 @@ type PurchaseOrderUpdate struct {
 	Currency  *string    `json:"waehrung"`
 	Status    *string    `json:"status"`
 	Note      *string    `json:"notiz"`
+	// ProjectID: leer entfernt das Projekt (Backlog H.4.3c).
+	ProjectID *string `json:"projekt_id"`
 }
 
 type PurchaseOrderItemUpdate struct {
@@ -297,6 +347,15 @@ func (s *Service) Update(ctx context.Context, id string, u PurchaseOrderUpdate, 
 	}
 	if u.Note != nil {
 		add("note", *u.Note)
+	}
+	// Das Projekt ist eine interne Zuordnung, kein Inhalt des Belegs:
+	// in jedem Status aenderbar (ANNAHME, ADR 0035 Praezisierung H.4.3c).
+	if u.ProjectID != nil {
+		project, err := s.projectRef(ctx, u.ProjectID, companyID)
+		if err != nil {
+			return nil, nil, err
+		}
+		add("project_id", project)
 	}
 	if len(sets) == 0 {
 		return s.Get(ctx, id, companyID)

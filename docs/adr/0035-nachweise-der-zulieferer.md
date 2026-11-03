@@ -209,3 +209,12 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Einkaufs wie die Bestellung selbst). Upload als Multipart: Datei im
   Feld `file`, Angaben `art`, `position_id`, `charge`, `notiz` als
   Formularfelder.
+
+## Präzisierung H.4.3c (2026-11-03, Projekt und Lieferant an der Bestellung)
+
+- ANNAHME: das Projekt ist eine interne Zuordnung und kein Inhalt des
+  Belegs an den Lieferanten; es lässt sich darum in jedem Status ändern
+  (die Festschreibung ab `ordered` gilt dafür nicht). Leer entfernt es.
+- Das Projekt muss zum Mandanten gehören (§5); der Lieferant einer neuen
+  Bestellung ist ein Kontakt im Mandanten mit Rolle `supplier` oder
+  `both` (wie bei den Zertifikaten, H.4.2).

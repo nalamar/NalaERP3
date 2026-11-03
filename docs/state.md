@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.3b** erledigt: Routen `/purchase-orders/{id}/papers`
+> **2026-11-03 H.4.3c** erledigt: Projekt an der Bestellung und Prüfung
+> des Lieferanten beim Anlegen. Hinweise als **H.4.3d** abgeteilt.
+> Befund: die Anfrage prüft den Lieferanten nicht (offen). Nächste:
+> **H.4.3d** Hinweise an der Bestellung.
+> Davor **2026-11-03 H.4.3b** erledigt: Routen `/purchase-orders/{id}/papers`
 > (lesen `purchase_orders.read`, pflegen `purchase_orders.write`).
 > Nächste: **H.4.3c** Projekt, Prüfung des Lieferanten, Hinweise.
 > Davor **2026-11-03 H.4.3a** erledigt: Service der Lieferpapiere an der
