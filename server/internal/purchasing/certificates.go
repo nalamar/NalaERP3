@@ -209,10 +209,15 @@ func (s *CertificateService) Storno(ctx context.Context, id uuid.UUID, reason, a
 }
 
 func (s *CertificateService) bucket() (*gridfs.Bucket, error) {
-	if s.mg == nil || s.mongoDB == "" {
+	return evidenceBucket(s.mg, s.mongoDB)
+}
+
+// evidenceBucket: GridFS fuer Zertifikate und Lieferpapiere.
+func evidenceBucket(mg *mongo.Client, mongoDB string) (*gridfs.Bucket, error) {
+	if mg == nil || mongoDB == "" {
 		return nil, errors.New("MongoDB nicht konfiguriert")
 	}
-	return gridfs.NewBucket(s.mg.Database(s.mongoDB))
+	return gridfs.NewBucket(mg.Database(mongoDB))
 }
 
 // cleanEvidenceFilename: nur der Dateiname ohne Pfad (auch Windows-Pfad);

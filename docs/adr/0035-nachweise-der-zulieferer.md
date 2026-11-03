@@ -192,3 +192,13 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   "läuft ab" rechnet sie nie mit.
 - Meldungen der Regeln beginnen mit "Ungültig…", damit sie als 400
   ankommen (die Fehlerzuordnung arbeitet über Textbausteine).
+
+## Präzisierung H.4.3a (2026-11-03, Service der Lieferpapiere)
+
+- ANNAHME: Lieferpapiere sind in jedem Status der Bestellung erlaubt
+  außer `canceled` (Papiere kommen vor, mit oder nach der Ware); zu einer
+  stornierten Bestellung bleiben vorhandene Papiere lesbar.
+- Die Position ist optional und muss zu genau dieser Bestellung gehören;
+  leer heißt "gilt für die ganze Bestellung" (wie in H.4.1b).
+- Ein storniertes Lieferpapier bleibt mit Datei lesbar (Nachweis, warum
+  es ersetzt wurde).
