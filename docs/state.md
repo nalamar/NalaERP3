@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.0** erledigt: ADR 0035 (Entwurf) mit Bestandsaufnahme,
+> **2026-11-03 H.4.1a** erledigt: Migration 110 (Zertifikate am
+> Lieferanten, Lieferpapiere an der Bestellung, Kennzeichen am Material,
+> Projekt an der Bestellung). "fortsetzen" als Zustimmung zu den
+> Fragen 1–6 (2026-11-03) — ANNAHME, ADR 0035 angenommen. H.4.1 geteilt.
+> Nächste: **H.4.1b** Fachregeln.
+> Davor **2026-11-03 H.4.0** erledigt: ADR 0035 (Entwurf) mit Bestandsaufnahme,
 > Recherche und sechs Fragen (`open-questions.md`, 2026-11-03).
 > "fortsetzen" als Zustimmung zur Empfehlung "H.4 mit ADR 0035" — ANNAHME.
 > Befund: Wareneingang im Client ohne Bestellposition (Backlog H.4.x).

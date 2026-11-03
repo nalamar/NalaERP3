@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-03 — H.4 Nachweise der Zulieferer nach EN 1090 (offen)
+## 2026-11-03 — H.4 Nachweise der Zulieferer nach EN 1090 (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Details, Bestand, Recherche und Begründung in
 `docs/adr/0035-nachweise-der-zulieferer.md`. Bezug: Backlog H.4.
@@ -332,26 +332,26 @@ Details, Bestand, Recherche und Begründung in
 1. **Zertifikat am Lieferanten**: eigener Nachweis mit Art (`en1090`,
    `iso3834`, `sonstiges`), Nummer, ausstellender Stelle, EXC bis (nur
    EN 1090), gültig von/bis und Dateien; Storno mit Begründung statt
-   Löschung? Empfehlung: ja. Status: **offen**.
+   Löschung? Empfehlung: ja. Status: **ANNAHME 2026-11-03 — wie empfohlen**.
 2. **Nachweispflichtiges Material**: Kennzeichen "Nachweis EN 1090
    erforderlich" am Materialstamm (statt je Bestellung von Hand)?
-   Empfehlung: ja. Status: **offen**.
+   Empfehlung: ja. Status: **ANNAHME 2026-11-03 — wie empfohlen**.
 3. **Fehlendes oder abgelaufenes Zertifikat**: nur Hinweis an der
    Bestellung (keine Sperre beim Bestellen), dazu Hinweis am Lieferanten
-   60 Tage vor Ablauf, keine Mail? Empfehlung: ja. Status: **offen**.
+   60 Tage vor Ablauf, keine Mail? Empfehlung: ja. Status: **ANNAHME 2026-11-03 — wie empfohlen**.
 4. **Leistungserklärung und Zeugnis der Lieferung**: als Lieferpapier an
    der Bestellung (optional Position und Chargencode; Art
    Leistungserklärung, Zeugnis 2.2/3.1/3.2, Lieferschein, Sonstiges;
    Storno statt Löschung), Hinweis im Status "erhalten", wenn eine
    nachweispflichtige Position keine Leistungserklärung hat — kein neuer
-   Wareneingangsbeleg? Empfehlung: ja. Status: **offen**.
+   Wareneingangsbeleg? Empfehlung: ja. Status: **ANNAHME 2026-11-03 — wie empfohlen**.
 5. **Projektbezug**: optionales Projekt an der Bestellung; die Liste der
-   Nachweise im Projekt später? Empfehlung: ja. Status: **offen**.
+   Nachweise im Projekt später? Empfehlung: ja. Status: **ANNAHME 2026-11-03 — wie empfohlen**.
 6. **Rechte**: lesen mit `purchase_orders.read`, pflegen mit
    `purchase_orders.write`, Kennzeichen am Material mit
    `materials.write`; Dateien nicht über den allgemeinen Download; keine
    neuen Rechte, Rolle Lager unverändert? Empfehlung: ja. Status:
-   **offen**.
+   **ANNAHME 2026-11-03 — wie empfohlen**.
 
 ## 2026-10-30 — Epic H Fertigungsaufträge (beantwortet 2026-10-31)
 

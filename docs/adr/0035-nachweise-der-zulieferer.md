@@ -1,8 +1,9 @@
 # ADR 0035 — Nachweise der Zulieferer nach EN 1090
 
 Datum: 2026-11-03
-Status: **Vorgeschlagen** — Fragen 1–6 in `docs/open-questions.md`
-(Abschnitt 2026-11-03, H.4) warten auf die Entscheidung des Nutzers.
+Status: **Angenommen** (2026-11-03, ANNAHME) — "fortsetzen" nach den
+Fragen 1–6 mit Empfehlung (`docs/open-questions.md`, Abschnitt
+2026-11-03): alle sechs wie empfohlen.
 Bezug: Backlog H.4; offene Fragen 2026-10-30 Nr. 5 und 7 (ANNAHME
 2026-11-02: eigenes ADR nach H.1, kein Bezug zum Fertigungsauftrag);
 ADR 0034, Präzisierung EN 1090; ADR 0027 (Muster: Nachweis mit Datei,
@@ -138,3 +139,23 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   (Kennzeichen).
 - H.4.5 Client Bestellung (Hinweise, Lieferpapiere, Projekt).
 - H.4.x Wareneingang setzt die Bestellposition (siehe Befund).
+
+## Präzisierung H.4.1a (2026-11-03, Migration 110)
+
+- Tabellen `supplier_certificates` (+ `supplier_certificate_documents`),
+  `purchase_order_documents`; Spalten `materials.nachweis_en1090`
+  (Vorgabe false) und `purchase_orders.project_id` (optional, RESTRICT).
+- ANNAHME: `gueltig_bis` leer heißt "ohne Enddatum" (die Stelle
+  überwacht laufend); gesetzt gilt das Zertifikat bis einschließlich
+  diesem Tag. `exc_bis` genau bei `en1090` Pflicht, sonst leer.
+- Nie löschen: Zertifikat, seine Dateien und Lieferpapiere hängen mit
+  RESTRICT an Lieferant bzw. Bestellung; Storno mit Grund. Eine im
+  Entwurf gelöschte Position setzt den Bezug des Lieferpapiers auf leer,
+  das Papier bleibt an der Bestellung.
+- Mandant: dass Lieferant, Bestellung, Position und Projekt zum selben
+  Mandanten gehören, prüft der Service (H.4.2/H.4.3) —
+  `contacts.company_id` ist nullable (Migration 054), ein Fremdschlüssel
+  über den Mandanten geht daher nicht.
+- Fund beim Test: `exc_bis IN (...)` ist bei NULL selbst NULL, und ein
+  CHECK lässt NULL durch; die Bedingung prüft darum ausdrücklich
+  `exc_bis IS NOT NULL`.
