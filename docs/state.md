@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.1b** und damit **H.4.1** erledigt: Fachregeln der
+> **2026-11-03 H.4.2a** erledigt: Service der Zertifikate am Lieferanten
+> mit Dateien (`purchasing/certificates.go`). H.4.2 geteilt. Befund: die
+> Bestellung prüft ihren Lieferanten nicht auf Mandant/Rolle (H.4.3).
+> Nächste: **H.4.2b** Routen.
+> Davor **2026-11-03 H.4.1b** und damit **H.4.1** erledigt: Fachregeln der
 > Nachweise (`purchasing/evidence.go`, ANNAHMEN in ADR 0035, Präzisierung
 > H.4.1b). Nächste: **H.4.2** Service und Routen Zertifikate am
 > Lieferanten.
