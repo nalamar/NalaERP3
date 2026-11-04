@@ -61,6 +61,8 @@ type PurchaseOrder struct {
 	Note       string    `json:"notiz"`
 	ProjectID  *string   `json:"projekt_id"`
 	Angelegt   time.Time `json:"angelegt_am"`
+	// Hinweise der Nachweise (order_hints.go, Backlog H.4.3d).
+	Hinweise []string `json:"hinweise"`
 }
 
 type PurchaseOrderItem struct {
@@ -223,6 +225,9 @@ func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
+	if err := s.hintOne(ctx, &po, companyID); err != nil {
+		return nil, nil, err
+	}
 	return &po, items, nil
 }
 
@@ -246,6 +251,9 @@ func (s *Service) Get(ctx context.Context, id string, companyID string) (*Purcha
 	}
 	if items == nil {
 		items = make([]PurchaseOrderItem, 0)
+	}
+	if err := s.hintOne(ctx, &po, companyID); err != nil {
+		return &po, nil, err
 	}
 	return &po, items, nil
 }
@@ -294,6 +302,13 @@ func (s *Service) List(ctx context.Context, f PurchaseOrderFilter, companyID str
 			return nil, err
 		}
 		out = append(out, po)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows.Close()
+	if err := s.withHints(ctx, out, companyID); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

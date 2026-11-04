@@ -33,17 +33,19 @@ func TestPurchaseOrderProjectHTTP(t *testing.T) {
 	}
 	type order struct {
 		Bestellung struct {
-			ID        string  `json:"id"`
-			ProjectID *string `json:"projekt_id"`
+			ID        string   `json:"id"`
+			ProjectID *string  `json:"projekt_id"`
+			Hinweise  []string `json:"hinweise"`
 		} `json:"bestellung"`
 	}
 	created := decodeJSON[order](t, doAuthedRequest(t, handler, buyer, http.MethodPost, "/api/v1/purchase-orders/",
 		`{"nummer":"PO-PRJ-`+n+`","lieferant_id":"`+supplier+`","projekt_id":"`+project+`"}`), http.StatusCreated)
-	if created.Bestellung.ProjectID == nil || *created.Bestellung.ProjectID != project {
+	// hinweise: leere Liste statt null (Backlog H.4.3d).
+	if created.Bestellung.ProjectID == nil || *created.Bestellung.ProjectID != project || created.Bestellung.Hinweise == nil {
 		t.Fatalf("angelegt: %+v", created)
 	}
 	path := "/api/v1/purchase-orders/" + created.Bestellung.ID
-	if g := decodeJSON[order](t, doAuthedRequest(t, handler, buyer, http.MethodGet, path, ""), http.StatusOK); g.Bestellung.ProjectID == nil {
+	if g := decodeJSON[order](t, doAuthedRequest(t, handler, buyer, http.MethodGet, path, ""), http.StatusOK); g.Bestellung.ProjectID == nil || g.Bestellung.Hinweise == nil {
 		t.Fatalf("Einzelabruf: %+v", g)
 	}
 	if u := decodeJSON[order](t, doAuthedRequest(t, handler, buyer, http.MethodPatch, path, `{"projekt_id":""}`), http.StatusOK); u.Bestellung.ProjectID != nil {

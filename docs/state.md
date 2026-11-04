@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-03 H.4.3c** erledigt: Projekt an der Bestellung und Prüfung
+> **2026-11-04 H.4.3d** und damit **H.4.3** erledigt: Hinweise der
+> Nachweise an der Bestellung (`purchasing/order_hints.go`, drei Abfragen
+> je Liste). Nächste: **H.4.4** Client Lieferant (Zertifikate, Hinweis
+> Ablauf) und Material (Kennzeichen).
+> Davor **2026-11-03 H.4.3c** erledigt: Projekt an der Bestellung und Prüfung
 > des Lieferanten beim Anlegen. Hinweise als **H.4.3d** abgeteilt.
 > Befund: die Anfrage prüft den Lieferanten nicht (offen). Nächste:
 > **H.4.3d** Hinweise an der Bestellung.

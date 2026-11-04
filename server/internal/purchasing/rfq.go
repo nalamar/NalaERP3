@@ -462,5 +462,8 @@ func (s *Service) ConvertToPurchaseOrder(ctx context.Context, rfqID string, supp
 	if err := tx.Commit(ctx); err != nil {
 		return nil, nil, err
 	}
+	if err := s.hintOne(ctx, &po, companyID); err != nil {
+		return nil, nil, err
+	}
 	return &po, items, nil
 }

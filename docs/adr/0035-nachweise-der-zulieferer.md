@@ -218,3 +218,10 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
 - Das Projekt muss zum Mandanten gehören (§5); der Lieferant einer neuen
   Bestellung ist ein Kontakt im Mandanten mit Rolle `supplier` oder
   `both` (wie bei den Zertifikaten, H.4.2).
+
+## Präzisierung H.4.3d (2026-11-04, Hinweise an der Bestellung)
+
+- Feld `hinweise` an jeder Bestellung der API (Liste, Einzelabruf,
+  Anlegen, Ändern, Umwandlung der Anfrage), immer eine Liste.
+- Die Hinweise werden beim Abruf berechnet, nicht gespeichert; eine
+  Liste braucht unabhängig von ihrer Länge drei Abfragen.
