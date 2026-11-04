@@ -44,6 +44,7 @@ type Material struct {
 	UWert             *float64       `json:"u_wert"`
 	Brandschutzklasse string         `json:"brandschutzklasse"`
 	MindestBestand    *float64       `json:"mindestbestand"`
+	NachweisEN1090    bool           `json:"nachweis_en1090"`
 	Aktiv             bool           `json:"aktiv"`
 	Attribute         map[string]any `json:"attribute"`
 	DurchschnittsEK   float64        `json:"durchschnitts_einkaufspreis"`
@@ -70,6 +71,7 @@ type MaterialCreate struct {
 	UWert             *float64       `json:"u_wert"`
 	Brandschutzklasse string         `json:"brandschutzklasse"`
 	MindestBestand    *float64       `json:"mindestbestand"`
+	NachweisEN1090    bool           `json:"nachweis_en1090"`
 	Attribute         map[string]any `json:"attribute"`
 }
 
@@ -90,6 +92,7 @@ type MaterialUpdate struct {
 	UWert             *float64        `json:"u_wert"`
 	Brandschutzklasse *string         `json:"brandschutzklasse"`
 	MindestBestand    *float64        `json:"mindestbestand"`
+	NachweisEN1090    *bool           `json:"nachweis_en1090"`
 	Attribute         *map[string]any `json:"attribute"`
 	Aktiv             *bool           `json:"aktiv"`
 }
@@ -132,16 +135,16 @@ func (s *Service) Create(ctx context.Context, in MaterialCreate, companyID strin
 	err = s.pg.QueryRow(ctx, `
         INSERT INTO materials (
             id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, dichte, length_mm, width_mm, height_mm, kategorie,
-            profilserie, rc_klasse, u_wert, brandschutzklasse, mindestbestand, attributes, company_id
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19)
+            profilserie, rc_klasse, u_wert, brandschutzklasse, mindestbestand, attributes, company_id, nachweis_en1090
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18::jsonb,$19,$20)
         RETURNING id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
-                  COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand,
+                  COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand, nachweis_en1090,
                   COALESCE(attributes,'{}'::jsonb), COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                   COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
     `, id, in.Nummer, in.Bezeichnung, in.Typ, in.Norm, in.Werkstoffnummer, in.Einheit, in.Dichte, in.LengthMM, in.WidthMM, in.HeightMM, in.Kategorie,
-		in.Profilserie, in.RCKlasse, in.UWert, in.Brandschutzklasse, in.MindestBestand, toJSONB(in.Attribute), companyID).Scan(
+		in.Profilserie, in.RCKlasse, in.UWert, in.Brandschutzklasse, in.MindestBestand, toJSONB(in.Attribute), companyID, in.NachweisEN1090).Scan(
 		&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
-		&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand,
+		&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand, &m.NachweisEN1090,
 		new([]byte), &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm,
 	)
 	if err != nil {
@@ -248,6 +251,10 @@ func (s *Service) Update(ctx context.Context, id string, u MaterialUpdate, compa
 		}
 		add("mindestbestand", *u.MindestBestand)
 	}
+	// Kennzeichen "Nachweis EN 1090" (ADR 0035 §2, Backlog H.4.4a).
+	if u.NachweisEN1090 != nil {
+		add("nachweis_en1090", *u.NachweisEN1090)
+	}
 	if u.Attribute != nil {
 		add("attributes", toJSONB(*u.Attribute))
 	}
@@ -286,7 +293,7 @@ func (s *Service) List(ctx context.Context, f MaterialFilter, companyID string) 
 	// Dynamische WHERE-Klausel
 	sb := strings.Builder{}
 	sb.WriteString(`SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
-               COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand,
+               COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand, nachweis_en1090,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
         FROM materials`)
@@ -326,7 +333,7 @@ func (s *Service) List(ctx context.Context, f MaterialFilter, companyID string) 
 		var m Material
 		var raw []byte
 		if err := rows.Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
-			&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand,
+			&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand, &m.NachweisEN1090,
 			&raw, &m.Aktiv, &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm); err != nil {
 			return nil, err
 		}
@@ -348,12 +355,12 @@ func (s *Service) Get(ctx context.Context, id string, companyID string) (*Materi
 	var raw []byte
 	err := s.pg.QueryRow(ctx, `
         SELECT id, nummer, bezeichnung, typ, norm, werkstoffnummer, einheit, COALESCE(dichte,0), length_mm, width_mm, height_mm, kategorie,
-               COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand,
+               COALESCE(profilserie,''), COALESCE(rc_klasse,''), u_wert, COALESCE(brandschutzklasse,''), mindestbestand, nachweis_en1090,
                COALESCE(attributes,'{}'::jsonb), aktiv, COALESCE(avg_purchase_price,0), COALESCE(currency,'EUR'),
                COALESCE(purchase_total_qty,0), COALESCE(purchase_total_value,0), angelegt_am
         FROM materials WHERE id=$1 AND company_id=$2
     `, id, companyID).Scan(&m.ID, &m.Nummer, &m.Bezeichnung, &m.Typ, &m.Norm, &m.Werkstoffnummer, &m.Einheit, &m.Dichte, &m.LengthMM, &m.WidthMM, &m.HeightMM, &m.Kategorie,
-		&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand,
+		&m.Profilserie, &m.RCKlasse, &m.UWert, &m.Brandschutzklasse, &m.MindestBestand, &m.NachweisEN1090,
 		&raw, &m.Aktiv, &m.DurchschnittsEK, &m.Waehrung, &m.EinkaufMengeSumme, &m.EinkaufWertSumme, &m.AngelegtAm)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
