@@ -1549,6 +1549,16 @@ class ApiClient {
         if (includeStorniert) 'include_storniert': 'true',
       });
 
+  Future<Map<String, dynamic>> createSupplierCertificate(
+          Map<String, dynamic> body) async =>
+      (await _postJson('/api/v1/supplier-certificates/', body))
+          as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> stornoSupplierCertificate(
+          String id, String reason) async =>
+      (await _postJson('/api/v1/supplier-certificates/$id/storno',
+          {'reason': reason})) as Map<String, dynamic>;
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,
