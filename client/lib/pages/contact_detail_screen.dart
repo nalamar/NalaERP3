@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../web/browser.dart' as browser;
+import 'supplier_certificates_page.dart';
 
 class ContactDetailScreen extends StatefulWidget {
   const ContactDetailScreen({super.key, required this.api, required this.id});
@@ -1143,6 +1144,18 @@ class _ContactDetailScreenState extends State<ContactDetailScreen> {
             Text(c == null ? 'Kontakt' : (c['name'] ?? 'Kontakt').toString()),
         actions: [
           IconButton(onPressed: _loadAll, icon: const Icon(Icons.refresh)),
+          // Zertifikate haengen am Einkauf, nicht an contacts.* (ADR 0035 §6).
+          if (c != null &&
+              const {'supplier', 'both'}.contains(c['rolle']) &&
+              widget.api.hasPermission('purchase_orders.read'))
+            IconButton(
+                tooltip: 'Zertifikate',
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => SupplierCertificatesPage(
+                        api: widget.api,
+                        supplierId: widget.id,
+                        supplierName: (c['name'] ?? '').toString()))),
+                icon: const Icon(Icons.verified_outlined)),
           if (canWrite) ...[
             IconButton(onPressed: _editContact, icon: const Icon(Icons.edit)),
             IconButton(

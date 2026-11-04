@@ -1541,6 +1541,14 @@ class ApiClient {
     if (r.statusCode != 204) _throwApiException(r);
   }
 
+  // -------- Zertifikate am Lieferanten (ADR 0035) --------
+  Future<List<dynamic>> listSupplierCertificates(String supplierId,
+          {bool includeStorniert = false}) =>
+      _getList('/api/v1/supplier-certificates/', {
+        'lieferant_id': supplierId,
+        if (includeStorniert) 'include_storniert': 'true',
+      });
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,

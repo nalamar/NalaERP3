@@ -225,3 +225,12 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Anlegen, Ändern, Umwandlung der Anfrage), immer eine Liste.
 - Die Hinweise werden beim Abruf berechnet, nicht gespeichert; eine
   Liste braucht unabhängig von ihrer Länge drei Abfragen.
+
+## Präzisierung H.4.4c1 (2026-11-04, Zertifikate im Client)
+
+- ANNAHME: Zugang über ein Symbol „Zertifikate“ in der Kopfzeile des
+  Kontakts, nur bei Rolle `supplier` oder `both` und mit
+  `purchase_orders.read`; eigene Seite statt weiterer Spalte, weil die
+  Kontaktseite schon sechs Spalten hat.
+- Gültigkeitsdaten werden als Tag ohne Umrechnung in die lokale Zeitzone
+  angezeigt (der Server liefert Mitternacht UTC).
