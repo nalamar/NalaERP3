@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-04 H.4.4a** erledigt: Material-API liefert und setzt das
+> **2026-11-04 H.4.4b** erledigt: Haken "Nachweis EN 1090 erforderlich" im
+> Material-Dialog (nur mit `materials.write` erreichbar), Anzeige in Detail
+> und Liste. Nächste: **H.4.4c** Zertifikate am Lieferanten im Client.
+> Davor **2026-11-04 H.4.4a** erledigt: Material-API liefert und setzt das
 > Kennzeichen `nachweis_en1090` (bisher nur in der DB). H.4.4 geteilt
 > in a/b/c. Nächste: **H.4.4b** Client Material.
 > Davor **2026-11-04 H.4.3d** und damit **H.4.3** erledigt: Hinweise der

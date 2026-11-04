@@ -5,6 +5,10 @@ import '../commercial_navigation.dart';
 import '../material_follow_up_actions.dart';
 import '../web/browser.dart' as browser;
 
+// Kennzeichen am Material (ADR 0035 §2): Lieferant braucht ein gültiges
+// EN-1090-Zertifikat, der Wareneingang eine Leistungserklärung.
+const _nachweisLabel = 'Nachweis EN 1090 erforderlich';
+
 class MaterialsPage extends StatefulWidget {
   const MaterialsPage({
     super.key,
@@ -52,6 +56,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
   final breiteCtrl = TextEditingController();
   final hoeheCtrl = TextEditingController();
   final katCtrl = TextEditingController(text: '');
+  bool nachweisCreate = false;
 
   List<String> _categoryOptions([String? currentCategory]) {
     final out = <String>[];
@@ -277,6 +282,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
         'height_mm': double.tryParse(hoeheCtrl.text.trim()),
       'kategorie': katCtrl.text.trim(),
       'attribute': {},
+      'nachweis_en1090': nachweisCreate,
     };
     try {
       await widget.api.createMaterial(body);
@@ -286,6 +292,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
       }
       nummerCtrl.clear();
       bezCtrl.clear();
+      nachweisCreate = false;
       await _reload();
     } catch (e) {
       if (mounted) {
@@ -507,6 +514,15 @@ class _MaterialsPageState extends State<MaterialsPage> {
                               decoration:
                                   const InputDecoration(labelText: 'Höhe (mm)'),
                               keyboardType: TextInputType.number)),
+                      SizedBox(
+                          width: 360,
+                          child: CheckboxListTile(
+                              contentPadding: EdgeInsets.zero,
+                              controlAffinity: ListTileControlAffinity.leading,
+                              title: const Text(_nachweisLabel),
+                              value: nachweisCreate,
+                              onChanged: (v) => setDialogState(
+                                  () => nachweisCreate = v ?? false))),
                     ],
                   ),
                 ),
@@ -691,6 +707,7 @@ class _MaterialsPageState extends State<MaterialsPage> {
                             '${m['nummer']}',
                             '${m['typ']}',
                             if (dim.isNotEmpty) dim else '${m['einheit']}',
+                            if (m['nachweis_en1090'] == true) 'EN 1090',
                           ]
                               .where((e) => e.toString().trim().isNotEmpty)
                               .join('  •  ')),
@@ -746,6 +763,8 @@ class _MaterialsPageState extends State<MaterialsPage> {
                                       .isNotEmpty)
                                     Text(
                                         'Kategorie: ${selected!['kategorie']}'),
+                                  if (selected!['nachweis_en1090'] == true)
+                                    const Text(_nachweisLabel),
                                 ])),
                             Wrap(
                               spacing: 6,
@@ -901,6 +920,7 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
       text: (widget.initial['height_mm'] ?? '').toString());
   late final kat = TextEditingController(
       text: widget.initial['kategorie']?.toString() ?? '');
+  late bool nachweis = widget.initial['nachweis_en1090'] == true;
 
   List<String> _categoryOptions() {
     final out = <String>[];
@@ -1052,6 +1072,12 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
                       decoration: const InputDecoration(labelText: 'Höhe (mm)'),
                       keyboardType: TextInputType.number)),
             ]),
+            CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text(_nachweisLabel),
+                value: nachweis,
+                onChanged: (v) => setState(() => nachweis = v ?? false)),
           ]),
         ),
       ),
@@ -1076,6 +1102,7 @@ class _EditMaterialDialogState extends State<_EditMaterialDialog> {
                 'length_mm': double.tryParse(laenge.text.trim()),
                 'width_mm': double.tryParse(breite.text.trim()),
                 'height_mm': double.tryParse(hoehe.text.trim()),
+                'nachweis_en1090': nachweis,
               });
             },
             child: const Text('Speichern')),
