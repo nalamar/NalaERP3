@@ -259,3 +259,12 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
 - Der Bezug zeigt „Position N – Bezeichnung“ aus den Positionen der
   Bestellung, ohne Position „ganze Bestellung“ (H.4.3a). Ist die
   Position nicht mehr da, steht nur „Position“.
+
+## Präzisierung H.4.5b2 (2026-11-05, Lieferpapiere hochladen und stornieren)
+
+- Hochladen nur mit `purchase_orders.write` und nicht an einer
+  stornierten Bestellung (H.4.3a); Stornieren eines Papiers bleibt dort
+  möglich, wie der Server es erlaubt.
+- Die Art ist im Dialog Pflicht und hat keine Vorgabe, damit kein
+  Zeugnis versehentlich als Lieferschein abgelegt wird; ohne gewählte
+  Position gilt das Papier für die ganze Bestellung.

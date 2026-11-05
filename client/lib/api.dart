@@ -1620,6 +1620,48 @@ class ApiClient {
     );
   }
 
+  // Multipart: Datei im Feld "file", Angaben als Formularfelder; ohne
+  // Position gilt das Papier fuer die ganze Bestellung.
+  Future<Map<String, dynamic>> uploadPurchaseOrderPaper(
+      String orderId, String filename, Uint8List bytes,
+      {required String art,
+      String? positionId,
+      String charge = '',
+      String notiz = '',
+      String? contentType}) async {
+    MediaType? mt;
+    if (contentType != null && contentType.isNotEmpty) {
+      try {
+        mt = MediaType.parse(contentType);
+      } catch (_) {
+        mt = null;
+      }
+    }
+    final r = await _sendWithAuth((headers) async {
+      final req = http.MultipartRequest(
+          'POST', _u('/api/v1/purchase-orders/$orderId/papers/'));
+      req.headers.addAll(headers);
+      req.fields['art'] = art;
+      if (positionId != null && positionId.isNotEmpty) {
+        req.fields['position_id'] = positionId;
+      }
+      req.fields['charge'] = charge.trim();
+      req.fields['notiz'] = notiz.trim();
+      req.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mt));
+      return http.Response.fromStream(await req.send());
+    });
+    if (r.statusCode != 201) {
+      _throwApiException(r, fallbackMessage: 'Upload fehlgeschlagen');
+    }
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> stornoPurchaseOrderPaper(
+          String orderId, String paperId, String reason) async =>
+      (await _postJson('/api/v1/purchase-orders/$orderId/papers/$paperId/storno',
+          {'reason': reason})) as Map<String, dynamic>;
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,

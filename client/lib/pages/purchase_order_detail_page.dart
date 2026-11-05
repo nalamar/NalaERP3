@@ -216,6 +216,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
               api: widget.api,
               orderId: widget.id,
               orderNumber: (order['nummer'] ?? '').toString(),
+              orderStatus: (order['status'] ?? '').toString(),
               items: items)));
 
   String _projectText(Map<String, dynamic> order) {

@@ -18,7 +18,8 @@ class _FakeApi extends ApiClient {
   final List<String> downloads = [];
 
   @override
-  bool hasPermission(String permission) => permission == 'purchase_orders.read';
+  bool hasPermission(String permission) =>
+      permission.startsWith('purchase_orders.');
 
   @override
   Future<List<dynamic>> listPurchaseOrderPapers(String orderId,
@@ -40,7 +41,7 @@ class _FakeApi extends ApiClient {
   // Fuer den Einstieg ueber die Detailseite.
   @override
   Future<Map<String, dynamic>> getPurchaseOrder(String id) async => {
-        'bestellung': {'id': id, 'nummer': 'B-7', 'status': 'ordered'},
+        'bestellung': {'id': id, 'nummer': 'B-7', 'status': 'canceled'},
         'positionen': _items,
       };
 
@@ -208,7 +209,7 @@ void main() {
     expect(find.text('Keine Lieferpapiere'), findsNothing);
   });
 
-  testWidgets('Einstieg über die Bestellung reicht die Positionen durch',
+  testWidgets('Einstieg über die Bestellung reicht Positionen und Status durch',
       (tester) async {
     final api = _FakeApi(papers: [_cert]);
     await tester.binding.setSurfaceSize(const Size(1400, 1200));
@@ -221,5 +222,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Lieferpapiere – Bestellung B-7'), findsOneWidget);
     expect(find.textContaining('Position 1 – HEB 200'), findsOneWidget);
+    // Bestellung storniert: trotz Schreibrecht kein Hochladen (H.4.5b2).
+    expect(find.byTooltip('Lieferpapier hochladen'), findsNothing);
   });
 }
