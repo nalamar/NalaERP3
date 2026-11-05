@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-04 H.4.4c2** erledigt: Zertifikate anlegen und stornieren im
+> **2026-11-05 H.4.4c3** und damit **H.4.4** erledigt: Dateien am Zertifikat
+> (Liste, Herunterladen; Hochladen mit `purchase_orders.write`, nicht an
+> stornierten). Nächste: **H.4.5** (Vorschau im ADR 0035).
+> Davor **2026-11-04 H.4.4c2** erledigt: Zertifikate anlegen und stornieren im
 > Client (nur mit `purchase_orders.write`). Nächste: **H.4.4c3** Dateien.
 > Davor **2026-11-04 H.4.4c1** erledigt: Zertifikate am Lieferanten im Client
 > lesend (eigene Seite, Zugang über Symbol am Kontakt). H.4.4c geteilt in

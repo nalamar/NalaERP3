@@ -1559,6 +1559,49 @@ class ApiClient {
       (await _postJson('/api/v1/supplier-certificates/$id/storno',
           {'reason': reason})) as Map<String, dynamic>;
 
+  // Dateien am Zertifikat: PDF/JPEG/PNG bis 10 MB (Server prueft den
+  // Inhalt). Bewusst nicht ueber /documents/{id}.
+  Future<List<dynamic>> listSupplierCertificateDocuments(
+          String certificateId) =>
+      _getList('/api/v1/supplier-certificates/$certificateId/documents');
+
+  Future<Map<String, dynamic>> uploadSupplierCertificateDocument(
+      String certificateId, String filename, Uint8List bytes,
+      {String? contentType}) async {
+    MediaType? mt;
+    if (contentType != null && contentType.isNotEmpty) {
+      try {
+        mt = MediaType.parse(contentType);
+      } catch (_) {
+        mt = null;
+      }
+    }
+    final r = await _sendWithAuth((headers) async {
+      final req = http.MultipartRequest('POST',
+          _u('/api/v1/supplier-certificates/$certificateId/documents'));
+      req.headers.addAll(headers);
+      req.files.add(http.MultipartFile.fromBytes('file', bytes,
+          filename: filename, contentType: mt));
+      return http.Response.fromStream(await req.send());
+    });
+    if (r.statusCode != 201) {
+      _throwApiException(r, fallbackMessage: 'Upload fehlgeschlagen');
+    }
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<void> downloadSupplierCertificateDocument(
+      String certificateId, String documentId,
+      {String? filename}) async {
+    final r = await _getBytesResponse(
+        '/api/v1/supplier-certificates/$certificateId/documents/$documentId');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Zertifikat_$documentId',
+      contentType: r.headers['content-type'] ?? 'application/octet-stream',
+    );
+  }
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,

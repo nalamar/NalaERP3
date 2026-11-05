@@ -1,10 +1,17 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
-import 'employee_qualifications_section.dart' show parseDateInput;
+import '../web/browser.dart' as browser;
+import 'employee_qualifications_section.dart'
+    show
+        QualificationFilePicker,
+        parseDateInput,
+        qualificationDocumentAccept,
+        qualificationDocumentLabel,
+        qualificationUploadProblem;
 
-// Zertifikate am Lieferanten (ADR 0035 §1, Backlog H.4.4c1/c2): Liste mit
-// Hinweis "läuft bald ab", lesen mit purchase_orders.read; anlegen und
-// stornieren mit purchase_orders.write.
+// Zertifikate am Lieferanten (ADR 0035 §1, Backlog H.4.4c1-c3): Liste mit
+// Hinweis "läuft bald ab" und Dateien, lesen mit purchase_orders.read;
+// anlegen, stornieren und Dateien hochladen mit purchase_orders.write.
 
 const supplierCertificateArts = ['en1090', 'iso3834', 'sonstiges'];
 const excKlassen = ['EXC1', 'EXC2', 'EXC3', 'EXC4'];
@@ -75,10 +82,13 @@ class SupplierCertificatesPage extends StatefulWidget {
       {super.key,
       required this.api,
       required this.supplierId,
-      required this.supplierName});
+      required this.supplierName,
+      this.filePicker});
   final ApiClient api;
   final String supplierId;
   final String supplierName;
+  // Fuer Tests; sonst die Dateiauswahl des Browsers.
+  final QualificationFilePicker? filePicker;
 
   @override
   State<SupplierCertificatesPage> createState() =>
@@ -137,6 +147,14 @@ class _SupplierCertificatesPageState extends State<SupplierCertificatesPage> {
     if (ok == true) await _reload();
   }
 
+  Future<void> _documents(Map<String, dynamic> c) => showDialog<void>(
+      context: context,
+      builder: (_) => _CertificateDocumentsDialog(
+          api: widget.api,
+          cert: c,
+          canUpload: _canWrite && c['storniert_am'] == null,
+          filePicker: widget.filePicker ?? browser.pickFile));
+
   Widget _tile(Map<String, dynamic> c) {
     final nummer = (c['nummer'] ?? '').toString().trim();
     final stelle = (c['stelle'] ?? '').toString().trim();
@@ -170,12 +188,17 @@ class _SupplierCertificatesPageState extends State<SupplierCertificatesPage> {
           for (final h in hints) Text(h, style: TextStyle(color: errorColor)),
         ],
       ),
-      trailing: _canWrite && !storniert
-          ? IconButton(
+      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        IconButton(
+            tooltip: 'Dateien',
+            onPressed: () => _documents(c),
+            icon: const Icon(Icons.attach_file)),
+        if (_canWrite && !storniert)
+          IconButton(
               tooltip: 'Stornieren',
               onPressed: () => _storno(c),
-              icon: const Icon(Icons.cancel_outlined))
-          : null,
+              icon: const Icon(Icons.cancel_outlined)),
+      ]),
     );
   }
 
@@ -421,6 +444,156 @@ class _StornoCertificateDialogState extends State<_StornoCertificateDialog> {
         FilledButton(
             onPressed: busy || reason.text.trim().isEmpty ? null : _save,
             child: const Text('Stornieren')),
+      ],
+    );
+  }
+}
+
+class _CertificateDocumentsDialog extends StatefulWidget {
+  const _CertificateDocumentsDialog(
+      {required this.api,
+      required this.cert,
+      required this.canUpload,
+      required this.filePicker});
+  final ApiClient api;
+  final Map<String, dynamic> cert;
+  final bool canUpload;
+  final QualificationFilePicker filePicker;
+
+  @override
+  State<_CertificateDocumentsDialog> createState() =>
+      _CertificateDocumentsDialogState();
+}
+
+class _CertificateDocumentsDialogState
+    extends State<_CertificateDocumentsDialog> {
+  List<dynamic> docs = [];
+  bool busy = true;
+  String? error;
+
+  String get _id => widget.cert['id'].toString();
+
+  String _message(Object e, String fallback) =>
+      e is ApiException ? e.message : '$fallback: $e';
+
+  @override
+  void initState() {
+    super.initState();
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    try {
+      final out = await widget.api.listSupplierCertificateDocuments(_id);
+      if (mounted) setState(() => docs = out);
+    } catch (e) {
+      if (mounted) {
+        setState(
+            () => error = _message(e, 'Dateien konnten nicht geladen werden'));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _upload() async {
+    final picked = await widget.filePicker(accept: qualificationDocumentAccept);
+    if (picked == null || !mounted) return;
+    final problem = qualificationUploadProblem(picked.bytes.length);
+    if (problem != null) {
+      setState(() => error = problem);
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.api.uploadSupplierCertificateDocument(
+          _id, picked.filename, picked.bytes,
+          contentType: picked.contentType);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = _message(e, 'Upload fehlgeschlagen');
+        });
+      }
+      return;
+    }
+    await _reload();
+  }
+
+  Future<void> _download(Map<String, dynamic> d) async {
+    try {
+      await widget.api.downloadSupplierCertificateDocument(
+          _id, d['id'].toString(),
+          filename: d['filename']?.toString());
+    } catch (e) {
+      if (mounted) {
+        setState(() => error = _message(e, 'Download fehlgeschlagen'));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final nummer = (widget.cert['nummer'] ?? '').toString().trim();
+    return AlertDialog(
+      title: const Text('Dateien zum Zertifikat'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text([
+                supplierCertificateArtLabel(
+                    (widget.cert['art'] ?? '').toString()),
+                if (nummer.isNotEmpty) nummer,
+              ].join('  •  ')),
+              const SizedBox(height: 8),
+              if (busy) const LinearProgressIndicator(minHeight: 2),
+              if (!busy && docs.isEmpty && error == null)
+                const Text('Keine Dateien.'),
+              for (final d in docs)
+                Row(children: [
+                  Expanded(
+                      child: Text(
+                          qualificationDocumentLabel(
+                              (d as Map).cast<String, dynamic>()),
+                          overflow: TextOverflow.ellipsis)),
+                  IconButton(
+                      tooltip: 'Herunterladen',
+                      icon: const Icon(Icons.download, size: 18),
+                      onPressed: () => _download(d.cast<String, dynamic>())),
+                ]),
+              if (widget.canUpload) ...[
+                const SizedBox(height: 8),
+                const Text(
+                    'PDF, JPEG oder PNG, höchstens 10 MB. Dateien werden nicht gelöscht.'),
+              ],
+              if (error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(error!,
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.error)),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        if (widget.canUpload)
+          TextButton.icon(
+              onPressed: busy ? null : _upload,
+              icon: const Icon(Icons.upload_file),
+              label: const Text('Hochladen')),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Schließen')),
       ],
     );
   }
