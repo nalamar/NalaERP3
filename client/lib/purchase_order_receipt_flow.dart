@@ -38,7 +38,7 @@ Map<String, dynamic>? buildPurchaseOrderReceiptStockMovement({
   if (materialId == null || materialId.isEmpty) {
     return null;
   }
-  return buildStockMovementPayload(
+  final payload = buildStockMovementPayload(
     materialId: materialId,
     warehouseId: warehouseId,
     locationId: locationId,
@@ -51,4 +51,11 @@ Map<String, dynamic>? buildPurchaseOrderReceiptStockMovement({
     currency: item['waehrung']?.toString(),
     fallbackCurrency: defaultCurrency,
   );
+  // Bezug zur Bestellposition fuer den Abgleich mit Eingangsrechnungen
+  // (Migration 080, Backlog H.4.x).
+  final itemId = item['id']?.toString().trim();
+  if (itemId != null && itemId.isNotEmpty) {
+    payload['purchase_order_item_id'] = itemId;
+  }
+  return payload;
 }

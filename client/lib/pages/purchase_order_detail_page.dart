@@ -479,15 +479,23 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
     for (final body in bodies) {
       await widget.api.createStockMovement(body);
     }
+    // Die Bewegungen sind gebucht; ein Fehler beim Status darf darum den
+    // Dialog nicht offen halten (erneutes Buchen verdoppelt die Menge),
+    // muss aber sichtbar werden (Backlog H.4.x).
+    String? statusError;
     if (setReceived) {
       try {
         await widget.api.updatePurchaseOrder(widget.id, {'status': 'received'});
-      } catch (_) {}
+      } catch (e) {
+        statusError = _purchaseOrderErrorMessage(e);
+      }
     }
     await _load();
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Wareneingang gebucht')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(statusError == null
+              ? 'Wareneingang gebucht'
+              : 'Wareneingang gebucht, Status nicht geändert: $statusError')));
     }
   }
 

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-05 H.4.5b2** und damit **H.4.5** erledigt: Lieferpapiere
+> **2026-11-05 H.4.x** erledigt: Wareneingang setzt `purchase_order_item_id`,
+> ein Fehler beim Status wird gemeldet statt verschluckt. Neu im Backlog:
+> **H.4.y** (Bestellung bearbeiten sendet nur Geändertes) und **H.4.z**
+> (Wareneingang am Stück). Nächste: **H.4.y**.
+> Davor **2026-11-05 H.4.5b2** und damit **H.4.5** erledigt: Lieferpapiere
 > hochladen (Art Pflicht, Bezug, Charge, Notiz; nicht an stornierter
 > Bestellung) und stornieren (Begründung Pflicht) im Client. Nächste:
 > **H.4.x** Wareneingang setzt die Bestellposition.
