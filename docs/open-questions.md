@@ -324,6 +324,26 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-05 — H.4.z Wareneingang am Stück (offen)
+
+Befund aus H.4.x: der Client bucht den Wareneingang als einzelne
+Lagerbewegungen nacheinander und setzt danach den Status. Scheitert die
+n-te Bewegung, sind die vorigen gebucht; ein erneuter Versuch bucht sie
+doppelt. ADR 0035 Frage 4 hat einen eigenen Wareneingangsbeleg vorerst
+verneint. Bezug: Backlog H.4.z.
+
+1. **Wie soll der Wareneingang gebucht werden?** (a) neue Route
+   `POST /purchase-orders/{id}/receive` im Server: bucht alle
+   materialgebundenen Positionen mit voller Menge und Bezug zur Position
+   und setzt auf Wunsch den Status `received` — alles in einer
+   Transaktion, ohne neuen Beleg und ohne Migration; der Client ruft nur
+   noch diese Route. (b) eigener Beleg "Wareneingang" mit Teillieferungen
+   und Mengen je Position (Migration, neues ADR; ändert Frage 4).
+   (c) so lassen. Empfehlung: **(a)** — behebt die Doppelbuchung klein;
+   (b) bleibt möglich, wenn Teillieferungen gebraucht werden. Rechte für
+   (a): `purchase_orders.write` und `stock_movements.write` wie heute
+   die einzelnen Aufrufe. Status: **offen**.
+
 ## 2026-11-03 — H.4 Nachweise der Zulieferer nach EN 1090 (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Details, Bestand, Recherche und Begründung in
