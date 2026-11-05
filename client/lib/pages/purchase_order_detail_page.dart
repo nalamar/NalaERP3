@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../api.dart';
 import '../material_selection.dart';
+import '../purchase_order_hints.dart';
 import '../purchase_order_item_payloads.dart';
 import '../purchase_order_material_selection.dart';
 import '../purchase_order_receipt_flow.dart';
@@ -54,6 +55,9 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
   Map<String, dynamic>? po;
   List<dynamic> items = [];
   Map<String, dynamic>? supplier;
+  // Projekt der Bestellung (ADR 0035 Praezisierung H.4.3c); null, wenn
+  // keins zugeordnet ist oder es nicht gelesen werden darf.
+  Map<String, dynamic>? project;
   bool loading = false;
   // Edit header
   final noteCtrl = TextEditingController();
@@ -85,6 +89,13 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
           supp = await widget.api.getContact(sid);
         } catch (_) {}
       }
+      Map<String, dynamic>? proj;
+      final pid = (order['projekt_id'] ?? '').toString();
+      if (pid.isNotEmpty) {
+        try {
+          proj = await widget.api.getProject(pid);
+        } catch (_) {}
+      }
       try {
         statuses = await widget.api.listPOStatuses();
       } catch (_) {
@@ -108,6 +119,7 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
         po = order;
         items = pos;
         supplier = supp;
+        project = proj;
       });
     } catch (e) {
       if (mounted) {
@@ -184,10 +196,32 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
             ));
   }
 
+  // Nur das Projekt senden: es ist in jedem Status aenderbar, die
+  // uebrigen Kopfdaten nicht (Backlog H.4.5a).
+  Future<void> _assignProject() async {
+    final current = (po?['projekt_id'] ?? '').toString();
+    final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => _AssignProjectDialog(
+            api: widget.api,
+            orderId: widget.id,
+            current: current.isEmpty ? null : current));
+    if (ok == true) await _load();
+  }
+
+  String _projectText(Map<String, dynamic> order) {
+    final pid = (order['projekt_id'] ?? '').toString();
+    if (pid.isEmpty) return 'Projekt: keins';
+    final p = project;
+    if (p == null) return 'Projekt: zugeordnet';
+    return 'Projekt: ${projectLabel(p)}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.primary;
     final order = po;
+    final hints = order == null ? const <String>[] : purchaseOrderHints(order);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: color,
@@ -201,6 +235,11 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
               onPressed: _receiveDialog,
               icon: const Icon(Icons.inventory_2_outlined),
               tooltip: 'Empfangen'),
+          if (widget.api.hasPermission('purchase_orders.write'))
+            IconButton(
+                onPressed: order == null ? null : _assignProject,
+                icon: const Icon(Icons.folder_open),
+                tooltip: 'Projekt zuordnen'),
           IconButton(
               onPressed: () {
                 widget.api.downloadPurchaseOrderPdf(widget.id);
@@ -232,7 +271,24 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
                           if (supplier != null)
                             Text(
                                 'Lieferant: ${(supplier!['name'] ?? '').toString()}'),
+                          Text(_projectText(order)),
                         ]),
+                    for (final h in hints)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(children: [
+                          Icon(Icons.warning_amber,
+                              size: 18,
+                              color: Theme.of(context).colorScheme.error),
+                          const SizedBox(width: 6),
+                          Expanded(
+                              child: Text(h,
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error))),
+                        ]),
+                      ),
                     if (supplier != null &&
                         _contactCommercialSummary(supplier!, supplier: true)
                             .isNotEmpty) ...[
@@ -675,5 +731,126 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
         }
       }
     }
+  }
+}
+
+String projectLabel(Map<String, dynamic> p) {
+  final nummer = (p['nummer'] ?? '').toString().trim();
+  final name = (p['name'] ?? '').toString().trim();
+  return [if (nummer.isNotEmpty) nummer, if (name.isNotEmpty) name].join(' – ');
+}
+
+class _AssignProjectDialog extends StatefulWidget {
+  const _AssignProjectDialog(
+      {required this.api, required this.orderId, required this.current});
+  final ApiClient api;
+  final String orderId;
+  final String? current;
+
+  @override
+  State<_AssignProjectDialog> createState() => _AssignProjectDialogState();
+}
+
+class _AssignProjectDialogState extends State<_AssignProjectDialog> {
+  List<dynamic> projects = [];
+  String? selected;
+  bool busy = true;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    selected = widget.current;
+    _loadProjects();
+  }
+
+  Future<void> _loadProjects() async {
+    try {
+      final out = await widget.api.listProjects(limit: 200);
+      if (mounted) setState(() => projects = out);
+    } catch (e) {
+      if (mounted) {
+        setState(() => error = _purchaseOrderErrorMessage(e,
+            fallback: 'Projekte konnten nicht geladen werden'));
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.api
+          .updatePurchaseOrder(widget.orderId, {'projekt_id': selected ?? ''});
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          busy = false;
+          error = _purchaseOrderErrorMessage(e);
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ids = {for (final p in projects) (p as Map)['id'].toString()};
+    // Ein zugeordnetes Projekt, das nicht in der Liste steht, bleibt
+    // waehlbar, damit der Dialog es nicht stillschweigend entfernt.
+    final keepCurrent = widget.current != null && !ids.contains(widget.current);
+    return AlertDialog(
+      title: const Text('Projekt zuordnen'),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+                'Interne Zuordnung, erscheint nicht auf dem Beleg an den Lieferanten.'),
+            const SizedBox(height: 8),
+            if (busy) const LinearProgressIndicator(minHeight: 2),
+            DropdownButtonFormField<String?>(
+              key: ValueKey(projects.length),
+              initialValue: selected,
+              items: [
+                const DropdownMenuItem<String?>(
+                    value: null, child: Text('Kein Projekt')),
+                if (keepCurrent)
+                  DropdownMenuItem<String?>(
+                      value: widget.current,
+                      child: const Text('Bisheriges Projekt')),
+                for (final p in projects)
+                  DropdownMenuItem<String?>(
+                      value: (p as Map)['id'].toString(),
+                      child: Text(projectLabel(p.cast<String, dynamic>()),
+                          overflow: TextOverflow.ellipsis)),
+              ],
+              onChanged: (v) => setState(() => selected = v),
+              decoration: const InputDecoration(labelText: 'Projekt'),
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(error!,
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error)),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Abbrechen')),
+        FilledButton(
+            onPressed: busy ? null : _save, child: const Text('Speichern')),
+      ],
+    );
   }
 }

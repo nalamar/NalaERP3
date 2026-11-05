@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import '../commercial_navigation.dart';
 import '../material_selection.dart';
+import '../purchase_order_hints.dart';
 import '../purchase_order_item_payloads.dart';
 import '../purchase_order_material_selection.dart';
 import 'purchase_order_detail_page.dart';
@@ -483,12 +484,22 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
               itemBuilder: (ctx, i) {
                 if (i < items.length) {
                   final po = items[i] as Map<String, dynamic>;
+                  final hints = purchaseOrderHints(po);
                   return ListTile(
                     leading: const Icon(Icons.receipt_long),
                     title:
                         Text('${po['nummer'] ?? ''}  •  ${po['status'] ?? ''}'),
-                    subtitle: Text(
-                        'Datum: ${po['datum'] ?? ''}  •  Währung: ${po['waehrung'] ?? 'EUR'}'),
+                    subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                              'Datum: ${po['datum'] ?? ''}  •  Währung: ${po['waehrung'] ?? 'EUR'}'),
+                          if (hints.isNotEmpty)
+                            Text(hints.join('  •  '),
+                                style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.error)),
+                        ]),
                     onTap: () {
                       final id = (po['id'] ?? '').toString();
                       if (id.isNotEmpty) {

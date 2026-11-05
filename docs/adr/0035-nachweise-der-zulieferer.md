@@ -234,3 +234,18 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Kontaktseite schon sechs Spalten hat.
 - Gültigkeitsdaten werden als Tag ohne Umrechnung in die lokale Zeitzone
   angezeigt (der Server liefert Mitternacht UTC).
+
+## Präzisierung H.4.5a (2026-11-05, Hinweise und Projekt im Client)
+
+- Hinweise erscheinen in Liste und Detail der Bestellung als Text in
+  Fehlerfarbe; unbekannte Codes zeigt der Client unübersetzt, damit ein
+  neuer Hinweis des Servers nicht verschwindet.
+- ANNAHME: das Projekt wird über ein eigenes Symbol „Projekt zuordnen“
+  gepflegt, nicht im Dialog „Bestellung bearbeiten“: jener sendet immer
+  Status, Währung und Notiz und scheitert damit ab `ordered`; der eigene
+  Dialog sendet nur `projekt_id` und funktioniert in jedem Status
+  (H.4.3c).
+- Darf der Benutzer Projekte nicht lesen, zeigt das Detail nur
+  „Projekt: zugeordnet“; ein zugeordnetes Projekt, das nicht in der
+  Auswahlliste steht, bleibt im Dialog wählbar und wird nicht
+  stillschweigend entfernt.
