@@ -1157,6 +1157,23 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, map[string]any{"bestellung": po, "positionen": items})
 		})
+		// Wareneingang am Stueck: bucht Lagerbewegungen, braucht darum auch
+		// stock_movements.write (Backlog H.4.z1).
+		r.With(requirePermission("purchase_orders.write"), requirePermission("stock_movements.write")).Post("/{id}/receive", func(w http.ResponseWriter, req *http.Request) {
+			id := chi.URLParam(req, "id")
+			var in purchasing.ReceiveInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			po, items, n, err := poSvc.Receive(req.Context(), id, in, companyID, actorUserIDFromContext(req.Context()))
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{"bestellung": po, "positionen": items, "bewegungen": n})
+		})
 		r.With(requirePermission("purchase_orders.write")).Post("/{id}/items", func(w http.ResponseWriter, req *http.Request) {
 			id := chi.URLParam(req, "id")
 			var in purchasing.PurchaseOrderItemInput

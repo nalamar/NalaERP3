@@ -260,6 +260,18 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Bestellung, ohne Position „ganze Bestellung“ (H.4.3a). Ist die
   Position nicht mehr da, steht nur „Position“.
 
+## Präzisierung H.4.z1 (2026-11-05, Wareneingang am Stück)
+
+- Frage 4 bleibt: kein eigener Wareneingangsbeleg. Der Wareneingang
+  ist eine Route an der Bestellung, die alle Positionen mit voller
+  Menge und Bezug zur Position bucht und auf Wunsch den Status
+  `received` setzt, in einer Transaktion (open-questions 2026-11-05,
+  Option (a), ANNAHME).
+- Nur im Status `ordered`. Gibt es zu einer Position schon eine
+  Lagerbewegung, lehnt die Route ab; Teillieferungen bucht man weiter
+  als einzelne Bewegung. Rechte: `purchase_orders.write` und
+  `stock_movements.write`.
+
 ## Präzisierung H.4.5b2 (2026-11-05, Lieferpapiere hochladen und stornieren)
 
 - Hochladen nur mit `purchase_orders.write` und nicht an einer

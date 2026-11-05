@@ -514,6 +514,25 @@ type StockRow struct {
 }
 
 func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate, companyID string) (*StockMovement, error) {
+	// Transaktion: ggf. Batch anlegen, Movement schreiben, Durchschnitts-EK aktualisieren
+	tx, err := s.pg.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	out, err := CreateMovementTx(ctx, tx, in, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// CreateMovementTx bucht eine Lagerbewegung in einer offenen Transaktion,
+// damit ein Wareneingang alle Positionen am Stueck bucht (Backlog H.4.z1).
+func CreateMovementTx(ctx context.Context, tx pgx.Tx, in StockMovementCreate, companyID string) (*StockMovement, error) {
 	if in.Menge == 0 {
 		return nil, errors.New("Menge darf nicht 0 sein")
 	}
@@ -524,12 +543,6 @@ func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate, co
 		return nil, errors.New("Mandant erforderlich")
 	}
 	id := uuid.NewString()
-	// Transaktion: ggf. Batch anlegen, Movement schreiben, Durchschnitts-EK aktualisieren
-	tx, err := s.pg.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
 
 	var materialOwned, warehouseOwned bool
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM materials WHERE id=$1 AND company_id=$2)`, in.MaterialID, companyID).Scan(&materialOwned); err != nil {
@@ -601,10 +614,6 @@ func (s *Service) CreateMovement(ctx context.Context, in StockMovementCreate, co
         `, in.MaterialID, in.Menge, *in.EKPreis, waehrung); err != nil {
 			return nil, err
 		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
 	}
 	return &StockMovement{ID: id}, nil
 }

@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-05 — H.4.z Wareneingang am Stück (offen)
+## 2026-11-05 — H.4.z Wareneingang am Stück (beantwortet)
 
 Befund aus H.4.x: der Client bucht den Wareneingang als einzelne
 Lagerbewegungen nacheinander und setzt danach den Status. Scheitert die
@@ -342,7 +342,9 @@ verneint. Bezug: Backlog H.4.z.
    (c) so lassen. Empfehlung: **(a)** — behebt die Doppelbuchung klein;
    (b) bleibt möglich, wenn Teillieferungen gebraucht werden. Rechte für
    (a): `purchase_orders.write` und `stock_movements.write` wie heute
-   die einzelnen Aufrufe. Status: **offen**.
+   die einzelnen Aufrufe. Status: **beantwortet** (2026-11-05,
+   "fortsetzen" = Empfehlung, ANNAHME): **(a)**. Umsetzung Backlog
+   H.4.z1 (Server) und H.4.z2 (Client), ADR 0035 Präzisierung H.4.z1.
 
 ## 2026-11-03 — H.4 Nachweise der Zulieferer nach EN 1090 (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 

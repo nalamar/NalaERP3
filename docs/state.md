@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-05 H.4.y** erledigt: "Bestellung bearbeiten" sendet nur
+> **2026-11-05 H.4.z1** erledigt: Server-Route
+> `POST /purchase-orders/{id}/receive` bucht den Wareneingang am Stück
+> (Entscheidung (a), ANNAHME "fortsetzen"). H.4.z geteilt in z1/z2.
+> Nächste: **H.4.z2** Client ruft die Route.
+> Davor **2026-11-05 H.4.y** erledigt: "Bestellung bearbeiten" sendet nur
 > geänderte Felder; ein reiner Statuswechsel geht ab `ordered`. Nächste:
 > **H.4.z** Wareneingang am Stück — braucht zuerst eine Entscheidung
 > (Frage in `open-questions.md`).
