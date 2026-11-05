@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-05 H.4.x** erledigt: Wareneingang setzt `purchase_order_item_id`,
+> **2026-11-05 H.4.y** erledigt: "Bestellung bearbeiten" sendet nur
+> geänderte Felder; ein reiner Statuswechsel geht ab `ordered`. Nächste:
+> **H.4.z** Wareneingang am Stück — braucht zuerst eine Entscheidung
+> (Frage in `open-questions.md`).
+> Davor **2026-11-05 H.4.x** erledigt: Wareneingang setzt `purchase_order_item_id`,
 > ein Fehler beim Status wird gemeldet statt verschluckt. Neu im Backlog:
 > **H.4.y** (Bestellung bearbeiten sendet nur Geändertes) und **H.4.z**
 > (Wareneingang am Stück). Nächste: **H.4.y**.

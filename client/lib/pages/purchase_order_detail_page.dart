@@ -41,6 +41,25 @@ String _contactCommercialSummary(Map<String, dynamic> contact,
   return parts.join(' • ');
 }
 
+// Nur geaenderte Kopfdaten senden: ab `ordered` lehnt der Server Waehrung
+// und Notiz ab, ein reiner Statuswechsel muss aber gehen (Backlog H.4.y).
+Map<String, dynamic> buildPurchaseOrderHeaderPatch({
+  required String currentStatus,
+  required String currentCurrency,
+  required String currentNote,
+  required String? status,
+  required String currency,
+  required String note,
+}) {
+  final cur = currency.trim().isEmpty ? 'EUR' : currency.trim().toUpperCase();
+  final n = note.trim();
+  return {
+    if (status != null && status != currentStatus) 'status': status,
+    if (cur != currentCurrency.trim().toUpperCase()) 'waehrung': cur,
+    if (n != currentNote.trim()) 'notiz': n,
+  };
+}
+
 class PurchaseOrderDetailPage extends StatefulWidget {
   const PurchaseOrderDetailPage(
       {super.key, required this.api, required this.id});
@@ -175,14 +194,19 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
                     child: const Text('Abbrechen')),
                 FilledButton(
                     onPressed: () async {
+                      final patch = buildPurchaseOrderHeaderPatch(
+                          currentStatus: status ?? '',
+                          currentCurrency: currency,
+                          currentNote: noteCtrl.text,
+                          status: st,
+                          currency: curCtrl.text,
+                          note: note.text);
+                      if (patch.isEmpty) {
+                        Navigator.of(ctx).pop();
+                        return;
+                      }
                       try {
-                        await widget.api.updatePurchaseOrder(widget.id, {
-                          'status': st,
-                          'waehrung': curCtrl.text.trim().isEmpty
-                              ? 'EUR'
-                              : curCtrl.text.trim().toUpperCase(),
-                          'notiz': note.text.trim()
-                        });
+                        await widget.api.updatePurchaseOrder(widget.id, patch);
                         await _load();
                         if (mounted) Navigator.of(ctx).pop();
                       } catch (e) {
