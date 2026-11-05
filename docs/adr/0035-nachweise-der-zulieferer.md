@@ -249,3 +249,13 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   „Projekt: zugeordnet“; ein zugeordnetes Projekt, das nicht in der
   Auswahlliste steht, bleibt im Dialog wählbar und wird nicht
   stillschweigend entfernt.
+
+## Präzisierung H.4.5b1 (2026-11-05, Lieferpapiere im Client lesend)
+
+- Eigene Seite „Lieferpapiere“, erreichbar über ein Symbol in der
+  Kopfzeile der Bestellung (wie die Zertifikate am Lieferanten); die
+  Detailseite hat unter den Positionen keinen Platz für eine zweite
+  Liste.
+- Der Bezug zeigt „Position N – Bezeichnung“ aus den Positionen der
+  Bestellung, ohne Position „ganze Bestellung“ (H.4.3a). Ist die
+  Position nicht mehr da, steht nur „Position“.

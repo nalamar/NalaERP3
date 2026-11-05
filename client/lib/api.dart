@@ -1602,6 +1602,24 @@ class ApiClient {
     );
   }
 
+  // Lieferpapiere an der Bestellung (ADR 0035 Praezisierung H.4.3b).
+  // Bewusst nicht ueber /documents/{id}.
+  Future<List<dynamic>> listPurchaseOrderPapers(String orderId,
+          {bool includeStorniert = false}) =>
+      _getList('/api/v1/purchase-orders/$orderId/papers/',
+          includeStorniert ? {'include_storniert': 'true'} : null);
+
+  Future<void> downloadPurchaseOrderPaper(String orderId, String paperId,
+      {String? filename}) async {
+    final r = await _getBytesResponse(
+        '/api/v1/purchase-orders/$orderId/papers/$paperId');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Lieferpapier_$paperId',
+      contentType: r.headers['content-type'] ?? 'application/octet-stream',
+    );
+  }
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,

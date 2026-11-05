@@ -5,6 +5,7 @@ import '../purchase_order_hints.dart';
 import '../purchase_order_item_payloads.dart';
 import '../purchase_order_material_selection.dart';
 import '../purchase_order_receipt_flow.dart';
+import 'purchase_order_papers_page.dart';
 
 String _purchaseOrderErrorMessage(Object error,
     {String fallback = 'Vorgang fehlgeschlagen'}) {
@@ -209,6 +210,14 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
     if (ok == true) await _load();
   }
 
+  Future<void> _openPapers(Map<String, dynamic> order) =>
+      Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => PurchaseOrderPapersPage(
+              api: widget.api,
+              orderId: widget.id,
+              orderNumber: (order['nummer'] ?? '').toString(),
+              items: items)));
+
   String _projectText(Map<String, dynamic> order) {
     final pid = (order['projekt_id'] ?? '').toString();
     if (pid.isEmpty) return 'Projekt: keins';
@@ -240,6 +249,10 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
                 onPressed: order == null ? null : _assignProject,
                 icon: const Icon(Icons.folder_open),
                 tooltip: 'Projekt zuordnen'),
+          IconButton(
+              onPressed: order == null ? null : () => _openPapers(order),
+              icon: const Icon(Icons.description_outlined),
+              tooltip: 'Lieferpapiere'),
           IconButton(
               onPressed: () {
                 widget.api.downloadPurchaseOrderPdf(widget.id);

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-05 H.4.5a** erledigt: Hinweise der Nachweise in Liste und Detail
+> **2026-11-05 H.4.5b1** erledigt: Lieferpapiere der Bestellung im Client
+> lesend (eigene Seite über Symbol in der Kopfzeile, Herunterladen,
+> Stornierte auf Wunsch). H.4.5b geteilt in b1/b2. Nächste: **H.4.5b2**
+> Hochladen und Stornieren.
+> Davor **2026-11-05 H.4.5a** erledigt: Hinweise der Nachweise in Liste und Detail
 > der Bestellung, Projekt anzeigen und zuordnen (eigenes Symbol, sendet nur
 > `projekt_id`). H.4.5 geteilt in a/b. Nächste: **H.4.5b** Lieferpapiere.
 > Davor **2026-11-05 H.4.4c3** und damit **H.4.4** erledigt: Dateien am Zertifikat
