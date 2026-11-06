@@ -110,6 +110,7 @@ class _FakeApiClient extends ApiClient {
   final List<dynamic> approvalRequestList;
   final List<Map<String, dynamic>> createdStockMovements = [];
   final List<Map<String, dynamic>> updatedPurchaseOrders = [];
+  final List<Map<String, dynamic>> receivedPurchaseOrders = [];
   final List<Map<String, dynamic>> approvedApprovalRequests = [];
   final List<Map<String, dynamic>> attemptedQuoteImportUploads = [];
   final List<Map<String, dynamic>> attemptedQuoteImportItemReviews = [];
@@ -398,6 +399,20 @@ class _FakeApiClient extends ApiClient {
       Map<String, dynamic> body) async {
     createdStockMovements.add(Map<String, dynamic>.from(body));
     return <String, dynamic>{'id': 'sm-${createdStockMovements.length}'};
+  }
+
+  @override
+  Future<Map<String, dynamic>> receivePurchaseOrder(String orderId,
+      {required String warehouseId,
+      String? locationId,
+      bool setReceived = true}) async {
+    receivedPurchaseOrders.add(<String, dynamic>{
+      'id': orderId,
+      'warehouse_id': warehouseId,
+      'location_id': locationId,
+      'status_received': setReceived,
+    });
+    return <String, dynamic>{'bewegungen': 1};
   }
 
   @override
@@ -1134,7 +1149,7 @@ void main() {
   });
 
   testWidgets(
-      'PurchaseOrderDetailPage books receipt movements via shared receipt builder',
+      'PurchaseOrderDetailPage books receipt via server receive route',
       (tester) async {
     await _prepareLargeViewport(tester);
     final purchaseOrder = <String, dynamic>{
@@ -1145,6 +1160,8 @@ void main() {
       'datum': '2026-03-24',
     };
     final api = _FakeApiClient(
+      // Wareneingang braucht beide Rechte (Backlog H.4.z2).
+      permissions: const {'purchase_orders.write', 'stock_movements.write'},
       purchaseOrderDetail: purchaseOrder,
       purchaseOrderItems: const [
         {
@@ -1193,29 +1210,18 @@ void main() {
     await tester.tap(find.text('Buchen'));
     await tester.pumpAndSettle();
 
-    expect(api.createdStockMovements, hasLength(1));
-    expect(
-      api.createdStockMovements.single,
-      containsPair('material_id', 'mat-1'),
-    );
-    expect(
-      api.createdStockMovements.single,
-      containsPair('warehouse_id', 'wh-1'),
-    );
-    expect(
-      api.createdStockMovements.single,
-      containsPair('grund', 'Wareneingang'),
-    );
-    expect(
-      api.createdStockMovements.single,
-      containsPair('referenz', 'BE-2026-0001'),
-    );
-    expect(api.updatedPurchaseOrders, hasLength(1));
-    expect(api.updatedPurchaseOrders.single['id'], 'po-1');
-    expect(
-      api.updatedPurchaseOrders.single['patch'],
-      <String, dynamic>{'status': 'received'},
-    );
+    // Seit H.4.z2 bucht der Server alle Positionen und den Status am
+    // Stueck; der Client bucht keine einzelnen Bewegungen mehr.
+    expect(api.receivedPurchaseOrders, [
+      <String, dynamic>{
+        'id': 'po-1',
+        'warehouse_id': 'wh-1',
+        'location_id': null,
+        'status_received': true,
+      }
+    ]);
+    expect(api.createdStockMovements, isEmpty);
+    expect(api.updatedPurchaseOrders, isEmpty);
   });
 
   testWidgets(

@@ -4,7 +4,6 @@ import '../material_selection.dart';
 import '../purchase_order_hints.dart';
 import '../purchase_order_item_payloads.dart';
 import '../purchase_order_material_selection.dart';
-import '../purchase_order_receipt_flow.dart';
 import 'purchase_order_papers_page.dart';
 
 String _purchaseOrderErrorMessage(Object error,
@@ -265,10 +264,16 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
             : 'Bestellung ${order['nummer'] ?? ''}'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-          IconButton(
-              onPressed: _receiveDialog,
-              icon: const Icon(Icons.inventory_2_outlined),
-              tooltip: 'Empfangen'),
+          // Wareneingang nur mit beiden Rechten und im Status ordered,
+          // wie der Server es verlangt (Backlog H.4.z2).
+          if (order != null &&
+              order['status'] == 'ordered' &&
+              widget.api.hasPermission('purchase_orders.write') &&
+              widget.api.hasPermission('stock_movements.write'))
+            IconButton(
+                onPressed: _receiveDialog,
+                icon: const Icon(Icons.inventory_2_outlined),
+                tooltip: 'Empfangen'),
           if (widget.api.hasPermission('purchase_orders.write'))
             IconButton(
                 onPressed: order == null ? null : _assignProject,
@@ -489,37 +494,14 @@ class _PurchaseOrderDetailPageState extends State<PurchaseOrderDetailPage> {
     if (whId == null || whId.isEmpty) {
       throw Exception('Lager wählen');
     }
-    final bodies = buildPurchaseOrderReceiptStockMovements(
-      order: po!,
-      items: items,
-      warehouseId: whId,
-      locationId: locId,
-      defaultCurrency: currency,
-    );
-    if (bodies.isEmpty) {
-      throw Exception(
-          'Keine materialgebundenen Positionen zum Buchen vorhanden');
-    }
-    for (final body in bodies) {
-      await widget.api.createStockMovement(body);
-    }
-    // Die Bewegungen sind gebucht; ein Fehler beim Status darf darum den
-    // Dialog nicht offen halten (erneutes Buchen verdoppelt die Menge),
-    // muss aber sichtbar werden (Backlog H.4.x).
-    String? statusError;
-    if (setReceived) {
-      try {
-        await widget.api.updatePurchaseOrder(widget.id, {'status': 'received'});
-      } catch (e) {
-        statusError = _purchaseOrderErrorMessage(e);
-      }
-    }
+    // Der Server bucht alles oder nichts; ein Fehler laesst den Dialog
+    // darum gefahrlos offen (Backlog H.4.z2, vorher H.4.x).
+    await widget.api.receivePurchaseOrder(widget.id,
+        warehouseId: whId, locationId: locId, setReceived: setReceived);
     await _load();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(statusError == null
-              ? 'Wareneingang gebucht'
-              : 'Wareneingang gebucht, Status nicht geändert: $statusError')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Wareneingang gebucht')));
     }
   }
 

@@ -1662,6 +1662,20 @@ class ApiClient {
       (await _postJson('/api/v1/purchase-orders/$orderId/papers/$paperId/storno',
           {'reason': reason})) as Map<String, dynamic>;
 
+  // Wareneingang am Stueck: alle Positionen und Status in einer Transaktion
+  // im Server (Backlog H.4.z2).
+  Future<Map<String, dynamic>> receivePurchaseOrder(String orderId,
+      {required String warehouseId,
+      String? locationId,
+      bool setReceived = true}) async {
+    final loc = locationId?.trim() ?? '';
+    return (await _postJson('/api/v1/purchase-orders/$orderId/receive', {
+      'warehouse_id': warehouseId.trim(),
+      if (loc.isNotEmpty) 'location_id': loc,
+      'status_received': setReceived,
+    })) as Map<String, dynamic>;
+  }
+
   // -------- Materials --------
   Future<List<dynamic>> listMaterials(
       {String? q,

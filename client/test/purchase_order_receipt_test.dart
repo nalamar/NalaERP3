@@ -1,38 +1,70 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:nalaerp_client/api.dart';
 import 'package:nalaerp_client/pages/purchase_order_detail_page.dart';
 import 'package:nalaerp_client/purchase_order_receipt_flow.dart';
 
-// Wareneingang mit Bezug zur Bestellposition, Fehler beim Status sichtbar
-// (Backlog H.4.x).
+// Wareneingang mit Bezug zur Bestellposition (Backlog H.4.x), seit H.4.z2
+// am Stueck ueber die Route des Servers.
 
 class _FakeApi extends ApiClient {
-  _FakeApi({this.statusError}) : super(baseUrl: 'http://localhost:8080');
+  _FakeApi(
+      {this.receiveError,
+      this.status = 'ordered',
+      this.permissions = const {
+        'purchase_orders.write',
+        'stock_movements.write'
+      }})
+      : super(baseUrl: 'http://localhost:8080');
 
-  final Object? statusError;
+  final Object? receiveError;
+  final String status;
+  final Set<String> permissions;
+  final List<Map<String, dynamic>> receives = [];
   final List<Map<String, dynamic>> movements = [];
   final List<Map<String, dynamic>> patches = [];
+  int loads = 0;
 
   @override
-  bool hasPermission(String permission) => true;
+  bool hasPermission(String permission) => permissions.contains(permission);
 
   @override
-  Future<Map<String, dynamic>> getPurchaseOrder(String id) async => {
-        'bestellung': {
-          'id': id,
-          'nummer': 'B-9',
-          'status': 'ordered',
-          'waehrung': 'EUR'
-        },
-        'positionen': _items,
-      };
+  Future<Map<String, dynamic>> getPurchaseOrder(String id) async {
+    loads++;
+    return {
+      'bestellung': {
+        'id': id,
+        'nummer': 'B-9',
+        'status': status,
+        'waehrung': 'EUR'
+      },
+      'positionen': _items,
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> receivePurchaseOrder(String orderId,
+      {required String warehouseId,
+      String? locationId,
+      bool setReceived = true}) async {
+    receives.add({
+      'id': orderId,
+      'warehouse_id': warehouseId,
+      'location_id': locationId,
+      'status_received': setReceived,
+    });
+    if (receiveError != null) throw receiveError!;
+    return {'bewegungen': 2};
+  }
 
   @override
   Future<Map<String, dynamic>> updatePurchaseOrder(
       String id, Map<String, dynamic> patch) async {
     patches.add(patch);
-    if (statusError != null) throw statusError!;
     return {'id': id};
   }
 
@@ -83,18 +115,27 @@ const _items = [
   {'id': 'i3', 'position': 3, 'bezeichnung': 'Fracht', 'menge': 1},
 ];
 
-Future<void> _receive(WidgetTester tester, _FakeApi api) async {
+Future<void> _open(WidgetTester tester, _FakeApi api) async {
   await tester.binding.setSurfaceSize(const Size(1400, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(
       home: PurchaseOrderDetailPage(key: UniqueKey(), api: api, id: 'po1')));
   await tester.pumpAndSettle();
+}
+
+Future<void> _receive(WidgetTester tester, _FakeApi api,
+    {bool keepStatus = false}) async {
+  await _open(tester, api);
   await tester.tap(find.byTooltip('Empfangen'));
   await tester.pumpAndSettle();
   await tester.tap(find.byType(DropdownButtonFormField<String>).first);
   await tester.pumpAndSettle();
   await tester.tap(find.text('L1 – Halle').last);
   await tester.pumpAndSettle();
+  if (keepStatus) {
+    await tester.tap(find.byType(Checkbox));
+    await tester.pumpAndSettle();
+  }
   await tester.tap(find.text('Buchen'));
   await tester.pumpAndSettle();
 }
@@ -115,36 +156,102 @@ void main() {
     expect(bodies[3].containsKey('purchase_order_item_id'), isFalse);
   });
 
-  testWidgets('Wareneingang bucht je Position mit Bezug und setzt Status',
-      (tester) async {
+  test('receivePurchaseOrder sendet Lager, Platz nur wenn gesetzt, Status',
+      () async {
+    final api = ApiClient(baseUrl: 'http://localhost:8080');
+    final calls = <http.Request>[];
+    final client = MockClient((req) async {
+      calls.add(req);
+      return http.Response.bytes(utf8.encode('{"bewegungen":2}'), 200,
+          headers: {'content-type': 'application/json'});
+    });
+    await http.runWithClient(() async {
+      final out = await api.receivePurchaseOrder('po1', warehouseId: ' wh1 ');
+      expect(out['bewegungen'], 2);
+      await api.receivePurchaseOrder('po1',
+          warehouseId: 'wh1', locationId: ' loc1 ', setReceived: false);
+      await api.receivePurchaseOrder('po1',
+          warehouseId: 'wh1', locationId: ' ');
+    }, () => client);
+
+    expect(calls.map((c) => '${c.method} ${c.url.path}').toSet(),
+        {'POST /api/v1/purchase-orders/po1/receive'});
+    expect(calls.map((c) => jsonDecode(c.body)).toList(), [
+      {'warehouse_id': 'wh1', 'status_received': true},
+      {'warehouse_id': 'wh1', 'location_id': 'loc1', 'status_received': false},
+      {'warehouse_id': 'wh1', 'status_received': true},
+    ]);
+
+    final conflict = MockClient((req) async => http.Response.bytes(
+        utf8.encode(
+            '{"error":{"code":"conflict","message":"bereits erfasst"}}'),
+        409,
+        headers: {'content-type': 'application/json'}));
+    await expectLater(
+        http.runWithClient(
+            () => api.receivePurchaseOrder('po1', warehouseId: 'wh1'),
+            () => conflict),
+        throwsA(isA<ApiException>()));
+  });
+
+  testWidgets('Wareneingang ruft nur die Route des Servers', (tester) async {
     final api = _FakeApi();
     await _receive(tester, api);
 
-    expect(api.movements.map((m) => m['purchase_order_item_id']).toList(),
-        ['i1', 'i2']);
-    expect(api.patches, [
-      {'status': 'received'}
+    expect(api.receives, [
+      {
+        'id': 'po1',
+        'warehouse_id': 'wh1',
+        'location_id': null,
+        'status_received': true
+      }
     ]);
+    expect(api.movements, isEmpty);
+    expect(api.patches, isEmpty);
+    expect(api.loads, 2);
     expect(find.text('Wareneingang gebucht'), findsOneWidget);
     expect(find.text('Wareneingang buchen'), findsNothing);
   });
 
-  testWidgets('Fehler beim Status wird gemeldet, Dialog schließt trotzdem',
+  testWidgets('Ohne Haken bleibt der Status', (tester) async {
+    final api = _FakeApi();
+    await _receive(tester, api, keepStatus: true);
+
+    expect(api.receives.single['status_received'], isFalse);
+  });
+
+  testWidgets('Fehler des Servers sichtbar, Dialog bleibt offen',
       (tester) async {
     final api = _FakeApi(
-        statusError: const ApiException(
-            statusCode: 400,
-            message: 'Ungültiger Statuswechsel',
-            code: 'validation_error'));
+        receiveError: const ApiException(
+            statusCode: 409,
+            message: 'Wareneingang zu dieser Bestellung wurde bereits erfasst',
+            code: 'conflict'));
     await _receive(tester, api);
 
-    expect(api.movements, hasLength(2));
-    expect(
-        find.text(
-            'Wareneingang gebucht, Status nicht geändert: Ungültiger Statuswechsel'),
+    expect(api.receives, hasLength(1));
+    expect(api.movements, isEmpty);
+    expect(find.text('Wareneingang zu dieser Bestellung wurde bereits erfasst'),
         findsOneWidget);
     expect(find.text('Wareneingang gebucht'), findsNothing);
-    // Nicht offen lassen: erneutes Buchen verdoppelte die Menge.
-    expect(find.text('Wareneingang buchen'), findsNothing);
+    // Offen lassen ist gefahrlos: der Server hat nichts gebucht.
+    expect(find.text('Wareneingang buchen'), findsOneWidget);
+  });
+
+  testWidgets('Symbol nur mit beiden Rechten und im Status ordered',
+      (tester) async {
+    await _open(tester, _FakeApi());
+    expect(find.byTooltip('Empfangen'), findsOneWidget);
+
+    for (final api in [
+      _FakeApi(permissions: const {'purchase_orders.write'}),
+      _FakeApi(permissions: const {'stock_movements.write'}),
+      _FakeApi(status: 'draft'),
+      _FakeApi(status: 'received'),
+    ]) {
+      await _open(tester, api);
+      expect(find.byTooltip('Empfangen'), findsNothing,
+          reason: '${api.permissions} ${api.status}');
+    }
   });
 }

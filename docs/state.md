@@ -7,7 +7,13 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-05 H.4.z1** erledigt: Server-Route
+> **2026-11-06 H.4.z2** und damit **H.4.z** erledigt: der Client bucht
+> den Wareneingang nur noch über `POST /purchase-orders/{id}/receive`;
+> Symbol nur mit beiden Rechten und im Status `ordered`. H.4 hat keine
+> offenen Subtasks mehr. Nächste: offene Befunde sichten (Lagerplatz
+> nicht geprüft, RFQ prüft Lieferanten nicht, Reste aus H.1) oder
+> nächstes Epic laut Backlog.
+> Davor **2026-11-05 H.4.z1** erledigt: Server-Route
 > `POST /purchase-orders/{id}/receive` bucht den Wareneingang am Stück
 > (Entscheidung (a), ANNAHME "fortsetzen"). H.4.z geteilt in z1/z2.
 > Nächste: **H.4.z2** Client ruft die Route.

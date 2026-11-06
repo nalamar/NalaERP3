@@ -271,6 +271,9 @@ H.4.x "Wareneingang setzt die Bestellposition" (Client, keine Migration)
   Lagerbewegung, lehnt die Route ab; Teillieferungen bucht man weiter
   als einzelne Bewegung. Rechte: `purchase_orders.write` und
   `stock_movements.write`.
+- Client (H.4.z2): das Symbol „Empfangen“ erscheint nur, wenn die
+  Route Erfolg haben kann (beide Rechte, Status `ordered`); bei Fehler
+  bleibt der Dialog offen.
 
 ## Präzisierung H.4.5b2 (2026-11-05, Lieferpapiere hochladen und stornieren)
 
