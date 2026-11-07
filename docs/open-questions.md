@@ -324,6 +324,47 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-07 — H.5.5 Belegnummern je Mandant (offen)
+
+Befund aus H.5.2: Die Nummernkreise sind je Mandant (`number_sequences`,
+Schlüssel Mandant + Entität), die Nummern der Belege aber über alle
+Mandanten eindeutig: `invoices_out.nummer`, `purchase_orders.number`,
+`rfqs.nummer`, `sales_orders.nummer` (Stand Testdatenbank;
+`production_orders` ist schon je Mandant eindeutig, `quotes` und
+`projects` haben keinen eindeutigen Index). Zwei Mandanten mit gleichem
+Muster erzeugen dieselbe Nummer, der zweite Beleg scheitert mit 500.
+Dazu legt `NumberingService.Next` für einen Mandanten ohne Nummernkreis
+immer das Muster "PO-{YYYY}-{NNNN}" an — auch für Rechnung, Angebot,
+Auftrag und Anfrage; das Onboarding legt keine Nummernkreise an. Kein
+Code verlässt sich auf die globale Eindeutigkeit (kein `ON CONFLICT`
+auf diese Spalten). Bezug: Backlog H.5.5.
+
+1. **Wie eindeutig sollen Belegnummern sein?** (a) je Mandant:
+   Migration 111 ersetzt die vier globalen Eindeutigkeiten durch einen
+   eindeutigen Index auf (Mandant, Nummer) (`company_id` ist dort
+   nullable, darum `COALESCE(company_id,'')` wie bei
+   `hr_employees`); kein Datenverlust; der Rückweg stellt die globale
+   Eindeutigkeit wieder her und scheitert, sobald zwei Mandanten dieselbe
+   Nummer haben. (b) global lassen und je Mandant ein eigenes Präfix im
+   Muster erzwingen (Nummern ändern ihr Aussehen). (c) global lassen.
+   Empfehlung: **(a)** — fortlaufende Rechnungsnummern müssen je
+   Aussteller eindeutig sein, nicht über Firmen hinweg; die Nummern
+   bleiben, wie sie sind. Status: **offen**.
+2. **Muster für einen fehlenden Nummernkreis?** (a) das Muster des
+   Mandanten `default` für dieselbe Entität übernehmen (Rechnung
+   "RE-…", Angebot "ANG-…" usw.), nur ohne solches weiter
+   "PO-…"; wirkt auch für schon angelegte Mandanten. (b) beim
+   Onboarding alle Nummernkreise anlegen. (c) so lassen.
+   Empfehlung: **(a)** — eine Stelle, deckt alte und neue Mandanten ab;
+   ein Mandant kann sein Muster wie bisher in den Einstellungen ändern.
+   Status: **offen**.
+3. **Materialnummern** (`materials.nummer`) sind ebenfalls über alle
+   Mandanten eindeutig: Mandant B kann "4711" nicht anlegen, wenn A es
+   hat, und erfährt dadurch, dass es die Nummer gibt. Gleich mit in
+   Migration 111 je Mandant machen? Empfehlung: **ja** — gleiche
+   Ursache, gleiche Änderung; Voraussetzung ist H.5.6 (der
+   Logikal-Import sucht Material bisher ohne Mandant). Status: **offen**.
+
 ## 2026-11-05 — H.4.z Wareneingang am Stück (beantwortet)
 
 Befund aus H.4.x: der Client bucht den Wareneingang als einzelne
