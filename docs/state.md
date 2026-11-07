@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.1** erledigt: Lagerbewegungen (einzeln und im
+> **2026-11-07 H.5.3** erledigt: Nebenläufigkeitstest für
+> `materials.ReserveAvailableTx` (Sperre je Material und Lager), nur Test.
+> Nächste: **H.5.4** Hinweise der Fertigungsauftragsliste am Stück
+> (H.5.2 wartet weiter auf eine Entscheidung zu ADR 0017).
+> Davor **2026-11-07 H.5.1** erledigt: Lagerbewegungen (einzeln und im
 > Wareneingang) prüfen den Lagerplatz gegen das Lager ("Lagerort nicht
 > gefunden"). Nächste: **H.5.3** Test gleichzeitiger Reservierungen
 > (H.5.2 braucht vorher eine Entscheidung zu ADR 0017).
