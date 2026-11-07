@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.3** erledigt: Nebenläufigkeitstest für
+> **2026-11-07 H.5.4a** erledigt: Hinweise der Fertigungsauftragsliste
+> mit fester Zahl von Abfragen (4), Verhalten unverändert. Nächste:
+> **H.5.4b** Hinweis `fehlmenge` in der Liste (Präzisierung ADR 0034).
+> Davor **2026-11-07 H.5.3** erledigt: Nebenläufigkeitstest für
 > `materials.ReserveAvailableTx` (Sperre je Material und Lager), nur Test.
 > Nächste: **H.5.4** Hinweise der Fertigungsauftragsliste am Stück
 > (H.5.2 wartet weiter auf eine Entscheidung zu ADR 0017).

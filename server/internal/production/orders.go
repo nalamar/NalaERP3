@@ -253,47 +253,81 @@ func (s *Service) UpdateDraft(ctx context.Context, id uuid.UUID, in DraftUpdate,
 // im Projekt stehen. ok=false: Position oder Variante gibt es nicht mehr
 // (oder die Variante haengt nicht mehr an der Position).
 func loadSnapshot(ctx context.Context, q querier, elevationID, variantID uuid.UUID) (Snapshot, bool, error) {
-	var s Snapshot
-	err := q.QueryRow(ctx, `
-		SELECT ph.name, e.nummer, e.name, COALESCE(e.external_guid,''), v.name, COALESCE(v.external_guid,''),
+	snaps, err := loadSnapshots(ctx, q, []uuid.UUID{variantID})
+	if err != nil {
+		return Snapshot{}, false, err
+	}
+	v, ok := snaps[variantID]
+	if !ok || v.elevationID != elevationID {
+		return Snapshot{}, false, nil
+	}
+	return v.Snapshot, true, nil
+}
+
+// variantSnapshot: Stand einer Variante und die Position, an der sie
+// heute haengt.
+type variantSnapshot struct {
+	Snapshot
+	elevationID uuid.UUID
+}
+
+// loadSnapshots liest den Stand mehrerer Varianten mit zwei Abfragen
+// (Backlog H.5.4a). Varianten, die es nicht mehr gibt, fehlen in der Map.
+func loadSnapshots(ctx context.Context, q querier, variantIDs []uuid.UUID) (map[uuid.UUID]*variantSnapshot, error) {
+	out := make(map[uuid.UUID]*variantSnapshot)
+	rows, err := q.Query(ctx, `
+		SELECT v.id, e.id, ph.name, e.nummer, e.name, COALESCE(e.external_guid,''), v.name, COALESCE(v.external_guid,''),
 		       e.width_mm::float8, e.height_mm::float8
 		  FROM project_single_elevations v
 		  JOIN project_elevations e ON e.id = v.elevation_id
 		  JOIN project_phases ph ON ph.id = e.phase_id
-		 WHERE v.id=$1 AND e.id=$2`, variantID, elevationID).
-		Scan(&s.PhaseName, &s.PositionNummer, &s.PositionName, &s.PositionGUID, &s.VarianteName, &s.VarianteGUID, &s.WidthMM, &s.HeightMM)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return s, false, nil
-	}
+		 WHERE v.id = ANY($1::uuid[])`, variantIDs)
 	if err != nil {
-		return s, false, err
+		return nil, err
 	}
-	rows, err := q.Query(ctx, `
-		SELECT 'profil', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
+	for rows.Next() {
+		var id uuid.UUID
+		v := &variantSnapshot{Snapshot: Snapshot{Items: make([]SnapshotItem, 0)}}
+		s := &v.Snapshot
+		if err := rows.Scan(&id, &v.elevationID, &s.PhaseName, &s.PositionNummer, &s.PositionName, &s.PositionGUID,
+			&s.VarianteName, &s.VarianteGUID, &s.WidthMM, &s.HeightMM); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out[id] = v
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	rows, err = q.Query(ctx, `
+		SELECT single_elevation_id, 'profil', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
 		       length_mm::float8, NULL::float8, NULL::float8, NULL::float8, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
-		  FROM single_elevation_profiles WHERE single_elevation_id=$1
+		  FROM single_elevation_profiles WHERE single_elevation_id = ANY($1::uuid[])
 		UNION ALL
-		SELECT 'artikel', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
+		SELECT single_elevation_id, 'artikel', COALESCE(supplier_code,''), COALESCE(article_code,''), COALESCE(description,''), '',
 		       NULL, NULL, NULL, NULL, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
-		  FROM single_elevation_articles WHERE single_elevation_id=$1
+		  FROM single_elevation_articles WHERE single_elevation_id = ANY($1::uuid[])
 		UNION ALL
-		SELECT 'glas', '', '', COALESCE(description,''), COALESCE(configuration,''),
+		SELECT single_elevation_id, 'glas', '', '', COALESCE(description,''), COALESCE(configuration,''),
 		       NULL, width_mm::float8, height_mm::float8, area_m2::float8, qty::float8, COALESCE(unit,''), COALESCE(material_id,'')
-		  FROM single_elevation_glass WHERE single_elevation_id=$1`, variantID)
+		  FROM single_elevation_glass WHERE single_elevation_id = ANY($1::uuid[])`, variantIDs)
 	if err != nil {
-		return s, false, err
+		return nil, err
 	}
 	defer rows.Close()
-	s.Items = make([]SnapshotItem, 0)
 	for rows.Next() {
+		var id uuid.UUID
 		var it SnapshotItem
-		if err := rows.Scan(&it.Art, &it.SupplierCode, &it.ArticleCode, &it.Description, &it.Configuration,
+		if err := rows.Scan(&id, &it.Art, &it.SupplierCode, &it.ArticleCode, &it.Description, &it.Configuration,
 			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit, &it.MaterialID); err != nil {
-			return s, false, err
+			return nil, err
 		}
-		s.Items = append(s.Items, it)
+		if v, ok := out[id]; ok {
+			v.Items = append(v.Items, it)
+		}
 	}
-	return s, true, rows.Err()
+	return out, rows.Err()
 }
 
 // Release gibt einen Entwurf frei: Position, Variante und Materialliste
@@ -521,7 +555,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Ord
 	if err != nil {
 		return nil, err
 	}
-	if err := s.decorate(ctx, x, companyID); err != nil {
+	if err := decorate(ctx, s.pg, []*Order{x}, companyID); err != nil {
 		return nil, err
 	}
 	if x.FreigegebenAt != nil {
@@ -567,10 +601,12 @@ func (s *Service) List(ctx context.Context, companyID string, f OrderFilter) ([]
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	ptrs := make([]*Order, len(out))
 	for i := range out {
-		if err := s.decorate(ctx, &out[i], companyID); err != nil {
-			return nil, err
-		}
+		ptrs[i] = &out[i]
+	}
+	if err := decorate(ctx, s.pg, ptrs, companyID); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -611,51 +647,105 @@ func (s *Service) items(ctx context.Context, x *Order) ([]Item, error) {
 }
 
 // decorate setzt die Hinweise und zeigt im Entwurf die aktuellen Werte
-// der Position. Stornierte Auftraege bekommen keine Hinweise.
-func (s *Service) decorate(ctx context.Context, x *Order, companyID string) error {
-	x.Hinweise = make([]string, 0)
-	if x.Status == StatusStorniert {
+// der Position. Stornierte Auftraege bekommen keine Hinweise. Fuer
+// beliebig viele Auftraege eine feste Zahl von Abfragen (Backlog H.5.4a):
+// Kundenauftraege, Stand der Varianten (zwei) und Mengen der Positionen.
+func decorate(ctx context.Context, q querier, orders []*Order, companyID string) error {
+	var active []*Order
+	var projects, variants, elevations []uuid.UUID
+	for _, x := range orders {
+		x.Hinweise = make([]string, 0)
+		if x.Status == StatusStorniert {
+			continue
+		}
+		active = append(active, x)
+		projects = append(projects, x.ProjectID)
+		if x.ElevationID != nil && x.SingleElevationID != nil {
+			variants = append(variants, *x.SingleElevationID)
+			elevations = append(elevations, *x.ElevationID)
+		}
+	}
+	if len(active) == 0 {
 		return nil
 	}
-	var hasSalesOrder bool
-	if err := s.pg.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM sales_orders WHERE project_id=$1 AND company_id=$2 AND status <> 'canceled')`,
-		x.ProjectID, companyID).Scan(&hasSalesOrder); err != nil {
-		return err
-	}
-	if !hasSalesOrder {
-		x.Hinweise = append(x.Hinweise, HintKeinKundenauftrag)
-	}
-	if x.ElevationID == nil || x.SingleElevationID == nil {
-		x.Hinweise = append(x.Hinweise, HintPositionEntfernt)
-		return nil
-	}
-	snap, ok, err := loadSnapshot(ctx, s.pg, *x.ElevationID, *x.SingleElevationID)
+
+	hasSalesOrder := make(map[uuid.UUID]bool)
+	rows, err := q.Query(ctx, `SELECT DISTINCT project_id FROM sales_orders
+		 WHERE project_id = ANY($1::uuid[]) AND company_id=$2 AND status <> 'canceled'`, projects, companyID)
 	if err != nil {
 		return err
 	}
-	if !ok {
-		x.Hinweise = append(x.Hinweise, HintPositionEntfernt)
-		return nil
-	}
-	if x.Status != StatusFertig {
-		var menge float64
-		var andere int
-		if err := s.pg.QueryRow(ctx, `SELECT e.menge::float8,
-			COALESCE((SELECT sum(stueckzahl) FROM production_orders
-			           WHERE elevation_id=e.id AND id<>$2 AND status <> 'storniert'), 0)
-			  FROM project_elevations e WHERE e.id=$1`, *x.ElevationID, x.ID).Scan(&menge, &andere); err != nil {
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
 			return err
 		}
-		if QuantityExceeded(menge, andere, x.Stueckzahl) {
-			x.Hinweise = append(x.Hinweise, HintMengeUeberschritten)
-		}
+		hasSalesOrder[id] = true
 	}
-	if x.FreigegebenAt == nil {
-		c := canonical(snap)
-		x.PhaseName, x.PositionNummer, x.PositionName, x.VarianteName = c.PhaseName, c.PositionNummer, c.PositionName, c.VarianteName
-		x.WidthMM, x.HeightMM = c.WidthMM, c.HeightMM
-	} else if Fingerprint(snap) != x.inhaltHash {
-		x.Hinweise = append(x.Hinweise, HintPositionGeaendert)
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	snaps, err := loadSnapshots(ctx, q, variants)
+	if err != nil {
+		return err
+	}
+
+	// Menge der Position und Stueckzahl aller nicht stornierten Auftraege
+	// darauf (der eigene eingeschlossen).
+	type positionMenge struct {
+		menge float64
+		summe int
+	}
+	mengen := make(map[uuid.UUID]positionMenge)
+	rows, err = q.Query(ctx, `SELECT e.id, e.menge::float8,
+		COALESCE((SELECT sum(stueckzahl) FROM production_orders WHERE elevation_id=e.id AND status <> 'storniert'), 0)
+		  FROM project_elevations e WHERE e.id = ANY($1::uuid[])`, elevations)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var m positionMenge
+		if err := rows.Scan(&id, &m.menge, &m.summe); err != nil {
+			rows.Close()
+			return err
+		}
+		mengen[id] = m
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, x := range active {
+		if !hasSalesOrder[x.ProjectID] {
+			x.Hinweise = append(x.Hinweise, HintKeinKundenauftrag)
+		}
+		if x.ElevationID == nil || x.SingleElevationID == nil {
+			x.Hinweise = append(x.Hinweise, HintPositionEntfernt)
+			continue
+		}
+		snap, ok := snaps[*x.SingleElevationID]
+		if !ok || snap.elevationID != *x.ElevationID {
+			x.Hinweise = append(x.Hinweise, HintPositionEntfernt)
+			continue
+		}
+		if x.Status != StatusFertig {
+			m := mengen[*x.ElevationID]
+			if QuantityExceeded(m.menge, m.summe-x.Stueckzahl, x.Stueckzahl) {
+				x.Hinweise = append(x.Hinweise, HintMengeUeberschritten)
+			}
+		}
+		if x.FreigegebenAt == nil {
+			c := canonical(snap.Snapshot)
+			x.PhaseName, x.PositionNummer, x.PositionName, x.VarianteName = c.PhaseName, c.PositionNummer, c.PositionName, c.VarianteName
+			x.WidthMM, x.HeightMM = c.WidthMM, c.HeightMM
+		} else if Fingerprint(snap.Snapshot) != x.inhaltHash {
+			x.Hinweise = append(x.Hinweise, HintPositionGeaendert)
+		}
 	}
 	return nil
 }
