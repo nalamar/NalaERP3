@@ -538,10 +538,9 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
 			if code == "" {
 				return
 			}
-			var mid string
 			// 1) exakter Match über Material-Nummer = Artikelcode
-			_ = s.pg.QueryRow(ctx, `SELECT id FROM materials WHERE nummer=$1`, code).Scan(&mid)
-			if strings.TrimSpace(mid) == "" {
+			mid := s.materialIDByCode(ctx, code, companyID)
+			if mid == "" {
 				return
 			}
 			switch strings.ToLower(kind) {
@@ -744,6 +743,14 @@ func (s *Service) ImportLogikal(ctx context.Context, sqlitePath string, sourceNa
 		cnt.createdPhases, cnt.updatedPhases, cnt.createdElevs, cnt.updatedElevs, cnt.createdVars, cnt.updatedVars, cnt.deletedVars, cnt.materialsReplaced, importID)
 
 	return p, importID, nil
+}
+
+// materialIDByCode sucht das Material mit Nummer = Artikelcode im Mandanten
+// des Projekts (Backlog H.5.6); leer, wenn es keins gibt.
+func (s *Service) materialIDByCode(ctx context.Context, code, companyID string) string {
+	var id string
+	_ = s.pg.QueryRow(ctx, `SELECT id FROM materials WHERE nummer=$1 AND company_id=$2`, code, companyID).Scan(&id)
+	return strings.TrimSpace(id)
 }
 
 func defaultString(v, def string) string {

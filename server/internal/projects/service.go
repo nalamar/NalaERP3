@@ -1129,8 +1129,9 @@ func (s *Service) LinkVariantMaterial(ctx context.Context, projectID, singleID, 
 	}
 	isUnlink := strings.TrimSpace(materialID) == ""
 	if !isUnlink {
+		// Nur Material des Mandanten (Backlog H.5.6).
 		var dummy string
-		if err := s.pg.QueryRow(ctx, `SELECT id FROM materials WHERE id=$1`, materialID).Scan(&dummy); err != nil {
+		if err := s.pg.QueryRow(ctx, `SELECT id FROM materials WHERE id=$1 AND company_id=$2`, materialID, companyID).Scan(&dummy); err != nil {
 			return errors.New("Material nicht gefunden")
 		}
 	}

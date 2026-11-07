@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-07 — H.5.5 Belegnummern je Mandant (offen)
+## 2026-11-07 — H.5.5 Belegnummern je Mandant (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Befund aus H.5.2: Die Nummernkreise sind je Mandant (`number_sequences`,
 Schlüssel Mandant + Entität), die Nummern der Belege aber über alle
@@ -349,7 +349,8 @@ auf diese Spalten). Bezug: Backlog H.5.5.
    Muster erzwingen (Nummern ändern ihr Aussehen). (c) global lassen.
    Empfehlung: **(a)** — fortlaufende Rechnungsnummern müssen je
    Aussteller eindeutig sein, nicht über Firmen hinweg; die Nummern
-   bleiben, wie sie sind. Status: **offen**.
+   bleiben, wie sie sind. Status: **beantwortet** (2026-11-07,
+   "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 2. **Muster für einen fehlenden Nummernkreis?** (a) das Muster des
    Mandanten `default` für dieselbe Entität übernehmen (Rechnung
    "RE-…", Angebot "ANG-…" usw.), nur ohne solches weiter
@@ -357,13 +358,16 @@ auf diese Spalten). Bezug: Backlog H.5.5.
    Onboarding alle Nummernkreise anlegen. (c) so lassen.
    Empfehlung: **(a)** — eine Stelle, deckt alte und neue Mandanten ab;
    ein Mandant kann sein Muster wie bisher in den Einstellungen ändern.
-   Status: **offen**.
+   Status: **beantwortet** (2026-11-07, "fortsetzen" = Empfehlung,
+   ANNAHME): **(a)**.
 3. **Materialnummern** (`materials.nummer`) sind ebenfalls über alle
    Mandanten eindeutig: Mandant B kann "4711" nicht anlegen, wenn A es
    hat, und erfährt dadurch, dass es die Nummer gibt. Gleich mit in
    Migration 111 je Mandant machen? Empfehlung: **ja** — gleiche
    Ursache, gleiche Änderung; Voraussetzung ist H.5.6 (der
-   Logikal-Import sucht Material bisher ohne Mandant). Status: **offen**.
+   Logikal-Import sucht Material bisher ohne Mandant). Status:
+   **beantwortet** (2026-11-07, "fortsetzen" = Empfehlung, ANNAHME):
+   **ja**; H.5.6 ist erledigt.
 
 ## 2026-11-05 — H.4.z Wareneingang am Stück (beantwortet)
 

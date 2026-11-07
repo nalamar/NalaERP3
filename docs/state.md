@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.5 untersucht**: Fragen zu Belegnummern je Mandant in
+> **2026-11-07 H.5.6** erledigt: Projektzeilen bekommen nur Material des
+> Mandanten (Logikal-Import und Verknüpfen von Hand). Fragen zu H.5.5 mit
+> "fortsetzen" beantwortet (ANNAHME: 1a, 2a, 3 ja). Nächste: **H.5.5**
+> Migration 111 (Nummern je Mandant) und Ersatzmuster.
+> Davor **2026-11-07 H.5.5 untersucht**: Fragen zu Belegnummern je Mandant in
 > `docs/open-questions.md` (offen, Empfehlungen 1a, 2a, 3 ja). Neuer
 > Befund **H.5.6** (Logikal-Import sucht Material ohne Mandant).
 > Nächste: **H.5.6**, danach H.5.5 nach den Antworten.
