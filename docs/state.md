@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.6** erledigt: Projektzeilen bekommen nur Material des
+> **2026-11-07 H.5.5a** erledigt: Migration 111, Beleg- und
+> Materialnummern je Mandant eindeutig. Nächste: **H.5.5b** Ersatzmuster
+> aus Mandant `default` und ADR 0036. Nächste freie Migration: 112.
+> Davor **2026-11-07 H.5.6** erledigt: Projektzeilen bekommen nur Material des
 > Mandanten (Logikal-Import und Verknüpfen von Hand). Fragen zu H.5.5 mit
 > "fortsetzen" beantwortet (ANNAHME: 1a, 2a, 3 ja). Nächste: **H.5.5**
 > Migration 111 (Nummern je Mandant) und Ersatzmuster.
