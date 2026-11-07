@@ -563,14 +563,6 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Ord
 			return nil, err
 		}
 	}
-	if x.Status == StatusFreigegeben || x.Status == StatusInArbeit {
-		for _, it := range x.Items {
-			if it.Fehlmenge != nil && *it.Fehlmenge > 0 {
-				x.Hinweise = append(x.Hinweise, HintFehlmenge)
-				break
-			}
-		}
-	}
 	return x, nil
 }
 
@@ -635,34 +627,48 @@ func (s *Service) items(ctx context.Context, x *Order) ([]Item, error) {
 			return nil, err
 		}
 		it.MengeGesamt = it.MengeJeStueck * float64(x.Stueckzahl)
-		if x.ReservierungLagerID != nil && it.MaterialID != nil && x.Status != StatusStorniert {
-			if bedarf, ok := ReservationQty(it.Art, it.Unit, it.MaterialEinheit, it.LengthMM, it.MengeGesamt); ok {
-				fehl := Shortfall(bedarf, reserviert)
-				it.Bedarf, it.Reserviert, it.Fehlmenge = &bedarf, &reserviert, &fehl
-			}
-		}
+		reservationFigures(x, &it, reserviert)
 		out = append(out, it)
 	}
 	return out, rows.Err()
 }
 
+// reservationFigures setzt Bedarf, aktiv Reserviertes und Fehlmenge einer
+// Zeile - nur mit Reservierungslager und passender Einheit, nicht bei
+// stornierten Auftraegen. MengeGesamt muss gesetzt sein.
+func reservationFigures(x *Order, it *Item, reserviert float64) {
+	if x.ReservierungLagerID == nil || it.MaterialID == nil || x.Status == StatusStorniert {
+		return
+	}
+	if bedarf, ok := ReservationQty(it.Art, it.Unit, it.MaterialEinheit, it.LengthMM, it.MengeGesamt); ok {
+		fehl := Shortfall(bedarf, reserviert)
+		it.Bedarf, it.Reserviert, it.Fehlmenge = &bedarf, &reserviert, &fehl
+	}
+}
+
 // decorate setzt die Hinweise und zeigt im Entwurf die aktuellen Werte
 // der Position. Stornierte Auftraege bekommen keine Hinweise. Fuer
 // beliebig viele Auftraege eine feste Zahl von Abfragen (Backlog H.5.4a):
-// Kundenauftraege, Stand der Varianten (zwei) und Mengen der Positionen.
+// Kundenauftraege, Stand der Varianten (zwei), Mengen der Positionen und
+// Fehlmengen der Stuecklisten (H.5.4b).
 func decorate(ctx context.Context, q querier, orders []*Order, companyID string) error {
 	var active []*Order
-	var projects, variants, elevations []uuid.UUID
+	var projects, variants, elevations, reserving []uuid.UUID
+	byID := make(map[uuid.UUID]*Order)
 	for _, x := range orders {
 		x.Hinweise = make([]string, 0)
 		if x.Status == StatusStorniert {
 			continue
 		}
 		active = append(active, x)
+		byID[x.ID] = x
 		projects = append(projects, x.ProjectID)
 		if x.ElevationID != nil && x.SingleElevationID != nil {
 			variants = append(variants, *x.SingleElevationID)
 			elevations = append(elevations, *x.ElevationID)
+		}
+		if (x.Status == StatusFreigegeben || x.Status == StatusInArbeit) && x.ReservierungLagerID != nil {
+			reserving = append(reserving, x.ID)
 		}
 	}
 	if len(active) == 0 {
@@ -720,6 +726,38 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 		return err
 	}
 
+	// Fehlmenge nur bei "freigegeben" und "in Arbeit" mit Lager; gleiche
+	// Regel wie die Stueckliste der Einzelansicht (reservationFigures).
+	shortfall := make(map[uuid.UUID]bool)
+	rows, err = q.Query(ctx, `SELECT i.order_id, i.art, i.unit, i.length_mm::float8, i.menge_je_stueck::float8,
+		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0)
+		  FROM production_order_items i
+		  LEFT JOIN materials m ON m.id = i.material_id
+		  LEFT JOIN stock_reservations r ON r.id = i.stock_reservation_id AND r.status = 'aktiv'
+		 WHERE i.order_id = ANY($1::uuid[]) AND i.material_id IS NOT NULL`, reserving)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id uuid.UUID
+		var it Item
+		var reserviert float64
+		if err := rows.Scan(&id, &it.Art, &it.Unit, &it.LengthMM, &it.MengeJeStueck, &it.MaterialID, &it.MaterialEinheit, &reserviert); err != nil {
+			rows.Close()
+			return err
+		}
+		x := byID[id]
+		it.MengeGesamt = it.MengeJeStueck * float64(x.Stueckzahl)
+		reservationFigures(x, &it, reserviert)
+		if it.Fehlmenge != nil && *it.Fehlmenge > 0 {
+			shortfall[id] = true
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	for _, x := range active {
 		if !hasSalesOrder[x.ProjectID] {
 			x.Hinweise = append(x.Hinweise, HintKeinKundenauftrag)
@@ -745,6 +783,12 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 			x.WidthMM, x.HeightMM = c.WidthMM, c.HeightMM
 		} else if Fingerprint(snap.Snapshot) != x.inhaltHash {
 			x.Hinweise = append(x.Hinweise, HintPositionGeaendert)
+		}
+	}
+	// Fehlmenge zuletzt, auch wenn die Position entfernt ist.
+	for _, x := range active {
+		if shortfall[x.ID] {
+			x.Hinweise = append(x.Hinweise, HintFehlmenge)
 		}
 	}
 	return nil

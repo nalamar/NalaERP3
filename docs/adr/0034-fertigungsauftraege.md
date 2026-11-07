@@ -231,6 +231,18 @@ Ergänzt mit H.1.5b (ANNAHMEN, nicht in der Empfehlung geregelt):
 - Der Hinweis `fehlmenge` steht nur in der Einzelansicht (die Liste lädt
   keine Stückliste) und nur bei "freigegeben" und "in Arbeit".
 
+## Präzisierung H.5.4b (2026-11-07, Fehlmenge in der Liste)
+
+Ersetzt den letzten Punkt der Präzisierung H.1.5 ("`fehlmenge` steht nur
+in der Einzelansicht"): Seit H.5.4a berechnet die Liste ihre Hinweise mit
+einer festen Zahl von Abfragen; eine weitere Abfrage über die
+Stücklisten der gelisteten Aufträge liefert den Hinweis `fehlmenge` auch
+in der Liste. Regel unverändert: nur bei "freigegeben" und "in Arbeit"
+mit Reservierungslager, dieselbe Rechnung wie die Zeilen der
+Einzelansicht, auch wenn die Position entfernt ist. Die Liste liefert
+weiterhin keine Stückliste (`items`). Der Client zeigt den Hinweis ohne
+Änderung an (allgemeine Liste der Hinweise).
+
 ## Präzisierung EN 1090 (2026-11-02, Antwort des Nutzers)
 
 "Wir fertigen selbst nicht in EN 1090, haben aber Zulieferer, die das tun."

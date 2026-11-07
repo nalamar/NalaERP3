@@ -122,7 +122,7 @@ func TestOrderListHintsBatched(t *testing.T) {
 		}
 	}
 
-	// Feste Zahl von Abfragen: ein Auftrag wie alle; nur stornierte keine.
+	// Feste Zahl von Abfragen: ein Auftrag wie alle (5); nur stornierte keine.
 	orders := make([]*Order, len(list))
 	var cancelled []*Order
 	for i := range list {
@@ -136,8 +136,8 @@ func TestOrderListHintsBatched(t *testing.T) {
 		orders []*Order
 		want   int
 	}{
-		{"ein Auftrag", orders[:1], 4},
-		{"alle Auftraege", orders, 4},
+		{"ein Auftrag", orders[:1], 5},
+		{"alle Auftraege", orders, 5},
 		{"nur stornierte", cancelled, 0},
 	} {
 		cq := &countingQuerier{q: env.PG}
@@ -150,5 +150,95 @@ func TestOrderListHintsBatched(t *testing.T) {
 	}
 	if len(cancelled) != 1 || len(cancelled[0].Hinweise) != 0 {
 		t.Fatalf("stornierte: %v", cancelled)
+	}
+}
+
+// Hinweis fehlmenge auch in der Liste (Backlog H.5.4b): nur bei
+// "freigegeben" und "in Arbeit" mit Reservierungslager, auch wenn die
+// Position entfernt ist; Liste gleich Einzelansicht.
+func TestOrderListShortfallHint(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	svc := NewService(env.PG)
+	p := seedPosition(t, env)
+	seedMaterials(t, env, p.variant)
+	seedSalesOrder(t, env, p, "open")
+	// Zweite Position im Projekt fuer den Auftrag, dessen Variante entfernt wird.
+	e2, v2 := uuid.New(), uuid.New()
+	if _, err := env.PG.Exec(ctx, `INSERT INTO project_elevations (id, phase_id, nummer, name, menge)
+		SELECT $1, phase_id, '4', 'Zweite', 10 FROM project_elevations WHERE id=$2`, e2, p.elevation); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.PG.Exec(ctx, `INSERT INTO project_single_elevations (id, elevation_id, name, menge) VALUES ($1, $2, 'zwei', 10)`, v2, e2); err != nil {
+		t.Fatal(err)
+	}
+	seedMaterials(t, env, v2)
+	// Artikel 1,5 Stk je Stueck, je Auftrag 3; Bestand 5 Stk.
+	mat, wh := seedStock(t, env, p.company, "Stk", 5)
+	if _, err := env.PG.Exec(ctx, `UPDATE single_elevation_articles SET material_id=$1 WHERE single_elevation_id = ANY($2::uuid[])`,
+		mat, []uuid.UUID{p.variant, v2}); err != nil {
+		t.Fatal(err)
+	}
+	release := func(elevation, variant uuid.UUID, lager string) *Order {
+		t.Helper()
+		o, err := svc.Create(ctx, OrderInput{ProjectID: p.project, ElevationID: elevation, SingleElevationID: variant, Stueckzahl: 2}, "", p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o, err = svc.Release(ctx, o.ID, lager, "", p.company); err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+	voll := release(p.elevation, p.variant, wh)   // 3 von 3 reserviert
+	knapp := release(p.elevation, p.variant, wh)  // 2 von 3: Fehlmenge 1
+	ohne := release(p.elevation, p.variant, "")   // ohne Lager: keine Reservierung
+	fertig := release(p.elevation, p.variant, wh) // Fehlmenge, aber fertig
+	storno := release(p.elevation, p.variant, wh)
+	weg := release(e2, v2, wh)
+	if _, err := svc.Start(ctx, knapp.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []func(context.Context, uuid.UUID, string, string) (*Order, error){svc.Start, svc.Finish} {
+		if _, err := step(ctx, fertig.ID, "", p.company); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.Cancel(ctx, storno.ID, "doppelt", "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.PG.Exec(ctx, `DELETE FROM project_single_elevations WHERE id=$1`, v2); err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[uuid.UUID][]string{
+		voll.ID:   {},
+		knapp.ID:  {HintFehlmenge},
+		ohne.ID:   {},
+		fertig.ID: {},
+		storno.ID: {},
+		weg.ID:    {HintPositionEntfernt, HintFehlmenge},
+	}
+	list, err := svc.List(ctx, p.company, OrderFilter{IncludeStorniert: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != len(want) {
+		t.Fatalf("Liste: %d Auftraege, erwartet %d", len(list), len(want))
+	}
+	for _, o := range list {
+		if w, ok := want[o.ID]; !ok || !slices.Equal(o.Hinweise, w) {
+			t.Fatalf("%s (%s): Hinweise %v, erwartet %v", o.Nummer, o.Status, o.Hinweise, w)
+		}
+		single, err := svc.Get(ctx, o.ID, p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(single.Hinweise, o.Hinweise) {
+			t.Fatalf("%s: Einzelansicht %v, Liste %v", o.Nummer, single.Hinweise, o.Hinweise)
+		}
+	}
+	if g, _ := svc.Get(ctx, knapp.ID, p.company); !near(itemOf(t, g, ArtArtikel).Fehlmenge, 1) {
+		t.Fatalf("Fehlmenge der Zeile: %v", itemOf(t, g, ArtArtikel).Fehlmenge)
 	}
 }

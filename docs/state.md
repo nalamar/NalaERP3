@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.4a** erledigt: Hinweise der Fertigungsauftragsliste
+> **2026-11-07 H.5.4b** und damit **H.5.4** erledigt: Hinweis `fehlmenge`
+> auch in der Liste der Fertigungsaufträge (ADR 0034 Präzisierung
+> H.5.4b). Offen in H.5 nur **H.5.2** (wartet auf Entscheidung zu ADR
+> 0017). Danach: H.2/H.3 (Fragen und ADR 0036 nötig).
+> Davor **2026-11-07 H.5.4a** erledigt: Hinweise der Fertigungsauftragsliste
 > mit fester Zahl von Abfragen (4), Verhalten unverändert. Nächste:
 > **H.5.4b** Hinweis `fehlmenge` in der Liste (Präzisierung ADR 0034).
 > Davor **2026-11-07 H.5.3** erledigt: Nebenläufigkeitstest für
