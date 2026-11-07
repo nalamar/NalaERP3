@@ -195,7 +195,8 @@ type SupplierQuoteInput struct {
 // RegisterSupplierQuote legt eine Lieferanten-Offerte fuer eine
 // Anfrage-Position an oder aktualisiert sie (Upsert, ADR 0017 - vor der
 // Bestellung ist eine Offerte keine GoBD-relevante Historie). Lehnt ab,
-// wenn die zugehoerige Anfrage nicht mehr 'offen' ist.
+// wenn die zugehoerige Anfrage nicht mehr 'offen' ist oder der Lieferant
+// kein Kontakt mit Rolle supplier/both im Mandanten ist (H.5.2).
 func (s *Service) RegisterSupplierQuote(ctx context.Context, rfqItemID string, in SupplierQuoteInput, companyID string) (*SupplierQuote, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
@@ -233,12 +234,8 @@ func (s *Service) RegisterSupplierQuote(ctx context.Context, rfqItemID string, i
 		return nil, errors.New("Anfrage ist nicht mehr offen")
 	}
 
-	var supplierOwned bool
-	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM contacts WHERE id=$1 AND company_id=$2)`, in.SupplierID, companyID).Scan(&supplierOwned); err != nil {
+	if err := checkSupplier(ctx, tx, in.SupplierID, companyID); err != nil {
 		return nil, err
-	}
-	if !supplierOwned {
-		return nil, errors.New("Lieferant nicht gefunden")
 	}
 
 	var out SupplierQuote
@@ -347,7 +344,7 @@ func (s *Service) CancelRFQ(ctx context.Context, id string, companyID string) (*
 // ConvertToPurchaseOrder waehlt EINEN Lieferanten als Gewinner der
 // gesamten Anfrage (ADR 0017 - kein Splitting ueber mehrere Lieferanten).
 // Lehnt ab, wenn der Lieferant nicht fuer JEDE Position eine Offerte
-// abgegeben hat. Erzeugt eine neue PurchaseOrder (gleiches Insert-Muster
+// abgegeben hat oder (H.5.2) kein Lieferant im Mandanten ist. Erzeugt eine neue PurchaseOrder (gleiches Insert-Muster
 // wie Create, hier dupliziert statt Create aufgerufen, um Anfrage- und
 // Bestellungs-Anlage in EINER Transaktion atomar zu halten).
 func (s *Service) ConvertToPurchaseOrder(ctx context.Context, rfqID string, supplierID string, companyID string) (*PurchaseOrder, []PurchaseOrderItem, error) {
@@ -377,6 +374,9 @@ func (s *Service) ConvertToPurchaseOrder(ctx context.Context, rfqID string, supp
 	}
 	if rfqStatus != "offen" {
 		return nil, nil, errors.New("Anfrage ist nicht mehr offen")
+	}
+	if err := checkSupplier(ctx, tx, supplierID, companyID); err != nil {
+		return nil, nil, err
 	}
 
 	rows, err := tx.Query(ctx, `

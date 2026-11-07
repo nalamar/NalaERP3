@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-07 H.5.4b** und damit **H.5.4** erledigt: Hinweis `fehlmenge`
+> **2026-11-07 H.5.2** erledigt (Entscheidung des Nutzers): Anfrage prüft
+> den Lieferanten auf Rolle supplier/both (ADR 0017 Präzisierung H.5.2).
+> Neuer Befund **H.5.5**: Nummern neuer Mandanten stoßen bei Anfrage und
+> Bestellung zusammen (500). Nächste: H.5.5.
+> Davor **2026-11-07 H.5.4b** und damit **H.5.4** erledigt: Hinweis `fehlmenge`
 > auch in der Liste der Fertigungsaufträge (ADR 0034 Präzisierung
 > H.5.4b). Offen in H.5 nur **H.5.2** (wartet auf Entscheidung zu ADR
 > 0017). Danach: H.2/H.3 (Fragen und ADR 0036 nötig).

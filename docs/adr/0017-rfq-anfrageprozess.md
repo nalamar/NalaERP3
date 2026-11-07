@@ -147,3 +147,23 @@ Historie ist hier fachlich nicht gefordert.
   per E-Mail an Lieferanten.
 - Kein Einfluss auf bestehende `purchase_orders`-/`purchase_order_items`-
   Daten oder deren Lesepfade.
+
+## Präzisierung H.5.2 (2026-11-07, Antwort des Nutzers)
+
+"Ja, die Anfrage soll auf supplier/both prüfen."
+
+Die Entscheidung "keine Lieferantenrollen-Prüfung" (Optionen und
+`RegisterSupplierQuote` oben) ist aufgehoben. Ihr Grund — `purchasing.Create`
+prüft die Rolle nicht — gilt seit H.4.3c nicht mehr (`checkSupplier`).
+
+- `RegisterSupplierQuote` und `ConvertToPurchaseOrder` prüfen den
+  Lieferanten mit derselben Regel wie die Bestellung: Kontakt im Mandanten
+  mit Rolle `supplier` oder `both`, sonst "Lieferant nicht gefunden"
+  (404). Nichts wird gespeichert bzw. keine Bestellung angelegt, die
+  Anfrage bleibt offen.
+- Die Umwandlung prüft auch dann, wenn schon Offerten vorliegen: Offerten
+  eines Kontakts ohne Lieferantenrolle aus der Zeit vor H.5.2 bleiben
+  gespeichert und sichtbar, reichen aber nicht für eine Bestellung
+  (keine Löschung von Daten; ANNAHME).
+- Keine Migration, keine Routenänderung; der Client hat keine Oberfläche
+  für Anfragen.

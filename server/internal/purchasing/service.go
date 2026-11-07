@@ -114,11 +114,17 @@ func scanOrder(row pgx.Row, po *PurchaseOrder) error {
 	return row.Scan(&po.ID, &po.SupplierID, &po.Number, &po.OrderDate, &po.Currency, &po.Status, &po.Note, &po.ProjectID, &po.Angelegt)
 }
 
-// checkSupplier: der Lieferant einer Bestellung ist ein Kontakt im
-// Mandanten mit Rolle supplier/both (Backlog H.4.3c, Befund aus H.4.2a).
-func (s *Service) checkSupplier(ctx context.Context, supplierID, companyID string) error {
+// rowQuerier: Pool oder Transaktion.
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// checkSupplier: der Lieferant einer Bestellung oder Anfrage ist ein
+// Kontakt im Mandanten mit Rolle supplier/both (Backlog H.4.3c, Befund aus
+// H.4.2a; Anfrage seit H.5.2, ADR 0017 Praezisierung H.5.2).
+func checkSupplier(ctx context.Context, q rowQuerier, supplierID, companyID string) error {
 	var ok bool
-	if err := s.pg.QueryRow(ctx, `
+	if err := q.QueryRow(ctx, `
         SELECT EXISTS(SELECT 1 FROM contacts WHERE id=$1 AND company_id=$2 AND rolle IN ('supplier','both'))
     `, supplierID, companyID).Scan(&ok); err != nil {
 		return err
@@ -171,7 +177,7 @@ func (s *Service) Create(ctx context.Context, in PurchaseOrderCreate, companyID 
 		}
 	}
 	in.SupplierID = strings.TrimSpace(in.SupplierID)
-	if err := s.checkSupplier(ctx, in.SupplierID, companyID); err != nil {
+	if err := checkSupplier(ctx, s.pg, in.SupplierID, companyID); err != nil {
 		return nil, nil, err
 	}
 	project, err := s.projectRef(ctx, in.ProjectID, companyID)
