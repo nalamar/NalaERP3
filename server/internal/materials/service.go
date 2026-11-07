@@ -557,6 +557,20 @@ func CreateMovementTx(ctx context.Context, tx pgx.Tx, in StockMovementCreate, co
 	if !warehouseOwned {
 		return nil, errors.New("Lager nicht gefunden")
 	}
+	// Der Platz muss zum gewaehlten Lager gehoeren; das Lager ist schon auf
+	// den Mandanten geprueft (Backlog H.5.1, wie Inventur und Reststuecke).
+	if in.LocationID != nil && strings.TrimSpace(*in.LocationID) == "" {
+		in.LocationID = nil
+	}
+	if in.LocationID != nil {
+		var locationOwned bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM locations WHERE id=$1 AND warehouse_id=$2)`, *in.LocationID, in.WarehouseID).Scan(&locationOwned); err != nil {
+			return nil, err
+		}
+		if !locationOwned {
+			return nil, errors.New("Lagerort nicht gefunden")
+		}
+	}
 
 	if in.PurchaseOrderItemID != nil && strings.TrimSpace(*in.PurchaseOrderItemID) != "" {
 		var poItemOwned bool
