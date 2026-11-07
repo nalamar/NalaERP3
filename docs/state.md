@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-06 H.4.z2** und damit **H.4.z** erledigt: der Client bucht
+> **2026-11-07 H.4 abgeschlossen** (Backlog auf done). Offene Befunde
+> aus H.1 und H.4 als **H.5.1–H.5.4** eingetragen. Nächste: **H.5.1**
+> Lagerplatz bei Lagerbewegungen prüfen (Mandantentrennung, kleinster
+> Punkt mit dem größten Risiko).
+> Davor **2026-11-06 H.4.z2** und damit **H.4.z** erledigt: der Client bucht
 > den Wareneingang nur noch über `POST /purchase-orders/{id}/receive`;
 > Symbol nur mit beiden Rechten und im Status `ordered`. H.4 hat keine
 > offenen Subtasks mehr. Nächste: offene Befunde sichten (Lagerplatz
