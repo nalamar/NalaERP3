@@ -87,6 +87,22 @@ func (s *NumberingService) Preview(ctx context.Context, entity string, companyID
 	return formatWithPattern(cfg.Pattern, cfg.NextValue, time.Now()), nil
 }
 
+// defaultPattern gilt, wenn weder der Mandant noch der Mandant `default`
+// einen Nummernkreis fuer die Entitaet hat.
+const defaultPattern = "PO-{YYYY}-{NNNN}"
+
+// fallbackPattern liefert das Muster fuer einen fehlenden Nummernkreis: das
+// des Mandanten `default` fuer dieselbe Entitaet, sonst defaultPattern
+// (Backlog H.5.5b, ADR 0036).
+func fallbackPattern(ctx context.Context, tx pgx.Tx, entity string) (string, error) {
+	var pattern string
+	err := tx.QueryRow(ctx, `SELECT pattern FROM number_sequences WHERE entity=$1 AND company_id='default'`, entity).Scan(&pattern)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && strings.TrimSpace(pattern) == "") {
+		return defaultPattern, nil
+	}
+	return pattern, err
+}
+
 // Next returns next formatted number and increments the sequence atomically
 func (s *NumberingService) Next(ctx context.Context, entity string, companyID string) (string, error) {
 	if strings.TrimSpace(companyID) == "" {
@@ -103,7 +119,9 @@ func (s *NumberingService) Next(ctx context.Context, entity string, companyID st
 	err = tx.QueryRow(ctx, `SELECT pattern, next_value, last_year FROM number_sequences WHERE entity=$1 AND company_id=$2 FOR UPDATE`, entity, companyID).Scan(&pattern, &next, &lastYear)
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			pattern = "PO-{YYYY}-{NNNN}"
+			if pattern, err = fallbackPattern(ctx, tx, entity); err != nil {
+				return "", err
+			}
 			next = 1
 			if _, e := tx.Exec(ctx, `INSERT INTO number_sequences (entity, pattern, next_value, company_id) VALUES ($1,$2,$3,$4)`, entity, pattern, next, companyID); e != nil {
 				return "", e
