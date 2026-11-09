@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-08 H.5.5b** erledigt: fehlender Nummernkreis übernimmt das
+> **2026-11-09 H.2.0** erledigt: ADR 0037 (Entwurf) Arbeitsgänge und
+> Kapazitäten; sechs Fragen in `docs/open-questions.md` (2026-11-09),
+> **wartet auf Antworten**. Nächste: nach den Antworten H.2.1 (Migration
+> 112 und Regeln). Nächste freie Migration: 112, nächstes ADR: 0038.
+> Davor **2026-11-08 H.5.5b** erledigt: fehlender Nummernkreis übernimmt das
 > Muster des Mandanten `default` (sonst "PO-…"); ADR 0036 "Belegnummern je
 > Mandant". Damit sind H.5.5 und H.5 fertig. Nächste: H.2/H.3 (Fragen und ADR).
 > Nächste freie Migration: 112, nächstes ADR: 0037.
