@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.2.5c** erledigt: Client-Seite "Auslastung" mit
+> **2026-11-09 H.3.0** erledigt: ADR 0038 (Entwurf) mit sieben Fragen
+> zu Entnahme, Rückmeldung und Montage. Befund: "fertig" lässt
+> Reservierungen aktiv und bucht nichts ab. Nächste: Antworten
+> einarbeiten, dann **H.3.1** Migration 113 und Regeln der Entnahme.
+> Nächste freie Migration: 113, nächstes ADR: 0039.
+> Davor **2026-11-09 H.2.5c** erledigt: Client-Seite "Auslastung" mit
 > Dashboard-Kachel; damit H.2 fertig. Nächste: **H.3** BDE,
 > Kommissionierung, Montageplanung — zuerst Fragen und ADR (u. a. Logikal
 > MES). Nächste freie Migration: 113, nächstes ADR: 0038.

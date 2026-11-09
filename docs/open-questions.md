@@ -324,6 +324,51 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-09 — H.3 Entnahme, Rückmeldung, Montageplanung (offen)
+
+Bezug: Backlog H.3, ADR 0038 (Entwurf, Ist-Stand und Optionen dort).
+Kurz: Die Freigabe reserviert Material, aber **"fertig" bucht nichts ab
+und lässt die Reservierungen aktiv** — der Bestand ist danach zu hoch und
+das Material bleibt gesperrt. Arbeitsgänge haben keinen Status und keine
+Ist-Zeit; erledigte zählen weiter zur Auslastung. Zur Montage gibt es
+nichts (keine Termine, keine Baustellenadresse); Teams, Abwesenheiten und
+Fahrzeuge gibt es.
+
+1. **Reihenfolge**: (a) drei Teile nacheinander — Entnahme, dann
+   Rückmeldung je Arbeitsgang, dann Montageplanung; (b) Montage zuerst;
+   (c) nur Entnahme, der Rest als eigene Epics. Empfehlung: **(a)**.
+   Status: **offen**.
+2. **Entnahme**: (a) gegen die Stückliste je Zeile mit Menge (vorbelegt
+   mit der offenen Menge), Lagerabgang mit Bezug zur Zeile, verbraucht
+   die Reservierung; Teil- und Mehrentnahme, Storno als Gegenbuchung,
+   dazu Material ohne Zeile; (b) retrograd bei "fertig" alles abbuchen;
+   (c) keine Lagerbuchung. Empfehlung: **(a)**. Status: **offen**.
+3. **"Fertig" und offene Reservierungen**: (a) freigeben, vorher Hinweis
+   auf nicht entnommene Zeilen (keine Sperre); (b) Rest retrograd
+   abbuchen; (c) stehen lassen wie heute. Empfehlung: **(a)**.
+   Status: **offen**.
+4. **Kommissionierliste**: (a) PDF je Auftrag (Lager, Platz, Material,
+   Menge, ohne Preise) plus Entnahme am Bildschirm; (b) nur Bildschirm.
+   Empfehlung: **(a)**. Status: **offen**.
+5. **Rückmeldung je Arbeitsgang**: (a) "erledigt" mit optionaler Ist-Zeit
+   **ohne Personenbezug**, zurücknehmbar, erledigte zählen nicht zur
+   Auslastung, Soll/Ist je Auftrag; (b) Zeiterfassung je Person mit Bezug
+   zu Auftrag und Arbeitsgang (Leistungskontrolle — BetrVG/DSGVO klären);
+   (c) keine Rückmeldung im ERP (Logikal MES). Empfehlung: **(a)**.
+   Status: **offen**.
+6. **Montageplanung**: (a) Montagetermine je Fertigungsauftrag (Zeitraum,
+   Team, optional Fahrzeug, Baustelle als Freitext), Wochenübersicht je
+   Team, Hinweise ohne Sperre (Team doppelt, Abwesenheit, Fahrzeug
+   gesperrt, vor "fertig", nach Liefertermin); (b) Termine am Projekt;
+   (c) nur ein Datum. Empfehlung: **(a)**. Status: **offen**.
+7. **Zuschnitt/Optimierung** (in `aufgabe.md`, bisher ohne
+   Backlog-Punkt): (a) bleibt in Logikal, im ERP nur Reststücke;
+   (b) eigene Optimierung. Empfehlung: **(a)**. Status: **offen**.
+
+Zusatzfragen (Auskunft, blockieren nicht): **Nutzt der Betrieb Logikal
+MES** (dann Frage 5 (c))? **Gibt es einen Betriebsrat** (nur für 5 (b))?
+Status: **offen**.
+
 ## 2026-11-09 — H.2 Arbeitsgänge und Kapazitäten (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog H.2, ADR 0037 (Entwurf, Ist-Stand und Optionen dort).
