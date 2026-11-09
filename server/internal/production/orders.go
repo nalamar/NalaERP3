@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"nalaerp3/internal/auditlog"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/settings"
 )
@@ -65,6 +66,8 @@ type Order struct {
 	// Fertigungsstueckliste - nur in der Einzelansicht und erst ab der
 	// Freigabe.
 	Items []Item `json:"items,omitempty"`
+	// Arbeitsgaenge (ADR 0037) - nur in der Einzelansicht.
+	Arbeitsgaenge []Operation `json:"arbeitsgaenge,omitempty"`
 
 	inhaltHash string
 }
@@ -113,12 +116,13 @@ type DraftUpdate struct {
 }
 
 type Service struct {
-	pg  *pgxpool.Pool
-	num *settings.NumberingService
+	pg    *pgxpool.Pool
+	num   *settings.NumberingService
+	audit *auditlog.Service
 }
 
 func NewService(pg *pgxpool.Pool) *Service {
-	return &Service{pg: pg, num: settings.NewNumberingService(pg)}
+	return &Service{pg: pg, num: settings.NewNumberingService(pg), audit: auditlog.NewService(pg)}
 }
 
 var ErrNotFound = errors.New("Fertigungsauftrag nicht gefunden")
@@ -562,6 +566,9 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Ord
 		if x.Items, err = s.items(ctx, x); err != nil {
 			return nil, err
 		}
+	}
+	if x.Arbeitsgaenge, err = listOperations(ctx, s.pg, x.ID, x.Stueckzahl, x.Liefertermin); err != nil {
+		return nil, err
 	}
 	return x, nil
 }

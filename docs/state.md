@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.2.2** erledigt: Service und Routen für Arbeitsplätze und
+> **2026-11-09 H.2.3a** erledigt: Service der Arbeitsgänge am Auftrag
+> (Vorschlag aus Vorlagen, hinzufügen, ändern, entfernen, Protokoll, Sperre
+> nach fertig/storniert). Nächste: **H.2.3b** Routen. Nächste freie
+> Migration: 113, nächstes ADR: 0038.
+> Davor **2026-11-09 H.2.2** erledigt: Service und Routen für Arbeitsplätze und
 > Arbeitsgangvorlagen (`/production/work-centers`,
 > `/production/operation-templates`). Nächste: **H.2.3** Arbeitsgänge am
 > Auftrag. Nächste freie Migration: 113, nächstes ADR: 0038.
