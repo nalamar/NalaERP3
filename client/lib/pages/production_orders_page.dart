@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'assets_page.dart' show isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'production_operations_section.dart';
 
 // Fertigungsaufträge im Client (ADR 0034, Backlog H.1.4a, Routen H.1.3):
 // Liste nach Liefertermin und Detail mit Hinweisen, Fertigungsstückliste
@@ -634,6 +635,9 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
                 if (productionCanStorno(status)) OutlinedButton(onPressed: busy ? null : _stornoDialog, child: const Text('Stornieren')),
               ]),
             ],
+            const SizedBox(height: 16),
+            ProductionOperationsSection(
+                key: ValueKey('ops-${widget.orderId}-$status'), api: widget.api, orderId: widget.orderId, status: status),
             const SizedBox(height: 16),
             const Text('Fertigungsstückliste', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),

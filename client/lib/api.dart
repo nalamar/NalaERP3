@@ -3135,6 +3135,38 @@ class ApiClient {
   Future<Map<String, dynamic>> updateOperationTemplate(String id, Map<String, dynamic> body) =>
       _sendProductionJson('PUT', '/api/v1/production/operation-templates/$id', body, 200);
 
+  // -------- Arbeitsgaenge am Fertigungsauftrag (Backlog H.2.5b, Routen H.2.3b) --------
+  // Je Arbeitsgang plan_minuten, geplante_woche (Montag) und "hinweise"
+  // (nach_liefertermin). Aenderbar bis fertig/storniert (sonst 409).
+  Future<List<dynamic>> listProductionOperations(String orderId) => _getList('/api/v1/production/orders/$orderId/operations', null);
+
+  // Vorschlag aus den aktiven Vorlagen, nur ohne vorhandene Arbeitsgaenge.
+  // Erwartet 201 mit der Liste.
+  Future<List<dynamic>> suggestProductionOperations(String orderId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(_u('/api/v1/production/orders/$orderId/operations/vorschlagen'), headers: headers),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as List<dynamic>;
+  }
+
+  // name, work_center_id, ruestzeit_min, minuten_je_stueck, geplante_woche
+  // (JJJJ-MM-TT, leer = ungeplant). Erwartet 201.
+  Future<Map<String, dynamic>> addProductionOperation(String orderId, Map<String, dynamic> body) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/operations', body, 201);
+
+  // Alle Angaben auf einmal.
+  Future<Map<String, dynamic>> updateProductionOperation(String orderId, String opId, Map<String, dynamic> body) =>
+      _sendProductionJson('PUT', '/api/v1/production/orders/$orderId/operations/$opId', body, 200);
+
+  // Erwartet 204.
+  Future<void> deleteProductionOperation(String orderId, String opId) async {
+    final r = await _sendWithAuth(
+      (headers) => http.delete(_u('/api/v1/production/orders/$orderId/operations/$opId'), headers: headers),
+    );
+    if (r.statusCode != 204) _throwApiException(r);
+  }
+
   Future<Map<String, dynamic>> _sendProductionJson(String method, String path, Map<String, dynamic> body, int expected) async {
     final r = await _sendWithAuth(
       (headers) {

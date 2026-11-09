@@ -135,6 +135,10 @@ class _FakeApi extends ApiClient {
     return order;
   }
 
+  // Arbeitsgänge (H.2.5b) prüft production_operations_test.dart.
+  @override
+  Future<List<dynamic>> listProductionOperations(String orderId) async => const [];
+
   @override
   Future<List<dynamic>> listWarehouses() async {
     calls.add('warehouses');
