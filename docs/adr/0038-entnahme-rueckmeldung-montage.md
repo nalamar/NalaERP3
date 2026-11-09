@@ -1,8 +1,12 @@
 # ADR 0038 — Produktionssteuerung: Entnahme, Rückmeldung, Montageplanung
 
 Datum: 2026-11-09
-Status: **Entwurf** — Fragen in `docs/open-questions.md`, Abschnitt
-2026-11-09 H.3.
+Status: **Angenommen** (2026-11-09, Antwort des Nutzers): 1 (a), 2 (a),
+3 (a), 4 (a), **5 (a), (b) vorbereiten**, **6 (a), (b) vorbereiten**,
+**7 (a), (b) als mögliches Feature vermerken** — Umsetzung im Abschnitt
+"Entscheidung" unten. Die Auskunftsfragen (Logikal MES, Betriebsrat)
+sind unbeantwortet; mit 5 (a) ist das ERP der Ort der Rückmeldung.
+Fragen in `docs/open-questions.md`, Abschnitt 2026-11-09 H.3.
 Bezug: Backlog H.3 "BDE, Kommissionierung, Montageplanung"; `aufgabe.md`
 §1 Domäne H (dort zusätzlich "Zuschnitt/Optimierung"); ADR 0034
 (Fertigungsaufträge, Reservierung; Präzisierung EN 1090: keine
@@ -141,7 +145,31 @@ liefert abweichende Ergebnisse.
 - **Nutzt der Betrieb Logikal MES** oder plant es? Dann Frage 5 (c).
 - **Gibt es einen Betriebsrat?** Nur für Frage 5 (b) erheblich.
 
-## Folgen (vorläufig, gelten bei Empfehlung (a))
+## Entscheidung (2026-11-09)
+
+- **Entnahme** wie 2 (a) und 3 (a), Kommissionierliste wie 4 (a).
+  Reststücke: Verbrauch über die vorhandene Funktion (`ConsumeOffcut`)
+  mit der Auftragsnummer als Referenz, keine eigene Spalte.
+- **Rückmeldung 5 (a), (b) vorbereitet**: Rückmeldungen werden als
+  eigene Datensätze je Arbeitsgang gespeichert (nicht als Spalten am
+  Arbeitsgang): erledigt, optionale Ist-Minuten, wer gemeldet hat
+  (Benutzer, nicht Mitarbeiter), Rücknahme mit Protokoll. Für (b)
+  kommt später **nur** ein nullbarer Bezug der Zeiterfassung zum
+  Arbeitsgang hinzu (`hr_time_entries` → Arbeitsgang); die Ist-Zeit
+  ist dann wahlweise die Summe der Zeiteinträge. Bis BetrVG und DSGVO
+  geklärt sind (Zweck, Löschfrist, ggf. Betriebsvereinbarung), keine
+  Ist-Zeit mit Personenbezug — (b) wird ein eigener Backlog-Punkt mit
+  dieser Klärung als Voraussetzung.
+- **Montage 6 (a), (b) vorbereitet**: der Montagetermin hängt in der
+  Datenbank am **Projekt** (Pflicht) mit **optionalem**
+  Fertigungsauftrag; in (a) verlangt der Service den Auftrag und
+  übernimmt dessen Projekt. Für (b) entfällt nur diese Pflicht im
+  Service (Termine für ein Projekt oder mehrere Aufträge eines
+  Projekts), ohne Migration.
+- **Zuschnitt 7 (a)**; eigene Stangenoptimierung im ERP als mögliches
+  Feature im Backlog vermerkt (H.6, nicht geplant).
+
+## Folgen
 
 - Migration 113: Entnahmen (`production_order_withdrawals`: Auftrag,
   Zeile oder Material, Lager, Menge, Lagerbewegung, Storno) und

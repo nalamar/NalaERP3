@@ -850,6 +850,11 @@ func (s *Service) ReleaseReservation(ctx context.Context, id string, companyID s
 	if status == "freigegeben" {
 		return nil, errors.New("Reservierung ist bereits freigegeben")
 	}
+	// Durch Entnahmen aufgebraucht (Migration 113, Backlog H.3.1): eine
+	// Freigabe wuerde den Beleg verfaelschen.
+	if status == "verbraucht" {
+		return nil, errors.New("Reservierung ist bereits verbraucht")
+	}
 
 	out, err := scanStockReservation(tx.QueryRow(ctx, `
         UPDATE stock_reservations
