@@ -205,5 +205,7 @@ func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+
+		mountProductionOperationRoutes(r, svc)
 	})
 }

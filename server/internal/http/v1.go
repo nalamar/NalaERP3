@@ -5160,7 +5160,10 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nur ein entwurf kann"),
 		strings.Contains(msg, "ist nicht mehr im projekt"),
 		strings.Contains(msg, "kann nicht freigegeben werden"),
-		strings.Contains(msg, "arbeitsplatz ist deaktiviert"):
+		strings.Contains(msg, "arbeitsplatz ist deaktiviert"),
+		strings.Contains(msg, "arbeitsgänge nicht änderbar"),
+		strings.Contains(msg, "bereits arbeitsgänge"),
+		strings.Contains(msg, "keine aktiven arbeitsgangvorlagen"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
