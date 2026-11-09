@@ -23,6 +23,7 @@ import 'notice_mail_page.dart';
 import 'settings_page.dart';
 import 'projects_page.dart';
 import 'production_orders_page.dart';
+import 'production_planning_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -77,6 +78,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProductionOrdersPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('production.read'))
+        _DashCard(
+          title: 'Arbeitsplätze und Vorlagen',
+          icon: Icons.schema_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ProductionPlanningPage(api: api),
               ),
             );
           },

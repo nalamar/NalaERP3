@@ -3109,6 +3109,45 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // -------- Grobplanung: Arbeitsplaetze und Vorlagen (Backlog H.2.5a, Routen H.2.2) --------
+  // Lesen mit production.read, pflegen mit production.write. Deaktivieren
+  // statt loeschen: PUT mit "aktiv": false.
+  Future<List<dynamic>> listWorkCenters({bool includeInactive = false}) =>
+      _getList('/api/v1/production/work-centers/', includeInactive ? {'include_inactive': 'true'} : null);
+
+  // name, stunden_je_tag. Erwartet 201.
+  Future<Map<String, dynamic>> createWorkCenter(Map<String, dynamic> body) => _sendProductionJson('POST', '/api/v1/production/work-centers/', body, 201);
+
+  // name, stunden_je_tag, optional aktiv (weggelassen = unveraendert).
+  Future<Map<String, dynamic>> updateWorkCenter(String id, Map<String, dynamic> body) =>
+      _sendProductionJson('PUT', '/api/v1/production/work-centers/$id', body, 200);
+
+  // In der Reihenfolge des Vorschlags.
+  Future<List<dynamic>> listOperationTemplates({bool includeInactive = false}) =>
+      _getList('/api/v1/production/operation-templates/', includeInactive ? {'include_inactive': 'true'} : null);
+
+  // name, work_center_id, reihenfolge, ruestzeit_min, minuten_je_stueck.
+  // Erwartet 201.
+  Future<Map<String, dynamic>> createOperationTemplate(Map<String, dynamic> body) =>
+      _sendProductionJson('POST', '/api/v1/production/operation-templates/', body, 201);
+
+  // Alle Angaben, optional aktiv (weggelassen = unveraendert).
+  Future<Map<String, dynamic>> updateOperationTemplate(String id, Map<String, dynamic> body) =>
+      _sendProductionJson('PUT', '/api/v1/production/operation-templates/$id', body, 200);
+
+  Future<Map<String, dynamic>> _sendProductionJson(String method, String path, Map<String, dynamic> body, int expected) async {
+    final r = await _sendWithAuth(
+      (headers) {
+        final h = {...headers, 'Content-Type': 'application/json'};
+        return method == 'PUT'
+            ? http.put(_u(path), headers: h, body: jsonEncode(body))
+            : http.post(_u(path), headers: h, body: jsonEncode(body));
+      },
+    );
+    if (r.statusCode != expected) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Ausgabe von Betriebsmitteln (Backlog F.13.4.1, Routen F.3.6.2) --------
   // Ausgeben an einen Mitarbeiter (Datum JJJJ-MM-TT). Die Antwort enthaelt
   // ggf. "hinweise" (Pruefung ueberfaellig, nie geprueft); ein gesperrtes
