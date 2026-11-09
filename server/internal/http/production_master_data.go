@@ -3,15 +3,17 @@ package apihttp
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
+	"nalaerp3/internal/hr"
 	"nalaerp3/internal/production"
 )
 
 // HTTP-Anbindung der Stammdaten der Grobplanung (ADR 0037, Backlog H.2.2):
-// Arbeitsplaetze und Arbeitsgangvorlagen. Lesen mit production.read,
+// Arbeitsplaetze und Arbeitsgangvorlagen, dazu die Auslastung (H.2.4). Lesen mit production.read,
 // anlegen und aendern (auch deaktivieren) mit production.write. Loeschen
 // gibt es nicht.
 
@@ -68,6 +70,36 @@ func mountProductionMasterDataRoutes(protected chi.Router, svc *production.Servi
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+	})
+
+	// Auslastung je Arbeitsplatz und Woche (H.2.4). von/bis als JJJJ-MM-TT,
+	// je ein beliebiger Tag der Woche; ohne Angabe ab der aktuellen Woche
+	// acht Wochen, ohne bis acht Wochen ab von.
+	protected.With(read).Get("/production/capacity", func(w http.ResponseWriter, req *http.Request) {
+		q := req.URL.Query()
+		von, ok := parseOptionalDate(w, req, "von", q.Get("von"))
+		if !ok {
+			return
+		}
+		bis, ok := parseOptionalDate(w, req, "bis", q.Get("bis"))
+		if !ok {
+			return
+		}
+		if von == nil {
+			today := hr.WorkDateOf(time.Now())
+			von = &today
+		}
+		if bis == nil {
+			end := von.AddDate(0, 0, 7*7)
+			bis = &end
+		}
+		companyID, _ := companyIDFromContext(req.Context())
+		out, err := svc.Capacity(req.Context(), *von, *bis, companyID)
+		if err != nil {
+			writeDomainError(w, req, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, out)
 	})
 
 	type templateBody struct {

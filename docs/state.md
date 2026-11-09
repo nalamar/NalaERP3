@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.2.3b** erledigt: Routen der Arbeitsgänge
+> **2026-11-09 H.2.4** erledigt: Auslastung je Arbeitsplatz und Woche
+> (`GET /production/capacity`). Nächste: **H.2.5** Client. Nächste freie
+> Migration: 113, nächstes ADR: 0038.
+> Davor **2026-11-09 H.2.3b** erledigt: Routen der Arbeitsgänge
 > (`/production/orders/{id}/operations`); H.2.3 fertig. Nächste:
 > **H.2.4** Auslastung je Arbeitsplatz und Woche. Nächste freie Migration:
 > 113, nächstes ADR: 0038.
