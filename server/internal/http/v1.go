@@ -1781,7 +1781,9 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetAssignmentRoutes(protected, fleet.NewAssignmentService(pg), timeEntrySvc)
 	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
 	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
-	mountProductionOrderRoutes(protected, production.NewService(pg))
+	productionSvc := production.NewService(pg)
+	mountProductionOrderRoutes(protected, productionSvc)
+	mountProductionMasterDataRoutes(protected, productionSvc)
 	mountSupplierCertificateRoutes(protected, purchasing.NewCertificateService(pg, mg, cfg.MongoDB))
 	mountPurchaseOrderPaperRoutes(protected, purchasing.NewPaperService(pg, mg, cfg.MongoDB))
 	mountNoticeRoutes(protected, notices.NewDefaultService(qualificationSvc, assetSvc, fleet.NewScheduleService(pg)), timeEntrySvc)
@@ -5157,7 +5159,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "kann nicht storniert werden"),
 		strings.Contains(msg, "nur ein entwurf kann"),
 		strings.Contains(msg, "ist nicht mehr im projekt"),
-		strings.Contains(msg, "kann nicht freigegeben werden"):
+		strings.Contains(msg, "kann nicht freigegeben werden"),
+		strings.Contains(msg, "arbeitsplatz ist deaktiviert"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),

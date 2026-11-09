@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.2.1** erledigt: Migration 112 (Arbeitsplätze, Vorlagen,
+> **2026-11-09 H.2.2** erledigt: Service und Routen für Arbeitsplätze und
+> Arbeitsgangvorlagen (`/production/work-centers`,
+> `/production/operation-templates`). Nächste: **H.2.3** Arbeitsgänge am
+> Auftrag. Nächste freie Migration: 113, nächstes ADR: 0038.
+> Davor **2026-11-09 H.2.1** erledigt: Migration 112 (Arbeitsplätze, Vorlagen,
 > Arbeitsgänge am Auftrag) und Regeln `production/operations_rules.go`.
 > Fragen zu H.2 mit "fortsetzen" beantwortet (ANNAHME: alle (a)), ADR 0037
 > angenommen. Nächste: **H.2.2** Service und Routen Stammdaten. Nächste

@@ -30,7 +30,7 @@ func ValidateWorkCenterInput(in WorkCenterInput) error {
 		return errors.New("Name des Arbeitsplatzes erforderlich")
 	}
 	if in.StundenJeTag <= 0 || in.StundenJeTag > 24 {
-		return errors.New("Stunden je Tag müssen größer als 0 und höchstens 24 sein")
+		return errors.New("Ungültige Stunden je Tag (größer als 0, höchstens 24)")
 	}
 	return nil
 }
