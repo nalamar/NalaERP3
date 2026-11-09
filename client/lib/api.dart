@@ -3167,6 +3167,14 @@ class ApiClient {
     if (r.statusCode != 204) _throwApiException(r);
   }
 
+  // Auslastung je Arbeitsplatz und Woche (H.2.4); von/bis JJJJ-MM-TT, je ein
+  // beliebiger Tag der Woche, hoechstens 26 Wochen. Ohne Angabe acht Wochen
+  // ab der aktuellen.
+  Future<Map<String, dynamic>> getProductionCapacity({String? von, String? bis}) => _getJson('/api/v1/production/capacity', {
+        if (von != null) 'von': von,
+        if (bis != null) 'bis': bis,
+      });
+
   Future<Map<String, dynamic>> _sendProductionJson(String method, String path, Map<String, dynamic> body, int expected) async {
     final r = await _sendWithAuth(
       (headers) {

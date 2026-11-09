@@ -24,6 +24,7 @@ import 'settings_page.dart';
 import 'projects_page.dart';
 import 'production_orders_page.dart';
 import 'production_planning_page.dart';
+import 'production_capacity_page.dart';
 
 class DashboardPage extends StatelessWidget {
   const DashboardPage({
@@ -91,6 +92,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => ProductionPlanningPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('production.read'))
+        _DashCard(
+          title: 'Auslastung',
+          icon: Icons.stacked_bar_chart_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => ProductionCapacityPage(api: api),
               ),
             );
           },
