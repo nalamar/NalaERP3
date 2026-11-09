@@ -1,8 +1,11 @@
 # ADR 0037 — Produktionssteuerung: Arbeitsgänge und Kapazitäten
 
 Datum: 2026-11-09
-Status: **Entwurf** — sechs Fragen in `docs/open-questions.md`
-(Abschnitt 2026-11-09 H.2).
+Status: **Angenommen** (2026-11-09, ANNAHME) — "fortsetzen" nach den
+sechs Fragen mit Empfehlung (`docs/open-questions.md`, Abschnitt
+2026-11-09 H.2): alle **(a)**. Die Auskunftsfragen (Arbeitszeiten in
+Logikal, Logikal MES) gelten als unbekannt: Import der Zeiten später,
+Rückmeldung je Arbeitsgang wird in H.3 entschieden.
 Bezug: Backlog H.2 "Stücklisten/Arbeitsgänge/Kapazitäten"; ADR 0034
 (Fertigungsaufträge, Abschnitt 3: "Arbeitsgänge, Kapazitäten (H.2) und
 Rückmeldungen/BDE (H.3) kommen später und hängen am Auftrag"); ADR 0029
@@ -115,7 +118,7 @@ oder storniert ist, ohne Storno des Auftrags; Änderungen im
 zählen nicht zur Auslastung. (b) Mit der Freigabe einfrieren.
 **Empfehlung (a)**.
 
-## Folgen bei Entscheidung wie empfohlen (Vorschau, nicht beschlossen)
+## Folgen (beschlossen)
 
 - Migration 112: `production_work_centers` (Arbeitsplätze),
   `production_operation_templates` (Vorlagen), `production_order_operations`

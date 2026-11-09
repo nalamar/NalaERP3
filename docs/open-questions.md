@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-09 — H.2 Arbeitsgänge und Kapazitäten (offen)
+## 2026-11-09 — H.2 Arbeitsgänge und Kapazitäten (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog H.2, ADR 0037 (Entwurf, Ist-Stand und Optionen dort).
 Kurz: Die Stückliste gibt es seit H.1 (Kopie aus Logikal bei der
@@ -336,32 +336,34 @@ Arbeitstage, aber keine Sollstunden.
 1. **Umfang**: (a) Arbeitsgänge je Auftrag mit Planzeit und grober
    Auslastung je Arbeitsplatz und Woche, Überlast als Hinweis; (b) nur
    Abhakliste ohne Zeiten; (c) Feinplanung je Maschine und Stunde.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 2. **Stücklisten**: (a) keine eigene, die Fertigungsstückliste aus H.1
    gilt; (b) eigene mehrstufige Stücklisten als Stammdaten. Empfehlung:
-   **(a)**, (b) erst bei Fertigung ohne Logikal. Status: **offen**.
+   **(a)**, (b) erst bei Fertigung ohne Logikal. Status: **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 3. **Planzeiten**: (a) Arbeitsgangvorlagen je Mandant (Arbeitsplatz,
    Rüstzeit, Minuten je Stück), am Auftrag vorgeschlagen und änderbar;
    (b) aus Logikal importieren; (c) aus der Angebotskalkulation (geht
    nicht, kein Bezug). Empfehlung: **(a)**, (b) später. Dazu die Frage:
    **Pflegt der Betrieb Arbeitszeiten in Logikal?** Wenn ja, wäre eine
    Logikal-Exportdatei mit Zeiten (ohne Echtdaten) hilfreich. Status:
-   **offen**.
+   **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 4. **Kapazität**: (a) Arbeitsplätze als Stammdaten mit Stunden je
    Arbeitstag, abzüglich Feiertage und Betriebsruhe; (b) aus den
    Mitarbeitern (fehlen Sollstunden und Zuordnung). Empfehlung: **(a)**.
-   Status: **offen**.
+   Status: **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 5. **Planung**: (a) je Arbeitsgang eine Woche, vorbelegt rückwärts vom
    Liefertermin, von Hand änderbar, Überlast und "nach Liefertermin" als
    Hinweis; (b) je Arbeitsgang ein Tag; (c) keine Planung je Arbeitsgang.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 6. **Änderbarkeit**: (a) Arbeitsgänge bleiben bis fertig/storniert
    änderbar (Planung, nicht Teil der Kopie), protokolliert; (b) mit der
-   Freigabe einfrieren. Empfehlung: **(a)**. Status: **offen**.
+   Freigabe einfrieren. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-09, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 
 Zusatzfrage (für H.3, blockiert H.2 nicht): **Nutzt der Betrieb Logikal
 MES** oder plant es? Dann gehört die Rückmeldung je Arbeitsgang dorthin,
-nicht ins ERP.
+nicht ins ERP. Status: **unbekannt** ("fortsetzen"); wird in H.3
+entschieden. Ebenso Frage 3, Arbeitszeiten in Logikal: unbekannt, Import
+später.
 
 ## 2026-11-07 — H.5.5 Belegnummern je Mandant (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
