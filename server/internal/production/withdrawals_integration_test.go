@@ -3,6 +3,7 @@ package production
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/google/uuid"
@@ -219,6 +220,148 @@ func TestWithdrawals(t *testing.T) {
 	}
 	if booked != 4 || cancelled != 3 {
 		t.Fatalf("Protokoll: %d gebucht, %d storniert", booked, cancelled)
+	}
+}
+
+// "fertig" gibt aktive Reservierungen frei, verbrauchte bleiben; der
+// Hinweis nicht_entnommen nur bei "in Arbeit" mit offener Menge, in
+// Liste und Einzelansicht gleich (Backlog H.3.2b).
+func TestFinishReleasesReservations(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	svc := NewService(env.PG)
+	p := seedPosition(t, env)
+	seedMaterials(t, env, p.variant)
+	seedSalesOrder(t, env, p, "open")
+	// Artikel 1,5 Stk je Stueck, Profil 2,4608 m je Stueck.
+	artMat, wh := seedStock(t, env, p.company, "Stk", 10)
+	profMat := addMaterial(t, env, p.company, "m", wh, 20)
+	for table, m := range map[string]string{"single_elevation_articles": artMat, "single_elevation_profiles": profMat} {
+		if _, err := env.PG.Exec(ctx, `UPDATE `+table+` SET material_id=$2 WHERE single_elevation_id=$1`, p.variant, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reservations := func(o *Order) map[string]string {
+		t.Helper()
+		rows, err := env.PG.Query(ctx, `SELECT i.art, r.status FROM production_order_items i JOIN stock_reservations r ON r.id = i.stock_reservation_id
+			WHERE i.order_id=$1`, o.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		out := map[string]string{}
+		for rows.Next() {
+			var art, st string
+			if err := rows.Scan(&art, &st); err != nil {
+				t.Fatal(err)
+			}
+			out[art] = st
+		}
+		return out
+	}
+	hints := func(o *Order) []string {
+		t.Helper()
+		got, err := svc.Get(ctx, o.ID, p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		list, err := svc.List(ctx, p.company, OrderFilter{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, x := range list {
+			if x.ID == o.ID && !slices.Equal(x.Hinweise, got.Hinweise) {
+				t.Fatalf("%s: Liste %v, Einzelansicht %v", o.Nummer, x.Hinweise, got.Hinweise)
+			}
+		}
+		return got.Hinweise
+	}
+	withdraw := func(o *Order, art string, menge float64) {
+		t.Helper()
+		g, err := svc.Get(ctx, o.ID, p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Withdraw(ctx, o.ID, WithdrawalInput{ItemID: itemOf(t, g, art).ID.String(), WarehouseID: wh, Menge: menge}, "", p.company); err != nil {
+			t.Fatal(err)
+		}
+	}
+	release := func(n int, lager string) *Order {
+		t.Helper()
+		o, err := svc.Create(ctx, OrderInput{ProjectID: p.project, ElevationID: p.elevation, SingleElevationID: p.variant, Stueckzahl: n}, "", p.company)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o, err = svc.Release(ctx, o.ID, lager, "", p.company); err != nil {
+			t.Fatal(err)
+		}
+		return o
+	}
+
+	o := release(2, wh)
+	// Freigegeben: noch kein Hinweis, auch wenn nichts entnommen ist.
+	if h := hints(o); slices.Contains(h, HintNichtEntnommen) {
+		t.Fatalf("freigegeben: %v", h)
+	}
+	// Negativfall: fertig erst nach "in Arbeit" - nichts freigegeben.
+	if _, err := svc.Finish(ctx, o.ID, "", p.company); err == nil {
+		t.Fatal("fertig aus freigegeben")
+	}
+	if r := reservations(o); r[ArtArtikel] != "aktiv" || r[ArtProfil] != "aktiv" {
+		t.Fatalf("nach abgelehntem fertig: %v", r)
+	}
+	if _, err := svc.Start(ctx, o.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	if h := hints(o); !slices.Equal(h, []string{HintNichtEntnommen}) {
+		t.Fatalf("in Arbeit: %v", h)
+	}
+	// Artikel ganz, Profil teilweise entnommen: Hinweis bleibt.
+	withdraw(o, ArtArtikel, 3)
+	withdraw(o, ArtProfil, 1)
+	if h := hints(o); !slices.Equal(h, []string{HintNichtEntnommen}) {
+		t.Fatalf("teilweise entnommen: %v", h)
+	}
+	if r := reservations(o); r[ArtArtikel] != "verbraucht" || r[ArtProfil] != "aktiv" {
+		t.Fatalf("vor fertig: %v", r)
+	}
+	f, err := svc.Finish(ctx, o.ID, "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := reservations(o); r[ArtArtikel] != "verbraucht" || r[ArtProfil] != "freigegeben" {
+		t.Fatalf("nach fertig: %v", r)
+	}
+	if prof := itemOf(t, f, ArtProfil); len(f.Hinweise) != 0 || prof.Offen != nil || !near(prof.Entnommen, 1) {
+		t.Fatalf("fertig: %v offen %v entnommen %v", f.Hinweise, deref(prof.Offen), deref(prof.Entnommen))
+	}
+	var released int
+	if err := env.PG.QueryRow(ctx, `SELECT count(*) FROM stock_reservations r JOIN production_order_items i ON i.stock_reservation_id = r.id
+		WHERE i.order_id=$1 AND r.released_at IS NOT NULL`, o.ID).Scan(&released); err != nil {
+		t.Fatal(err)
+	}
+	if released != 2 {
+		t.Fatalf("released_at gesetzt: %d", released)
+	}
+
+	// Alles entnommen: in Arbeit ohne Hinweis.
+	o2 := release(1, wh)
+	if _, err := svc.Start(ctx, o2.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	withdraw(o2, ArtArtikel, 1.5)
+	withdraw(o2, ArtProfil, 2.4608)
+	if h := hints(o2); len(h) != 0 {
+		t.Fatalf("alles entnommen: %v", h)
+	}
+
+	// Ohne Reservierungslager: offene Menge trotzdem, Hinweis bei "in Arbeit".
+	o3 := release(1, "")
+	if _, err := svc.Start(ctx, o3.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	if h := hints(o3); !slices.Equal(h, []string{HintNichtEntnommen}) {
+		t.Fatalf("ohne Lager: %v", h)
 	}
 }
 

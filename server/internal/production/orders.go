@@ -482,12 +482,16 @@ func (s *Service) Start(ctx context.Context, id uuid.UUID, actorUserID, companyI
 	return s.step(ctx, id, AktionBeginnen, `begonnen_at=now(), begonnen_by_user_id=$3`, actorUserID, companyID)
 }
 
-// Finish: in Arbeit -> fertig.
+// Finish: in Arbeit -> fertig. Aktive Reservierungen der Stueckliste
+// werden freigegeben (ADR 0038 Frage 3); vorher zeigt der Hinweis
+// HintNichtEntnommen offene Zeilen, eine Sperre gibt es nicht.
 func (s *Service) Finish(ctx context.Context, id uuid.UUID, actorUserID, companyID string) (*Order, error) {
-	return s.step(ctx, id, AktionFertigmelden, `fertig_at=now(), fertig_by_user_id=$3`, actorUserID, companyID)
+	return s.step(ctx, id, AktionFertigmelden, `fertig_at=now(), fertig_by_user_id=$3`, actorUserID, companyID,
+		releaseItemReservations)
 }
 
-func (s *Service) step(ctx context.Context, id uuid.UUID, aktion, set, actorUserID, companyID string) (*Order, error) {
+func (s *Service) step(ctx context.Context, id uuid.UUID, aktion, set, actorUserID, companyID string,
+	after ...func(ctx context.Context, tx pgx.Tx, id uuid.UUID, companyID string) error) (*Order, error) {
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -505,10 +509,35 @@ func (s *Service) step(ctx context.Context, id uuid.UUID, aktion, set, actorUser
 		id, next, nullableUserID(actorUserID)); err != nil {
 		return nil, err
 	}
+	for _, f := range after {
+		if err := f(ctx, tx, id, companyID); err != nil {
+			return nil, err
+		}
+	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return s.Get(ctx, id, companyID)
+}
+
+// releaseItemReservations gibt die aktiven Reservierungen der Stueckliste
+// frei (Storno und Fertigmelden); verbrauchte bleiben verbraucht.
+func releaseItemReservations(ctx context.Context, tx pgx.Tx, id uuid.UUID, companyID string) error {
+	rows, err := tx.Query(ctx, `SELECT stock_reservation_id FROM production_order_items
+		WHERE order_id=$1 AND stock_reservation_id IS NOT NULL`, id)
+	if err != nil {
+		return err
+	}
+	reservierungen, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return err
+	}
+	for _, rid := range reservierungen {
+		if _, err := materials.ReleaseReservationTx(ctx, tx, companyID, rid); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Cancel storniert mit Begruendung - aus jedem Status vor "fertig". Der
@@ -536,19 +565,8 @@ func (s *Service) Cancel(ctx context.Context, id uuid.UUID, reason, actorUserID,
 		 WHERE id=$1`, id, next, r, nullableUserID(actorUserID)); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT stock_reservation_id FROM production_order_items
-		WHERE order_id=$1 AND stock_reservation_id IS NOT NULL`, id)
-	if err != nil {
+	if err := releaseItemReservations(ctx, tx, id, companyID); err != nil {
 		return nil, err
-	}
-	reservierungen, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, err
-	}
-	for _, rid := range reservierungen {
-		if _, err := materials.ReleaseReservationTx(ctx, tx, companyID, rid); err != nil {
-			return nil, err
-		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
@@ -690,7 +708,7 @@ func withdrawalFigures(x *Order, it *Item, entnommen float64) {
 // Fehlmengen der Stuecklisten (H.5.4b).
 func decorate(ctx context.Context, q querier, orders []*Order, companyID string) error {
 	var active []*Order
-	var projects, variants, elevations, reserving []uuid.UUID
+	var projects, variants, elevations, withdrawing []uuid.UUID
 	byID := make(map[uuid.UUID]*Order)
 	for _, x := range orders {
 		x.Hinweise = make([]string, 0)
@@ -704,8 +722,8 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 			variants = append(variants, *x.SingleElevationID)
 			elevations = append(elevations, *x.ElevationID)
 		}
-		if (x.Status == StatusFreigegeben || x.Status == StatusInArbeit) && x.ReservierungLagerID != nil {
-			reserving = append(reserving, x.ID)
+		if WithdrawalAllowed(x.Status) == nil {
+			withdrawing = append(withdrawing, x.ID)
 		}
 	}
 	if len(active) == 0 {
@@ -763,15 +781,18 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 		return err
 	}
 
-	// Fehlmenge nur bei "freigegeben" und "in Arbeit" mit Lager; gleiche
-	// Regel wie die Stueckliste der Einzelansicht (reservationFigures).
+	// Fehlmenge nur bei "freigegeben" und "in Arbeit" mit Lager, offene
+	// Entnahme nur bei "in Arbeit" (vor dem Fertigmelden, H.3.2b); gleiche
+	// Regeln wie die Stueckliste der Einzelansicht (reservationFigures,
+	// withdrawalFigures).
 	shortfall := make(map[uuid.UUID]bool)
+	notWithdrawn := make(map[uuid.UUID]bool)
 	rows, err = q.Query(ctx, `SELECT i.order_id, i.art, i.unit, i.length_mm::float8, i.menge_je_stueck::float8,
 		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0), `+itemWithdrawnSQL+`
 		  FROM production_order_items i
 		  LEFT JOIN materials m ON m.id = i.material_id
 		  LEFT JOIN stock_reservations r ON r.id = i.stock_reservation_id AND r.status = 'aktiv'
-		 WHERE i.order_id = ANY($1::uuid[]) AND i.material_id IS NOT NULL`, reserving)
+		 WHERE i.order_id = ANY($1::uuid[]) AND i.material_id IS NOT NULL`, withdrawing)
 	if err != nil {
 		return err
 	}
@@ -788,6 +809,10 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 		reservationFigures(x, &it, reserviert, entnommen)
 		if it.Fehlmenge != nil && *it.Fehlmenge > 0 {
 			shortfall[id] = true
+		}
+		withdrawalFigures(x, &it, entnommen)
+		if x.Status == StatusInArbeit && it.Offen != nil && *it.Offen > 0 {
+			notWithdrawn[id] = true
 		}
 	}
 	rows.Close()
@@ -826,6 +851,9 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 	for _, x := range active {
 		if shortfall[x.ID] {
 			x.Hinweise = append(x.Hinweise, HintFehlmenge)
+		}
+		if notWithdrawn[x.ID] {
+			x.Hinweise = append(x.Hinweise, HintNichtEntnommen)
 		}
 	}
 	return nil

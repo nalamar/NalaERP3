@@ -213,7 +213,7 @@ func TestOrderListShortfallHint(t *testing.T) {
 
 	want := map[uuid.UUID][]string{
 		voll.ID:   {},
-		knapp.ID:  {HintFehlmenge},
+		knapp.ID:  {HintFehlmenge, HintNichtEntnommen}, // in Arbeit, nichts entnommen (H.3.2b)
 		ohne.ID:   {},
 		fertig.ID: {},
 		storno.ID: {},

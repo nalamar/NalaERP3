@@ -398,18 +398,6 @@ func TestReleaseReservesFromWarehouse(t *testing.T) {
 	if aktiv, _ := count(o2.Nummer); aktiv != 1 {
 		t.Fatalf("Reservierungen 2: %d", aktiv)
 	}
-	// "fertig" laesst die Reservierungen stehen, ohne Fehlmengen-Hinweis.
-	if _, err := svc.Start(ctx, o2.ID, "", p.company); err != nil {
-		t.Fatal(err)
-	}
-	f2, err := svc.Finish(ctx, o2.ID, "", p.company)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if aktiv, _ := count(o2.Nummer); aktiv != 1 || slices.Contains(f2.Hinweise, HintFehlmenge) {
-		t.Fatalf("nach fertig: %d %v", aktiv, f2.Hinweise)
-	}
-
 	// Im Lager freigegeben (nicht ueber den Auftrag): zaehlt nicht mehr
 	// als reserviert, der Bedarf ist Fehlmenge.
 	var rid string
@@ -424,6 +412,18 @@ func TestReleaseReservesFromWarehouse(t *testing.T) {
 	}
 	if g2, _ := svc.Get(ctx, o2.ID, p.company); !near(itemOf(t, g2, ArtProfil).Reserviert, 0) || !near(itemOf(t, g2, ArtProfil).Fehlmenge, 2.4608) {
 		t.Fatalf("Profil nach Freigabe im Lager: %+v", itemOf(t, g2, ArtProfil))
+	}
+	// "fertig" ohne Fehlmengen-Hinweis; Freigabe der Reservierungen beim
+	// Fertigmelden: TestFinishReleasesReservations (H.3.2b).
+	if _, err := svc.Start(ctx, o2.ID, "", p.company); err != nil {
+		t.Fatal(err)
+	}
+	f2, err := svc.Finish(ctx, o2.ID, "", p.company)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aktiv, _ := count(o2.Nummer); aktiv != 0 || slices.Contains(f2.Hinweise, HintFehlmenge) {
+		t.Fatalf("nach fertig: %d %v", aktiv, f2.Hinweise)
 	}
 
 	// Storno gibt frei; danach ist der Artikel fuer einen neuen Auftrag da.

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.3.2a** erledigt: Service der Entnahme (entnehmen, stornieren,
+> **2026-11-09 H.3.2b** erledigt: "fertig" gibt aktive Reservierungen
+> der Stückliste frei, Hinweis `nicht_entnommen` bei "in Arbeit" mit
+> offener Menge. Nächste: **H.3.2c** Routen der Entnahme. Nächste freie
+> Migration: 114, nächstes ADR: 0039.
+> Davor **2026-11-09 H.3.2a** erledigt: Service der Entnahme (entnehmen, stornieren,
 > Liste), Entnommen/Offen an der Zeile, Fehlmenge ohne Entnommenes. Nächste:
 > **H.3.2b** "fertig" gibt Reservierungen frei, Hinweis `nicht_entnommen`.
 > Nächste freie Migration: 114, nächstes ADR: 0039.
