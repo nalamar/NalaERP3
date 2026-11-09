@@ -92,10 +92,17 @@ type Item struct {
 	MaterialEinheit string  `json:"material_einheit"`
 	// Nur mit Reservierungslager und passender Einheit (ReservationQty),
 	// nicht bei stornierten Auftraegen: Bedarf in der Einheit des
-	// Materials, davon aktiv reserviert, Rest als Fehlmenge.
+	// Materials, davon aktiv reserviert, Rest nach Abzug des Entnommenen
+	// als Fehlmenge.
 	Bedarf     *float64 `json:"bedarf"`
 	Reserviert *float64 `json:"reserviert"`
 	Fehlmenge  *float64 `json:"fehlmenge"`
+	// Entnahmen (H.3.2a): entnommen ohne Stornos in der Einheit des
+	// Materials (mit Material); offen = Bedarf minus entnommen, nur mit
+	// umrechenbarem Bedarf und solange entnommen werden kann.
+	ID        uuid.UUID `json:"id"`
+	Entnommen *float64  `json:"entnommen"`
+	Offen     *float64  `json:"offen"`
 }
 
 // OrderFilter: ohne Angaben alle nicht stornierten Auftraege des Mandanten.
@@ -615,7 +622,7 @@ func (s *Service) List(ctx context.Context, companyID string, f OrderFilter) ([]
 func (s *Service) items(ctx context.Context, x *Order) ([]Item, error) {
 	rows, err := s.pg.Query(ctx, `SELECT i.pos, i.art, i.supplier_code, i.article_code, i.description, i.configuration,
 		i.length_mm::float8, i.width_mm::float8, i.height_mm::float8, i.area_m2::float8, i.menge_je_stueck::float8, i.unit,
-		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0)
+		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0), i.id, `+itemWithdrawnSQL+`
 		  FROM production_order_items i
 		  LEFT JOIN materials m ON m.id = i.material_id
 		  LEFT JOIN stock_reservations r ON r.id = i.stock_reservation_id AND r.status = 'aktiv'
@@ -627,29 +634,52 @@ func (s *Service) items(ctx context.Context, x *Order) ([]Item, error) {
 	out := make([]Item, 0)
 	for rows.Next() {
 		var it Item
-		var reserviert float64
+		var reserviert, entnommen float64
 		if err := rows.Scan(&it.Pos, &it.Art, &it.SupplierCode, &it.ArticleCode, &it.Description, &it.Configuration,
 			&it.LengthMM, &it.WidthMM, &it.HeightMM, &it.AreaM2, &it.MengeJeStueck, &it.Unit,
-			&it.MaterialID, &it.MaterialEinheit, &reserviert); err != nil {
+			&it.MaterialID, &it.MaterialEinheit, &reserviert, &it.ID, &entnommen); err != nil {
 			return nil, err
 		}
 		it.MengeGesamt = it.MengeJeStueck * float64(x.Stueckzahl)
-		reservationFigures(x, &it, reserviert)
+		reservationFigures(x, &it, reserviert, entnommen)
+		withdrawalFigures(x, &it, entnommen)
 		out = append(out, it)
 	}
 	return out, rows.Err()
 }
 
+// itemWithdrawnSQL: Summe der nicht stornierten Entnahmen der Zeile i.
+const itemWithdrawnSQL = `COALESCE((SELECT SUM(w.menge) FROM production_order_withdrawals w
+		 WHERE w.item_id = i.id AND w.storniert_at IS NULL), 0)::float8`
+
 // reservationFigures setzt Bedarf, aktiv Reserviertes und Fehlmenge einer
 // Zeile - nur mit Reservierungslager und passender Einheit, nicht bei
-// stornierten Auftraegen. MengeGesamt muss gesetzt sein.
-func reservationFigures(x *Order, it *Item, reserviert float64) {
+// stornierten Auftraegen. Entnommenes fehlt nicht mehr: eine Entnahme
+// verringert die Reservierung (H.3.2a). MengeGesamt muss gesetzt sein.
+func reservationFigures(x *Order, it *Item, reserviert, entnommen float64) {
 	if x.ReservierungLagerID == nil || it.MaterialID == nil || x.Status == StatusStorniert {
 		return
 	}
 	if bedarf, ok := ReservationQty(it.Art, it.Unit, it.MaterialEinheit, it.LengthMM, it.MengeGesamt); ok {
-		fehl := Shortfall(bedarf, reserviert)
+		fehl := Shortfall(bedarf, reserviert+entnommen)
 		it.Bedarf, it.Reserviert, it.Fehlmenge = &bedarf, &reserviert, &fehl
+	}
+}
+
+// withdrawalFigures setzt Entnommen (jede Zeile mit Material) und Offen
+// (nur mit umrechenbarem Bedarf, solange entnommen werden kann).
+func withdrawalFigures(x *Order, it *Item, entnommen float64) {
+	if it.MaterialID == nil {
+		return
+	}
+	e := round6(entnommen)
+	it.Entnommen = &e
+	if WithdrawalAllowed(x.Status) != nil {
+		return
+	}
+	bedarf, known := ReservationQty(it.Art, it.Unit, it.MaterialEinheit, it.LengthMM, it.MengeGesamt)
+	if offen, ok := OpenQty(bedarf, known, e); ok {
+		it.Offen = &offen
 	}
 }
 
@@ -737,7 +767,7 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 	// Regel wie die Stueckliste der Einzelansicht (reservationFigures).
 	shortfall := make(map[uuid.UUID]bool)
 	rows, err = q.Query(ctx, `SELECT i.order_id, i.art, i.unit, i.length_mm::float8, i.menge_je_stueck::float8,
-		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0)
+		i.material_id, COALESCE(m.einheit,''), COALESCE(r.qty::float8, 0), `+itemWithdrawnSQL+`
 		  FROM production_order_items i
 		  LEFT JOIN materials m ON m.id = i.material_id
 		  LEFT JOIN stock_reservations r ON r.id = i.stock_reservation_id AND r.status = 'aktiv'
@@ -748,14 +778,14 @@ func decorate(ctx context.Context, q querier, orders []*Order, companyID string)
 	for rows.Next() {
 		var id uuid.UUID
 		var it Item
-		var reserviert float64
-		if err := rows.Scan(&id, &it.Art, &it.Unit, &it.LengthMM, &it.MengeJeStueck, &it.MaterialID, &it.MaterialEinheit, &reserviert); err != nil {
+		var reserviert, entnommen float64
+		if err := rows.Scan(&id, &it.Art, &it.Unit, &it.LengthMM, &it.MengeJeStueck, &it.MaterialID, &it.MaterialEinheit, &reserviert, &entnommen); err != nil {
 			rows.Close()
 			return err
 		}
 		x := byID[id]
 		it.MengeGesamt = it.MengeJeStueck * float64(x.Stueckzahl)
-		reservationFigures(x, &it, reserviert)
+		reservationFigures(x, &it, reserviert, entnommen)
 		if it.Fehlmenge != nil && *it.Fehlmenge > 0 {
 			shortfall[id] = true
 		}

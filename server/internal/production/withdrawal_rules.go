@@ -19,8 +19,10 @@ const (
 	// Grund der Lagerbewegungen; Referenz ist die Auftragsnummer.
 	EntnahmeGrund       = "Entnahme Fertigungsauftrag"
 	EntnahmeStornoGrund = "Storno Entnahme Fertigungsauftrag"
-	// Bewegungsart der Lagerbewegung (stock_movements.movement_type).
-	EntnahmeBewegung = "out"
+	// Bewegungsart der Lagerbewegung (stock_movements.movement_type):
+	// Abgang, die Gegenbuchung des Stornos ist ein Zugang.
+	EntnahmeBewegung       = "out"
+	EntnahmeStornoBewegung = "in"
 
 	// Hinweise - keine Sperren.
 	HintMehrentnahme   = "mehrentnahme"
