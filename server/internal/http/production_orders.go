@@ -207,5 +207,6 @@ func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
 		})
 
 		mountProductionOperationRoutes(r, svc)
+		mountProductionWithdrawalRoutes(r, svc)
 	})
 }

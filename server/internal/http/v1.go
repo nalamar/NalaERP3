@@ -5124,7 +5124,8 @@ func classifyDomainError(err error) (int, string) {
 	}
 	msg := strings.ToLower(strings.TrimSpace(err.Error()))
 	switch {
-	case strings.Contains(msg, "nicht gefunden"):
+	case strings.Contains(msg, "nicht gefunden"),
+		strings.Contains(msg, "zeile nicht im fertigungsauftrag"):
 		return http.StatusNotFound, "not_found"
 	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"),
 		strings.Contains(msg, "weicht vom gebuchten"),
@@ -5163,7 +5164,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "arbeitsplatz ist deaktiviert"),
 		strings.Contains(msg, "arbeitsgänge nicht änderbar"),
 		strings.Contains(msg, "bereits arbeitsgänge"),
-		strings.Contains(msg, "keine aktiven arbeitsgangvorlagen"):
+		strings.Contains(msg, "keine aktiven arbeitsgangvorlagen"),
+		strings.Contains(msg, "entnahme nur bei"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5245,7 +5247,13 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nur bei kraftstoff"),
 		strings.Contains(msg, "ist zu groß"),
 		strings.Contains(msg, "nicht im projekt"),
-		strings.Contains(msg, "nicht an der position"):
+		strings.Contains(msg, "nicht an der position"),
+		strings.Contains(msg, "hat kein lagermaterial"),
+		strings.Contains(msg, "passt nicht zur zeile"),
+		strings.Contains(msg, "notiz ist zu lang"),
+		strings.Contains(msg, "bitte eine zeile der stückliste"),
+		strings.Contains(msg, "bitte ein lager angeben"),
+		strings.Contains(msg, "entnahme nur mit begründung"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-09 H.3.2b** erledigt: "fertig" gibt aktive Reservierungen
+> **2026-11-10 H.3.2c** erledigt: Routen der Entnahme
+> (`/production/orders/{id}/withdrawals`, Storno), Fehlertexte als 4xx;
+> damit H.3.2 fertig. Nächste: **H.3.3** Kommissionierliste (PDF).
+> Nächste freie Migration: 114, nächstes ADR: 0039.
+> Davor **2026-11-09 H.3.2b** erledigt: "fertig" gibt aktive Reservierungen
 > der Stückliste frei, Hinweis `nicht_entnommen` bei "in Arbeit" mit
 > offener Menge. Nächste: **H.3.2c** Routen der Entnahme. Nächste freie
 > Migration: 114, nächstes ADR: 0039.
