@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-10 H.3.2c** erledigt: Routen der Entnahme
+> **2026-11-10 H.3.3a** erledigt: Daten der Kommissionierliste (offene
+> Zeilen, Lager und Plätze, ohne Preise). Nächste: **H.3.3b** PDF und
+> Route. Nächste freie Migration: 114, nächstes ADR: 0039.
+> Davor **2026-11-10 H.3.2c** erledigt: Routen der Entnahme
 > (`/production/orders/{id}/withdrawals`, Storno), Fehlertexte als 4xx;
 > damit H.3.2 fertig. Nächste: **H.3.3** Kommissionierliste (PDF).
 > Nächste freie Migration: 114, nächstes ADR: 0039.
