@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"nalaerp3/internal/production"
+	"nalaerp3/internal/settings"
 )
 
 // HTTP-Anbindung der Fertigungsauftraege (ADR 0034, Backlog H.1.3). Lesen
@@ -48,7 +49,7 @@ func productionOrderFilterFromQuery(w http.ResponseWriter, req *http.Request) (p
 		IncludeStorniert: q.Get("include_storniert") == "true"}, true
 }
 
-func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
+func mountProductionOrderRoutes(protected chi.Router, svc *production.Service, brandingSvc *settings.BrandingService) {
 	read := requirePermission(permProductionRead)
 	write := requirePermission(permProductionWrite)
 
@@ -208,5 +209,6 @@ func mountProductionOrderRoutes(protected chi.Router, svc *production.Service) {
 
 		mountProductionOperationRoutes(r, svc)
 		mountProductionWithdrawalRoutes(r, svc)
+		mountProductionPickListRoute(r, svc, brandingSvc)
 	})
 }

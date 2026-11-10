@@ -1782,7 +1782,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	mountFleetTripRoutes(protected, fleet.NewTripService(pg), timeEntrySvc)
 	mountFleetCostRoutes(protected, fleet.NewCostService(pg))
 	productionSvc := production.NewService(pg)
-	mountProductionOrderRoutes(protected, productionSvc)
+	mountProductionOrderRoutes(protected, productionSvc, brandingSvc)
 	mountProductionMasterDataRoutes(protected, productionSvc)
 	mountSupplierCertificateRoutes(protected, purchasing.NewCertificateService(pg, mg, cfg.MongoDB))
 	mountPurchaseOrderPaperRoutes(protected, purchasing.NewPaperService(pg, mg, cfg.MongoDB))
@@ -5165,7 +5165,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "arbeitsgänge nicht änderbar"),
 		strings.Contains(msg, "bereits arbeitsgänge"),
 		strings.Contains(msg, "keine aktiven arbeitsgangvorlagen"),
-		strings.Contains(msg, "entnahme nur bei"):
+		strings.Contains(msg, "entnahme nur bei"),
+		strings.Contains(msg, "kommissionierliste nur bei"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),

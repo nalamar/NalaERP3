@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-10 H.3.3a** erledigt: Daten der Kommissionierliste (offene
+> **2026-11-10 H.3.3b** erledigt: Kommissionierliste als PDF
+> (`GET /production/orders/{id}/kommissionierliste.pdf`); damit H.3.3 fertig.
+> Nächste: **H.3.4** Entnahme im Client. Nächste freie Migration: 114,
+> nächstes ADR: 0039.
+> Davor **2026-11-10 H.3.3a** erledigt: Daten der Kommissionierliste (offene
 > Zeilen, Lager und Plätze, ohne Preise). Nächste: **H.3.3b** PDF und
 > Route. Nächste freie Migration: 114, nächstes ADR: 0039.
 > Davor **2026-11-10 H.3.2c** erledigt: Routen der Entnahme

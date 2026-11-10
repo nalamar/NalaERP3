@@ -111,12 +111,13 @@ func FormatPickPlaces(places []stockPlace, einheit string, max int) []string {
 		if p.platz != "" {
 			where += " / " + p.platz
 		}
-		out = append(out, strings.TrimSpace(where+": "+formatQty(p.qty)+" "+einheit))
+		out = append(out, strings.TrimSpace(where+": "+FormatQty(p.qty)+" "+einheit))
 	}
 	return out
 }
 
-func formatQty(v float64) string {
+// FormatQty: Menge mit hoechstens drei Nachkommastellen und Komma.
+func FormatQty(v float64) string {
 	s := strings.TrimRight(strings.TrimRight(fmt.Sprintf("%.3f", round6(v)), "0"), ".")
 	return strings.Replace(s, ".", ",", 1)
 }
