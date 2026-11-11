@@ -5166,7 +5166,11 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bereits arbeitsgänge"),
 		strings.Contains(msg, "keine aktiven arbeitsgangvorlagen"),
 		strings.Contains(msg, "entnahme nur bei"),
-		strings.Contains(msg, "kommissionierliste nur bei"):
+		strings.Contains(msg, "kommissionierliste nur bei"),
+		strings.Contains(msg, "rückmeldung nur bei"),
+		strings.Contains(msg, "bereits erledigt gemeldet"),
+		strings.Contains(msg, "nicht erledigt gemeldet"),
+		strings.Contains(msg, "mit rückmeldung kann nicht entfernt"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5254,7 +5258,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "notiz ist zu lang"),
 		strings.Contains(msg, "bitte eine zeile der stückliste"),
 		strings.Contains(msg, "bitte ein lager angeben"),
-		strings.Contains(msg, "entnahme nur mit begründung"):
+		strings.Contains(msg, "entnahme nur mit begründung"),
+		strings.Contains(msg, "rückmeldung nur mit begründung"),
+		strings.Contains(msg, "begründung ist zu lang"):
 		return http.StatusBadRequest, "validation_error"
 	default:
 		return http.StatusInternalServerError, "internal_error"
