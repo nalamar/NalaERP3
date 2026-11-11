@@ -3,6 +3,7 @@ import '../api.dart';
 import 'assets_page.dart' show isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
 import 'production_operations_section.dart';
+import 'production_withdrawals_section.dart';
 
 // Fertigungsaufträge im Client (ADR 0034, Backlog H.1.4a, Routen H.1.3):
 // Liste nach Liefertermin und Detail mit Hinweisen, Fertigungsstückliste
@@ -11,7 +12,8 @@ import 'production_operations_section.dart';
 // Variante im Projekt (H.1.4b). Bei der Freigabe optional ein Lager für die
 // Reservierung (mit warehouses.read), je Zeile Bedarf, reserviert und
 // Fehlmenge (H.1.5c). Je Zeile entnommen und offen, Kommissionierliste als
-// PDF bei freigegebenen und begonnenen Aufträgen (H.3.4a).
+// PDF bei freigegebenen und begonnenen Aufträgen (H.3.4a); Abschnitt
+// "Entnahmen" ab der Freigabe (H.3.4b).
 
 const productionStatusLabels = {
   'entwurf': 'Entwurf',
@@ -691,6 +693,12 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
             const Text('Fertigungsstückliste', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             _itemsSection(o),
+            // Entnahmen erst nach der Freigabe (H.3.4b).
+            if (o['freigegeben_at'] != null) ...[
+              const SizedBox(height: 16),
+              ProductionWithdrawalsSection(
+                  key: ValueKey('wd-${widget.orderId}-$status'), api: widget.api, order: o, warehouses: warehouses, onChanged: _load),
+            ],
           ],
         ],
       ),

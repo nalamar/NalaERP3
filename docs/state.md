@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-11 H.3.4a** erledigt: Client zeigt je Zeile entnommen und offen,
+> **2026-11-11 H.3.4b** erledigt: Abschnitt „Entnahmen“ im Detail (Dialog
+> mit Vorbelegung, Liste, Storno); damit H.3.4 und die Entnahme fertig.
+> Nächste: **H.3.5** Rückmeldung je Arbeitsgang (Migration 114). Nächste
+> freie Migration: 114, nächstes ADR: 0039.
+> Davor **2026-11-11 H.3.4a** erledigt: Client zeigt je Zeile entnommen und offen,
 > Hinweis `nicht_entnommen` mit Text, Knopf „Kommissionierliste“ (PDF), API-
 > Helfer der Entnahme. Nächste: **H.3.4b** Abschnitt „Entnahmen“ (Dialog,
 > Liste, Storno). Nächste freie Migration: 114, nächstes ADR: 0039.

@@ -141,6 +141,16 @@ class _FakeApi extends ApiClient {
   @override
   Future<List<dynamic>> listProductionOperations(String orderId) async => const [];
 
+  // Entnahmen (H.3.4b) prüft production_withdrawals_test.dart.
+  @override
+  Future<List<dynamic>> listProductionWithdrawals(String orderId) async => const [];
+
+  @override
+  Future<Map<String, dynamic>> createProductionWithdrawal(String orderId, Map<String, dynamic> body) async {
+    calls.add('withdraw $orderId ${jsonEncode(body)}');
+    return {'id': 'w1', 'hinweise': <String>[]};
+  }
+
   @override
   Future<List<dynamic>> listWarehouses() async {
     calls.add('warehouses');
@@ -491,12 +501,33 @@ void main() {
     expect(find.text('entnommen 4 Stk · offen 2 Stk'), findsOneWidget);
     expect(find.text('entnommen 9,843 m · alles entnommen'), findsOneWidget);
     expect(find.textContaining('entnommen '), findsNWidgets(2));
+    // Abschnitt "Entnahmen" ab der Freigabe (H.3.4b).
+    expect(find.text('Noch keine Entnahmen.'), findsOneWidget);
     // Nur lesen: keine Statusschritte, aber die Kommissionierliste.
     expect(find.byType(FilledButton), findsNothing);
     expect(find.text('Stornieren'), findsNothing);
     await tester.tap(find.text('Kommissionierliste'));
     await tester.pumpAndSettle();
     expect(api.calls, contains('picklist o1 Kommissionierliste_FA-2026-0001.pdf'));
+  });
+
+  testWidgets('Detail: nach einer Entnahme wird der Auftrag neu geladen', (tester) async {
+    await _desktop(tester);
+    final items = [
+      {..._items[0], 'id': 'i1', 'material_id': 'm1', 'material_einheit': 'Stk', 'entnommen': 4, 'offen': 2},
+    ];
+    final api = _FakeApi(
+        permissions: const {'production.read', 'production.write'},
+        order: {..._order(status: 'in_arbeit', items: items), 'reservierung_lager_id': 'wh1'});
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    expect(api.calls.where((c) => c == 'get o1'), hasLength(1));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Entnehmen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Entnehmen'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('withdraw o1 {"item_id":"i1","warehouse_id":"wh1","menge":2.0,"notiz":""}'));
+    expect(api.calls.where((c) => c == 'get o1'), hasLength(2));
   });
 
   testWidgets('Kommissionierliste: Fehler als Meldung, nicht im Entwurf und nach fertig', (tester) async {
@@ -534,6 +565,7 @@ void main() {
     await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
     await tester.pumpAndSettle();
     expect(find.text('FA-2026-0001 · Pos. 3 Fenster (links)'), findsOneWidget);
+    expect(find.text('Entnahmen'), findsNothing);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
   });
