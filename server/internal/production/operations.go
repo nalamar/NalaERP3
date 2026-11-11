@@ -24,6 +24,8 @@ var (
 	errNoTemplates       = errors.New("Keine aktiven Arbeitsgangvorlagen vorhanden")
 )
 
+var errOperationHasFeedback = errors.New("Arbeitsgang mit Rückmeldung kann nicht entfernt werden")
+
 const auditEntityOrder = "production_order"
 
 type Operation struct {
@@ -39,14 +41,23 @@ type Operation struct {
 	// Planzeit fuer den ganzen Auftrag (PlannedMinutes).
 	PlanMinuten float64  `json:"plan_minuten"`
 	Hinweise    []string `json:"hinweise"`
+	// Gueltige Rueckmeldung "erledigt" (ADR 0038 Frage 5 (a), H.3.5b):
+	// Zeitpunkt, Ist-Zeit ohne Personenbezug und Notiz; ohne Rueckmeldung
+	// erledigt=false.
+	Erledigt          bool       `json:"erledigt"`
+	ErledigtAt        *time.Time `json:"erledigt_at"`
+	IstMinuten        *float64   `json:"ist_minuten"`
+	RueckmeldungNotiz string     `json:"rueckmeldung_notiz"`
 }
 
 const operationColumns = `op.id, op.pos, op.name, op.work_center_id, w.name, op.template_id,
-	op.ruestzeit_min::float8, op.minuten_je_stueck::float8, op.geplante_woche`
+	op.ruestzeit_min::float8, op.minuten_je_stueck::float8, op.geplante_woche,
+	f.gemeldet_at, f.ist_minuten::float8, COALESCE(f.notiz, '')`
 
 const operationFrom = `
 	  FROM production_order_operations op
-	  JOIN production_work_centers w ON w.id = op.work_center_id`
+	  JOIN production_work_centers w ON w.id = op.work_center_id
+	  LEFT JOIN production_operation_feedback f ON f.operation_id = op.id AND f.zurueckgenommen_at IS NULL`
 
 // finish rechnet Planzeit und Hinweise aus den Angaben des Auftrags.
 func (x *Operation) finish(stueckzahl int, liefertermin *time.Time) {
@@ -60,9 +71,10 @@ func (x *Operation) finish(stueckzahl int, liefertermin *time.Time) {
 func scanOperation(row pgx.Row) (*Operation, error) {
 	var x Operation
 	if err := row.Scan(&x.ID, &x.Pos, &x.Name, &x.WorkCenterID, &x.WorkCenterName, &x.TemplateID,
-		&x.RuestzeitMin, &x.MinutenJeStueck, &x.GeplanteWoche); err != nil {
+		&x.RuestzeitMin, &x.MinutenJeStueck, &x.GeplanteWoche, &x.ErledigtAt, &x.IstMinuten, &x.RueckmeldungNotiz); err != nil {
 		return nil, err
 	}
+	x.Erledigt = x.ErledigtAt != nil
 	return &x, nil
 }
 
@@ -304,6 +316,15 @@ func (s *Service) RemoveOperation(ctx context.Context, orderID, opID uuid.UUID, 
 	before, err := getOperation(ctx, tx, orderID, opID, o)
 	if err != nil {
 		return err
+	}
+	// Rueckmeldungen (auch zurueckgenommene) halten den Arbeitsgang fest
+	// (Migration 114, RESTRICT) - mit Meldung statt Datenbankfehler.
+	var hasFeedback bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM production_operation_feedback WHERE operation_id=$1)`, opID).Scan(&hasFeedback); err != nil {
+		return err
+	}
+	if hasFeedback {
+		return errOperationHasFeedback
 	}
 	if _, err := tx.Exec(ctx, `DELETE FROM production_order_operations WHERE id=$1 AND order_id=$2`, opID, orderID); err != nil {
 		return err

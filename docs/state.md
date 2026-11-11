@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-11 H.3.5a** erledigt: Migration 114 (Rückmeldungen je Arbeitsgang
+> **2026-11-11 H.3.5b** erledigt: Service der Rückmeldung (melden,
+> zurücknehmen, Arbeitsgang mit erledigt/Ist-Minuten, Entfernen gesperrt).
+> Nächste: **H.3.5c** Auslastung ohne erledigte, Soll/Ist je Auftrag.
+> Nächste freie Migration: 115, nächstes ADR: 0039.
+> Davor **2026-11-11 H.3.5a** erledigt: Migration 114 (Rückmeldungen je Arbeitsgang
 > als eigene Datensätze, Ist-Minuten ohne Personenbezug) und Regeln.
 > Nächste: **H.3.5b** Service der Rückmeldung, Auslastung ohne erledigte.
 > Nächste freie Migration: 115, nächstes ADR: 0039.
