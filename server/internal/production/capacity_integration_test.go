@@ -46,15 +46,17 @@ func TestCapacity(t *testing.T) {
 		}
 		return o.ID
 	}
-	op := func(orderID, wcID uuid.UUID, ruest, jeStueck float64, woche string) {
+	op := func(orderID, wcID uuid.UUID, ruest, jeStueck float64, woche string) uuid.UUID {
 		t.Helper()
 		var w *time.Time
 		if woche != "" {
 			w = dayPtr(woche)
 		}
-		if _, err := svc.AddOperation(ctx, orderID, OperationInput{Name: "x", WorkCenterID: wcID, RuestzeitMin: ruest, MinutenJeStueck: jeStueck, GeplanteWoche: w}, "", p.company); err != nil {
+		x, err := svc.AddOperation(ctx, orderID, OperationInput{Name: "x", WorkCenterID: wcID, RuestzeitMin: ruest, MinutenJeStueck: jeStueck, GeplanteWoche: w}, "", p.company)
+		if err != nil {
 			t.Fatal(err)
 		}
+		return x.ID
 	}
 	o1, o2, o3, o4 := order(4), order(1), order(1), order(1)
 	op(o1, a, 0, 600, "2026-12-02")  // 2400 = genau voll (5 x 480)
@@ -64,6 +66,14 @@ func TestCapacity(t *testing.T) {
 	op(o1, b, 0, 10, "2026-12-21")   // 40 auf B, B wird deaktiviert
 	op(o3, a, 9999, 0, "2026-11-30") // fertig: zaehlt nicht
 	op(o4, a, 9999, 0, "2026-11-30") // storniert: zaehlt nicht
+	// Rueckmeldungen per Direkt-SQL (H.3.5c): erledigte zaehlen nicht,
+	// zurueckgenommene weiter.
+	done, doneU, reverted := op(o2, a, 0, 500, "2026-12-07"), op(o2, a, 7, 0, ""), op(o2, a, 0, 50, "2026-12-14")
+	for _, id := range []uuid.UUID{done, doneU} {
+		exec(`INSERT INTO production_operation_feedback (id, company_id, operation_id) VALUES ($1,$2,$3)`, uuid.New(), p.company, id)
+	}
+	exec(`INSERT INTO production_operation_feedback (id, company_id, operation_id, zurueckgenommen_at, ruecknahme_reason)
+		VALUES ($1,$2,$3,now(),'versehentlich')`, uuid.New(), p.company, reverted)
 	off := false
 	for id, name := range map[uuid.UUID]string{b: "B Montage", c: "C leer"} {
 		if _, err := svc.UpdateWorkCenter(ctx, id, WorkCenterInput{Name: name, StundenJeTag: map[uuid.UUID]float64{b: 7.5, c: 8}[id]}, &off, p.company); err != nil {
@@ -127,7 +137,7 @@ func TestCapacity(t *testing.T) {
 		{"2026-11-23", 5, 2400, 0, ""},
 		{"2026-11-30", 5, 2400, 2400, ""},
 		{"2026-12-07", 5, 2400, 0, ""},
-		{"2026-12-14", 5, 2400, 0, ""},
+		{"2026-12-14", 5, 2400, 50, ""},
 		{"2026-12-21", 3, 1440, 430, ""},
 	})
 	check(capa, b, false, 0, []cell{

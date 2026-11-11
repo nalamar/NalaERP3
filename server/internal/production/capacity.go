@@ -15,6 +15,8 @@ import (
 // Feiertage (Bundesland des Mandanten) und Betriebsruhe; geplant = Summe
 // der Planzeiten der Arbeitsgaenge nicht fertiger, nicht stornierter
 // Auftraege in dieser Woche. Ueberlast ist ein Hinweis, keine Sperre.
+// Erledigt gemeldete Arbeitsgaenge (gueltige Rueckmeldung, H.3.5c) zaehlen
+// weder geplant noch ungeplant.
 
 const (
 	// MaxCapacityWeeks begrenzt den Zeitraum einer Abfrage.
@@ -112,7 +114,9 @@ func (s *Service) Capacity(ctx context.Context, von, bis time.Time, companyID st
 		  FROM production_order_operations op
 		  JOIN production_orders o ON o.id = op.order_id
 		 WHERE o.company_id=$1 AND o.status NOT IN ('fertig', 'storniert')
-		   AND (op.geplante_woche IS NULL OR op.geplante_woche BETWEEN $2 AND $3)`,
+		   AND (op.geplante_woche IS NULL OR op.geplante_woche BETWEEN $2 AND $3)
+		   AND NOT EXISTS (SELECT 1 FROM production_operation_feedback f
+		                    WHERE f.operation_id = op.id AND f.zurueckgenommen_at IS NULL)`,
 		companyID, weeks[0], weeks[len(weeks)-1])
 	if err != nil {
 		return nil, err

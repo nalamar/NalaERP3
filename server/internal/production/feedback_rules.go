@@ -73,3 +73,40 @@ func ValidateFeedbackRevertReason(reason string) (string, error) {
 	}
 	return reason, nil
 }
+
+// SollIst: Plan- und Ist-Zeit eines Auftrags aus seinen Arbeitsgaengen
+// (H.3.5c). Verglichen wird nur ueber erledigte Arbeitsgaenge mit
+// Ist-Zeit (SollMitIstMin gegen IstMin), damit fehlende Ist-Zeiten den
+// Vergleich nicht verzerren.
+type SollIst struct {
+	Arbeitsgaenge   int     `json:"arbeitsgaenge"`
+	Erledigt        int     `json:"erledigt"`
+	SollMin         float64 `json:"soll_min"`
+	SollErledigtMin float64 `json:"soll_erledigt_min"`
+	MitIst          int     `json:"mit_ist"`
+	SollMitIstMin   float64 `json:"soll_mit_ist_min"`
+	IstMin          float64 `json:"ist_min"`
+}
+
+// SummarizeSollIst summiert die Arbeitsgaenge; Minuten auf zwei Stellen.
+func SummarizeSollIst(ops []Operation) SollIst {
+	var s SollIst
+	for _, op := range ops {
+		s.Arbeitsgaenge++
+		s.SollMin += op.PlanMinuten
+		if !op.Erledigt {
+			continue
+		}
+		s.Erledigt++
+		s.SollErledigtMin += op.PlanMinuten
+		if op.IstMinuten != nil {
+			s.MitIst++
+			s.SollMitIstMin += op.PlanMinuten
+			s.IstMin += *op.IstMinuten
+		}
+	}
+	for _, p := range []*float64{&s.SollMin, &s.SollErledigtMin, &s.SollMitIstMin, &s.IstMin} {
+		*p = math.Round(*p*100) / 100
+	}
+	return s
+}

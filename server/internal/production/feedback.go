@@ -76,6 +76,17 @@ func (s *Service) ReportOperationDone(ctx context.Context, orderID, opID uuid.UU
 	return after, nil
 }
 
+// OrderSollIst: Soll/Ist-Uebersicht der Arbeitsgaenge des Auftrags
+// (H.3.5c), in jedem Status.
+func (s *Service) OrderSollIst(ctx context.Context, orderID uuid.UUID, companyID string) (*SollIst, error) {
+	ops, err := s.ListOperations(ctx, orderID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	x := SummarizeSollIst(ops)
+	return &x, nil
+}
+
 // RevertOperationDone nimmt die gueltige Rueckmeldung mit Begruendung
 // zurueck; danach kann neu gemeldet werden.
 func (s *Service) RevertOperationDone(ctx context.Context, orderID, opID uuid.UUID, reason, actorUserID, companyID string) (*Operation, error) {

@@ -65,3 +65,21 @@ func TestValidateFeedbackRevertReason(t *testing.T) {
 		}
 	}
 }
+
+func TestSummarizeSollIst(t *testing.T) {
+	if got := SummarizeSollIst(nil); got != (SollIst{}) {
+		t.Fatalf("ohne Arbeitsgaenge: %+v", got)
+	}
+	a, b := 0.1, 0.2 // ueber Variablen, sonst rechnet Go exakt
+	ops := []Operation{
+		{PlanMinuten: 100, Erledigt: true, IstMinuten: fPtr(a)},
+		{PlanMinuten: 50.5, Erledigt: true, IstMinuten: fPtr(b)},
+		{PlanMinuten: 30, Erledigt: true},        // ohne Ist-Zeit
+		{PlanMinuten: 20, IstMinuten: fPtr(999)}, // nicht erledigt: Ist zaehlt nicht
+		{PlanMinuten: 0.1, Erledigt: false},
+	}
+	want := SollIst{Arbeitsgaenge: 5, Erledigt: 3, SollMin: 200.6, SollErledigtMin: 180.5, MitIst: 2, SollMitIstMin: 150.5, IstMin: 0.3}
+	if got := SummarizeSollIst(ops); got != want {
+		t.Fatalf("Soll/Ist: %+v, erwartet %+v", got, want)
+	}
+}

@@ -135,6 +135,16 @@ func TestOperationFeedback(t *testing.T) {
 		t.Fatalf("entfernen ohne Rueckmeldung: %v", err)
 	}
 
+	// Soll/Ist: je 30 + 10 x 4 = 70 Soll; op1 95,46 Ist, op2 40 Ist.
+	si, err := svc.OrderSollIst(ctx, order.ID, p.company)
+	want := SollIst{Arbeitsgaenge: 2, Erledigt: 2, SollMin: 140, SollErledigtMin: 140, MitIst: 2, SollMitIstMin: 140, IstMin: 135.46}
+	if err != nil || *si != want {
+		t.Fatalf("Soll/Ist: %+v %v", si, err)
+	}
+	if _, err := svc.OrderSollIst(ctx, order.ID, other.company); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Soll/Ist anderer Mandant: %v", err)
+	}
+
 	var done, reverted int
 	if err := env.PG.QueryRow(ctx, `SELECT count(*) FILTER (WHERE action='operation_done'), count(*) FILTER (WHERE action='operation_done_reverted')
 		FROM entity_change_log WHERE entity_type='production_order' AND entity_id=$1`, order.ID.String()).Scan(&done, &reverted); err != nil || done != 3 || reverted != 1 {
