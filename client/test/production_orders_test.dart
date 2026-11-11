@@ -78,7 +78,8 @@ class _FakeApi extends ApiClient {
       this.failStep,
       this.failCreate,
       this.warehouses = const [],
-      this.failWarehouses = false})
+      this.failWarehouses = false,
+      this.failPickList})
       : super(baseUrl: 'http://localhost:8080');
 
   final Set<String> permissions;
@@ -88,6 +89,7 @@ class _FakeApi extends ApiClient {
   final String? failCreate;
   final List<dynamic> warehouses;
   final bool failWarehouses;
+  final String? failPickList;
   final List<String> calls = [];
   String? listScope;
 
@@ -151,6 +153,12 @@ class _FakeApi extends ApiClient {
     calls.add('update $id ${jsonEncode(body)}');
     order = {...order, ...body};
     return order;
+  }
+
+  @override
+  Future<void> downloadProductionPickListPdf(String orderId, {String? filename}) async {
+    calls.add('picklist $orderId $filename');
+    if (failPickList != null) throw ApiException(statusCode: 409, message: failPickList!);
   }
 
   @override
@@ -451,6 +459,67 @@ void main() {
     expect(find.textContaining('Bedarf'), findsNWidgets(2));
   });
 
+  test('Entnahme je Zeile und Status', () {
+    expect(productionWithdrawalLine({'entnommen': 4, 'offen': 2, 'material_einheit': 'Stk'}), 'entnommen 4 Stk · offen 2 Stk');
+    expect(productionWithdrawalLine({'entnommen': 9.8432, 'offen': 0, 'material_einheit': 'm'}), 'entnommen 9,843 m · alles entnommen');
+    // Ohne umrechenbaren Bedarf oder nach "fertig": nur entnommen.
+    expect(productionWithdrawalLine({'entnommen': 0, 'offen': null, 'material_einheit': ''}), 'entnommen 0');
+    // Ohne Lagermaterial keine Zeile.
+    expect(productionWithdrawalLine({'entnommen': null, 'offen': null}), isNull);
+    expect(productionWithdrawalLine(<String, dynamic>{}), isNull);
+    for (final s in ['freigegeben', 'in_arbeit']) {
+      expect(productionCanWithdraw(s), isTrue, reason: s);
+    }
+    for (final s in ['entwurf', 'fertig', 'storniert', null, 'x']) {
+      expect(productionCanWithdraw(s), isFalse, reason: '$s');
+    }
+    expect(productionHintLabels['nicht_entnommen'], 'Material noch nicht vollständig entnommen');
+  });
+
+  testWidgets('Detail: entnommen, offen und Kommissionierliste nur lesend', (tester) async {
+    await _desktop(tester);
+    final items = [
+      {..._items[0], 'material_id': 'm1', 'material_einheit': 'Stk', 'entnommen': 4, 'offen': 2},
+      {..._items[1], 'entnommen': null, 'offen': null},
+      {..._items[2], 'material_id': 'm3', 'material_einheit': 'm', 'entnommen': 9.8432, 'offen': 0},
+    ];
+    final api = _FakeApi(
+        permissions: const {'production.read'}, order: _order(status: 'in_arbeit', hinweise: ['nicht_entnommen'], items: items));
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Material noch nicht vollständig entnommen'), findsOneWidget);
+    expect(find.text('entnommen 4 Stk · offen 2 Stk'), findsOneWidget);
+    expect(find.text('entnommen 9,843 m · alles entnommen'), findsOneWidget);
+    expect(find.textContaining('entnommen '), findsNWidgets(2));
+    // Nur lesen: keine Statusschritte, aber die Kommissionierliste.
+    expect(find.byType(FilledButton), findsNothing);
+    expect(find.text('Stornieren'), findsNothing);
+    await tester.tap(find.text('Kommissionierliste'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('picklist o1 Kommissionierliste_FA-2026-0001.pdf'));
+  });
+
+  testWidgets('Kommissionierliste: Fehler als Meldung, nicht im Entwurf und nach fertig', (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(
+        permissions: const {'production.read', 'production.write'},
+        order: _order(status: 'freigegeben', items: const []),
+        failPickList: 'Kommissionierliste nur bei freigegebenen oder begonnenen Aufträgen');
+    await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: api, orderId: 'o1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Beginnen'), findsOneWidget);
+    await tester.tap(find.text('Kommissionierliste'));
+    await tester.pumpAndSettle();
+    expect(find.text('Fehler: Kommissionierliste nur bei freigegebenen oder begonnenen Aufträgen'), findsOneWidget);
+
+    for (final s in ['entwurf', 'fertig', 'storniert']) {
+      final other = _FakeApi(permissions: const {'production.read', 'production.write'}, order: _order(status: s, items: const []));
+      await tester.pumpWidget(_wrap(ProductionOrderDetailPage(api: other, orderId: 'o1'), key: ValueKey(s)));
+      await tester.pumpAndSettle();
+      expect(find.text('Kommissionierliste'), findsNothing, reason: s);
+    }
+  });
+
   testWidgets('Detail: freigegeben ohne Material', (tester) async {
     await _desktop(tester);
     final api = _FakeApi(permissions: const {'production.read'}, order: _order(status: 'freigegeben', items: const []));
@@ -700,6 +769,28 @@ void main() {
       expect(calls[7].body, '{"reason":"x"}');
     });
 
+    test('Entnahmen und Kommissionierliste: Pfade und Bodies', () async {
+      final list = await mock([
+        {'id': 'w1'}
+      ], () => api.listProductionWithdrawals('o1'));
+      final w = await mock({
+        'id': 'w2',
+        'hinweise': ['mehrentnahme']
+      }, () => api.createProductionWithdrawal('o1', {'item_id': 'i1', 'warehouse_id': 'wh1', 'menge': 2.5}), status: 201);
+      await mock({'id': 'w2'}, () => api.stornoProductionWithdrawal('o1', 'w2', 'falsch gebucht'));
+      await mock({}, () => api.downloadProductionPickListPdf('o1', filename: 'Kommissionierliste_FA-1.pdf'));
+      expect(calls.map((c) => '${c.method} ${c.url.path}'), [
+        'GET /api/v1/production/orders/o1/withdrawals',
+        'POST /api/v1/production/orders/o1/withdrawals',
+        'POST /api/v1/production/orders/o1/withdrawals/w2/storno',
+        'GET /api/v1/production/orders/o1/kommissionierliste.pdf',
+      ]);
+      expect(list, hasLength(1));
+      expect(w['hinweise'], ['mehrentnahme']);
+      expect(calls[1].body, '{"item_id":"i1","warehouse_id":"wh1","menge":2.5}');
+      expect(calls[2].body, '{"reason":"falsch gebucht"}');
+    });
+
     test('Fehler als ApiException', () async {
       // Anlegen erwartet 201; 200 ist ein Fehler.
       await expectLater(mock({'id': 'o1'}, () => api.createProductionOrder({})), throwsA(isA<ApiException>()));
@@ -715,6 +806,20 @@ void main() {
         }, () => api.listProductionOrders(), status: 403),
         throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 403)),
       );
+      // Entnehmen erwartet 201, Kommissionierliste lehnt der Server im
+      // Entwurf mit 409 ab.
+      await expectLater(mock({'id': 'w1'}, () => api.createProductionWithdrawal('o1', {})), throwsA(isA<ApiException>()));
+      await expectLater(
+        mock({
+          'error': {'code': 'conflict', 'message': 'Kommissionierliste nur bei freigegebenen oder begonnenen Aufträgen'}
+        }, () => api.downloadProductionPickListPdf('o1'), status: 409),
+        throwsA(isA<ApiException>().having((e) => e.statusCode, 'status', 409)),
+      );
+      await expectLater(
+          mock({
+            'error': {'code': 'conflict', 'message': 'Entnahme ist bereits storniert'}
+          }, () => api.stornoProductionWithdrawal('o1', 'w1', 'x'), status: 409),
+          throwsA(isA<ApiException>()));
       for (final call in [
         () => api.getProductionOrder('o1'),
         () => api.updateProductionOrderDraft('o1', {}),

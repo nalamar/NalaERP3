@@ -10,7 +10,8 @@ import 'production_operations_section.dart';
 // freigeben, Status und Storno mit production.write. Angelegt wird an der
 // Variante im Projekt (H.1.4b). Bei der Freigabe optional ein Lager für die
 // Reservierung (mit warehouses.read), je Zeile Bedarf, reserviert und
-// Fehlmenge (H.1.5c).
+// Fehlmenge (H.1.5c). Je Zeile entnommen und offen, Kommissionierliste als
+// PDF bei freigegebenen und begonnenen Aufträgen (H.3.4a).
 
 const productionStatusLabels = {
   'entwurf': 'Entwurf',
@@ -26,6 +27,7 @@ const productionHintLabels = {
   'position_entfernt': 'Position oder Variante nicht mehr im Projekt',
   'position_geaendert': 'Position nach der Freigabe geändert',
   'fehlmenge': 'Nicht alles Material im Lager verfügbar (Fehlmenge)',
+  'nicht_entnommen': 'Material noch nicht vollständig entnommen',
 };
 
 const productionAusfuehrungsklassen = ['EXC1', 'EXC2', 'EXC3', 'EXC4'];
@@ -115,6 +117,24 @@ String? productionReservationLine(Map<String, dynamic> it) {
 }
 
 bool productionItemHasShortfall(Map<String, dynamic> it) => it['fehlmenge'] is num && (it['fehlmenge'] as num) > 0;
+
+// Entnahme und Kommissionierliste nur bei freigegebenen und begonnenen
+// Aufträgen (H.3.2, H.3.3).
+bool productionCanWithdraw(String? status) => status == 'freigegeben' || status == 'in_arbeit';
+
+// productionWithdrawalLine: "entnommen 4 Stk · offen 2 Stk" in der Einheit
+// des Lagermaterials (H.3.2a); null ohne Lagermaterial. Offen nur, solange
+// entnommen werden kann und der Bedarf umrechenbar ist.
+String? productionWithdrawalLine(Map<String, dynamic> it) {
+  if (it['entnommen'] is! num) return null;
+  final unit = it['material_einheit']?.toString() ?? '';
+  String q(num v) => '${formatQty(v)}${unit.isEmpty ? '' : ' $unit'}';
+  final offen = it['offen'];
+  return [
+    'entnommen ${q(it['entnommen'] as num)}',
+    if (offen is num) offen > 0 ? 'offen ${q(offen)}' : 'alles entnommen',
+  ].join(' · ');
+}
 
 // productionWarehouseLabel: "HL – Halle" aus der Lagerliste, sonst die ID.
 String productionWarehouseLabel(String id, List<dynamic> warehouses) {
@@ -559,6 +579,21 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
     await _run(() => widget.api.stornoProductionOrder(widget.orderId, reason), 'Auftrag storniert');
   }
 
+  // Kommissionierliste als PDF herunterladen (production.read).
+  Future<void> _pickList() async {
+    setState(() => busy = true);
+    try {
+      await widget.api
+          .downloadProductionPickListPdf(widget.orderId, filename: 'Kommissionierliste_${order?['nummer'] ?? widget.orderId}.pdf');
+    } on ApiException catch (e) {
+      _snack('Fehler: ${e.message}');
+    } catch (e) {
+      _snack('Fehler: $e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Widget _itemsSection(Map<String, dynamic> o) {
     final items = ((o['items'] as List?) ?? const []).cast<Map<String, dynamic>>();
     if (o['freigegeben_at'] == null) {
@@ -583,6 +618,11 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
                     line,
                     style: TextStyle(fontSize: 12, color: productionItemHasShortfall(it) ? Colors.orange.shade900 : Colors.black54),
                   ),
+                ),
+              if (productionWithdrawalLine(it) case final line?)
+                Padding(
+                  padding: const EdgeInsets.only(left: 12, bottom: 2),
+                  child: Text(line, style: const TextStyle(fontSize: 12, color: Colors.black54)),
                 ),
             ],
           ],
@@ -627,12 +667,21 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
               ),
             const SizedBox(height: 8),
             Text(productionStatusHistory(o).join(' · '), style: const TextStyle(color: Colors.black54)),
-            if (_canWrite) ...[
+            if (_canWrite || productionCanWithdraw(status)) ...[
               const SizedBox(height: 12),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                if (next != null) FilledButton(onPressed: busy ? null : () => _step(next.aktion, next.label), child: Text(next.label)),
-                if (status == 'entwurf') OutlinedButton(onPressed: busy ? null : _editDialog, child: const Text('Entwurf ändern')),
-                if (productionCanStorno(status)) OutlinedButton(onPressed: busy ? null : _stornoDialog, child: const Text('Stornieren')),
+                if (_canWrite && next != null)
+                  FilledButton(onPressed: busy ? null : () => _step(next.aktion, next.label), child: Text(next.label)),
+                if (_canWrite && status == 'entwurf')
+                  OutlinedButton(onPressed: busy ? null : _editDialog, child: const Text('Entwurf ändern')),
+                if (_canWrite && productionCanStorno(status))
+                  OutlinedButton(onPressed: busy ? null : _stornoDialog, child: const Text('Stornieren')),
+                if (productionCanWithdraw(status))
+                  OutlinedButton.icon(
+                    onPressed: busy ? null : _pickList,
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Kommissionierliste'),
+                  ),
               ]),
             ],
             const SizedBox(height: 16),

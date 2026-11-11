@@ -3175,6 +3175,29 @@ class ApiClient {
         if (bis != null) 'bis': bis,
       });
 
+  // Entnahmen je Fertigungsauftrag (H.3.2c): Liste neueste zuerst mit
+  // Stornos (production.read). Entnehmen (production.write): item_id oder
+  // material_id, warehouse_id, optional location_id, menge, notiz; Antwort
+  // mit "hinweise" (z. B. mehrentnahme). Storno nur mit Begruendung.
+  Future<List<dynamic>> listProductionWithdrawals(String orderId) => _getList('/api/v1/production/orders/$orderId/withdrawals', null);
+
+  Future<Map<String, dynamic>> createProductionWithdrawal(String orderId, Map<String, dynamic> body) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/withdrawals', body, 201);
+
+  Future<Map<String, dynamic>> stornoProductionWithdrawal(String orderId, String withdrawalId, String reason) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/withdrawals/$withdrawalId/storno', {'reason': reason}, 200);
+
+  // Kommissionierliste als PDF (H.3.3b, production.read), nur bei
+  // freigegebenen und begonnenen Auftraegen.
+  Future<void> downloadProductionPickListPdf(String orderId, {String? filename}) async {
+    final r = await _getBytesResponse('/api/v1/production/orders/$orderId/kommissionierliste.pdf');
+    browser.downloadBytes(
+      r.bodyBytes,
+      filename: filename ?? 'Kommissionierliste_$orderId.pdf',
+      contentType: r.headers['content-type'] ?? 'application/pdf',
+    );
+  }
+
   Future<Map<String, dynamic>> _sendProductionJson(String method, String path, Map<String, dynamic> body, int expected) async {
     final r = await _sendWithAuth(
       (headers) {
