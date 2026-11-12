@@ -78,6 +78,37 @@ String? sollIstLine(Map<String, dynamic>? s) {
   ].join(' · ');
 }
 
+// feedbackAllowed: melden und zuruecknehmen nur bei begonnenen Auftraegen
+// (wie im Server, H.3.5a).
+bool feedbackAllowed(String? status) => status == 'in_arbeit';
+
+// buildFeedbackBody prueft die Eingaben der Rueckmeldung wie der Server
+// oder liefert eine Meldung. Leere Ist-Zeit = ohne Ist-Zeit.
+({Map<String, dynamic>? body, String? error}) buildFeedbackBody(
+    {String ist = '', String notiz = ''}) {
+  final body = <String, dynamic>{'notiz': notiz.trim()};
+  if (ist.trim().isNotEmpty) {
+    final v = parseDecimalDe(ist);
+    if (v == null || !v.isFinite || v <= 0 || v > 100000)
+      return (
+        body: null,
+        error: 'Ist-Zeit: Minuten größer als 0, höchstens 100.000.'
+      );
+    body['ist_minuten'] = v;
+  }
+  if (notiz.trim().runes.length > 500)
+    return (body: null, error: 'Notiz: höchstens 500 Zeichen.');
+  return (body: body, error: null);
+}
+
+// feedbackRevertReasonError: Begruendung Pflicht, hoechstens 500 Zeichen.
+String? feedbackRevertReasonError(String reason) {
+  final t = reason.trim();
+  if (t.isEmpty) return 'Bitte eine Begründung angeben.';
+  if (t.runes.length > 500) return 'Begründung: höchstens 500 Zeichen.';
+  return null;
+}
+
 // operationsTotal: Summe der Planzeit.
 num operationsTotal(List<dynamic> ops) => ops.fold<num>(
     0,
@@ -151,6 +182,10 @@ class _ProductionOperationsSectionState
   bool get _canEdit =>
       widget.api.hasPermission('production.write') &&
       operationsEditable(widget.status);
+
+  bool get _canReport =>
+      widget.api.hasPermission('production.write') &&
+      feedbackAllowed(widget.status);
 
   @override
   void initState() {
@@ -350,6 +385,88 @@ class _ProductionOperationsSectionState
         'Arbeitsgang entfernt');
   }
 
+  // _askFeedback zeigt einen Dialog mit Eingabefeldern; check liefert die
+  // Meldung oder null. Ergebnis sind die Texte, bei Abbruch null.
+  Future<List<String>?> _askFeedback(String title, String action,
+      List<InputDecoration> fields, String? Function(List<String>) check) {
+    final ctrls = [for (final _ in fields) TextEditingController()];
+    String? dialogError;
+    return showDialog<List<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setStateDialog) => AlertDialog(
+          title: Text(title),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var i = 0; i < fields.length; i++)
+                  TextField(controller: ctrls[i], decoration: fields[i]),
+                if (dialogError != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Text(dialogError!,
+                        style: const TextStyle(color: Color(0xFFB00020))),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Abbrechen')),
+            FilledButton(
+              onPressed: () {
+                final values = [for (final c in ctrls) c.text];
+                final e = check(values);
+                if (e != null) {
+                  setStateDialog(() => dialogError = e);
+                  return;
+                }
+                Navigator.of(ctx).pop(values);
+              },
+              child: Text(action),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _report(Map<String, dynamic> op) async {
+    final v = await _askFeedback(
+        '„${op['name']}“ erledigt melden',
+        'Erledigt melden',
+        const [
+          InputDecoration(
+              labelText: 'Ist-Zeit (Minuten)',
+              helperText: 'Leer lassen = ohne Ist-Zeit.'),
+          InputDecoration(labelText: 'Notiz'),
+        ],
+        (v) => buildFeedbackBody(ist: v[0], notiz: v[1]).error);
+    if (v == null) return;
+    final body = buildFeedbackBody(ist: v[0], notiz: v[1]).body!;
+    await _write(
+        () => widget.api.reportProductionOperationDone(
+            widget.orderId, op['id'].toString(), body),
+        'Arbeitsgang erledigt gemeldet');
+  }
+
+  Future<void> _revert(Map<String, dynamic> op) async {
+    final v = await _askFeedback(
+        'Rückmeldung zu „${op['name']}“ zurücknehmen',
+        'Zurücknehmen',
+        const [InputDecoration(labelText: 'Begründung')],
+        (v) => feedbackRevertReasonError(v[0]));
+    if (v == null) return;
+    await _write(
+        () => widget.api.revertProductionOperationDone(
+            widget.orderId, op['id'].toString(), v[0].trim()),
+        'Rückmeldung zurückgenommen');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -411,16 +528,31 @@ class _ProductionOperationsSectionState
                     ]),
                 ],
               ),
+              // Melden setzt Aenderbarkeit voraus (in Arbeit, write).
               trailing: _canEdit
                   ? Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(
-                          tooltip: 'Arbeitsgang bearbeiten',
-                          icon: const Icon(Icons.edit),
-                          onPressed: busy ? null : () => _dialog(op: m)),
-                      IconButton(
-                          tooltip: 'Arbeitsgang entfernen',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: busy ? null : () => _delete(m)),
+                      if (_canReport && done == null)
+                        IconButton(
+                            tooltip: 'Erledigt melden',
+                            icon: const Icon(Icons.task_alt),
+                            onPressed: busy ? null : () => _report(m)),
+                      if (_canReport && done != null)
+                        IconButton(
+                            tooltip: 'Rückmeldung zurücknehmen',
+                            icon: const Icon(Icons.undo),
+                            onPressed: busy ? null : () => _revert(m)),
+                      if (_canEdit) ...[
+                        IconButton(
+                            tooltip: 'Arbeitsgang bearbeiten',
+                            icon: const Icon(Icons.edit),
+                            onPressed: busy ? null : () => _dialog(op: m)),
+                        // Mit Rueckmeldung sperrt der Server das Entfernen.
+                        if (done == null)
+                          IconButton(
+                              tooltip: 'Arbeitsgang entfernen',
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: busy ? null : () => _delete(m)),
+                      ],
                     ])
                   : null,
             );

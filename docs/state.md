@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 H.3.5e1** erledigt: Client zeigt erledigte Arbeitsgänge (Haken,
+> **2026-11-12 H.3.5e2** erledigt: Dialoge „Erledigt melden“ und „Zurücknehmen“
+> im Client; damit H.3.5 Rückmeldung je Arbeitsgang fertig.
+> Nächste: **H.3.6** Montage (Migration 115) — zuerst Teilung prüfen.
+> Nächste freie Migration: 115, nächstes ADR: 0039.
+> Davor **2026-11-12 H.3.5e1** erledigt: Client zeigt erledigte Arbeitsgänge (Haken,
 > Datum, Ist-Zeit, Notiz) und die Soll/Ist-Zeile; API-Helfer der Rückmeldung.
 > Nächste: **H.3.5e2** Dialoge „Erledigt melden“ und „Zurücknehmen“.
 > Nächste freie Migration: 115, nächstes ADR: 0039.

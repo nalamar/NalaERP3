@@ -66,6 +66,37 @@ class _FakeApi extends ApiClient {
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
 
+  // Rueckmeldung: setzt erledigt am Arbeitsgang, damit das Neuladen ihn
+  // als erledigt bzw. offen zeigt.
+  void _setDone(String opId, bool done) => ops = [
+        for (final o in ops)
+          (o as Map)['id'] == opId
+              ? {
+                  ...o as Map<String, dynamic>,
+                  'erledigt': done,
+                  'erledigt_at': done ? '2026-11-12T09:30:00Z' : null
+                }
+              : o
+      ];
+
+  @override
+  Future<Map<String, dynamic>> reportProductionOperationDone(
+      String orderId, String opId, Map<String, dynamic> body) async {
+    calls.add('report $orderId $opId ${jsonEncode(body)}');
+    if (fail != null) throw ApiException(statusCode: 409, message: fail!);
+    _setDone(opId, true);
+    return {'id': opId};
+  }
+
+  @override
+  Future<Map<String, dynamic>> revertProductionOperationDone(
+      String orderId, String opId, String reason) async {
+    calls.add('revert $orderId $opId $reason');
+    if (fail != null) throw ApiException(statusCode: 409, message: fail!);
+    _setDone(opId, false);
+    return {'id': opId};
+  }
+
   @override
   Future<List<dynamic>> listProductionOperations(String orderId) async {
     calls.add('list $orderId');
@@ -307,6 +338,132 @@ void main() {
     expect(find.text('Geplant nach dem Liefertermin'), findsOneWidget);
     expect(find.text('Arbeitsgang hinzufügen'), findsNothing);
     expect(find.byTooltip('Arbeitsgang bearbeiten'), findsNothing);
+  });
+
+  test('Rückmeldung: Eingaben prüfen', () {
+    expect(feedbackAllowed('in_arbeit'), isTrue);
+    for (final st in ['entwurf', 'freigegeben', 'fertig', 'storniert', null]) {
+      expect(feedbackAllowed(st), isFalse, reason: '$st');
+    }
+    expect(buildFeedbackBody(ist: ' 95,5 ', notiz: ' Rest morgen ').body,
+        {'notiz': 'Rest morgen', 'ist_minuten': 95.5});
+    expect(buildFeedbackBody().body, {'notiz': ''});
+    expect(buildFeedbackBody(ist: '100000').body!['ist_minuten'], 100000);
+    expect(buildFeedbackBody(notiz: 'ä' * 500).error, isNull);
+    for (final ist in ['0', '-1', '100000,01', 'abc', 'NaN', 'Infinity']) {
+      expect(buildFeedbackBody(ist: ist).error,
+          'Ist-Zeit: Minuten größer als 0, höchstens 100.000.',
+          reason: ist);
+    }
+    expect(buildFeedbackBody(notiz: 'ä' * 501).error,
+        'Notiz: höchstens 500 Zeichen.');
+    expect(feedbackRevertReasonError(' versehentlich '), isNull);
+    expect(feedbackRevertReasonError('x' * 500), isNull);
+    expect(feedbackRevertReasonError('  '), 'Bitte eine Begründung angeben.');
+    expect(feedbackRevertReasonError('x' * 501),
+        'Begründung: höchstens 500 Zeichen.');
+  });
+
+  testWidgets('Erledigt melden mit Prüfung, danach zurücknehmen',
+      (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: _write, ops: [_op('a', 1, 'Sägen')]);
+    await tester.pumpWidget(_wrap(ProductionOperationsSection(
+        api: api, orderId: 'o1', status: 'in_arbeit')));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Rückmeldung zurücknehmen'), findsNothing);
+    expect(find.byTooltip('Arbeitsgang entfernen'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Erledigt melden'));
+    await tester.pumpAndSettle();
+    final fields = find.descendant(
+        of: find.byType(AlertDialog), matching: find.byType(TextField));
+    await tester.enterText(fields.at(0), '0');
+    await tester.tap(find.widgetWithText(FilledButton, 'Erledigt melden'));
+    await tester.pumpAndSettle();
+    expect(find.text('Ist-Zeit: Minuten größer als 0, höchstens 100.000.'),
+        findsOneWidget);
+    expect(api.calls.where((c) => c.startsWith('report')), isEmpty);
+    await tester.enterText(fields.at(0), '95,5');
+    await tester.enterText(fields.at(1), ' Rest morgen ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Erledigt melden'));
+    await tester.pumpAndSettle();
+    expect(api.calls,
+        contains('report o1 a {"notiz":"Rest morgen","ist_minuten":95.5}'));
+    expect(find.text('Arbeitsgang erledigt gemeldet'), findsOneWidget);
+    expect(api.calls.where((c) => c == 'sollist o1'), hasLength(2));
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(find.byTooltip('Erledigt melden'), findsNothing);
+    expect(find.byTooltip('Arbeitsgang entfernen'), findsNothing);
+    ScaffoldMessenger.of(tester.element(find.byType(Scaffold)))
+        .removeCurrentSnackBar();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Rückmeldung zurücknehmen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Zurücknehmen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bitte eine Begründung angeben.'), findsOneWidget);
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(AlertDialog), matching: find.byType(TextField)),
+        ' versehentlich ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Zurücknehmen'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('revert o1 a versehentlich'));
+    expect(find.text('Rückmeldung zurückgenommen'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+    expect(find.byTooltip('Erledigt melden'), findsOneWidget);
+  });
+
+  testWidgets('Melden: Abbrechen ohne Aufruf, Serverfehler als Meldung',
+      (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(
+        permissions: _write,
+        ops: [_op('a', 1, 'Sägen')],
+        fail: 'Rückmeldung nur bei begonnenen Aufträgen möglich');
+    await tester.pumpWidget(_wrap(ProductionOperationsSection(
+        api: api, orderId: 'o1', status: 'in_arbeit')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Erledigt melden'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.calls.where((c) => c.startsWith('report')), isEmpty);
+    await tester.tap(find.byTooltip('Erledigt melden'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Erledigt melden'));
+    await tester.pumpAndSettle();
+    expect(api.calls, contains('report o1 a {"notiz":""}'));
+    expect(
+        find.text('Fehler: Rückmeldung nur bei begonnenen Aufträgen möglich'),
+        findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
+  });
+
+  testWidgets('Melden nur in Arbeit und mit Schreibrecht', (tester) async {
+    await _desktop(tester);
+    final done = {
+      ..._op('a', 1, 'Sägen'),
+      'erledigt': true,
+      'erledigt_at': '2026-11-12T09:30:00Z'
+    };
+    for (final (perms, status) in [
+      (_write, 'freigegeben'),
+      (_write, 'fertig'),
+      (const {'production.read'}, 'in_arbeit'),
+    ]) {
+      final api =
+          _FakeApi(permissions: perms, ops: [_op('b', 2, 'Glas'), done]);
+      await tester.pumpWidget(_wrap(
+          ProductionOperationsSection(api: api, orderId: 'o1', status: status),
+          key: UniqueKey()));
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Erledigt melden'), findsNothing, reason: status);
+      expect(find.byTooltip('Rückmeldung zurücknehmen'), findsNothing,
+          reason: status);
+    }
   });
 
   testWidgets('Fertig: nur lesen auch mit Schreibrecht', (tester) async {
