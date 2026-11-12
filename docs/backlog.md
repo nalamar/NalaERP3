@@ -2022,7 +2022,8 @@
 
 ## Epic I — KI-gestützte Angebotserzeugung aus GAEB (Zielwert des Systems)
 
-- [ ] I.1 Evaluationsset zuerst (Testkorpus + Kennzahlen Trefferquote/Fehlzuordnungsrate) — todo, **muss vor I.3 stehen** (aufgabe.md §4)
+- [ ] I.1 Evaluationsset zuerst (Testkorpus + Kennzahlen Trefferquote/Fehlzuordnungsrate) — wip (gestartet 2026-11-12), **muss vor I.3 stehen** (aufgabe.md §4)
+  - [x] I.1.0 ADR: Bestandsaufnahme, Recherche, Optionen — done (Entwurf, 2026-11-12), siehe `docs/adr/0039-evaluationsset-gaeb-matching.md`, Fragen in `docs/open-questions.md` (Abschnitt 2026-11-12 I.1). Kein Produktivcode. Belegt: keine GAEB-Datei und keine erwarteten Ergebnisse im Repo; `gaeb_xml_subset_parser.go` liest ein eigenes Format ohne Hierarchie, Kurz-/Langtext und Positionsarten; **kein Leistungskatalog** als Zuordnungsziel (vorhanden: Materialien mit Profilserie/RC/U-Wert/Brandschutz aus 068, Preislisten, Textbausteine, frühere Angebotspositionen mit Kalkulation, Logikal-Projekte); Verglasung fehlt als Merkmal. Fund: `quote_text_blocks` ohne `company_id` (Code mandantenübergreifend eindeutig) — eigener Punkt, nicht Teil von I.1. Recherche: Positionsarten in DA XML als Kindelemente des Item, Grund/Wahl über Zuordnungsnummer (Namen in I.2 gegen das Schema prüfen), keine offiziellen Musterdateien gefunden. Fünf Fragen mit Empfehlung (Herkunft des Korpus, Umfang, Zuordnungsziel, Kennzahlen mit Zielwerten, Formate) plus Auskunft GAEB in Logikal. Teilung bei Empfehlung: I.1.1 Format der Erwartung, Katalog, Kennzahlen; I.1.2/I.1.3 synthetische LVs; I.1.4 Auswertung mit Basis-Matchern.
 - [ ] I.2 Echter GAEB-DA-XML-3.x-Parser (Entscheidung Blocker-Frage 3: ersetzt `gaeb_xml_subset_parser.go`) — todo
   - [ ] I.2.1 D81/D83/D86-Einlesen mit voller Hierarchie (Los/Titel/Untertitel), Positionsart, Vorbemerkungen — todo
   - [ ] I.2.2 Migration bestehender GAEB-Import-Tests/-Fixtures auf reales Format — todo

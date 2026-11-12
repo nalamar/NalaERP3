@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 H.3 abgeschlossen**: alle Teilpunkte H.3.0–H.3.6 erledigt (Entnahme,
+> **2026-11-12 I.1.0** erledigt: ADR 0039 (Entwurf) zum Evaluationsset für das
+> GAEB-Matching; fünf Fragen in `open-questions.md` (Abschnitt 2026-11-12 I.1),
+> Antwort ausstehend. Nächste: nach der Antwort **I.1.1** (Format der Erwartung,
+> Katalog, Kennzahlen). Nächste freie Migration: 116, nächstes ADR: 0040.
+> Davor **2026-11-12 H.3 abgeschlossen**: alle Teilpunkte H.3.0–H.3.6 erledigt (Entnahme,
 > Kommissionierliste, Rückmeldung, Montageplanung), ADR 0038 angenommen; H.6 bleibt
 > nicht geplant. Epic H damit bis auf H.6 fertig. Nächste: **Epic I** mit I.1
 > (Evaluationsset) — zuerst Bestandsaufnahme und ADR, Testkorpus nur synthetisch.
