@@ -12,8 +12,8 @@ import (
 // Montagetermine am Fertigungsauftrag (ADR 0038 Frage 6 (a), Backlog
 // H.3.6b): anlegen, aendern, stornieren, Liste je Auftrag. Das Projekt
 // kommt vom Auftrag; Team und Fahrzeug muessen zum Mandanten gehoeren.
-// Jede Aenderung im entity_change_log des Auftrags. Hinweise folgen in
-// H.3.6c.
+// Jede Aenderung im entity_change_log des Auftrags. Hinweise in
+// assembly_hints.go (H.3.6c).
 
 var (
 	ErrAppointmentNotFound    = errors.New("Montagetermin nicht gefunden")
@@ -25,32 +25,37 @@ var (
 )
 
 type Appointment struct {
-	ID           uuid.UUID  `json:"id"`
-	ProjectID    uuid.UUID  `json:"project_id"`
-	OrderID      *uuid.UUID `json:"order_id"`
-	Von          time.Time  `json:"von"`
-	Bis          time.Time  `json:"bis"`
-	TeamID       *uuid.UUID `json:"team_id"`
-	TeamName     string     `json:"team_name"`
-	VehicleID    *uuid.UUID `json:"vehicle_id"`
-	Kennzeichen  string     `json:"kennzeichen"`
-	Baustelle    string     `json:"baustelle"`
-	Notiz        string     `json:"notiz"`
-	StornoReason string     `json:"storno_reason"`
-	StorniertAt  *time.Time `json:"storniert_at"`
-	CreatedAt    time.Time  `json:"created_at"`
-	Hinweise     []string   `json:"hinweise"`
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	OrderID       *uuid.UUID `json:"order_id"`
+	OrderNummer   string     `json:"order_nummer"`
+	ProjectNummer string     `json:"project_nummer"`
+	ProjectName   string     `json:"project_name"`
+	Von           time.Time  `json:"von"`
+	Bis           time.Time  `json:"bis"`
+	TeamID        *uuid.UUID `json:"team_id"`
+	TeamName      string     `json:"team_name"`
+	VehicleID     *uuid.UUID `json:"vehicle_id"`
+	Kennzeichen   string     `json:"kennzeichen"`
+	Baustelle     string     `json:"baustelle"`
+	Notiz         string     `json:"notiz"`
+	StornoReason  string     `json:"storno_reason"`
+	StorniertAt   *time.Time `json:"storniert_at"`
+	CreatedAt     time.Time  `json:"created_at"`
+	Hinweise      []string   `json:"hinweise"`
 }
 
-const appointmentSelect = `SELECT a.id, a.project_id, a.order_id, a.von, a.bis, a.team_id, COALESCE(t.name, ''),
+const appointmentSelect = `SELECT a.id, a.project_id, a.order_id, COALESCE(o.nummer, ''), p.nummer, p.name, a.von, a.bis, a.team_id, COALESCE(t.name, ''),
 	a.vehicle_id, COALESCE(v.kennzeichen, ''), a.baustelle, a.notiz, a.storno_reason, a.storniert_at, a.created_at
 	  FROM production_assembly_appointments a
+	  JOIN projects p ON p.id = a.project_id
+	  LEFT JOIN production_orders o ON o.id = a.order_id
 	  LEFT JOIN hr_teams t ON t.id = a.team_id
 	  LEFT JOIN fleet_vehicles v ON v.id = a.vehicle_id`
 
 func scanAppointment(row pgx.Row) (*Appointment, error) {
 	var x Appointment
-	if err := row.Scan(&x.ID, &x.ProjectID, &x.OrderID, &x.Von, &x.Bis, &x.TeamID, &x.TeamName,
+	if err := row.Scan(&x.ID, &x.ProjectID, &x.OrderID, &x.OrderNummer, &x.ProjectNummer, &x.ProjectName, &x.Von, &x.Bis, &x.TeamID, &x.TeamName,
 		&x.VehicleID, &x.Kennzeichen, &x.Baustelle, &x.Notiz, &x.StornoReason, &x.StorniertAt, &x.CreatedAt); err != nil {
 		return nil, err
 	}
@@ -77,21 +82,40 @@ func (s *Service) ListAppointments(ctx context.Context, orderID uuid.UUID, compa
 	if !exists {
 		return nil, ErrNotFound
 	}
-	rows, err := s.pg.Query(ctx, appointmentSelect+`
-		 WHERE a.order_id=$1 AND a.company_id=$2 ORDER BY a.von, a.created_at, a.id`, orderID, companyID)
+	return s.queryAppointments(ctx, `
+		 WHERE a.order_id=$1 AND a.company_id=$2 ORDER BY a.von, a.created_at, a.id`, companyID, orderID, companyID)
+}
+
+// queryAppointments liest die Termine zu where (mit args, Mandant
+// eingeschlossen) und setzt ihre Hinweise zum heutigen Tag.
+func (s *Service) queryAppointments(ctx context.Context, where, companyID string, args ...any) ([]Appointment, error) {
+	rows, err := s.pg.Query(ctx, appointmentSelect+where, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	out := []Appointment{}
 	for rows.Next() {
 		x, err := scanAppointment(rows)
 		if err != nil {
+			rows.Close()
 			return nil, err
 		}
 		out = append(out, *x)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, fillAssemblyHints(ctx, s.pg, out, companyID, time.Now())
+}
+
+// withHints liefert den Termin nach dem Commit mit seinen Hinweisen.
+func (s *Service) withHints(ctx context.Context, x *Appointment, companyID string) (*Appointment, error) {
+	list := []Appointment{*x}
+	if err := fillAssemblyHints(ctx, s.pg, list, companyID, time.Now()); err != nil {
+		return nil, err
+	}
+	return &list[0], nil
 }
 
 // lockOrderForAssembly sperrt den Auftrag des Mandanten und liefert Status
@@ -181,7 +205,7 @@ func (s *Service) CreateAppointment(ctx context.Context, orderID uuid.UUID, in A
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return after, nil
+	return s.withHints(ctx, after, companyID)
 }
 
 // UpdateAppointment aendert Zeitraum, Team, Fahrzeug, Baustelle und Notiz
@@ -218,7 +242,7 @@ func (s *Service) UpdateAppointment(ctx context.Context, orderID, id uuid.UUID, 
 	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
-	return after, nil
+	return s.withHints(ctx, after, companyID)
 }
 
 // CancelAppointment storniert einen Termin mit Begruendung - auch bei
