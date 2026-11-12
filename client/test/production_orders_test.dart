@@ -146,6 +146,9 @@ class _FakeApi extends ApiClient {
   Future<List<dynamic>> listProductionWithdrawals(String orderId) async => const [];
 
   @override
+  Future<Map<String, dynamic>> getProductionSollIst(String orderId) async => {'arbeitsgaenge': 0, 'erledigt': 0};
+
+  @override
   Future<Map<String, dynamic>> createProductionWithdrawal(String orderId, Map<String, dynamic> body) async {
     calls.add('withdraw $orderId ${jsonEncode(body)}');
     return {'id': 'w1', 'hinweise': <String>[]};

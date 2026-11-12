@@ -34,14 +34,34 @@ final _centers = [
 ];
 
 class _FakeApi extends ApiClient {
-  _FakeApi({required this.permissions, List<dynamic>? ops, this.fail})
+  _FakeApi(
+      {required this.permissions,
+      List<dynamic>? ops,
+      this.fail,
+      this.sollIst,
+      this.sollIstFails = false})
       : ops = ops ?? [],
         super(baseUrl: 'http://localhost:8080');
 
   final Set<String> permissions;
   List<dynamic> ops;
   final String? fail;
+  final Map<String, dynamic>? sollIst;
+  final bool sollIstFails;
   final List<String> calls = [];
+
+  @override
+  Future<Map<String, dynamic>> getProductionSollIst(String orderId) async {
+    calls.add('sollist $orderId');
+    if (sollIstFails) throw ApiException(statusCode: 500, message: 'kaputt');
+    return sollIst ??
+        {
+          'arbeitsgaenge': ops.length,
+          'erledigt': 0,
+          'soll_min': 0,
+          'mit_ist': 0
+        };
+  }
 
   @override
   bool hasPermission(String permission) => permissions.contains(permission);
@@ -145,6 +165,94 @@ void main() {
     expect(operationsEditable('fertig'), isFalse);
     expect(operationsEditable('storniert'), isFalse);
     expect(operationsEditable(null), isFalse);
+  });
+
+  test('Rückmeldung und Soll/Ist als Zeile', () {
+    final done = {
+      ..._op('a', 1, 'Sägen'),
+      'erledigt': true,
+      'erledigt_at': '2026-11-12T09:30:00Z',
+      'ist_minuten': 95.46,
+      'rueckmeldung_notiz': 'Rest morgen',
+    };
+    expect(operationDoneLine(done),
+        'Erledigt am 12.11.2026 · Ist 1 h 35 min · Rest morgen');
+    expect(
+        operationDoneLine(
+            {...done, 'ist_minuten': null, 'rueckmeldung_notiz': ''}),
+        'Erledigt am 12.11.2026');
+    expect(operationDoneLine(_op('a', 1, 'Sägen')), isNull);
+    expect(operationDoneLine({...done, 'erledigt': false}), isNull);
+
+    final s = {
+      'arbeitsgaenge': 3,
+      'erledigt': 2,
+      'soll_min': 210,
+      'soll_erledigt_min': 140,
+      'mit_ist': 1,
+      'soll_mit_ist_min': 70,
+      'ist_min': 95.46,
+    };
+    expect(sollIstLine(s),
+        'Erledigt 2 von 3 · Soll erledigt 2 h 20 min von 3 h 30 min · Ist 1 h 35 min zu Soll 1 h 10 min (1 Arbeitsgang mit Ist-Zeit)');
+    expect(sollIstLine({...s, 'mit_ist': 2, 'soll_mit_ist_min': 140}),
+        endsWith('zu Soll 2 h 20 min (2 Arbeitsgänge mit Ist-Zeit)'));
+    expect(sollIstLine({...s, 'mit_ist': 0}),
+        'Erledigt 2 von 3 · Soll erledigt 2 h 20 min von 3 h 30 min');
+    expect(sollIstLine({...s, 'erledigt': 0}), isNull);
+    expect(sollIstLine(null), isNull);
+  });
+
+  testWidgets('Erledigte mit Haken und Rückmeldung, Soll/Ist im Kopf',
+      (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(permissions: const {
+      'production.read'
+    }, ops: [
+      {
+        ..._op('a', 1, 'Sägen'),
+        'erledigt': true,
+        'erledigt_at': '2026-11-12T09:30:00Z',
+        'ist_minuten': 80,
+        'rueckmeldung_notiz': '',
+      },
+      _op('b', 2, 'Verglasung'),
+    ], sollIst: {
+      'arbeitsgaenge': 2,
+      'erledigt': 1,
+      'soll_min': 140,
+      'soll_erledigt_min': 70,
+      'mit_ist': 1,
+      'soll_mit_ist_min': 70,
+      'ist_min': 80,
+    });
+    await tester.pumpWidget(_wrap(ProductionOperationsSection(
+        api: api, orderId: 'o1', status: 'in_arbeit')));
+    await tester.pumpAndSettle();
+    expect(api.calls, containsAll(['list o1', 'sollist o1']));
+    expect(
+        find.text('Erledigt am 12.11.2026 · Ist 1 h 20 min'), findsOneWidget);
+    expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    expect(
+        find.text(
+            'Erledigt 1 von 2 · Soll erledigt 1 h 10 min von 2 h 20 min · Ist 1 h 20 min zu Soll 1 h 10 min (1 Arbeitsgang mit Ist-Zeit)'),
+        findsOneWidget);
+  });
+
+  testWidgets('Soll/Ist nicht ladbar: Liste bleibt, keine Zeile',
+      (tester) async {
+    await _desktop(tester);
+    final api = _FakeApi(
+        permissions: const {'production.read'},
+        ops: [_op('a', 1, 'Sägen')],
+        sollIstFails: true);
+    await tester.pumpWidget(_wrap(ProductionOperationsSection(
+        api: api, orderId: 'o1', status: 'in_arbeit')));
+    await tester.pumpAndSettle();
+    expect(find.text('1. Sägen'), findsOneWidget);
+    expect(find.textContaining('Erledigt'), findsNothing);
+    expect(find.textContaining('konnten nicht geladen'), findsNothing);
+    expect(find.byIcon(Icons.check_circle), findsNothing);
   });
 
   test('buildOperationBody', () {
@@ -373,6 +481,42 @@ void main() {
       ]);
       expect(calls[2].body, '{"name":"x"}');
       expect(calls[3].body, '{"name":"y"}');
+    });
+
+    test('Rückmeldung und Soll/Ist: Pfade, Bodies, Status', () async {
+      final x = await mock(
+          {'id': 'a', 'erledigt': true},
+          () => api
+              .reportProductionOperationDone('o1', 'a', {'ist_minuten': 95.5}));
+      await mock({'id': 'a'},
+          () => api.revertProductionOperationDone('o1', 'a', 'versehentlich'));
+      final s =
+          await mock({'erledigt': 1}, () => api.getProductionSollIst('o1'));
+      expect(calls.map((c) => '${c.method} ${c.url.path}'), [
+        'POST /api/v1/production/orders/o1/operations/a/erledigt',
+        'POST /api/v1/production/orders/o1/operations/a/zuruecknehmen',
+        'GET /api/v1/production/orders/o1/soll-ist',
+      ]);
+      expect(calls[0].body, '{"ist_minuten":95.5}');
+      expect(calls[1].body, '{"reason":"versehentlich"}');
+      expect(x['erledigt'], isTrue);
+      expect(s['erledigt'], 1);
+      // Melden erwartet 200; 201 und 409 sind Fehler.
+      await expectLater(
+          mock({'id': 'a'},
+              () => api.reportProductionOperationDone('o1', 'a', {}),
+              status: 201),
+          throwsA(isA<ApiException>()));
+      await expectLater(
+          mock({
+            'error': {
+              'code': 'conflict',
+              'message': 'Arbeitsgang ist bereits erledigt gemeldet'
+            }
+          }, () => api.reportProductionOperationDone('o1', 'a', {}),
+              status: 409),
+          throwsA(isA<ApiException>().having((e) => e.message, 'message',
+              'Arbeitsgang ist bereits erledigt gemeldet')));
     });
 
     test('Fehler als ApiException', () async {

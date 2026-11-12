@@ -3167,6 +3167,19 @@ class ApiClient {
     if (r.statusCode != 204) _throwApiException(r);
   }
 
+  // Rueckmeldung je Arbeitsgang (H.3.5d): erledigt melden mit optional
+  // ist_minuten und notiz, zuruecknehmen nur mit Begruendung; beides nur bei
+  // begonnenen Auftraegen (sonst 409). Antwort ist der Arbeitsgang.
+  Future<Map<String, dynamic>> reportProductionOperationDone(String orderId, String opId, Map<String, dynamic> body) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/operations/$opId/erledigt', body, 200);
+
+  Future<Map<String, dynamic>> revertProductionOperationDone(String orderId, String opId, String reason) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/operations/$opId/zuruecknehmen', {'reason': reason}, 200);
+
+  // Soll/Ist je Auftrag (H.3.5c): arbeitsgaenge, erledigt, soll_min,
+  // soll_erledigt_min, mit_ist, soll_mit_ist_min, ist_min.
+  Future<Map<String, dynamic>> getProductionSollIst(String orderId) => _getJson('/api/v1/production/orders/$orderId/soll-ist', null);
+
   // Auslastung je Arbeitsplatz und Woche (H.2.4); von/bis JJJJ-MM-TT, je ein
   // beliebiger Tag der Woche, hoechstens 26 Wochen. Ohne Angabe acht Wochen
   // ab der aktuellen.

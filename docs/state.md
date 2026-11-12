@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-11 H.3.5d** erledigt: Routen `POST …/operations/{opId}/erledigt`,
+> **2026-11-12 H.3.5e1** erledigt: Client zeigt erledigte Arbeitsgänge (Haken,
+> Datum, Ist-Zeit, Notiz) und die Soll/Ist-Zeile; API-Helfer der Rückmeldung.
+> Nächste: **H.3.5e2** Dialoge „Erledigt melden“ und „Zurücknehmen“.
+> Nächste freie Migration: 115, nächstes ADR: 0039.
+> Davor **2026-11-11 H.3.5d** erledigt: Routen `POST …/operations/{opId}/erledigt`,
 > `POST …/operations/{opId}/zuruecknehmen`, `GET …/soll-ist`; Fehlertexte 409/400.
 > Nächste: **H.3.5e** Client (erledigt melden, zurücknehmen, Soll/Ist).
 > Nächste freie Migration: 115, nächstes ADR: 0039.

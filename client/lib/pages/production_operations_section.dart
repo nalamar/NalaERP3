@@ -47,6 +47,37 @@ String operationLine(Map<String, dynamic> op) {
   ].join(' · ');
 }
 
+// operationDoneLine: "Erledigt am 12.11.2026 · Ist 1 h 35 min · Rest morgen"
+// aus der gueltigen Rueckmeldung (H.3.5e1), sonst null.
+String? operationDoneLine(Map<String, dynamic> op) {
+  if (op['erledigt'] != true) return null;
+  final ist = op['ist_minuten'];
+  final notiz = op['rueckmeldung_notiz']?.toString() ?? '';
+  return [
+    'Erledigt am ${isoToGerman(op['erledigt_at']?.toString())}',
+    if (ist is num) 'Ist ${formatMinutes(ist)}',
+    if (notiz.isNotEmpty) notiz,
+  ].join(' · ');
+}
+
+// sollIstLine: Fortschritt und Vergleich Soll/Ist des Auftrags (H.3.5c),
+// null solange nichts erledigt ist. Ist wird nur mit dem Soll der
+// Arbeitsgaenge mit Ist-Zeit verglichen.
+String? sollIstLine(Map<String, dynamic>? s) {
+  if (s == null) return null;
+  final erledigt = (s['erledigt'] as num?)?.toInt() ?? 0;
+  if (erledigt == 0) return null;
+  final mitIst = (s['mit_ist'] as num?)?.toInt() ?? 0;
+  num m(String k) => (s[k] as num?) ?? 0;
+  return [
+    'Erledigt $erledigt von ${s['arbeitsgaenge']}',
+    'Soll erledigt ${formatMinutes(m('soll_erledigt_min'))} von ${formatMinutes(m('soll_min'))}',
+    if (mitIst > 0)
+      'Ist ${formatMinutes(m('ist_min'))} zu Soll ${formatMinutes(m('soll_mit_ist_min'))} '
+          '(${mitIst == 1 ? '1 Arbeitsgang' : '$mitIst Arbeitsgänge'} mit Ist-Zeit)',
+  ].join(' · ');
+}
+
 // operationsTotal: Summe der Planzeit.
 num operationsTotal(List<dynamic> ops) => ops.fold<num>(
     0,
@@ -112,6 +143,7 @@ class ProductionOperationsSection extends StatefulWidget {
 class _ProductionOperationsSectionState
     extends State<ProductionOperationsSection> {
   List<dynamic> ops = const [];
+  Map<String, dynamic>? sollIst;
   bool loading = false;
   bool busy = false;
   String? error;
@@ -139,6 +171,13 @@ class _ProductionOperationsSectionState
         setState(() => error = 'Arbeitsgänge konnten nicht geladen werden: $e');
     } finally {
       if (mounted) setState(() => loading = false);
+    }
+    // Soll/Ist ist eine Zusatzangabe: ohne sie bleibt die Liste nutzbar.
+    try {
+      final s = await widget.api.getProductionSollIst(widget.orderId);
+      if (mounted) setState(() => sollIst = s);
+    } catch (_) {
+      if (mounted) setState(() => sollIst = null);
     }
   }
 
@@ -323,6 +362,7 @@ class _ProductionOperationsSectionState
           if (ops.isNotEmpty)
             Text('Planzeit gesamt ${formatMinutes(operationsTotal(ops))}'),
         ]),
+        if (sollIstLine(sollIst) case final line?) Text(line),
         if (loading || busy) const LinearProgressIndicator(minHeight: 2),
         if (error != null)
           Text(error!, style: const TextStyle(color: Color(0xFFB00020))),
@@ -344,13 +384,24 @@ class _ProductionOperationsSectionState
             final hints = ((m['hinweise'] as List?) ?? const [])
                 .map((e) => e.toString())
                 .toList();
+            final done = operationDoneLine(m);
             return ListTile(
               contentPadding: EdgeInsets.zero,
-              title: Text('${m['pos']}. ${m['name'] ?? ''}'),
+              title: Row(children: [
+                if (done != null) ...[
+                  Icon(Icons.check_circle,
+                      size: 18,
+                      color: Colors.green.shade700,
+                      semanticLabel: 'erledigt'),
+                  const SizedBox(width: 4),
+                ],
+                Expanded(child: Text('${m['pos']}. ${m['name'] ?? ''}')),
+              ]),
               subtitle: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(operationLine(m)),
+                  if (done != null) Text(done),
                   for (final h in hints)
                     Row(children: [
                       Icon(Icons.warning_amber_rounded,
