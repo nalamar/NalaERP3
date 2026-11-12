@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 H.3.6e2** erledigt: Dialoge Montagetermin anlegen, ändern,
+> **2026-11-12 H.3.6f** erledigt: Wochenübersicht der Montagetermine je Team im Client
+> (Karte „Montageplanung“, Tabelle Team x Woche, Tipp öffnet den Auftrag); damit H.3.6
+> Montageplanung fertig. Nächste: **H.3 abschließen** (alle Teilpunkte prüfen, Backlog-Eintrag
+> H.3 auf erledigt). Nächste freie Migration: 116, nächstes ADR: 0039.
+> Davor **2026-11-12 H.3.6e2** erledigt: Dialoge Montagetermin anlegen, ändern,
 > stornieren im Client; damit H.3.6e fertig. Nächste: **H.3.6f** Wochenübersicht
 > der Montagetermine je Team im Client. Nächste freie Migration: 116, nächstes ADR: 0039.
 > Davor **2026-11-12 H.3.6e1** erledigt: Client zeigt die Montagetermine im Auftrag

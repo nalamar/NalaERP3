@@ -3220,6 +3220,14 @@ class ApiClient {
   // kennzeichen, bezeichnung, abgemeldet_am}.
   Future<Map<String, dynamic>> getProductionAssemblyChoices() => _getJson('/api/v1/production/montage/auswahl', null);
 
+  // Wochenuebersicht (H.3.6f, production.read): {von, bis, teams: [{team_id,
+  // team_name, termine}]}, alle Teams nach Name, "ohne Team" zuletzt; nur
+  // nicht stornierte Termine. Ohne Angabe ab der aktuellen Woche acht Wochen.
+  Future<Map<String, dynamic>> getProductionAssemblyWeeks({String? von, String? bis}) => _getJson('/api/v1/production/montage', {
+        if (von != null) 'von': von,
+        if (bis != null) 'bis': bis,
+      });
+
   // Kommissionierliste als PDF (H.3.3b, production.read), nur bei
   // freigegebenen und begonnenen Auftraegen.
   Future<void> downloadProductionPickListPdf(String orderId, {String? filename}) async {
