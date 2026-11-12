@@ -5170,7 +5170,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "rückmeldung nur bei"),
 		strings.Contains(msg, "bereits erledigt gemeldet"),
 		strings.Contains(msg, "nicht erledigt gemeldet"),
-		strings.Contains(msg, "mit rückmeldung kann nicht entfernt"):
+		strings.Contains(msg, "mit rückmeldung kann nicht entfernt"),
+		strings.Contains(msg, "für stornierte aufträge nicht möglich"):
 		return http.StatusConflict, "conflict"
 	case strings.Contains(msg, "nicht konfiguriert"),
 		strings.Contains(msg, "gridfs nicht verfügbar"),
@@ -5260,6 +5261,9 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "bitte ein lager angeben"),
 		strings.Contains(msg, "entnahme nur mit begründung"),
 		strings.Contains(msg, "rückmeldung nur mit begründung"),
+		strings.Contains(msg, "montagetermins nur mit begründung"),
+		strings.Contains(msg, "montage ist zu lang"),
+		strings.Contains(msg, "baustelle ist zu lang"),
 		strings.Contains(msg, "begründung ist zu lang"):
 		return http.StatusBadRequest, "validation_error"
 	default:

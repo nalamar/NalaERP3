@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 H.3.6c** erledigt: Hinweise je Montagetermin (Team doppelt,
+> **2026-11-12 H.3.6d** erledigt: Routen der Montagetermine, Wochenübersicht und
+> Auswahl (Teams/Fahrzeuge ohne Personendaten mit production.read). Nächste:
+> **H.3.6e** Client-Abschnitt „Montage“ im Auftrag. Nächste freie Migration: 116,
+> nächstes ADR: 0039.
+> Davor **2026-11-12 H.3.6c** erledigt: Hinweise je Montagetermin (Team doppelt,
 > Abwesenheit im Team, Fahrzeug gesperrt, vor Fertigstellung, nach Liefertermin)
 > und Wochenübersicht je Team. Nächste: **H.3.6d** Routen und Teamliste für die
 > Produktion. Nächste freie Migration: 116, nächstes ADR: 0039.
