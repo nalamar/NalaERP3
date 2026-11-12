@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 H.3.6a** erledigt: Migration 115 (Montagetermine am Projekt mit
+> **2026-11-12 H.3.6b** erledigt: Service der Montagetermine (anlegen, ändern,
+> stornieren, Liste je Auftrag, Protokoll). Nächste: **H.3.6c** Hinweise und
+> Wochenübersicht je Team. Nächste freie Migration: 116, nächstes ADR: 0039.
+> Davor **2026-11-12 H.3.6a** erledigt: Migration 115 (Montagetermine am Projekt mit
 > optionalem Auftrag, Team/Fahrzeug SET NULL, Storno) und Regeln; H.3.6 geteilt
 > in a–f. Nächste: **H.3.6b** Service der Montagetermine.
 > Nächste freie Migration: 116, nächstes ADR: 0039.
