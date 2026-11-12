@@ -1,0 +1,19 @@
+{
+  "leistungen": [
+    {"code": "FE-ALU-1F", "kurztext": "Aluminiumfenster einflügelig liefern und montieren", "einheit": "Stk", "gewerk": "fenster", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"code": "FE-ALU-2F", "kurztext": "Aluminiumfenster zweiflügelig liefern und montieren", "einheit": "Stk", "gewerk": "fenster", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"code": "FE-ALU-FT", "kurztext": "Aluminium-Fenstertür liefern und montieren", "einheit": "Stk", "gewerk": "fenster", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 1.0}},
+    {"code": "FE-ALU-FEST", "kurztext": "Festverglasung in Aluminiumrahmen", "einheit": "m2", "gewerk": "fenster", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz"}},
+    {"code": "TU-HAUS-RC2", "kurztext": "Aluminium-Haustür einbruchhemmend liefern und montieren", "einheit": "Stk", "gewerk": "tueren", "systemvorgaben": {"profilserie": "Serie T75", "rc_klasse": "RC2", "u_wert": 1.3}},
+    {"code": "TU-BS-T30", "kurztext": "Feuerschutztür einflügelig liefern und montieren", "einheit": "Stk", "gewerk": "tueren", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "T30"}},
+    {"code": "TU-RS", "kurztext": "Rauchschutztür zweiflügelig liefern und montieren", "einheit": "Stk", "gewerk": "tueren", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "RS"}},
+    {"code": "FA-PR", "kurztext": "Pfosten-Riegel-Fassade aus Aluminium", "einheit": "m2", "gewerk": "fassade", "systemvorgaben": {"profilserie": "Serie P50", "verglasung": "2-fach Sonnenschutz", "u_wert": 1.1}},
+    {"code": "FA-BLECH", "kurztext": "Attika- und Anschlussblech aus Aluminium", "einheit": "m", "gewerk": "fassade", "systemvorgaben": {}},
+    {"code": "FB-ALU", "kurztext": "Fensterbank außen aus Aluminium", "einheit": "m", "gewerk": "fenster", "systemvorgaben": {}},
+    {"code": "ST-GEL", "kurztext": "Geländer aus Stahl feuerverzinkt", "einheit": "m", "gewerk": "stahlbau", "systemvorgaben": {}},
+    {"code": "ST-TREPPE", "kurztext": "Stahltreppe gerade mit Gitterroststufen", "einheit": "Stk", "gewerk": "stahlbau", "systemvorgaben": {}},
+    {"code": "ST-VORDACH", "kurztext": "Vordach aus Stahl mit Glaseindeckung", "einheit": "Stk", "gewerk": "stahlbau", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"code": "DEM-FE", "kurztext": "Altfenster ausbauen und entsorgen", "einheit": "Stk", "gewerk": "nebenleistung", "systemvorgaben": {}},
+    {"code": "MON-ZUL", "kurztext": "Zulage für Montage in Höhe über 4 m", "einheit": "Stk", "gewerk": "nebenleistung", "systemvorgaben": {}}
+  ]
+}

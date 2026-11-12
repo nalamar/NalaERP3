@@ -1,8 +1,10 @@
 # ADR 0039 — Epic I: Evaluationsset für das GAEB-Matching
 
 Datum: 2026-11-12
-Status: **Entwurf** — Fragen in `docs/open-questions.md`, Abschnitt
-2026-11-12 I.1. Kein Produktivcode.
+Status: **Angenommen** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME):
+1 (c) mit Beginn (a), 2 (a), 3 (a), 4 (a), 5 (a) — Umsetzung im Abschnitt
+"Entscheidung". Auskunft GAEB in Logikal unbekannt. Fragen in
+`docs/open-questions.md`, Abschnitt 2026-11-12 I.1.
 Bezug: Backlog I.1 "Evaluationsset zuerst" (muss vor I.3 stehen);
 `aufgabe.md` §4 (Sonderregeln Epic I); Blocker-Frage 3 vom 2026-08-11
 (echter DA-XML-3.x-Parser ersetzt den Subset-Parser, Backlog I.2); ADR
@@ -146,6 +148,29 @@ Beispiel-LV im Stil der üblichen Ausschreibungen wäre hilfreich.
   der Erwartung, Katalog und Kennzahlen mit Tests; I.1.2 und I.1.3
   synthetische LVs (je etwa fünf); I.1.4 Auswertung mit Basis-Matchern und
   Bericht.
+
+## Entscheidung (2026-11-12)
+
+- **Korpus 1 (c)**: im Repo nur synthetische LVs unter
+  `server/internal/quotes/eval/testdata/`; echte oder anonymisierte LVs
+  später nur lokal außerhalb des Repos, im Repo nur deren Kennzahlen.
+- **Umfang 2 (a)**: 10 LVs, rund 250–300 Positionen (I.1.2, I.1.3).
+- **Ziel 3 (a)**: synthetischer Leistungskatalog `katalog.json` mit festen
+  Codes (Code, Kurztext, Einheit, Gewerk, Systemvorgaben). Der
+  Kalkulationsansatz kommt mit dem Katalog in der Datenbank (eigener
+  Punkt vor I.4); die Auswertung braucht ihn nicht.
+- **Kennzahlen 4 (a)**: wie oben definiert; eine Zuordnung gilt als
+  automatisch, wenn ein Code mit Score ≥ Schwelle vorliegt; fehlt ein
+  Vorschlag, landet die Position in der Prüfliste. Zielwerte als Bedingung
+  für I.4: Fehlzuordnungsrate ≤ 2 % und Trefferquote ≥ 70 %. Systemvorgaben
+  ohne Groß-/Kleinschreibung und Leerraum verglichen, U-Wert auf 0,005
+  genau.
+- **Positionsarten** in der Erwartung: `normal`, `grundposition`,
+  `alternativposition`, `bedarfsposition_mit_gb`, `bedarfsposition_ohne_gb`
+  (Eventualposition = Bedarfsposition); Pauschale ist ein eigenes Merkmal;
+  eine Alternativposition verweist mit `zu` auf ihre vorherige
+  Grundposition (für die Summen und die Rückschreibung D84).
+- **Formate 5 (a)**: DA XML 3.2 und 3.3, vor allem X83.
 
 ## Folgen
 

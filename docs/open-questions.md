@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-12 — I.1 Evaluationsset für das GAEB-Matching (offen)
+## 2026-11-12 — I.1 Evaluationsset für das GAEB-Matching (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.1, ADR 0039 (Entwurf, Ist-Stand und Optionen dort).
 Kurz: Im Repo liegt keine GAEB-Datei, der Parser liest kein echtes GAEB
@@ -335,26 +335,26 @@ den eine Zuordnung gemessen werden könnte.
    anonymisierte echte LVs im Repo; (c) synthetische im Repo, echte oder
    anonymisierte nur lokal außerhalb des Repos (Pfad per
    Umgebungsvariable), im Repo nur Kennzahlen. Empfehlung: **(c)**, Beginn
-   mit (a). Status: **offen**.
+   mit (a). Status: **beantwortet** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME): **(c)**, Beginn mit (a).
 2. **Umfang**: (a) 10 synthetische LVs, rund 250–300 Positionen, alle
    Positionsarten und Hierarchien, rund 20 % ohne passende Leistung, mit
-   Fallen; (b) 3 LVs; (c) 30 und mehr. Empfehlung: **(a)**. Status: **offen**.
+   Fallen; (b) 3 LVs; (c) 30 und mehr. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 3. **Zuordnungsziel**: (a) Leistungskatalog je Mandant (Code, Kurztext,
    Einheit, Systemvorgaben, Kalkulationsansatz), zuerst als Datei im
    Korpus, in der Datenbank als eigener Punkt vor I.4; (b) direkt
    Materialien und Textbausteine; (c) frühere Angebotspositionen.
-   Empfehlung: **(a)**, (c) später zusätzlich. Status: **offen**.
+   Empfehlung: **(a)**, (c) später zusätzlich. Status: **beantwortet** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 4. **Kennzahlen und Zielwerte**: Trefferquote, Fehlzuordnungsrate,
    Prüflistenquote, Systemvorgaben je Merkmal (Definitionen im ADR).
    (a) Bedingung für I.4: Fehlzuordnungsrate ≤ 2 %, Trefferquote ≥ 70 %;
-   (b) nur messen. Empfehlung: **(a)**. Status: **offen**.
+   (b) nur messen. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 5. **Formate**: (a) DA XML 3.2 und 3.3, Phase X83 (dazu je ein X81 und
    X86), GAEB 90/2000 später; (b) GAEB 90/2000 sofort mit. Empfehlung:
-   **(a)**. Status: **offen**.
+   **(a)**. Status: **beantwortet** (2026-11-12, "fortsetzen" = Empfehlung, ANNAHME): **(a)**.
 
 Auskunft (kein Blocker): **Liest der Betrieb GAEB heute in Logikal ein und
 kalkuliert dort?** Dann ergänzt das ERP-Matching Logikal oder ersetzt es —
-das bestimmt den Leistungskatalog. Status: **offen**.
+das bestimmt den Leistungskatalog. Status: **unbekannt** ("fortsetzen"); der Katalog im Korpus ist davon unabhängig, die Frage wird vor dem Katalog in der Datenbank (vor I.4) wieder gestellt.
 
 ## 2026-11-09 — H.3 Entnahme, Rückmeldung, Montageplanung (beantwortet 2026-11-09)
 
