@@ -148,6 +148,10 @@ class _FakeApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> getProductionSollIst(String orderId) async => {'arbeitsgaenge': 0, 'erledigt': 0};
 
+  // Montagetermine (H.3.6e) prüft production_assembly_test.dart.
+  @override
+  Future<List<dynamic>> listProductionAssembly(String orderId) async => const [];
+
   @override
   Future<Map<String, dynamic>> createProductionWithdrawal(String orderId, Map<String, dynamic> body) async {
     calls.add('withdraw $orderId ${jsonEncode(body)}');
@@ -569,6 +573,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('FA-2026-0001 · Pos. 3 Fenster (links)'), findsOneWidget);
     expect(find.text('Entnahmen'), findsNothing);
+    // Montage (H.3.6e) in jedem Status, auch nur lesend.
+    expect(find.text('Noch keine Montagetermine.'), findsOneWidget);
     expect(find.byType(FilledButton), findsNothing);
     expect(find.byType(OutlinedButton), findsNothing);
   });

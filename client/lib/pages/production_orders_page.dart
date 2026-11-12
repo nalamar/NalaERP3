@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../api.dart';
 import 'assets_page.dart' show isoToGerman;
 import 'employee_qualifications_section.dart' show parseDateInput;
+import 'production_assembly_section.dart';
 import 'production_operations_section.dart';
 import 'production_withdrawals_section.dart';
 
@@ -689,6 +690,9 @@ class _ProductionOrderDetailPageState extends State<ProductionOrderDetailPage> {
             const SizedBox(height: 16),
             ProductionOperationsSection(
                 key: ValueKey('ops-${widget.orderId}-$status'), api: widget.api, orderId: widget.orderId, status: status),
+            const SizedBox(height: 16),
+            ProductionAssemblySection(
+                key: ValueKey('mt-${widget.orderId}-$status'), api: widget.api, orderId: widget.orderId, status: status),
             const SizedBox(height: 16),
             const Text('Fertigungsstückliste', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),

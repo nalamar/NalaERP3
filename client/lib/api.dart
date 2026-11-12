@@ -3200,6 +3200,26 @@ class ApiClient {
   Future<Map<String, dynamic>> stornoProductionWithdrawal(String orderId, String withdrawalId, String reason) =>
       _sendProductionJson('POST', '/api/v1/production/orders/$orderId/withdrawals/$withdrawalId/storno', {'reason': reason}, 200);
 
+  // Montagetermine je Fertigungsauftrag (H.3.6d): Liste nach Beginn mit
+  // Stornos, je Termin von/bis, team_name, kennzeichen, baustelle, notiz und
+  // "hinweise" (production.read). Anlegen und aendern (production.write):
+  // von, bis (JJJJ-MM-TT), team_id, vehicle_id, baustelle, notiz; nicht bei
+  // stornierten Auftraegen (409). Storno nur mit Begruendung.
+  Future<List<dynamic>> listProductionAssembly(String orderId) => _getList('/api/v1/production/orders/$orderId/montage', null);
+
+  Future<Map<String, dynamic>> createProductionAssembly(String orderId, Map<String, dynamic> body) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/montage', body, 201);
+
+  Future<Map<String, dynamic>> updateProductionAssembly(String orderId, String id, Map<String, dynamic> body) =>
+      _sendProductionJson('PUT', '/api/v1/production/orders/$orderId/montage/$id', body, 200);
+
+  Future<Map<String, dynamic>> cancelProductionAssembly(String orderId, String id, String reason) =>
+      _sendProductionJson('POST', '/api/v1/production/orders/$orderId/montage/$id/stornieren', {'reason': reason}, 200);
+
+  // Auswahl ohne Personendaten: teams {id, name}, fahrzeuge {id,
+  // kennzeichen, bezeichnung, abgemeldet_am}.
+  Future<Map<String, dynamic>> getProductionAssemblyChoices() => _getJson('/api/v1/production/montage/auswahl', null);
+
   // Kommissionierliste als PDF (H.3.3b, production.read), nur bei
   // freigegebenen und begonnenen Auftraegen.
   Future<void> downloadProductionPickListPdf(String orderId, {String? filename}) async {
