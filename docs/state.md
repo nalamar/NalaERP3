@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 I.1.1a** erledigt: Fragen I.1 mit "fortsetzen" beantwortet (ANNAHME,
+> **2026-11-12 I.1.1b** erledigt: Kennzahlen im Paket `quotes/eval` (Treffer-, Fehlzuordnungs-,
+> Prüflistenquote, Systemvorgaben je Merkmal, Zielwerte ≤ 2 % / ≥ 70 %, Summe); I.1.1
+> damit fertig. Nächste: **I.1.2** synthetische LVs (erste Hälfte, X83 DA XML 3.3 mit
+> erwarteten Ergebnissen). Nächste freie Migration: 116, nächstes ADR: 0040.
+> Davor **2026-11-12 I.1.1a** erledigt: Fragen I.1 mit "fortsetzen" beantwortet (ANNAHME,
 > ADR 0039 angenommen); Paket `quotes/eval` mit Erwartung, synthetischem Katalog,
 > strenger Prüfung und Laden. I.1.1 geteilt (rund 700 Zeilen). Nächste: **I.1.1b**
 > Kennzahlen. Nächste freie Migration: 116, nächstes ADR: 0040.
