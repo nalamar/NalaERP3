@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.2.1a** erledigt: Fragen I.2 mit "fortsetzen" beantwortet (ANNAHME, alle
+> **2026-11-13 I.2.1b** erledigt: Grenzen (20.000 Positionen, Texte ≤ 20.000 Zeichen, Tiefe
+> ≤ 5), Pflichtangaben und Adapter `quotes.GAEBDAXMLParser` (noch nicht eingebunden, das
+> folgt mit I.2.3). Nächste: **I.2.1c** Evaluationsset liest die Eingabe über den Parser.
+> Nächste freie Migration: 116, nächstes ADR: 0041.
+> Davor **2026-11-13 I.2.1a** erledigt: Fragen I.2 mit "fortsetzen" beantwortet (ANNAHME, alle
 > (a)), ADR 0040 angenommen, I.2 neu geschnitten (I.2.1a–c, I.2.2–I.2.5). Neues Paket
 > `internal/quotes/gaeb`: Parser-Kern für X83 (DA XML 3.2/3.3), 100 % Übereinstimmung mit
 > allen 10 LVs des Korpus. Nächste: **I.2.1b** Grenzen, Pflichtangaben, Adapter. Nächste

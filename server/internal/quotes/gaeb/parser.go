@@ -14,8 +14,10 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // Positionsarten und Stufen; gleiche Werte wie im Evaluationsset.
@@ -28,6 +30,14 @@ const (
 	StufeLos        = "los"
 	StufeTitel      = "titel"
 	StufeUntertitel = "untertitel"
+)
+
+// Grenzen (ADR 0040, Entscheidung 6): groessere Dateien sind ein Fehler,
+// nichts wird gekuerzt.
+const (
+	MaxPositionen  = 20000
+	MaxTextZeichen = 20000
+	MaxTiefe       = 5 // Stufen von Bereichen ueber den Positionen
 )
 
 var versionen = map[string]bool{"3.2": true, "3.3": true}
@@ -148,6 +158,34 @@ type parser struct {
 	lv     *LV
 	lose   bool              // oberste Stufe sind Lose
 	gruppe map[string]string // ALNGroupNo -> OZ der Grundposition
+	oz     map[string]bool   // vergebene OZ von Bereichen und Positionen
+}
+
+// text liest ein Textelement und prueft die Laenge.
+func (p *parser) text(t xText, was string) (string, error) {
+	s, err := absaetze(t)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", was, err)
+	}
+	if utf8.RuneCountInString(s) > MaxTextZeichen {
+		return "", fmt.Errorf("%s ist länger als %d Zeichen", was, MaxTextZeichen)
+	}
+	return s, nil
+}
+
+// neueOZ bildet die OZ aus Eltern und RNoPart und prueft, dass sie
+// vollstaendig und eindeutig ist.
+func (p *parser) neueOZ(eltern, rno string) (string, error) {
+	rno = strings.TrimSpace(rno)
+	oz := verbinde(eltern, rno)
+	if rno == "" {
+		return "", fmt.Errorf("Ordnungszahl unter %q fehlt", eltern)
+	}
+	if p.oz[oz] {
+		return "", fmt.Errorf("Ordnungszahl %s ist doppelt", oz)
+	}
+	p.oz[oz] = true
+	return oz, nil
 }
 
 func (p *parser) stufe(tiefe int) string {
@@ -175,11 +213,17 @@ func (p *parser) body(b xBody, eltern string, tiefe int) error {
 	if len(b.Ctgys) > 0 && len(b.Itemlists) > 0 {
 		return fmt.Errorf("Bereich %q enthält Bereiche und Positionen", eltern)
 	}
+	if len(b.Ctgys) > 0 && tiefe >= MaxTiefe {
+		return fmt.Errorf("Gliederung unter %s ist tiefer als %d Stufen", eltern, MaxTiefe)
+	}
 	for _, c := range b.Ctgys {
-		oz := verbinde(eltern, strings.TrimSpace(c.RNoPart))
-		bez, err := absaetze(c.LblTx)
+		oz, err := p.neueOZ(eltern, c.RNoPart)
 		if err != nil {
-			return fmt.Errorf("Bereich %s: %w", oz, err)
+			return err
+		}
+		bez, err := p.text(c.LblTx, "Bezeichnung von Bereich "+oz)
+		if err != nil {
+			return err
 		}
 		p.lv.Bereiche = append(p.lv.Bereiche, Bereich{OZ: oz, Stufe: p.stufe(tiefe), Bezeichnung: bez, Eltern: eltern})
 		if err := p.body(c.Body, oz, tiefe+1); err != nil {
@@ -188,9 +232,9 @@ func (p *parser) body(b xBody, eltern string, tiefe int) error {
 	}
 	for _, il := range b.Itemlists {
 		for _, r := range il.Remarks {
-			s, err := absaetze(r)
+			s, err := p.text(r, "Vorbemerkung")
 			if err != nil {
-				return fmt.Errorf("Vorbemerkung: %w", err)
+				return err
 			}
 			p.lv.Vorbemerkungen = append(p.lv.Vorbemerkungen, s)
 		}
@@ -204,14 +248,24 @@ func (p *parser) body(b xBody, eltern string, tiefe int) error {
 }
 
 func (p *parser) item(it xItem, eltern string) error {
-	pos := Position{OZ: verbinde(eltern, strings.TrimSpace(it.RNoPart)), Bereich: eltern, Einheit: strings.TrimSpace(it.QU), Art: ArtNormal}
+	if len(p.lv.Positionen) >= MaxPositionen {
+		return fmt.Errorf("mehr als %d Positionen", MaxPositionen)
+	}
+	oz, err := p.neueOZ(eltern, it.RNoPart)
+	if err != nil {
+		return err
+	}
+	pos := Position{OZ: oz, Bereich: eltern, Einheit: strings.TrimSpace(it.QU), Art: ArtNormal}
 	fehler := func(format string, a ...any) error {
 		return fmt.Errorf("Position %s: %s", pos.OZ, fmt.Sprintf(format, a...))
 	}
+	if pos.Einheit == "" {
+		return fehler("Einheit fehlt")
+	}
 	if q := strings.TrimSpace(it.Qty); q != "" {
 		m, err := strconv.ParseFloat(q, 64)
-		if err != nil {
-			return fehler("Menge %q ist keine Zahl", q)
+		if err != nil || math.IsNaN(m) || math.IsInf(m, 0) || m < 0 {
+			return fehler("Menge %q ist keine Zahl ab 0", q)
 		}
 		pos.Menge = m
 	}
@@ -253,12 +307,14 @@ func (p *parser) item(it xItem, eltern string) error {
 	default:
 		return fehler("unbekannte Pauschale %q", it.LumpSumItem)
 	}
-	var err error
-	if pos.Kurztext, err = absaetze(it.Kurztext); err != nil {
-		return fehler("Kurztext: %v", err)
+	if pos.Kurztext, err = p.text(it.Kurztext, "Position "+oz+": Kurztext"); err != nil {
+		return err
 	}
-	if pos.Langtext, err = absaetze(it.Langtext); err != nil {
-		return fehler("Langtext: %v", err)
+	if strings.TrimSpace(pos.Kurztext) == "" {
+		return fehler("Kurztext fehlt")
+	}
+	if pos.Langtext, err = p.text(it.Langtext, "Position "+oz+": Langtext"); err != nil {
+		return err
 	}
 	p.lv.Positionen = append(p.lv.Positionen, pos)
 	return nil
@@ -293,9 +349,13 @@ func Parse(r io.Reader) (*LV, error) {
 		lv:     &LV{Format: "da_xml_" + version, Phase: "X83", Vorbemerkungen: []string{}, Bereiche: []Bereich{}, Positionen: []Position{}},
 		lose:   len(boq.Bkdn) > 0 && strings.TrimSpace(boq.Bkdn[0]) == "Lot",
 		gruppe: map[string]string{},
+		oz:     map[string]bool{},
 	}
 	if err := p.body(boq.Body, "", 0); err != nil {
 		return nil, err
+	}
+	if len(p.lv.Positionen) == 0 {
+		return nil, fmt.Errorf("LV ohne Positionen")
 	}
 	return p.lv, nil
 }

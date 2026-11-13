@@ -2,6 +2,7 @@ package gaeb
 
 import (
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -14,7 +15,11 @@ func dok(bkdn, body string) string {
 	return kopf + `<BoQ><BoQInfo><BoQBkdn><Type>` + bkdn + `</Type></BoQBkdn></BoQInfo><BoQBody>` + body + `</BoQBody></BoQ></Award></GAEB>`
 }
 
+// item baut eine Position; ohne eigene QU mit Einheit "Stk".
 func item(rno, inner string) string {
+	if !strings.Contains(inner, "<QU>") {
+		inner = `<QU>Stk</QU>` + inner
+	}
 	return `<Item RNoPart="` + rno + `">` + inner + `</Item>`
 }
 
@@ -80,12 +85,12 @@ func TestParsePosition(t *testing.T) {
 	want := []Position{
 		{OZ: "0010", Kurztext: "Kurz", Langtext: "Zeile 1 & mehr\n\nZeile 3", Menge: 12.5, Einheit: "m2", Art: ArtNormal, Pauschal: true},
 		{OZ: "0020", Kurztext: "ohne Menge", Einheit: "psch", Art: ArtNormal},
-		{OZ: "0030", Kurztext: "b1", Art: ArtBedarfMitGB},
-		{OZ: "0040", Kurztext: "b2", Art: ArtBedarfOhneGB},
-		{OZ: "0050", Kurztext: "g7", Art: ArtGrund},
-		{OZ: "0060", Kurztext: "g8", Art: ArtGrund},
-		{OZ: "0070", Kurztext: "a7", Art: ArtAlternativ, Zu: "0050"},
-		{OZ: "0080", Kurztext: "a8", Art: ArtAlternativ, Zu: "0060"},
+		{OZ: "0030", Kurztext: "b1", Art: ArtBedarfMitGB, Einheit: "Stk"},
+		{OZ: "0040", Kurztext: "b2", Art: ArtBedarfOhneGB, Einheit: "Stk"},
+		{OZ: "0050", Kurztext: "g7", Art: ArtGrund, Einheit: "Stk"},
+		{OZ: "0060", Kurztext: "g8", Art: ArtGrund, Einheit: "Stk"},
+		{OZ: "0070", Kurztext: "a7", Art: ArtAlternativ, Zu: "0050", Einheit: "Stk"},
+		{OZ: "0080", Kurztext: "a8", Art: ArtAlternativ, Zu: "0060", Einheit: "Stk"},
 	}
 	if !reflect.DeepEqual(lv.Positionen, want) {
 		t.Fatalf("Positionen:\n got %+v\nwant %+v", lv.Positionen, want)
@@ -132,7 +137,7 @@ func TestParseFehler(t *testing.T) {
 		{"Serie keine Zahl", il(item("1", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>a</ALNSerNo>`)), "unvollständig"},
 		{"Serie negativ", il(item("1", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>-1</ALNSerNo>`)), "unvollständig"},
 		{"Alternative zuerst", il(item("1", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>1</ALNSerNo>`)), "Grundposition der Gruppe 1 fehlt"},
-		{"zwei Grundpositionen", il(item("1", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>0</ALNSerNo>`) +
+		{"zwei Grundpositionen", il(item("1", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>0</ALNSerNo>`+kurz("x")) +
 			item("2", `<ALNGroupNo>1</ALNGroupNo><ALNSerNo>0</ALNSerNo>`)), "Position 2: Gruppe 1 hat schon die Grundposition 1"},
 		{"Pauschale", il(item("1", `<LumpSumItem>true</LumpSumItem>`)), "unbekannte Pauschale"},
 	}
@@ -142,4 +147,80 @@ func TestParseFehler(t *testing.T) {
 			t.Fatalf("%s: %v, erwartet %q", c.name, err, c.want)
 		}
 	}
+}
+
+func TestParsePflicht(t *testing.T) {
+	il := func(items string) string { return dok("Item", `<Itemlist>`+items+`</Itemlist>`) }
+	cases := []struct{ name, doc, want string }{
+		{"ohne OZ", il(item(" ", kurz("x"))), `Ordnungszahl unter "" fehlt`},
+		{"Bereich ohne OZ", dok("BoQLevel", ctgy("", "T", `<Itemlist>`+item("1", kurz("x"))+`</Itemlist>`)), `Ordnungszahl unter "" fehlt`},
+		{"OZ doppelt", il(item("1", kurz("x")) + item(" 1", kurz("y"))), "Ordnungszahl 1 ist doppelt"},
+		{"Bereich doppelt", dok("BoQLevel", ctgy("01", "A", `<Itemlist>`+item("1", kurz("x"))+`</Itemlist>`)+
+			ctgy("01", "B", `<Itemlist>`+item("2", kurz("x"))+`</Itemlist>`)), "Ordnungszahl 01 ist doppelt"},
+		{"ohne Einheit", il(item("1", `<QU> </QU>`+kurz("x"))), "Position 1: Einheit fehlt"},
+		{"ohne Kurztext", il(item("1", "")), "Position 1: Kurztext fehlt"},
+		{"leerer Kurztext", il(item("1", kurz("  "))), "Position 1: Kurztext fehlt"},
+		{"Menge negativ", il(item("1", `<Qty>-1</Qty>`+kurz("x"))), `Menge "-1"`},
+		{"Menge NaN", il(item("1", `<Qty>NaN</Qty>`+kurz("x"))), `Menge "NaN"`},
+		{"Menge unendlich", il(item("1", `<Qty>+Inf</Qty>`+kurz("x"))), `Menge "+Inf"`},
+		{"ohne Positionen", dok("BoQLevel", ctgy("01", "T", `<Itemlist/>`)), "LV ohne Positionen"},
+	}
+	for _, c := range cases {
+		lv, err := Parse(strings.NewReader(c.doc))
+		if err == nil || !strings.Contains(err.Error(), c.want) || lv != nil {
+			t.Fatalf("%s: %v, erwartet %q", c.name, err, c.want)
+		}
+	}
+	if lv := parse(t, il(item("1", `<Qty>0</Qty>`+kurz("x")))); lv.Positionen[0].Menge != 0 {
+		t.Fatalf("Menge 0: %+v", lv.Positionen[0])
+	}
+}
+
+func TestParseGrenzen(t *testing.T) {
+	ok := func(name, doc string) {
+		t.Helper()
+		if _, err := Parse(strings.NewReader(doc)); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	zuViel := func(name, doc, want string) {
+		t.Helper()
+		if lv, err := Parse(strings.NewReader(doc)); err == nil || !strings.Contains(err.Error(), want) || lv != nil {
+			t.Fatalf("%s: %v, erwartet %q", name, err, want)
+		}
+	}
+	// Gliederungstiefe: 5 Stufen von Bereichen erlaubt, 6 nicht
+	tief := func(n int) string {
+		s := `<Itemlist>` + item("1", kurz("x")) + `</Itemlist>`
+		for i := n; i > 0; i-- {
+			s = ctgy(strconv.Itoa(i), "B", s)
+		}
+		return dok("BoQLevel", s)
+	}
+	ok("Tiefe 5", tief(MaxTiefe))
+	zuViel("Tiefe 6", tief(MaxTiefe+1), "Gliederung unter 1.2.3.4.5 ist tiefer als 5 Stufen")
+	// Texte: Zeichen, nicht Bytes
+	lang := func(n int) string { return strings.Repeat("ä", n) }
+	langtext := func(s string) string {
+		return `<Description><CompleteText><DetailTxt><Text><p>` + s + `</p></Text></DetailTxt>` +
+			`<OutlineText><OutlTxt><TextOutlTxt><p>x</p></TextOutlTxt></OutlTxt></OutlineText></CompleteText></Description>`
+	}
+	il := func(items string) string { return dok("Item", `<Itemlist>`+items+`</Itemlist>`) }
+	ok("Langtext an der Grenze", il(item("1", langtext(lang(MaxTextZeichen)))))
+	zuViel("Langtext", il(item("1", langtext(lang(MaxTextZeichen+1)))), "Position 1: Langtext ist länger als 20000 Zeichen")
+	zuViel("Kurztext", il(item("1", kurz(lang(MaxTextZeichen+1)))), "Position 1: Kurztext ist länger")
+	zuViel("Bezeichnung", dok("BoQLevel", ctgy("01", lang(MaxTextZeichen+1), `<Itemlist>`+item("1", kurz("x"))+`</Itemlist>`)),
+		"Bezeichnung von Bereich 01 ist länger")
+	zuViel("Vorbemerkung", il(`<Remark><Description><CompleteText><DetailTxt><Text><p>`+lang(MaxTextZeichen+1)+
+		`</p></Text></DetailTxt></CompleteText></Description></Remark>`+item("1", kurz("x"))), "Vorbemerkung ist länger")
+	// Positionen: 20.000 erlaubt, eine mehr nicht
+	viele := func(n int) string {
+		var b strings.Builder
+		for i := 1; i <= n; i++ {
+			b.WriteString(item(strconv.Itoa(i), kurz("x")))
+		}
+		return il(b.String())
+	}
+	ok("20000 Positionen", viele(MaxPositionen))
+	zuViel("20001 Positionen", viele(MaxPositionen+1), "mehr als 20000 Positionen")
 }
