@@ -324,6 +324,38 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-13 — I.2 Echter GAEB-DA-XML-Parser (offen)
+
+Bezug: Backlog I.2, ADR 0040 (Entwurf, Bestandsaufnahme und Optionen dort).
+Kurz: Der heutige Parser liest ein eigenes Format, gespeichert wird ein
+Text je Position ohne Art, Gliederung und Vorbemerkungen; die Gliederung im
+Angebot (ADR 0009) steht bereit, wird aber nicht genutzt. Fund: der
+GAEB-Upload hat keine harte Größengrenze.
+
+1. **Phasen**: (a) zuerst X83, X81/X86 nach Prüfung der Elementnamen, X84
+   mit I.6; (b) X81, X83, X86 sofort. Empfehlung: **(a)**. Status: **offen**.
+2. **Unbelegte Elementnamen**: (a) Parser nach den Namen des Korpus,
+   tolerant gegen den Namespace, Abgleich sobald echte X83 oder Schema
+   vorliegen; (b) erst danach beginnen. Empfehlung: **(a)**. Status: **offen**.
+3. **Datenmodell**: (a) `quote_import_items` um Kurz-/Langtext, Art,
+   Pauschale, Grundposition, Bereich erweitern, neue Tabelle
+   `quote_import_groups`, Vorbemerkungen am Importlauf, `description`
+   bleibt; (b) Parse-Ergebnis als JSON; (c) alles in `description`.
+   Empfehlung: **(a)**. Status: **offen**.
+4. **Übernahme ins Angebot**: (a) Gliederung, Kurz-/Langtext und Art als
+   eigener Teilpunkt von I.2 übernehmen; (b) später. Empfehlung: **(a)**.
+   Status: **offen**.
+5. **Subset-Parser und Endungen**: (a) neuer Parser ersetzt den
+   Subset-Parser ersatzlos, Tests auf echte Fixtures, `.d83`/`.p83` beim
+   Upload mit Meldung ablehnen, `.gaeb`/`.xml` am Inhalt erkennen;
+   (b) Subset-Parser als Rückfall behalten. Empfehlung: **(a)**. Status: **offen**.
+6. **Grenzen**: (a) Upload höchstens 20 MB, im Parser höchstens 20.000
+   Positionen, Langtext ≤ 20.000 Zeichen, Tiefe ≤ 5, Fehler statt Kürzen;
+   (b) nur die Upload-Grenze. Empfehlung: **(a)**. Status: **offen**.
+
+Weiter offen (Auskunft, kein Blocker): echte X83 zum Abgleich (Abschnitt
+I.1); alternativ Zugang zur GAEB-Fachdokumentation bzw. zum Schema.
+
 ## 2026-11-12 — I.1 Evaluationsset für das GAEB-Matching (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.1, ADR 0039 (Entwurf, Ist-Stand und Optionen dort).

@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.1.4b** erledigt: Lauf und Bericht, Ausgangswerte in ADR 0039; **I.1
+> **2026-11-13 I.2.0** erledigt: ADR 0040 (Entwurf) zum echten GAEB-DA-XML-Parser; sechs
+> Fragen in `open-questions.md` (Abschnitt 2026-11-13 I.2), Antwort ausstehend. Fund:
+> GAEB-Upload ohne harte Größengrenze. Nächste: nach der Antwort **I.2.1a** (Parser-Kern
+> gegen das Korpus). Nächste freie Migration: 116, nächstes ADR: 0041.
+> Davor **2026-11-13 I.1.4b** erledigt: Lauf und Bericht, Ausgangswerte in ADR 0039; **I.1
 > abgeschlossen**. Nächste: **I.2** echter GAEB-DA-XML-Parser, gemessen am Korpus (zuerst
 > ADR/Bestandsaufnahme). Nächste freie Migration: 116, ADR: 0040.
 > Davor **2026-11-13 I.1.4a** erledigt: Matcher-Schnittstelle (Eingabe ohne Erwartung),
