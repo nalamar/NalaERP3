@@ -356,6 +356,15 @@ Auskunft (kein Blocker): **Liest der Betrieb GAEB heute in Logikal ein und
 kalkuliert dort?** Dann ergänzt das ERP-Matching Logikal oder ersetzt es —
 das bestimmt den Leistungskatalog. Status: **unbekannt** ("fortsetzen"); der Katalog im Korpus ist davon unabhängig, die Frage wird vor dem Katalog in der Datenbank (vor I.4) wieder gestellt.
 
+Auskunft (kein Blocker, 2026-11-13, I.1.2): **Kann der Betrieb eine echte
+X83-Datei** (DA XML 3.2 oder 3.3, aus der AVA eines Auftraggebers oder
+Logikal) **lokal bereitstellen** — nicht für das Repo, nur zum Abgleich?
+Die Korpus-Dateien werden aus der Erwartung erzeugt; belegt sind nur die
+Elementnamen `Provis` und `LumpSumItem`, die übrigen (u. a.
+`ALNGroupNo`/`ALNSerNo` für Grund- und Alternativpositionen) stammen aus
+Sekundärquellen. Ohne echte Datei prüft I.2 gegen das offizielle Schema,
+sobald es vorliegt. Status: **offen**.
+
 ## 2026-11-09 — H.3 Entnahme, Rückmeldung, Montageplanung (beantwortet 2026-11-09)
 
 Bezug: Backlog H.3, ADR 0038 (Entwurf, Ist-Stand und Optionen dort).

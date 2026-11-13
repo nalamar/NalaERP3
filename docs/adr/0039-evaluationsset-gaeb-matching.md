@@ -182,5 +182,14 @@ Beispiel-LV im Stil der üblichen Ausschreibungen wäre hilfreich.
 - Die offene Frage zur Brandschutzklassierung bestimmt die erwarteten
   Werte; bis zur Klärung speichert die Erwartung die Angabe wie im LV und,
   falls eindeutig, die Klasse.
+- **Erzeugte X83-Dateien (I.1.2, 2026-11-13):** Die Korpus-Dateien
+  `lv-NN.x83` werden aus `lv-NN.erwartet.json` erzeugt (`x83.go`,
+  `go test -run TestKorpus -update`), nicht von Hand geschrieben. Grund:
+  Das offizielle Schema lag nicht vor; belegt sind nur `Provis` und
+  `LumpSumItem`. Die Elementnamen stehen an einer Stelle und lassen sich
+  in I.2 nach dem Abgleich mit Schema oder echtem Export korrigieren, das
+  Korpus wird dann neu erzeugt. Ein Test vergleicht die eingecheckten
+  Dateien mit der Erzeugung. Vorbemerkungen stehen als `Remark` vor der
+  ersten Position; Bereiche mit Unterbereichen enthalten keine Positionen.
 - Kein Modellzugriff in I.1; Datenschutzfragen zum Versand von LVs an einen
   Modellanbieter gehören zu I.3.

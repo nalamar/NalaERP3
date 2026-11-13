@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-12 I.1.1b** erledigt: Kennzahlen im Paket `quotes/eval` (Treffer-, Fehlzuordnungs-,
+> **2026-11-13 I.1.2a** erledigt: X83-Dateien werden aus der Erwartung erzeugt (`x83.go`,
+> Elementnamen außer Provis/LumpSumItem unbelegt, Prüfung in I.2); LV 01 und 02 mit
+> 52 Positionen. Nächste: **I.1.2b** LV 03–05. Nächste freie Migration: 116, ADR: 0040.
+> Davor **2026-11-12 I.1.1b** erledigt: Kennzahlen im Paket `quotes/eval` (Treffer-, Fehlzuordnungs-,
 > Prüflistenquote, Systemvorgaben je Merkmal, Zielwerte ≤ 2 % / ≥ 70 %, Summe); I.1.1
 > damit fertig. Nächste: **I.1.2** synthetische LVs (erste Hälfte, X83 DA XML 3.3 mit
 > erwarteten Ergebnissen). Nächste freie Migration: 116, nächstes ADR: 0040.

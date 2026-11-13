@@ -1,0 +1,42 @@
+{
+  "datei": "lv-01.x83",
+  "format": "da_xml_3.3",
+  "phase": "X83",
+  "vorbemerkungen": ["Alle Maße sind am Bau zu nehmen.", "Angegebene Systeme gelten als Leitfabrikat; gleichwertige Systeme sind zulässig, die Gleichwertigkeit ist nachzuweisen."],
+  "bereiche": [
+    {"oz": "01", "stufe": "titel", "bezeichnung": "Baustelleneinrichtung"},
+    {"oz": "02", "stufe": "titel", "bezeichnung": "Fenster und Fenstertüren"},
+    {"oz": "03", "stufe": "titel", "bezeichnung": "Türen"},
+    {"oz": "04", "stufe": "titel", "bezeichnung": "Fensterbänke und Bleche"},
+    {"oz": "05", "stufe": "titel", "bezeichnung": "Stahlbau"},
+    {"oz": "06", "stufe": "titel", "bezeichnung": "Stundenlohn und Nebenleistungen"}
+  ],
+  "positionen": [
+    {"oz": "01.0010", "bereich": "01", "kurztext": "Baustelleneinrichtung einrichten und räumen", "langtext": "Einrichten, Vorhalten und Räumen der Baustelleneinrichtung für das Gewerk Fenster und Türen.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}},
+    {"oz": "02.0010", "bereich": "02", "kurztext": "Aluminiumfenster einflügelig, Dreh-Kipp", "langtext": "Fenster aus wärmegedämmten Aluminiumprofilen, Profilsystem Serie A75.\nVerglasung: Dreifach-Wärmeschutzverglasung.\nUw ≤ 0,90 W/(m²K). Größe 1,01 x 1,26 m.", "menge": 12, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"oz": "02.0020", "bereich": "02", "kurztext": "Aluminiumfenster zweiflügelig mit Stulp", "langtext": "Wie Pos. 02.0010, jedoch zweiflügelig, Stulpausführung ohne Mittelpfosten.\nGröße 1,76 x 1,26 m. Uw ≤ 0,9 W/m²K.", "menge": 6, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {"u_wert": 0.9}},
+    {"oz": "02.0030", "bereich": "02", "kurztext": "Fenstertür einflügelig, Aluminium", "langtext": "Profilsystem Serie A75, 3-fach Wärmeschutzglas, Uw max. 1,0 W/(m²K).\nUntere Schwelle barrierefrei.", "menge": 4, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-FT", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 1.0}},
+    {"oz": "02.0040", "bereich": "02", "kurztext": "Festverglasung Treppenhaus", "langtext": "Feststehendes Element in Aluminiumrahmen Serie A75, Verglasung 3-fach Wärmeschutz.", "menge": 18.5, "einheit": "m2", "art": "normal", "leistung": "FE-ALU-FEST", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz"}},
+    {"oz": "02.0050", "bereich": "02", "kurztext": "Kunststofffenster einflügelig, Dreh-Kipp", "langtext": "Fenster aus Kunststoffprofilen, weiß, Dreifachverglasung, Uw ≤ 0,90 W/(m²K).", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {"verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"oz": "02.0060", "bereich": "02", "kurztext": "Zulage für Montage über 4 m Höhe", "langtext": "Zulage zu den Fensterpositionen für Montage in einer Höhe über 4,00 m.", "menge": 6, "einheit": "Stk", "art": "normal", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "02.0070", "bereich": "02", "kurztext": "Altfenster ausbauen und entsorgen", "langtext": "Vorhandene Holzfenster einschließlich Glas ausbauen, abtransportieren und entsorgen.", "menge": 14, "einheit": "Stk", "art": "normal", "leistung": "DEM-FE", "systemvorgaben": {}},
+    {"oz": "02.0080", "bereich": "02", "kurztext": "Aluminiumfenster einflügelig mit Oberlicht", "langtext": "Profilsystem Serie A75, Oberlicht als Kippflügel, Uw ≤ 0,9 W/(m²K).", "menge": 3, "einheit": "Stk", "art": "grundposition", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75", "u_wert": 0.9}},
+    {"oz": "02.0090", "bereich": "02", "kurztext": "wie vor, jedoch zweiflügelig", "langtext": "Alternativ zu Pos. 02.0080: Ausführung zweiflügelig mit Oberlicht.", "menge": 3, "einheit": "Stk", "art": "alternativposition", "zu": "02.0080", "leistung": "FE-ALU-2F", "systemvorgaben": {}},
+    {"oz": "03.0010", "bereich": "03", "kurztext": "Haustür Aluminium, einbruchhemmend", "langtext": "Haustür aus Aluminium, Profilsystem Serie T75, Widerstandsklasse RC 2 nach DIN EN 1627.\nUd ≤ 1,3 W/(m²K).", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "TU-HAUS-RC2", "systemvorgaben": {"profilserie": "Serie T75", "rc_klasse": "RC2", "u_wert": 1.3}},
+    {"oz": "03.0020", "bereich": "03", "kurztext": "Feuerschutztür T30-1", "langtext": "Feuerschutzabschluss T30, einflügelig, Aluminiumprofile Serie F60, selbstschließend.", "menge": 3, "einheit": "Stk", "art": "normal", "leistung": "TU-BS-T30", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "T30"}},
+    {"oz": "03.0030", "bereich": "03", "kurztext": "Feuerschutztür T90-1", "langtext": "Feuerschutzabschluss T90, einflügelig, Stahl, selbstschließend.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {"brandschutzklasse": "T90"}},
+    {"oz": "03.0040", "bereich": "03", "kurztext": "Rauchschutztür zweiflügelig", "langtext": "Rauchschutzabschluss RS-2 nach DIN 18095, Aluminium Serie F60, mit Schließfolgeregelung.", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "TU-RS", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "RS"}},
+    {"oz": "03.0050", "bereich": "03", "kurztext": "Feuerschutztür T30-1, Bedarf", "langtext": "Wie Pos. 03.0020, nur auf Anordnung der Bauleitung.", "menge": 1, "einheit": "Stk", "art": "bedarfsposition_mit_gb", "leistung": "TU-BS-T30", "systemvorgaben": {"brandschutzklasse": "T30"}},
+    {"oz": "03.0060", "bereich": "03", "kurztext": "Zulage Türmontage über 4 m", "langtext": "Zulage für die Montage von Türen in einer Höhe über 4 m, nur auf Anordnung.", "menge": 1, "einheit": "Stk", "art": "bedarfsposition_ohne_gb", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "04.0010", "bereich": "04", "kurztext": "Fensterbank außen, Aluminium", "langtext": "Außenfensterbank aus Aluminium, gekantet, Ausladung 180 mm, mit Endkappen.", "menge": 42.6, "einheit": "m", "art": "normal", "leistung": "FB-ALU", "systemvorgaben": {}},
+    {"oz": "04.0020", "bereich": "04", "kurztext": "Fensterbank innen, Holz", "langtext": "Innenfensterbank aus Buche, geölt, Tiefe 250 mm.", "menge": 30, "einheit": "m", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "04.0030", "bereich": "04", "kurztext": "Attikablech Aluminium", "langtext": "Attikaabdeckung aus Aluminiumblech 2 mm, Zuschnitt 500 mm, pulverbeschichtet.", "menge": 64, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "04.0040", "bereich": "04", "kurztext": "Anschlussblech seitlich", "langtext": "Seitlicher Anschluss der Fenster an das Mauerwerk mit Aluminiumblech.", "menge": 22, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "05.0010", "bereich": "05", "kurztext": "Geländer Stahl, feuerverzinkt", "langtext": "Treppengeländer aus Stahl, Füllung senkrechte Stäbe, feuerverzinkt, Höhe 1,00 m.", "menge": 24, "einheit": "m", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "05.0020", "bereich": "05", "kurztext": "Außentreppe Stahl, gerade", "langtext": "Gerade Stahltreppe, 14 Steigungen, Stufen aus Gitterrost.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "05.0030", "bereich": "05", "kurztext": "Vordach Eingang", "langtext": "Vordach aus Stahlprofilen, Eindeckung VSG 2 x 8 mm, Größe 2,50 x 1,20 m.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "ST-VORDACH", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"oz": "05.0040", "bereich": "05", "kurztext": "Handlauf Edelstahl an Wand", "langtext": "Wandhandlauf aus Edelstahl, Durchmesser 42 mm, mit Wandhaltern.", "menge": 12, "einheit": "m", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "06.0010", "bereich": "06", "kurztext": "Stundenlohn Monteur", "langtext": "Stundenlohnarbeiten nur auf schriftliche Anordnung.", "menge": 20, "einheit": "h", "art": "bedarfsposition_ohne_gb", "leistung": "", "systemvorgaben": {}},
+    {"oz": "06.0020", "bereich": "06", "kurztext": "Schlussreinigung Fenster und Türen", "langtext": "Reinigung aller Rahmen und Gläser innen und außen vor der Abnahme.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}}
+  ]
+}

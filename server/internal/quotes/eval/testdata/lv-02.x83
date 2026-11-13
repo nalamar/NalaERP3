@@ -1,0 +1,621 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GAEB xmlns="http://www.gaeb.de/GAEB_DA_XML/DA83/3.3">
+  <GAEBInfo>
+    <Version>3.3</Version>
+    <ProgSystem>NalaERP3 Evaluationsset (synthetisch)</ProgSystem>
+  </GAEBInfo>
+  <PrjInfo>
+    <NamePrj>lv-02</NamePrj>
+    <LblPrj>Synthetisches Leistungsverzeichnis</LblPrj>
+    <Cur>EUR</Cur>
+  </PrjInfo>
+  <Award>
+    <DP>83</DP>
+    <BoQ ID="Q1">
+      <BoQInfo>
+        <Name>lv-02</Name>
+        <BoQBkdn><Type>Lot</Type><Length>1</Length><Num>Yes</Num></BoQBkdn>
+        <BoQBkdn><Type>BoQLevel</Type><Length>2</Length><Num>Yes</Num></BoQBkdn>
+        <BoQBkdn><Type>Item</Type><Length>4</Length><Num>Yes</Num></BoQBkdn>
+      </BoQInfo>
+      <BoQBody>
+        <BoQCtgy ID="C2" RNoPart="1">
+          <LblTx>
+            <p><span>Fassade</span></p>
+          </LblTx>
+          <BoQBody>
+            <BoQCtgy ID="C3" RNoPart="01">
+              <LblTx>
+                <p><span>Pfosten-Riegel-Fassade</span></p>
+              </LblTx>
+              <BoQBody>
+                <Itemlist>
+                  <Remark ID="R4">
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Die Fassade ist als geschlossene Hülle bis zur Abnahme zu schützen.</span></p>
+                          </Text>
+                        </DetailTxt>
+                      </CompleteText>
+                    </Description>
+                  </Remark>
+                  <Item ID="I5" RNoPart="0010">
+                    <Qty>245.000</Qty>
+                    <QU>m2</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Pfosten-Riegel-Konstruktion aus Aluminium, Systembreite 50 mm, Serie P50.</span></p>
+                            <p><span>Verglasung 2-fach Sonnenschutzglas, Ucw ≤ 1,1 W/(m²K).</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Pfosten-Riegel-Fassade Aluminium</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I6" RNoPart="0020">
+                    <Qty>80.000</Qty>
+                    <QU>m2</QU>
+                    <ALNGroupNo>1</ALNGroupNo>
+                    <ALNSerNo>0</ALNSerNo>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Pfosten-Riegel-Fassade wie vor, Felder mit Zweifach-Sonnenschutzverglasung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Fassadenfeld Sonnenschutzverglasung</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I7" RNoPart="0030">
+                    <Qty>80.000</Qty>
+                    <QU>m2</QU>
+                    <ALNGroupNo>1</ALNGroupNo>
+                    <ALNSerNo>1</ALNSerNo>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Alternativ zu 1.01.0020: Felder mit 3-fach Wärmeschutzverglasung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>wie vor, jedoch Dreifachverglasung</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I8" RNoPart="0040">
+                    <Qty>96.000</Qty>
+                    <QU>m</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Anschluss der Fassade an Decken und Wände mit Aluminiumblech, gekantet.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Anschlussblech Fassade an Rohbau</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I9" RNoPart="0050">
+                    <Qty>58.000</Qty>
+                    <QU>m</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Attikaabdeckung, Zuschnitt 400 mm, Aluminium pulverbeschichtet.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Attikaabdeckung Aluminium</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I10" RNoPart="0060">
+                    <Qty>12.000</Qty>
+                    <QU>m2</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Brandschutzverglasung F30 als Feld in der Fassade, mit Zulassung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Brandschutzverglasung F30</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I11" RNoPart="0070">
+                    <Qty>10.000</Qty>
+                    <QU>Stk</QU>
+                    <Provis>WithTotal</Provis>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Zulage für Fassadenmontage über 4 m, nur auf Anordnung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Zulage Montage in Höhe über 4 m</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I12" RNoPart="0080">
+                    <Qty>1.000</Qty>
+                    <QU>psch</QU>
+                    <LumpSumItem>Yes</LumpSumItem>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Reinigung der gesamten Fassade nach Abschluss der Montage.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Reinigung der Fassade</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                </Itemlist>
+              </BoQBody>
+            </BoQCtgy>
+            <BoQCtgy ID="C13" RNoPart="02">
+              <LblTx>
+                <p><span>Fenster in der Fassade</span></p>
+              </LblTx>
+              <BoQBody>
+                <Itemlist>
+                  <Item ID="I14" RNoPart="0010">
+                    <Qty>16.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Einsatzelement für Pfosten-Riegel-Fassade, Dreh-Kipp, Serie A75.</span></p>
+                            <p><span>Uw = 0,9 W/(m²K).</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Einsatzfenster einflügelig</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I15" RNoPart="0020">
+                    <Qty>4.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Aluminiumfenster, zwei Flügel, Serie A75, Dreifach-Wärmeschutzverglasung, Uw = 0,9 W/(m²K).</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Dreh-Kipp-Fenster zweiflügelig</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I16" RNoPart="0030">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Aluminium-Fenstertür, Serie A75, Uw ≤ 1,00 W/(m²K).</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Fenstertür zum Balkon</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I17" RNoPart="0040">
+                    <Qty>9.600</Qty>
+                    <QU>m2</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Festverglasung im Aluminiumrahmen, 3-fach Wärmeschutz.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Festfeld unter Brüstung</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I18" RNoPart="0050">
+                    <Qty>6.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Elektromotorischer Antrieb mit Steuerung und Verkabelung für Lüftungsflügel.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Lüftungsflügel motorisch</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I19" RNoPart="0060">
+                    <Qty>28.400</Qty>
+                    <QU>m</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Außenfensterbank Aluminium, Ausladung 150 mm.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Fensterbank außen, Alu gekantet</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I20" RNoPart="0070">
+                    <Qty>16.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Außenliegender Raffstore mit Führungsschienen und Motor, Lamellen 80 mm.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Raffstore außen</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                </Itemlist>
+              </BoQBody>
+            </BoQCtgy>
+          </BoQBody>
+        </BoQCtgy>
+        <BoQCtgy ID="C21" RNoPart="2">
+          <LblTx>
+            <p><span>Metallbau</span></p>
+          </LblTx>
+          <BoQBody>
+            <BoQCtgy ID="C22" RNoPart="01">
+              <LblTx>
+                <p><span>Geländer und Treppen</span></p>
+              </LblTx>
+              <BoQBody>
+                <Itemlist>
+                  <Item ID="I23" RNoPart="0010">
+                    <Qty>36.000</Qty>
+                    <QU>m</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Geländer aus Stahl, feuerverzinkt, Füllstäbe senkrecht, Handlauf Rundrohr.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Treppengeländer Stahl</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I24" RNoPart="0020">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <ALNGroupNo>2</ALNGroupNo>
+                    <ALNSerNo>0</ALNSerNo>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Gerade einläufige Stahltreppe, Wangen aus Flachstahl, Stufen Gitterrost.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Stahltreppe gerade, Gitterroststufen</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I25" RNoPart="0030">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <ALNGroupNo>2</ALNGroupNo>
+                    <ALNSerNo>1</ALNSerNo>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Alternativ zu 2.01.0020 mit Stufen aus Tränenblech.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>wie vor, jedoch Tränenblechstufen</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I26" RNoPart="0040">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <ALNGroupNo>2</ALNGroupNo>
+                    <ALNSerNo>2</ALNSerNo>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Alternativ zu 2.01.0020 als Wendeltreppe mit Mittelsäule.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>wie vor, jedoch gewendelt</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I27" RNoPart="0050">
+                    <Qty>14.000</Qty>
+                    <QU>m</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Geländer vor bodentiefen Fenstern, Stahl feuerverzinkt, Höhe 0,90 m.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Absturzsicherung französischer Balkon</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                </Itemlist>
+              </BoQBody>
+            </BoQCtgy>
+            <BoQCtgy ID="C28" RNoPart="02">
+              <LblTx>
+                <p><span>Türen und Sonstiges</span></p>
+              </LblTx>
+              <BoQBody>
+                <Itemlist>
+                  <Item ID="I29" RNoPart="0010">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Vordach aus Stahl, Glaseindeckung VSG 2x8 mm, Punkthalter.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Vordach Stahl mit Glas</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I30" RNoPart="0020">
+                    <Qty>2.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Aluminium-Haustür Serie T75, einbruchhemmend RC2, Ud ≤ 1,3 W/(m²K).</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Hauseingangstür Aluminium</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I31" RNoPart="0030">
+                    <Qty>1.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Feuerschutzabschluss T30-2, zweiflügelig, mit Schließfolgeregelung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Feuerschutztür T30 zweiflügelig</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I32" RNoPart="0040">
+                    <Qty>1.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Rauchschutztür zweiflügelig, Aluminium Serie F60, RS nach DIN 18095.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Rauchschutztür RS zweiflügelig</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I33" RNoPart="0050">
+                    <Qty>16.000</Qty>
+                    <QU>h</QU>
+                    <Provis>WithoutTotal</Provis>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Stundenlohnarbeiten nur auf Anordnung der Bauleitung.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Stundenlohn Schlosser</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                  <Item ID="I34" RNoPart="0060">
+                    <Qty>8.000</Qty>
+                    <QU>Stk</QU>
+                    <Description>
+                      <CompleteText>
+                        <DetailTxt>
+                          <Text>
+                            <p><span>Bestandsfenster ausbauen und fachgerecht entsorgen.</span></p>
+                          </Text>
+                        </DetailTxt>
+                        <OutlineText>
+                          <OutlTxt>
+                            <TextOutlTxt>
+                              <p><span>Altfenster ausbauen</span></p>
+                            </TextOutlTxt>
+                          </OutlTxt>
+                        </OutlineText>
+                      </CompleteText>
+                    </Description>
+                  </Item>
+                </Itemlist>
+              </BoQBody>
+            </BoQCtgy>
+          </BoQBody>
+        </BoQCtgy>
+      </BoQBody>
+    </BoQ>
+  </Award>
+</GAEB>

@@ -1,0 +1,42 @@
+{
+  "datei": "lv-02.x83",
+  "format": "da_xml_3.3",
+  "phase": "X83",
+  "vorbemerkungen": ["Die Fassade ist als geschlossene Hülle bis zur Abnahme zu schützen."],
+  "bereiche": [
+    {"oz": "1", "stufe": "los", "bezeichnung": "Fassade"},
+    {"oz": "1.01", "stufe": "titel", "bezeichnung": "Pfosten-Riegel-Fassade", "eltern": "1"},
+    {"oz": "1.02", "stufe": "titel", "bezeichnung": "Fenster in der Fassade", "eltern": "1"},
+    {"oz": "2", "stufe": "los", "bezeichnung": "Metallbau"},
+    {"oz": "2.01", "stufe": "titel", "bezeichnung": "Geländer und Treppen", "eltern": "2"},
+    {"oz": "2.02", "stufe": "titel", "bezeichnung": "Türen und Sonstiges", "eltern": "2"}
+  ],
+  "positionen": [
+    {"oz": "1.01.0010", "bereich": "1.01", "kurztext": "Pfosten-Riegel-Fassade Aluminium", "langtext": "Pfosten-Riegel-Konstruktion aus Aluminium, Systembreite 50 mm, Serie P50.\nVerglasung 2-fach Sonnenschutzglas, Ucw ≤ 1,1 W/(m²K).", "menge": 245, "einheit": "m2", "art": "normal", "leistung": "FA-PR", "systemvorgaben": {"profilserie": "Serie P50", "verglasung": "2-fach Sonnenschutz", "u_wert": 1.1}},
+    {"oz": "1.01.0020", "bereich": "1.01", "kurztext": "Fassadenfeld Sonnenschutzverglasung", "langtext": "Pfosten-Riegel-Fassade wie vor, Felder mit Zweifach-Sonnenschutzverglasung.", "menge": 80, "einheit": "m2", "art": "grundposition", "leistung": "FA-PR", "systemvorgaben": {"verglasung": "2-fach Sonnenschutz"}},
+    {"oz": "1.01.0030", "bereich": "1.01", "kurztext": "wie vor, jedoch Dreifachverglasung", "langtext": "Alternativ zu 1.01.0020: Felder mit 3-fach Wärmeschutzverglasung.", "menge": 80, "einheit": "m2", "art": "alternativposition", "zu": "1.01.0020", "leistung": "FA-PR", "systemvorgaben": {"verglasung": "3-fach Wärmeschutz"}},
+    {"oz": "1.01.0040", "bereich": "1.01", "kurztext": "Anschlussblech Fassade an Rohbau", "langtext": "Anschluss der Fassade an Decken und Wände mit Aluminiumblech, gekantet.", "menge": 96, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "1.01.0050", "bereich": "1.01", "kurztext": "Attikaabdeckung Aluminium", "langtext": "Attikaabdeckung, Zuschnitt 400 mm, Aluminium pulverbeschichtet.", "menge": 58, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "1.01.0060", "bereich": "1.01", "kurztext": "Brandschutzverglasung F30", "langtext": "Brandschutzverglasung F30 als Feld in der Fassade, mit Zulassung.", "menge": 12, "einheit": "m2", "art": "normal", "leistung": "", "systemvorgaben": {"brandschutzklasse": "F30"}},
+    {"oz": "1.01.0070", "bereich": "1.01", "kurztext": "Zulage Montage in Höhe über 4 m", "langtext": "Zulage für Fassadenmontage über 4 m, nur auf Anordnung.", "menge": 10, "einheit": "Stk", "art": "bedarfsposition_mit_gb", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "1.01.0080", "bereich": "1.01", "kurztext": "Reinigung der Fassade", "langtext": "Reinigung der gesamten Fassade nach Abschluss der Montage.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}},
+    {"oz": "1.02.0010", "bereich": "1.02", "kurztext": "Einsatzfenster einflügelig", "langtext": "Einsatzelement für Pfosten-Riegel-Fassade, Dreh-Kipp, Serie A75.\nUw = 0,9 W/(m²K).", "menge": 16, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75", "u_wert": 0.9}},
+    {"oz": "1.02.0020", "bereich": "1.02", "kurztext": "Dreh-Kipp-Fenster zweiflügelig", "langtext": "Aluminiumfenster, zwei Flügel, Serie A75, Dreifach-Wärmeschutzverglasung, Uw = 0,9 W/(m²K).", "menge": 4, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"oz": "1.02.0030", "bereich": "1.02", "kurztext": "Fenstertür zum Balkon", "langtext": "Aluminium-Fenstertür, Serie A75, Uw ≤ 1,00 W/(m²K).", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-FT", "systemvorgaben": {"profilserie": "Serie A75", "u_wert": 1.0}},
+    {"oz": "1.02.0040", "bereich": "1.02", "kurztext": "Festfeld unter Brüstung", "langtext": "Festverglasung im Aluminiumrahmen, 3-fach Wärmeschutz.", "menge": 9.6, "einheit": "m2", "art": "normal", "leistung": "FE-ALU-FEST", "systemvorgaben": {"verglasung": "3-fach Wärmeschutz"}},
+    {"oz": "1.02.0050", "bereich": "1.02", "kurztext": "Lüftungsflügel motorisch", "langtext": "Elektromotorischer Antrieb mit Steuerung und Verkabelung für Lüftungsflügel.", "menge": 6, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "1.02.0060", "bereich": "1.02", "kurztext": "Fensterbank außen, Alu gekantet", "langtext": "Außenfensterbank Aluminium, Ausladung 150 mm.", "menge": 28.4, "einheit": "m", "art": "normal", "leistung": "FB-ALU", "systemvorgaben": {}},
+    {"oz": "1.02.0070", "bereich": "1.02", "kurztext": "Raffstore außen", "langtext": "Außenliegender Raffstore mit Führungsschienen und Motor, Lamellen 80 mm.", "menge": 16, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.01.0010", "bereich": "2.01", "kurztext": "Treppengeländer Stahl", "langtext": "Geländer aus Stahl, feuerverzinkt, Füllstäbe senkrecht, Handlauf Rundrohr.", "menge": 36, "einheit": "m", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "2.01.0020", "bereich": "2.01", "kurztext": "Stahltreppe gerade, Gitterroststufen", "langtext": "Gerade einläufige Stahltreppe, Wangen aus Flachstahl, Stufen Gitterrost.", "menge": 2, "einheit": "Stk", "art": "grundposition", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "2.01.0030", "bereich": "2.01", "kurztext": "wie vor, jedoch Tränenblechstufen", "langtext": "Alternativ zu 2.01.0020 mit Stufen aus Tränenblech.", "menge": 2, "einheit": "Stk", "art": "alternativposition", "zu": "2.01.0020", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "2.01.0040", "bereich": "2.01", "kurztext": "wie vor, jedoch gewendelt", "langtext": "Alternativ zu 2.01.0020 als Wendeltreppe mit Mittelsäule.", "menge": 2, "einheit": "Stk", "art": "alternativposition", "zu": "2.01.0020", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.01.0050", "bereich": "2.01", "kurztext": "Absturzsicherung französischer Balkon", "langtext": "Geländer vor bodentiefen Fenstern, Stahl feuerverzinkt, Höhe 0,90 m.", "menge": 14, "einheit": "m", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "2.02.0010", "bereich": "2.02", "kurztext": "Vordach Stahl mit Glas", "langtext": "Vordach aus Stahl, Glaseindeckung VSG 2x8 mm, Punkthalter.", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "ST-VORDACH", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"oz": "2.02.0020", "bereich": "2.02", "kurztext": "Hauseingangstür Aluminium", "langtext": "Aluminium-Haustür Serie T75, einbruchhemmend RC2, Ud ≤ 1,3 W/(m²K).", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "TU-HAUS-RC2", "systemvorgaben": {"profilserie": "Serie T75", "rc_klasse": "RC2", "u_wert": 1.3}},
+    {"oz": "2.02.0030", "bereich": "2.02", "kurztext": "Feuerschutztür T30 zweiflügelig", "langtext": "Feuerschutzabschluss T30-2, zweiflügelig, mit Schließfolgeregelung.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {"brandschutzklasse": "T30"}},
+    {"oz": "2.02.0040", "bereich": "2.02", "kurztext": "Rauchschutztür RS zweiflügelig", "langtext": "Rauchschutztür zweiflügelig, Aluminium Serie F60, RS nach DIN 18095.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "TU-RS", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "RS"}},
+    {"oz": "2.02.0050", "bereich": "2.02", "kurztext": "Stundenlohn Schlosser", "langtext": "Stundenlohnarbeiten nur auf Anordnung der Bauleitung.", "menge": 16, "einheit": "h", "art": "bedarfsposition_ohne_gb", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.02.0060", "bereich": "2.02", "kurztext": "Altfenster ausbauen", "langtext": "Bestandsfenster ausbauen und fachgerecht entsorgen.", "menge": 8, "einheit": "Stk", "art": "normal", "leistung": "DEM-FE", "systemvorgaben": {}}
+  ]
+}

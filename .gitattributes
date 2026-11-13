@@ -6,3 +6,4 @@
 *.json text eol=lf
 *.sh   text eol=lf
 *.py   text eol=lf
+*.x83  text eol=lf
