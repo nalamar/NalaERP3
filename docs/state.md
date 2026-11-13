@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.1.4a** erledigt: Matcher-Schnittstelle (Eingabe ohne Erwartung),
+> **2026-11-13 I.1.4b** erledigt: Lauf und Bericht, Ausgangswerte in ADR 0039; **I.1
+> abgeschlossen**. Nächste: **I.2** echter GAEB-DA-XML-Parser, gemessen am Korpus (zuerst
+> ADR/Bestandsaufnahme). Nächste freie Migration: 116, ADR: 0040.
+> Davor **2026-11-13 I.1.4a** erledigt: Matcher-Schnittstelle (Eingabe ohne Erwartung),
 > NieZuordnen und Wortabgleich. Nächste: **I.1.4b** Lauf und Bericht. Nächste freie
 > Migration: 116, ADR: 0040.
 > Davor **2026-11-13 I.1.3b** erledigt: LV 08–10; Korpus fertig mit 10 LVs, 250 Positionen,

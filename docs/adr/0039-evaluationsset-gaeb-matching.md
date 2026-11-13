@@ -193,3 +193,22 @@ Beispiel-LV im Stil der üblichen Ausschreibungen wäre hilfreich.
   ersten Position; Bereiche mit Unterbereichen enthalten keine Positionen.
 - Kein Modellzugriff in I.1; Datenschutzfragen zum Versand von LVs an einen
   Modellanbieter gehören zu I.3.
+
+## Ausgangswerte (2026-11-13, I.1.4)
+
+Korpus: 10 synthetische LVs, 250 Positionen, 184 mit Ziel. Positionen aus
+der Erwartung (bis I.2 ohne Parser). Lauf: `NALA_EVAL=1 go test
+./internal/quotes/eval -run TestBericht -v`.
+
+| Matcher | Schwelle | automatisch | richtig | falsch | Trefferquote | Fehlzuordnung | Prüfliste | Ziel |
+|---|---|---|---|---|---|---|---|---|
+| nie-zuordnen | jede | 0 | 0 | 0 | 0,0 % | 0,0 % | 100,0 % | nein |
+| wortabgleich | 0,3 | 161 | 124 | 37 | 67,4 % | 23,0 % | 35,6 % | nein |
+| wortabgleich | 0,5 | 96 | 87 | 9 | 47,3 % | 9,4 % | 61,6 % | nein |
+| wortabgleich | 0,7 | 47 | 47 | 0 | 25,5 % | 0,0 % | 81,2 % | nein |
+| wortabgleich | 0,9 | 16 | 16 | 0 | 8,7 % | 0,0 % | 93,6 % | nein |
+
+Systemvorgaben erkennt keiner der beiden (erwartet: Profilserie 51,
+Verglasung 39, U-Wert 42 …; erkannt 0). Ein Matcher für I.4 muss also bei
+einer Schwelle mit höchstens 2 % Fehlzuordnung deutlich über 25,5 %
+Treffer kommen — Ziel sind 70 %.
