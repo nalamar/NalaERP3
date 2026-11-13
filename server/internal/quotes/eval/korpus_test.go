@@ -98,6 +98,10 @@ func TestKorpus(t *testing.T) {
 	if len(arten) != len(validArten) || !pauschal || len(stufen) != len(validStufen)+1 || len(formate) != len(x83Namespaces) {
 		t.Fatalf("Korpus deckt nicht alles ab: Arten %v, Pauschale %v, Stufen %v, Formate %v", arten, pauschal, stufen, formate)
 	}
+	// Umfang nach ADR 0039, Entscheidung 2 (a)
+	if len(dateien) != 10 || len(alle) < 250 || len(alle) > 300 {
+		t.Fatalf("Korpus: %d LVs mit %d Positionen, erwartet 10 LVs mit 250–300", len(dateien), len(alle))
+	}
 	if q := quote(ohneZiel, len(alle)); q < 0.15 || q > 0.30 {
 		t.Fatalf("Anteil ohne Ziel %.2f außerhalb 15–30 %%", q)
 	}

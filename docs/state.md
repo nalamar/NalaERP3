@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.1.3a** erledigt: LV 06 und 07 in DA XML 3.2; Korpus 7 LVs, 173 Positionen,
+> **2026-11-13 I.1.3b** erledigt: LV 08–10; Korpus fertig mit 10 LVs, 250 Positionen,
+> 26 % ohne Ziel; I.1.3 fertig. Nächste: **I.1.4** Auswertung mit Basis-Matchern und
+> Bericht. Nächste freie Migration: 116, ADR: 0040.
+> Davor **2026-11-13 I.1.3a** erledigt: LV 06 und 07 in DA XML 3.2; Korpus 7 LVs, 173 Positionen,
 > 26 % ohne Ziel. Nächste: **I.1.3b** LV 08–10. Nächste freie Migration: 116, ADR: 0040.
 > Davor **2026-11-13 I.1.2b** erledigt: LV 03–05 (Untertitel, flaches LV, Los mit Untertiteln);
 > Korpus 5 LVs, 121 Positionen, 26 % ohne Ziel; I.1.2 fertig. Nächste: **I.1.3** LV 06–10
