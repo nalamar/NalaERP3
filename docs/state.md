@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.1.3b** erledigt: LV 08–10; Korpus fertig mit 10 LVs, 250 Positionen,
+> **2026-11-13 I.1.4a** erledigt: Matcher-Schnittstelle (Eingabe ohne Erwartung),
+> NieZuordnen und Wortabgleich. Nächste: **I.1.4b** Lauf und Bericht. Nächste freie
+> Migration: 116, ADR: 0040.
+> Davor **2026-11-13 I.1.3b** erledigt: LV 08–10; Korpus fertig mit 10 LVs, 250 Positionen,
 > 26 % ohne Ziel; I.1.3 fertig. Nächste: **I.1.4** Auswertung mit Basis-Matchern und
 > Bericht. Nächste freie Migration: 116, ADR: 0040.
 > Davor **2026-11-13 I.1.3a** erledigt: LV 06 und 07 in DA XML 3.2; Korpus 7 LVs, 173 Positionen,
