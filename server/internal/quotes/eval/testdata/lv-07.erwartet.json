@@ -1,0 +1,41 @@
+{
+  "datei": "lv-07.x83",
+  "format": "da_xml_3.2",
+  "phase": "X83",
+  "vorbemerkungen": ["Die Wohnungen sind bewohnt; Fenstertausch je Wohnung an einem Tag.", "Termine mit der Hausverwaltung abstimmen."],
+  "bereiche": [
+    {"oz": "1", "stufe": "los", "bezeichnung": "Haus 1"},
+    {"oz": "1.01", "stufe": "titel", "bezeichnung": "Fenster", "eltern": "1"},
+    {"oz": "1.02", "stufe": "titel", "bezeichnung": "Balkone", "eltern": "1"},
+    {"oz": "2", "stufe": "los", "bezeichnung": "Haus 2"},
+    {"oz": "2.01", "stufe": "titel", "bezeichnung": "Fenster", "eltern": "2"},
+    {"oz": "2.02", "stufe": "titel", "bezeichnung": "Hauseingang und Keller", "eltern": "2"}
+  ],
+  "positionen": [
+    {"oz": "1.01.0010", "bereich": "1.01", "kurztext": "Fenster ausbauen und entsorgen", "langtext": "Holzfenster mit Rahmen ausbauen, Schutt entsorgen.", "menge": 36, "einheit": "St", "art": "normal", "leistung": "DEM-FE", "systemvorgaben": {}},
+    {"oz": "1.01.0020", "bereich": "1.01", "kurztext": "Fenster 1-flügelig, Aluminium", "langtext": "Profilsystem Serie A 75, Dreh-Kipp.\nVerglasung 3-fach Wärmeschutz, Uw ≤ 0,9 W/(m²K).", "menge": 24, "einheit": "St", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"oz": "1.01.0030", "bereich": "1.01", "kurztext": "Fenster 2-flügelig, Aluminium", "langtext": "Profilsystem Serie A 75, Stulp, Uw ≤ 0,9 W/(m²K).", "menge": 12, "einheit": "St", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {"profilserie": "Serie A75", "u_wert": 0.9}},
+    {"oz": "1.01.0040", "bereich": "1.01", "kurztext": "Fenstertür zum Balkon", "langtext": "Aluminium, Schwelle flach, Uw ≤ 1,0 W/(m²K).", "menge": 12, "einheit": "St", "art": "normal", "leistung": "FE-ALU-FT", "systemvorgaben": {"u_wert": 1.0}},
+    {"oz": "1.01.0050", "bereich": "1.01", "kurztext": "Fensterbank außen", "langtext": "Aluminium, Ausladung 200 mm, mit Antidröhnbelag.", "menge": 42, "einheit": "lfm", "art": "normal", "leistung": "FB-ALU", "systemvorgaben": {}},
+    {"oz": "1.01.0060", "bereich": "1.01", "kurztext": "Rollladen Vorbau", "langtext": "Vorbaurollladen mit Aluminiumpanzer und Gurtwickler.", "menge": 24, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "1.01.0070", "bereich": "1.01", "kurztext": "Zulage Montage über 4 m", "langtext": "Für Fenster ab dem 2. Obergeschoss.", "menge": 12, "einheit": "St", "art": "normal", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "1.02.0010", "bereich": "1.02", "kurztext": "Balkongeländer Stahl, verzinkt und beschichtet", "langtext": "Geländer mit Füllstäben, Handlauf Flachstahl, Höhe 1,00 m.", "menge": 60, "einheit": "lfm", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "1.02.0020", "bereich": "1.02", "kurztext": "Balkonverglasung (Schiebeelemente)", "langtext": "Rahmenlose Schiebeverglasung aus ESG auf der Brüstung.", "menge": 40, "einheit": "m²", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "1.02.0030", "bereich": "1.02", "kurztext": "Balkongeländer, Füllung Lochblech", "langtext": "Stahlgeländer verzinkt, Füllung Lochblech.", "menge": 30, "einheit": "lfm", "art": "grundposition", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "1.02.0040", "bereich": "1.02", "kurztext": "wie vor, jedoch Füllung Stäbe", "langtext": "Alternativ zu 1.02.0030 mit senkrechten Füllstäben.", "menge": 30, "einheit": "lfm", "art": "alternativposition", "zu": "1.02.0030", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "1.02.0050", "bereich": "1.02", "kurztext": "Geländerfeld ersetzen", "langtext": "Einzelnes Geländerfeld, Länge bis 2 m, nur auf Anordnung.", "menge": 4, "einheit": "St", "art": "bedarfsposition_mit_gb", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "2.01.0010", "bereich": "2.01", "kurztext": "Fenster ausbauen", "langtext": "Wie Haus 1.", "menge": 30, "einheit": "St", "art": "normal", "leistung": "DEM-FE", "systemvorgaben": {}},
+    {"oz": "2.01.0020", "bereich": "2.01", "kurztext": "Fenster einflügelig wie Haus 1", "langtext": "Ausführung wie Pos. 1.01.0020.", "menge": 20, "einheit": "St", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {}},
+    {"oz": "2.01.0030", "bereich": "2.01", "kurztext": "Fenster zweiflügelig wie Haus 1", "langtext": "Ausführung wie Pos. 1.01.0030.", "menge": 10, "einheit": "St", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {}},
+    {"oz": "2.01.0040", "bereich": "2.01", "kurztext": "Kunststofffenster Keller", "langtext": "Kellerfenster aus Kunststoff, Kippflügel, Isolierglas.", "menge": 6, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.01.0050", "bereich": "2.01", "kurztext": "Festverglasung Treppenhaus", "langtext": "Aluminiumrahmen, Verglasung dreifach Wärmeschutz.", "menge": 14, "einheit": "m²", "art": "normal", "leistung": "FE-ALU-FEST", "systemvorgaben": {"verglasung": "3-fach Wärmeschutz"}},
+    {"oz": "2.01.0060", "bereich": "2.01", "kurztext": "Fensterbank innen, Kunststein", "langtext": "Tiefe 250 mm, Farbe nach Bemusterung.", "menge": 36, "einheit": "lfm", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.02.0010", "bereich": "2.02", "kurztext": "Hauseingangstür Aluminium RC 2", "langtext": "Haustür mit Seitenteil, einbruchhemmend RC 2, Ud-Wert 1,3 W/(m²K).", "menge": 1, "einheit": "St", "art": "normal", "leistung": "TU-HAUS-RC2", "systemvorgaben": {"rc_klasse": "RC2", "u_wert": 1.3}},
+    {"oz": "2.02.0020", "bereich": "2.02", "kurztext": "Briefkastenanlage", "langtext": "Briefkastenanlage für 8 Parteien mit Klingeltableau.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.02.0030", "bereich": "2.02", "kurztext": "Vordach Hauseingang, VSG", "langtext": "Stahlkonstruktion, Glas VSG 2x8 mm.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "ST-VORDACH", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"oz": "2.02.0040", "bereich": "2.02", "kurztext": "Kellertür T30", "langtext": "Feuerschutztür T30, einflügelig, zum Heizungsraum.", "menge": 2, "einheit": "St", "art": "normal", "leistung": "TU-BS-T30", "systemvorgaben": {"brandschutzklasse": "T30"}},
+    {"oz": "2.02.0050", "bereich": "2.02", "kurztext": "Treppe zum Keller außen, Stahl gerade", "langtext": "Gerade Stahltreppe mit Gitterroststufen, feuerverzinkt.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "2.02.0060", "bereich": "2.02", "kurztext": "Stundenlohn", "langtext": "Stundenlohnarbeiten nur auf Anordnung.", "menge": 12, "einheit": "Std", "art": "bedarfsposition_ohne_gb", "leistung": "", "systemvorgaben": {}},
+    {"oz": "2.02.0070", "bereich": "2.02", "kurztext": "Baustelleneinrichtung je Haus", "langtext": "Einrichten und Räumen für beide Häuser.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}}
+  ]
+}

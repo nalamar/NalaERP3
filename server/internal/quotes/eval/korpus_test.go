@@ -44,7 +44,7 @@ func TestKorpus(t *testing.T) {
 		t.Fatalf("Korpus fehlt: %v %v", dateien, err)
 	}
 	var alle []ErwartetePosition
-	stufen := map[string]bool{}
+	stufen, formate := map[string]bool{}, map[string]bool{}
 	for _, d := range dateien {
 		lv, err := LoadLV(d, k)
 		if err != nil {
@@ -79,6 +79,7 @@ func TestKorpus(t *testing.T) {
 			t.Fatalf("%s: nur %d Positionen", d, len(lv.Positionen))
 		}
 		alle = append(alle, lv.Positionen...)
+		formate[lv.Format] = true
 		if len(lv.Bereiche) == 0 {
 			stufen["flach"] = true
 		}
@@ -94,8 +95,8 @@ func TestKorpus(t *testing.T) {
 			ohneZiel++
 		}
 	}
-	if len(arten) != len(validArten) || !pauschal || len(stufen) != len(validStufen)+1 {
-		t.Fatalf("Korpus deckt nicht alles ab: Arten %v, Pauschale %v, Stufen %v", arten, pauschal, stufen)
+	if len(arten) != len(validArten) || !pauschal || len(stufen) != len(validStufen)+1 || len(formate) != len(x83Namespaces) {
+		t.Fatalf("Korpus deckt nicht alles ab: Arten %v, Pauschale %v, Stufen %v, Formate %v", arten, pauschal, stufen, formate)
 	}
 	if q := quote(ohneZiel, len(alle)); q < 0.15 || q > 0.30 {
 		t.Fatalf("Anteil ohne Ziel %.2f außerhalb 15–30 %%", q)

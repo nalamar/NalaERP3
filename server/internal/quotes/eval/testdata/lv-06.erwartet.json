@@ -1,0 +1,42 @@
+{
+  "datei": "lv-06.x83",
+  "format": "da_xml_3.2",
+  "phase": "X83",
+  "vorbemerkungen": ["Die Halle ist während der Montage beheizt; Anlieferung über die Laderampe."],
+  "bereiche": [
+    {"oz": "01", "stufe": "titel", "bezeichnung": "Stahlbau"},
+    {"oz": "02", "stufe": "titel", "bezeichnung": "Fassade und Tore"},
+    {"oz": "03", "stufe": "titel", "bezeichnung": "Fenster"},
+    {"oz": "04", "stufe": "titel", "bezeichnung": "Türen"},
+    {"oz": "05", "stufe": "titel", "bezeichnung": "Nebenleistungen"}
+  ],
+  "positionen": [
+    {"oz": "01.0010", "bereich": "01", "kurztext": "Stahltreppe zur Bühne, gerade", "langtext": "Gerade Stahltreppe, Wangen U-Profil, Stufen Gitterrost, 16 Steigungen.", "menge": 2, "einheit": "St", "art": "normal", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "01.0020", "bereich": "01", "kurztext": "Bühnengeländer Stahl", "langtext": "Geländer mit Knieleiste und Fußleiste, feuerverzinkt, Höhe 1,10 m.", "menge": 46, "einheit": "lfm", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "01.0030", "bereich": "01", "kurztext": "Wartungsbühne Stahl mit Gitterrost", "langtext": "Bühne aus Walzprofilen, Belag Gitterrost 30/30, Nutzlast 5 kN/m².", "menge": 38, "einheit": "m²", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "01.0040", "bereich": "01", "kurztext": "Absturzsicherung an Bühnenkante", "langtext": "Geländer Stahl verzinkt, Höhe 1,10 m, an Bestandsbühne.", "menge": 12, "einheit": "lfm", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "01.0050", "bereich": "01", "kurztext": "Vordach über Laderampe, Glas", "langtext": "Kragvordach aus Stahl, Eindeckung VSG 2 × 8 mm.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "ST-VORDACH", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"oz": "01.0060", "bereich": "01", "kurztext": "Vordach Trapezblech", "langtext": "Vordach aus Stahl mit Eindeckung aus Trapezblech, ohne Glas.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "02.0010", "bereich": "02", "kurztext": "Pfosten-Riegel-Fassade Büroteil", "langtext": "Aluminium, Serie P50, Verglasung 2-fach Sonnenschutz, Ucw ≤ 1,1 W/(m²K).", "menge": 112, "einheit": "m²", "art": "normal", "leistung": "FA-PR", "systemvorgaben": {"profilserie": "Serie P50", "verglasung": "2-fach Sonnenschutz", "u_wert": 1.1}},
+    {"oz": "02.0020", "bereich": "02", "kurztext": "Sektionaltor 4 x 4 m", "langtext": "Industrie-Sektionaltor mit Elektroantrieb und Lichtschranke.", "menge": 2, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "02.0030", "bereich": "02", "kurztext": "Attikaabdeckung", "langtext": "Aluminium, Zuschnitt 500 mm, mit Stoßverbindern.", "menge": 140, "einheit": "lfm", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "02.0040", "bereich": "02", "kurztext": "Anschlussbleche Fassade", "langtext": "Anschluss an Sockel und Sandwichwand, Aluminiumblech gekantet.", "menge": 60, "einheit": "lfm", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "02.0050", "bereich": "02", "kurztext": "Fassade Eingang, Pfosten-Riegel", "langtext": "Pfosten-Riegel-Konstruktion Serie P50 im Eingangsbereich.", "menge": 18, "einheit": "m²", "art": "normal", "leistung": "FA-PR", "systemvorgaben": {"profilserie": "Serie P50"}},
+    {"oz": "03.0010", "bereich": "03", "kurztext": "Alu-Fenster 1-flg.", "langtext": "System: Serie A75; Glas: 3-fach-Wärmeschutzglas; Uw ≤ 0,9 W/m²K.", "menge": 14, "einheit": "St", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75", "verglasung": "3-fach Wärmeschutz", "u_wert": 0.9}},
+    {"oz": "03.0020", "bereich": "03", "kurztext": "Alu-Fenster 2-flg.", "langtext": "Wie vor, zweiflügelig, Uw ≤ 0,9 W/m²K.", "menge": 4, "einheit": "St", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {"u_wert": 0.9}},
+    {"oz": "03.0030", "bereich": "03", "kurztext": "Festverglasung Büro", "langtext": "Festfelder im Aluminiumrahmen zwischen den Fenstern.", "menge": 22.4, "einheit": "m²", "art": "normal", "leistung": "FE-ALU-FEST", "systemvorgaben": {}},
+    {"oz": "03.0040", "bereich": "03", "kurztext": "Fensterbank außen", "langtext": "Aluminium gekantet, Länge je 1,20 m, mit Endkappen.", "menge": 18, "einheit": "St", "art": "normal", "leistung": "FB-ALU", "systemvorgaben": {}},
+    {"oz": "03.0050", "bereich": "03", "kurztext": "Zulage Montage über 4 m Höhe (Hallenbereich)", "langtext": "Zulage für Fenster in der Hallenwand, Montage vom Hubsteiger.", "menge": 6, "einheit": "St", "art": "normal", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "03.0060", "bereich": "03", "kurztext": "Fenstertür Alu", "langtext": "Fenstertür zum Pausenbereich, Uw 1,0 W/(m²K).", "menge": 2, "einheit": "St", "art": "grundposition", "leistung": "FE-ALU-FT", "systemvorgaben": {"u_wert": 1.0}},
+    {"oz": "03.0070", "bereich": "03", "kurztext": "wie vor, jedoch als Schiebetür", "langtext": "Alternativ zu 03.0060 als Hebe-Schiebe-Element.", "menge": 2, "einheit": "St", "art": "alternativposition", "zu": "03.0060", "leistung": "", "systemvorgaben": {}},
+    {"oz": "03.0080", "bereich": "03", "kurztext": "Fenster einflügelig, Treppenhaus", "langtext": "Aluminiumfenster Serie A75, Kippflügel.", "menge": 3, "einheit": "St", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"profilserie": "Serie A75"}},
+    {"oz": "04.0010", "bereich": "04", "kurztext": "Feuerschutztür T30 einflügelig", "langtext": "T30-Abschluss, Aluminium Serie F60, mit Feststellanlage.", "menge": 3, "einheit": "St", "art": "normal", "leistung": "TU-BS-T30", "systemvorgaben": {"profilserie": "Serie F60", "brandschutzklasse": "T30"}},
+    {"oz": "04.0020", "bereich": "04", "kurztext": "Rauchschutztür 2-flg. RS", "langtext": "Rauchschutzabschluss nach DIN 18095, zweiflügelig.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "TU-RS", "systemvorgaben": {"brandschutzklasse": "RS"}},
+    {"oz": "04.0030", "bereich": "04", "kurztext": "Stahltür Lager, ohne Anforderungen", "langtext": "Einfache Stahltür ohne Brand- oder Rauchschutz, grundiert.", "menge": 2, "einheit": "St", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "04.0040", "bereich": "04", "kurztext": "Haustür Alu Büroeingang, RC2", "langtext": "Aluminium-Haustür Serie T75, einbruchhemmend RC2.", "menge": 1, "einheit": "St", "art": "normal", "leistung": "TU-HAUS-RC2", "systemvorgaben": {"profilserie": "Serie T75", "rc_klasse": "RC2"}},
+    {"oz": "04.0050", "bereich": "04", "kurztext": "Feuerschutztür T30-1 zusätzlich", "langtext": "Wie 04.0010, nur auf Anordnung.", "menge": 1, "einheit": "St", "art": "bedarfsposition_mit_gb", "leistung": "TU-BS-T30", "systemvorgaben": {"brandschutzklasse": "T30"}},
+    {"oz": "05.0010", "bereich": "05", "kurztext": "Baustelleneinrichtung", "langtext": "Einrichten, Vorhalten und Räumen.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}},
+    {"oz": "05.0020", "bereich": "05", "kurztext": "Stundenlohn Monteur", "langtext": "Nur auf schriftliche Anordnung.", "menge": 16, "einheit": "Std", "art": "bedarfsposition_ohne_gb", "leistung": "", "systemvorgaben": {}},
+    {"oz": "05.0030", "bereich": "05", "kurztext": "Altfenster ausbauen", "langtext": "Bestandsfenster im Büroteil ausbauen und entsorgen.", "menge": 6, "einheit": "St", "art": "normal", "leistung": "DEM-FE", "systemvorgaben": {}}
+  ]
+}
