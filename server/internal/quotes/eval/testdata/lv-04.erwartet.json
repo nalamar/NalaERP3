@@ -1,0 +1,31 @@
+{
+  "datei": "lv-04.x83",
+  "format": "da_xml_3.3",
+  "phase": "X83",
+  "vorbemerkungen": [],
+  "bereiche": [],
+  "positionen": [
+    {"oz": "0010", "bereich": "", "kurztext": "Baustelleneinrichtung", "langtext": "Einrichten und Räumen der Baustelle.", "menge": 1, "einheit": "psch", "art": "normal", "pauschal": true, "leistung": "", "systemvorgaben": {}},
+    {"oz": "0020", "bereich": "", "kurztext": "Pfosten-Riegel-Fassade Wintergarten", "langtext": "Systembreite 50 mm, Serie P50.\nIsolierglas 2-fach mit Sonnenschutzschicht, Ucw-Wert 1,1.", "menge": 28, "einheit": "m2", "art": "normal", "leistung": "FA-PR", "systemvorgaben": {"profilserie": "Serie P50", "verglasung": "2-fach Sonnenschutz", "u_wert": 1.1}},
+    {"oz": "0030", "bereich": "", "kurztext": "Dachverglasung Wintergarten", "langtext": "Geneigte Dachverglasung auf Aluminiumsparren, Glas VSG.", "menge": 14, "einheit": "m2", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "0040", "bereich": "", "kurztext": "Fenster einflg.", "langtext": "Aluminiumfenster Dreh-Kipp, Ug 0,6 / Uw 0,9 W/(m²K).", "menge": 3, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-1F", "systemvorgaben": {"u_wert": 0.9}},
+    {"oz": "0050", "bereich": "", "kurztext": "Fenstertür zweiflügelig", "langtext": "Aluminium-Fenstertür, zwei Flügel, Stulp.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-FT", "systemvorgaben": {}},
+    {"oz": "0060", "bereich": "", "kurztext": "Hebe-Schiebe-Tür Aluminium", "langtext": "Hebe-Schiebe-Tür, zweiteilig, ein Schiebeflügel, Breite 3,00 m.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "0070", "bereich": "", "kurztext": "Festverglasung", "langtext": "Festfeld in Aluminiumrahmen.", "menge": 6.2, "einheit": "m2", "art": "normal", "leistung": "FE-ALU-FEST", "systemvorgaben": {}},
+    {"oz": "0080", "bereich": "", "kurztext": "Fensterbank außen", "langtext": "Aluminium, Ausladung 120 mm.", "menge": 8.4, "einheit": "m", "art": "normal", "leistung": "FB-ALU", "systemvorgaben": {}},
+    {"oz": "0090", "bereich": "", "kurztext": "Anschlussbleche", "langtext": "Anschluss Wintergarten an Bestand, Aluminiumblech.", "menge": 26, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}},
+    {"oz": "0100", "bereich": "", "kurztext": "Balkongeländer Stahl verzinkt", "langtext": "Geländer mit Rundrohrhandlauf und Füllstäben.", "menge": 11, "einheit": "m", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "0110", "bereich": "", "kurztext": "Kellertreppe Stahl gerade, Gitterrost", "langtext": "Gerade Stahltreppe mit Gitterroststufen, 12 Steigungen.", "menge": 1, "einheit": "Stk", "art": "grundposition", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "0120", "bereich": "", "kurztext": "wie vor, jedoch Stufen aus Holz", "langtext": "Alternativ zu 0110 mit Holzstufen auf Stahlwangen.", "menge": 1, "einheit": "Stk", "art": "alternativposition", "zu": "0110", "leistung": "ST-TREPPE", "systemvorgaben": {}},
+    {"oz": "0130", "bereich": "", "kurztext": "Geländer Kellertreppe", "langtext": "Einseitiges Stahlgeländer an der Kellertreppe, verzinkt.", "menge": 4, "einheit": "m", "art": "normal", "leistung": "ST-GEL", "systemvorgaben": {}},
+    {"oz": "0140", "bereich": "", "kurztext": "Vordach Glas", "langtext": "Vordach mit Stahlträgern, VSG 2x8 mm.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "ST-VORDACH", "systemvorgaben": {"verglasung": "VSG 2x8"}},
+    {"oz": "0150", "bereich": "", "kurztext": "Zulage Höhe > 4 m", "langtext": "Zulage für Montage über 4 m Höhe.", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "MON-ZUL", "systemvorgaben": {}},
+    {"oz": "0160", "bereich": "", "kurztext": "Altfenster ausbauen und entsorgen", "langtext": "Nur auf Anordnung, falls Bestandsfenster nicht erhalten werden.", "menge": 4, "einheit": "Stk", "art": "bedarfsposition_mit_gb", "leistung": "DEM-FE", "systemvorgaben": {}},
+    {"oz": "0170", "bereich": "", "kurztext": "Feuerschutztür T30-1", "langtext": "Feuerschutzabschluss T30, einflügelig, zum Heizraum.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "TU-BS-T30", "systemvorgaben": {"brandschutzklasse": "T30"}},
+    {"oz": "0180", "bereich": "", "kurztext": "Rauchschutzvorhang", "langtext": "Textiler Rauchschutzvorhang im Sturz, automatisch auslösend.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "0190", "bereich": "", "kurztext": "Haustür aus Holz", "langtext": "Haustür aus Eiche, dreifach verriegelt.", "menge": 1, "einheit": "Stk", "art": "normal", "leistung": "", "systemvorgaben": {}},
+    {"oz": "0200", "bereich": "", "kurztext": "Stundenlohn Helfer", "langtext": "Stundenlohnarbeiten nur auf Anordnung.", "menge": 8, "einheit": "h", "art": "bedarfsposition_ohne_gb", "leistung": "", "systemvorgaben": {}},
+    {"oz": "0210", "bereich": "", "kurztext": "Fenster zweiflügelig", "langtext": "Aluminiumfenster, Serie A75, zwei Flügel mit Mittelpfosten.", "menge": 2, "einheit": "Stk", "art": "normal", "leistung": "FE-ALU-2F", "systemvorgaben": {"profilserie": "Serie A75"}},
+    {"oz": "0220", "bereich": "", "kurztext": "Attikaabdeckung", "langtext": "Aluminium, Zuschnitt 300 mm, mit Haltern.", "menge": 12, "einheit": "m", "art": "normal", "leistung": "FA-BLECH", "systemvorgaben": {}}
+  ]
+}

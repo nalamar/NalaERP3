@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.1.2a** erledigt: X83-Dateien werden aus der Erwartung erzeugt (`x83.go`,
+> **2026-11-13 I.1.2b** erledigt: LV 03–05 (Untertitel, flaches LV, Los mit Untertiteln);
+> Korpus 5 LVs, 121 Positionen, 26 % ohne Ziel; I.1.2 fertig. Nächste: **I.1.3** LV 06–10
+> in DA XML 3.2. Nächste freie Migration: 116, ADR: 0040.
+> Davor **2026-11-13 I.1.2a** erledigt: X83-Dateien werden aus der Erwartung erzeugt (`x83.go`,
 > Elementnamen außer Provis/LumpSumItem unbelegt, Prüfung in I.2); LV 01 und 02 mit
 > 52 Positionen. Nächste: **I.1.2b** LV 03–05. Nächste freie Migration: 116, ADR: 0040.
 > Davor **2026-11-12 I.1.1b** erledigt: Kennzahlen im Paket `quotes/eval` (Treffer-, Fehlzuordnungs-,

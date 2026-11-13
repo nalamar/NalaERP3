@@ -79,6 +79,9 @@ func TestKorpus(t *testing.T) {
 			t.Fatalf("%s: nur %d Positionen", d, len(lv.Positionen))
 		}
 		alle = append(alle, lv.Positionen...)
+		if len(lv.Bereiche) == 0 {
+			stufen["flach"] = true
+		}
 		for _, b := range lv.Bereiche {
 			stufen[b.Stufe] = true
 		}
@@ -91,7 +94,7 @@ func TestKorpus(t *testing.T) {
 			ohneZiel++
 		}
 	}
-	if len(arten) != len(validArten) || !pauschal || !stufen[StufeLos] || !stufen[StufeTitel] {
+	if len(arten) != len(validArten) || !pauschal || len(stufen) != len(validStufen)+1 {
 		t.Fatalf("Korpus deckt nicht alles ab: Arten %v, Pauschale %v, Stufen %v", arten, pauschal, stufen)
 	}
 	if q := quote(ohneZiel, len(alle)); q < 0.15 || q > 0.30 {
