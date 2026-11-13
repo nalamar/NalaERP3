@@ -1,6 +1,7 @@
 # ADR 0040: Echter GAEB-DA-XML-Parser
 
-- Status: Entwurf (2026-11-13)
+- Status: Angenommen (2026-11-13; Fragen 1–6 mit "fortsetzen" beantwortet =
+  jeweils Empfehlung (a), ANNAHME)
 - Bezug: Backlog I.2 (Entscheidung Blocker-Frage 3: ersetzt
   `gaeb_xml_subset_parser.go`), ADR 0039 (Evaluationsset), ADR 0009
   (LV-Hierarchie im Angebot), `aufgabe.md` §4 (deterministischer Parser,
@@ -102,6 +103,12 @@
   und Speichern; I.2.3 Upload-Grenze, Endungen, Ablösung Subset-Parser mit
   Umstellung der Tests; I.2.4 Übernahme der Gliederung ins Angebot; I.2.5
   Client zeigt Kurztext, Art und Gliederung.
+
+## Entscheidung
+
+Alle sechs Fragen nach Empfehlung **(a)** (ANNAHME, "fortsetzen"). Umsetzung
+wie unten vorgeschlagen; I.2.1a liefert `internal/quotes/gaeb` mit 100 %
+Übereinstimmung am Korpus.
 
 ## Folgen
 

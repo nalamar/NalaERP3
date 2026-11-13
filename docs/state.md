@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-13 I.2.0** erledigt: ADR 0040 (Entwurf) zum echten GAEB-DA-XML-Parser; sechs
+> **2026-11-13 I.2.1a** erledigt: Fragen I.2 mit "fortsetzen" beantwortet (ANNAHME, alle
+> (a)), ADR 0040 angenommen, I.2 neu geschnitten (I.2.1a–c, I.2.2–I.2.5). Neues Paket
+> `internal/quotes/gaeb`: Parser-Kern für X83 (DA XML 3.2/3.3), 100 % Übereinstimmung mit
+> allen 10 LVs des Korpus. Nächste: **I.2.1b** Grenzen, Pflichtangaben, Adapter. Nächste
+> freie Migration: 116, nächstes ADR: 0041.
+> Davor **2026-11-13 I.2.0** erledigt: ADR 0040 (Entwurf) zum echten GAEB-DA-XML-Parser; sechs
 > Fragen in `open-questions.md` (Abschnitt 2026-11-13 I.2), Antwort ausstehend. Fund:
 > GAEB-Upload ohne harte Größengrenze. Nächste: nach der Antwort **I.2.1a** (Parser-Kern
 > gegen das Korpus). Nächste freie Migration: 116, nächstes ADR: 0041.
