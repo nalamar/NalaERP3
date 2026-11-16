@@ -1093,6 +1093,25 @@ class ApiClient {
   Future<Map<String, dynamic>> getSalesOrder(String id) =>
       _getJson('/api/v1/sales-orders/$id');
 
+  /// Bedarfspositionen des Quellangebots mit abgerufenen und offenen
+  /// Mengen (ADR 0042).
+  Future<List<dynamic>> listSalesOrderProvisionalItems(String orderId) =>
+      _getList('/api/v1/sales-orders/$orderId/provisional-items');
+
+  /// Legt einen Nachtrag im Entwurf an (ADR 0010).
+  Future<Map<String, dynamic>> createSalesOrderAddendum(
+          String orderId, String begruendung) async =>
+      (await _postJson('/api/v1/sales-orders/$orderId/addenda',
+          {'begruendung': begruendung})) as Map<String, dynamic>;
+
+  /// Ruft eine Bedarfsposition in einen Nachtrag im Entwurf ab (ADR 0042).
+  Future<Map<String, dynamic>> createSalesOrderAddendumCallOff(
+          String orderId, String addendumId,
+          {required String quoteItemId, required double qty}) async =>
+      (await _postJson(
+          '/api/v1/sales-orders/$orderId/addenda/$addendumId/call-offs',
+          {'quote_item_id': quoteItemId, 'qty': qty})) as Map<String, dynamic>;
+
   Future<Map<String, dynamic>> updateSalesOrder(
       String id, Map<String, dynamic> patch) async {
     final r = await _sendWithAuth(

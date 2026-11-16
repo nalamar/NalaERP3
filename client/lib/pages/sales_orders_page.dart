@@ -52,6 +52,7 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
   Map<String, dynamic>? _sourceQuote;
   Map<String, dynamic>? _linkedInvoice;
   List<dynamic> _relatedInvoices = const [];
+  List<dynamic> _provisionalItems = const [];
   final _searchCtrl = TextEditingController();
   final _projectCtrl = TextEditingController();
   String? _statusFilter;
@@ -159,7 +160,67 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
       await _loadSourceQuote(detail['source_quote_id']?.toString());
       await _loadLinkedInvoice(detail['linked_invoice_out_id']?.toString());
       await _loadRelatedInvoices(detail['id']?.toString());
+      await _loadProvisionalItems(
+          detail['id']?.toString(), detail['source_quote_id']?.toString());
     } catch (_) {}
+  }
+
+  Future<void> _loadProvisionalItems(
+      String? salesOrderId, String? sourceQuoteId) async {
+    List<dynamic> items = const [];
+    if ((salesOrderId ?? '').isNotEmpty && (sourceQuoteId ?? '').isNotEmpty) {
+      try {
+        items = await widget.api.listSalesOrderProvisionalItems(salesOrderId!);
+      } catch (_) {
+        items = const [];
+      }
+    }
+    if (!mounted) return;
+    setState(() => _provisionalItems = items);
+  }
+
+  /// Bedarfsposition abrufen: legt einen Nachtrag im Entwurf mit der
+  /// vorbelegten Position an (ADR 0042, I.2.6c2).
+  Future<void> _callOffProvisionalItem(Map<String, dynamic> item) async {
+    final orderId = (_selected?['id'] ?? '').toString();
+    if (orderId.isEmpty) return;
+    final oz = (item['outline_no'] ?? '').toString();
+    final request = await showDialog<_CallOffRequest>(
+      context: context,
+      builder: (_) => _CallOffDialog(
+        title: oz.isEmpty
+            ? 'Bedarfsposition abrufen'
+            : 'Bedarfsposition $oz abrufen',
+        initialQty: _toDouble(item['quoted_qty']),
+        initialReason:
+            oz.isEmpty ? 'Abruf Bedarfsposition' : 'Abruf Bedarfsposition $oz',
+      ),
+    );
+    if (request == null || !mounted) return;
+    setState(() => _actionInProgress = true);
+    try {
+      final addendum =
+          await widget.api.createSalesOrderAddendum(orderId, request.reason);
+      await widget.api.createSalesOrderAddendumCallOff(
+          orderId, (addendum['id'] ?? '').toString(),
+          quoteItemId: (item['quote_item_id'] ?? '').toString(),
+          qty: request.qty);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Nachtrag ${(addendum['nachtrag_no'] ?? '').toString()} im Entwurf angelegt'),
+      ));
+      await _loadProvisionalItems(
+          orderId, _selected?['source_quote_id']?.toString());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:
+            Text(e is ApiException ? e.message : 'Abruf fehlgeschlagen: $e'),
+      ));
+    } finally {
+      if (mounted) setState(() => _actionInProgress = false);
+    }
   }
 
   Future<void> _loadSourceQuote(String? quoteId) async {
@@ -1503,6 +1564,44 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
                                   ],
                                 ),
                               ),
+                              if (_provisionalItems.isNotEmpty) ...[
+                                const SizedBox(height: 16),
+                                const Text('Bedarfspositionen',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.bold)),
+                                const Text(
+                                    'Nicht im Auftrag; Abruf als Nachtrag.'),
+                                for (final raw in _provisionalItems)
+                                  Builder(builder: (context) {
+                                    final p =
+                                        (raw as Map).cast<String, dynamic>();
+                                    final unit = (p['unit'] ?? '').toString();
+                                    String qty(Object? v) {
+                                      final d = _toDouble(v);
+                                      return d.toStringAsFixed(
+                                          d.truncateToDouble() == d ? 0 : 2);
+                                    }
+
+                                    return ListTile(
+                                      contentPadding: EdgeInsets.zero,
+                                      title: Text(
+                                          '${(p['outline_no'] ?? '').toString()} ${(p['description'] ?? '').toString()}'
+                                              .trim()),
+                                      subtitle: Text(
+                                          'Angebot ${qty(p['quoted_qty'])} $unit  •  abgerufen ${qty(p['called_off_qty'])}  •  im Nachtrag offen ${qty(p['pending_qty'])}'),
+                                      trailing: canWriteOrders
+                                          ? OutlinedButton(
+                                              onPressed: _actionInProgress
+                                                  ? null
+                                                  : () =>
+                                                      _callOffProvisionalItem(
+                                                          p),
+                                              child: const Text('Abrufen'),
+                                            )
+                                          : null,
+                                    );
+                                  }),
+                              ],
                               if (canWriteOrders) ...[
                                 const SizedBox(height: 16),
                                 Wrap(
@@ -1559,6 +1658,98 @@ class _SalesOrdersPageState extends State<SalesOrdersPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _CallOffRequest {
+  const _CallOffRequest({required this.qty, required this.reason});
+
+  final double qty;
+  final String reason;
+}
+
+class _CallOffDialog extends StatefulWidget {
+  const _CallOffDialog({
+    required this.title,
+    required this.initialQty,
+    required this.initialReason,
+  });
+
+  final String title;
+  final double initialQty;
+  final String initialReason;
+
+  @override
+  State<_CallOffDialog> createState() => _CallOffDialogState();
+}
+
+class _CallOffDialogState extends State<_CallOffDialog> {
+  late final TextEditingController _qtyCtrl;
+  late final TextEditingController _reasonCtrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQty;
+    _qtyCtrl = TextEditingController(
+        text: q.toStringAsFixed(q.truncateToDouble() == q ? 0 : 2));
+    _reasonCtrl = TextEditingController(text: widget.initialReason);
+  }
+
+  @override
+  void dispose() {
+    _qtyCtrl.dispose();
+    _reasonCtrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final qty = double.tryParse(_qtyCtrl.text.trim().replaceAll(',', '.'));
+    final reason = _reasonCtrl.text.trim();
+    if (qty == null || qty <= 0) {
+      setState(() => _error = 'Menge muss größer als 0 sein');
+      return;
+    }
+    if (reason.isEmpty) {
+      setState(() => _error = 'Begründung erforderlich');
+      return;
+    }
+    Navigator.of(context).pop(_CallOffRequest(qty: qty, reason: reason));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _qtyCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(labelText: 'Menge'),
+          ),
+          TextField(
+            controller: _reasonCtrl,
+            decoration: const InputDecoration(labelText: 'Begründung'),
+          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(_error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Abrufen')),
+      ],
     );
   }
 }

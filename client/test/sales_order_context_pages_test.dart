@@ -426,6 +426,39 @@ class _FakeApiClient extends ApiClient {
   }
 
   final List<List<String>> convertedQuoteAlternatives = [];
+  List<dynamic> provisionalItems = const [];
+  final List<String> provisionalItemRequests = [];
+  final List<String> createdAddendumReasons = [];
+  final List<Map<String, dynamic>> createdCallOffs = [];
+
+  @override
+  Future<List<dynamic>> listSalesOrderProvisionalItems(String orderId) async {
+    provisionalItemRequests.add(orderId);
+    return provisionalItems;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createSalesOrderAddendum(
+      String orderId, String begruendung) async {
+    createdAddendumReasons.add(begruendung);
+    return <String, dynamic>{
+      'id': 'add-${createdAddendumReasons.length}',
+      'nachtrag_no': createdAddendumReasons.length
+    };
+  }
+
+  @override
+  Future<Map<String, dynamic>> createSalesOrderAddendumCallOff(
+      String orderId, String addendumId,
+      {required String quoteItemId, required double qty}) async {
+    createdCallOffs.add({
+      'order': orderId,
+      'addendum': addendumId,
+      'quote_item_id': quoteItemId,
+      'qty': qty
+    });
+    return <String, dynamic>{'id': 'item-1'};
+  }
 
   @override
   Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id,
@@ -3666,6 +3699,152 @@ void main() {
 
     expect(find.text('Aufträge'), findsOneWidget);
     expect(find.text('Folgerechnungen (2)'), findsOneWidget);
+  });
+
+  testWidgets('SalesOrdersPage calls off provisional items into an addendum',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    _FakeApiClient buildApi(
+            {Set<String> permissions = const {
+              'sales_orders.read',
+              'sales_orders.write'
+            },
+            String sourceQuoteId = 'q-1'}) =>
+        _FakeApiClient(
+          permissions: permissions,
+          salesOrderList: const [
+            {
+              'id': 'so-1',
+              'number': 'AUF-2026-0101',
+              'contact_name': 'Projekt GmbH',
+              'status': 'open',
+              'gross_amount': 238.0,
+              'currency': 'EUR'
+            },
+          ],
+          salesOrderDetail: {
+            'id': 'so-1',
+            'number': 'AUF-2026-0101',
+            'status': 'open',
+            'currency': 'EUR',
+            'source_quote_id': sourceQuoteId,
+            'gross_amount': 238.0,
+            'items': const [],
+          },
+        )..provisionalItems = const [
+            {
+              'quote_item_id': 'qi-bedarf',
+              'outline_no': '01.0040',
+              'description': 'Altfenster ausbauen',
+              'item_kind': 'bedarfsposition_mit_gb',
+              'unit': 'Stk',
+              'quoted_qty': 4,
+              'called_off_qty': 2,
+              'pending_qty': 1.5,
+            },
+          ];
+    Future<void> open(_FakeApiClient api) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SalesOrdersPage(
+          key: UniqueKey(),
+          api: api,
+          initialContext: const CommercialListContext.detail('so-1'),
+        ),
+      ));
+      await tester.pumpAndSettle();
+    }
+
+    var api = buildApi();
+    await open(api);
+    expect(find.text('Bedarfspositionen'), findsOneWidget);
+    expect(find.text('01.0040 Altfenster ausbauen'), findsOneWidget);
+    expect(
+        find.text('Angebot 4 Stk  •  abgerufen 2  •  im Nachtrag offen 1.50'),
+        findsOneWidget);
+    expect(api.provisionalItemRequests, contains('so-1'));
+
+    // ungültige Menge: kein Aufruf
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Abrufen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Bedarfsposition 01.0040 abrufen'), findsOneWidget);
+    expect(find.widgetWithText(TextField, '4'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Abruf Bedarfsposition 01.0040'),
+        findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextField, '4'), '0');
+    await tester.tap(find.widgetWithText(FilledButton, 'Abrufen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Menge muss größer als 0 sein'), findsOneWidget);
+    expect(api.createdAddendumReasons, isEmpty);
+    // leere Begründung: kein Aufruf
+    await tester.enterText(
+        find
+            .descendant(
+                of: find.byType(AlertDialog), matching: find.byType(TextField))
+            .at(0),
+        '1');
+    await tester.enterText(
+        find
+            .descendant(
+                of: find.byType(AlertDialog), matching: find.byType(TextField))
+            .at(1),
+        '  ');
+    await tester.tap(find.widgetWithText(FilledButton, 'Abrufen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Begründung erforderlich'), findsOneWidget);
+    expect(api.createdAddendumReasons, isEmpty);
+    await tester.enterText(
+        find
+            .descendant(
+                of: find.byType(AlertDialog), matching: find.byType(TextField))
+            .at(0),
+        '0');
+    await tester.enterText(
+        find
+            .descendant(
+                of: find.byType(AlertDialog), matching: find.byType(TextField))
+            .at(1),
+        'Abruf Bedarfsposition 01.0040');
+    // gültig: Nachtrag und Abruf
+    await tester.enterText(find.widgetWithText(TextField, '0'), '2,5');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Abruf Bedarfsposition 01.0040'),
+        'Anordnung vom 16.11.');
+    final requestsBefore = api.provisionalItemRequests.length;
+    await tester.tap(find.widgetWithText(FilledButton, 'Abrufen'));
+    await tester.pumpAndSettle();
+    expect(api.createdAddendumReasons, ['Anordnung vom 16.11.']);
+    expect(api.createdCallOffs, [
+      {
+        'order': 'so-1',
+        'addendum': 'add-1',
+        'quote_item_id': 'qi-bedarf',
+        'qty': 2.5
+      }
+    ]);
+    expect(find.text('Nachtrag 1 im Entwurf angelegt'), findsOneWidget);
+    expect(api.provisionalItemRequests.length, requestsBefore + 1);
+
+    // Abbrechen: kein Aufruf
+    api = buildApi();
+    await open(api);
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Abrufen'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.createdAddendumReasons, isEmpty);
+    expect(api.createdCallOffs, isEmpty);
+
+    // ohne Schreibrecht: Übersicht ohne Knopf
+    api = buildApi(permissions: const {'sales_orders.read'});
+    await open(api);
+    expect(find.text('Bedarfspositionen'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'Abrufen'), findsNothing);
+
+    // Auftrag ohne Quellangebot: keine Abfrage, kein Abschnitt
+    api = buildApi(sourceQuoteId: '');
+    await open(api);
+    expect(api.provisionalItemRequests, isEmpty);
+    expect(find.text('Bedarfspositionen'), findsNothing);
   });
 
   testWidgets('SalesOrdersPage filters list to partial invoices only',
