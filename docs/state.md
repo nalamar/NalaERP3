@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.4.0** erledigt: ADR 0044 (Entwurf) zum Matching mit Sprachmodell, sechs Fragen in
+> **2026-11-16 I.4.1** erledigt (ADR 0044 angenommen, ANNAHME alle (a)): `eval.LVMatcher` für Bündel, `AusfuehrenLV`,
+> deterministische Systemvorgaben (RC, U-Wert, Brandschutz; am Korpus 100 %, Obergrenze). Nächste: **I.4.2**
+> Kandidaten-Vorauswahl und Matcher mit Modell. Nächste freie Migration: 120, nächstes ADR: 0045.
+> Davor **2026-11-16 I.4.0** erledigt: ADR 0044 (Entwurf) zum Matching mit Sprachmodell, sechs Fragen in
 > `docs/open-questions.md` (2026-11-16 I.4). Nächste: Antworten abwarten, dann **I.4.1**. Fund: Leistungskatalog
 > in der Datenbank fehlte im Backlog (jetzt I.4.4/I.4.5). Nächste freie Migration: 120, nächstes ADR: 0045.
 > Davor **2026-11-16 I.3.5b** erledigt — damit **I.3.5** und **I.3** vollständig: Client-Seite „Sprachmodell“ in den

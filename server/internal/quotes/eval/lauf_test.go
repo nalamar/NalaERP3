@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -119,9 +120,9 @@ func TestBericht(t *testing.T) {
 		t.Skip("NALA_EVAL nicht gesetzt")
 	}
 	k, lvs := korpus(t)
-	for _, m := range []Matcher{NieZuordnen{}, Wortabgleich{}} {
+	for _, m := range []LVMatcher{JePosition(NieZuordnen{}), JePosition(Wortabgleich{}), MitSystemvorgaben(JePosition(Wortabgleich{}))} {
 		for _, s := range []float64{0.3, 0.5, 0.7, 0.9} {
-			l, err := Ausfuehren(lvs, k, m, s)
+			l, err := AusfuehrenLV(context.Background(), lvs, k, m, s)
 			if err != nil {
 				t.Fatal(err)
 			}

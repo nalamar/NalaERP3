@@ -1,7 +1,8 @@
 # ADR 0044: Matching von LV-Positionen mit Sprachmodell
 
-- Status: **Entwurf** (2026-11-16) — Fragen 1–6 in `docs/open-questions.md`,
-  Abschnitt 2026-11-16 I.4
+- Status: **Angenommen** (2026-11-16, "fortsetzen" = Empfehlung, ANNAHME):
+  1–6 jeweils (a); Auskunft zu Anbietern und Schlüsseln offen. Fragen in
+  `docs/open-questions.md`, Abschnitt 2026-11-16 I.4
 - Bezug: Backlog I.4, `aufgabe.md` §4 (deterministisch vor probabilistisch,
   LLM nur für Matching und Textarbeit, Preise nie vom Modell, Score und
   Begründung, Freigabe durch einen Menschen), ADR 0039 (Evaluationsset,
@@ -109,6 +110,15 @@ Langtext, Menge, Einheit, Art) und Katalogfelder, nie Kunde oder Projekt;
 jede Zuordnung bleibt ein Vorschlag bis zur Freigabe; ohne eingeschaltetes
 Sprachmodell läuft nur der deterministische Teil.
 
+## Entscheidung (2026-11-16, ANNAHME)
+
+Alle sechs Fragen mit der Empfehlung (a): Leistungskatalog je Mandant als
+Ziel im Betrieb, Kandidaten-Vorauswahl mit Auswahl durch das Modell, Bündel
+bis 20 Positionen, Score vom Modell mit Abzügen und Schwelle je Anbieter/
+Modell, Systemvorgaben teils deterministisch, Messlauf opt-in mit Schlüssel
+aus der lokalen `.env`. Die Auskunft zu Anbietern, Modellen und Schlüsseln
+steht aus; I.4.3 wartet darauf.
+
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 
 - **I.4.1** Matcher-Schnittstelle für Bündel (`context`, Fehler), Hülle für
@@ -135,3 +145,24 @@ Sprachmodell läuft nur der deterministische Teil.
 - Das synthetische Korpus ist von derselben Hand geschrieben wie der
   Katalog; die Messung überschätzt die Treffer bei echten LVs vermutlich.
   Echte, anonymisierte LVs bleiben lokal außerhalb des Repos (ADR 0039).
+
+## Ausgangswerte (2026-11-16, I.4.1)
+
+Deterministische Systemvorgaben (`ErkenneSystemvorgaben`, Hülle
+`MitSystemvorgaben`) am Korpus, Lauf `NALA_EVAL=1 go test
+./internal/quotes/eval -run TestBericht -v`:
+
+| Merkmal | erwartet | erkannt | richtig |
+|---|---|---|---|
+| RC-Klasse | 12 | 12 | 12 |
+| U-Wert | 42 | 42 | 42 |
+| Brandschutzklasse | 27 | 27 | 27 |
+| Profilserie | 51 | 0 | 0 |
+| Verglasung | 39 | 0 | 0 |
+
+Die Zuordnung bleibt beim Ausgangswert (Wortabgleich bei Schwelle 0,7:
+47 richtig, 0 falsch, 25,5 % Treffer). **Einschränkung:** Korpus und Muster
+stammen von derselben Hand; die 100 % sind eine Obergrenze, keine Erwartung
+für echte LVs. Muster: RC/WK 1–6; U-Wert nur des Elements (Uw, Ud, Ucw,
+U-Wert), nicht Ug/Uf; Brandschutz T30/60/90 vor EI/E/EW vor F/G (außer nach
+„Serie“) vor RS; kein Treffer über eine Zeile hinweg.

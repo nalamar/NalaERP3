@@ -324,26 +324,26 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-16 — I.4 Matching mit Sprachmodell (offen)
+## 2026-11-16 — I.4 Matching mit Sprachmodell (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.4, `docs/adr/0044-matching-mit-sprachmodell.md` (Optionen und Begründung dort).
 
 1. **Zuordnungsziel im Betrieb:** (a) Leistungskatalog je Mandant in der Datenbank, eigener Punkt nach dem
    gemessenen Matcher; (b) direkt Materialien und Textbausteine; (c) frühere Angebotspositionen.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 2. **Verfahren:** (a) deterministische Vorauswahl von Kandidaten, das Modell wählt einen Kandidaten oder
    „kein Ziel“ (kleiner Katalog: alle Leistungen); (b) immer ganzer Katalog; (c) Vektorsuche.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 3. **Bündelung:** (a) bis 20 Positionen je Aufruf, nach Bereich gruppiert, mit Überschriften als Kontext;
-   (b) ein Aufruf je Position. Empfehlung: **(a)**. Status: **offen**.
+   (b) ein Aufruf je Position. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 4. **Score und Schwelle:** (a) Score vom Modell mit deterministischen Abzügen, Schwelle je Anbieter/Modell
    am Evaluationsset gewählt (≤ 2 % Fehlzuordnung), je Mandant gespeichert; (b) zusätzlich zweiter Aufruf
-   zur Bestätigung; (c) Score nur deterministisch. Empfehlung: **(a)**, (b) als Option. Status: **offen**.
+   zur Bestätigung; (c) Score nur deterministisch. Empfehlung: **(a)**, (b) als Option. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 5. **Systemvorgaben:** (a) RC-Klasse, U-Wert, Brandschutz deterministisch, Profilserie und Verglasung durch
-   das Modell; (b) alles durch das Modell; (c) nur deterministisch. Empfehlung: **(a)**. Status: **offen**.
+   das Modell; (b) alles durch das Modell; (c) nur deterministisch. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 6. **Messlauf und Anbietervergleich:** (a) opt-in Go-Test mit Schlüssel aus der lokalen `.env`, Ergebnis
-   je Anbieter/Modell im ADR; (b) nur im Betrieb vergleichen. Empfehlung: **(a)**. Status: **offen**.
-   **Auskunft erbeten:** welche Anbieter/Modelle, und wer legt die Schlüssel lokal ab?
+   je Anbieter/Modell im ADR; (b) nur im Betrieb vergleichen. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
+   **Auskunft erbeten (offen):** welche Anbieter/Modelle, und wer legt die Schlüssel lokal ab? I.4.3 wartet darauf.
 
 ## 2026-11-16 — I.3 Austauschbarer Zugriff auf ein Sprachmodell (beantwortet 2026-11-16)
 

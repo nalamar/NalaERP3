@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,11 +71,19 @@ func lese(lv *ErwartetesLV) (*gaeb.LV, string, error) {
 	return gelesen, "", nil
 }
 
-// Ausfuehren liest jede X83 mit dem Parser, laesst den Matcher jede
-// gelesene Position vorschlagen und wertet gegen die Erwartung aus.
-// Ein Vorschlag mit Code braucht eine Begruendung, der Score liegt in
-// [0, 1] (aufgabe.md §4); sonst bricht der Lauf ab.
+// Ausfuehren laesst einen Matcher je Position ueber das Korpus laufen
+// (siehe AusfuehrenLV).
 func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (Lauf, error) {
+	return AusfuehrenLV(context.Background(), lvs, k, JePosition(m), schwelle)
+}
+
+// AusfuehrenLV liest jede X83 mit dem Parser, laesst den Matcher fuer das
+// gelesene LV vorschlagen und wertet gegen die Erwartung aus. Lehnt der
+// Parser die X83 ab, wird der Matcher nicht gefragt. Ein Vorschlag mit Code
+// braucht eine Begruendung, der Score liegt in [0, 1] (aufgabe.md §4), und
+// jede OZ muss im LV stehen; sonst bricht der Lauf ab, ebenso bei einem
+// Fehler des Matchers.
+func AusfuehrenLV(ctx context.Context, lvs []*ErwartetesLV, k *Katalog, m LVMatcher, schwelle float64) (Lauf, error) {
 	lauf := Lauf{Matcher: m.Name(), Schwelle: schwelle}
 	var alle []Ergebnis
 	for _, lv := range lvs {
@@ -82,20 +91,14 @@ func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (L
 		if err != nil {
 			return Lauf{}, err
 		}
-		var positionen []gaeb.Position
-		if gelesen != nil {
-			positionen = gelesen.Positionen
-		}
 		vorschlaege := map[string]Vorschlag{}
-		for _, p := range positionen {
-			v := m.Vorschlagen(Eingabe(p), k)
-			if v.Score < 0 || v.Score > 1 {
-				return Lauf{}, fmt.Errorf("%s %s: Score %v außerhalb [0, 1]", lv.Datei, p.OZ, v.Score)
+		if gelesen != nil {
+			if vorschlaege, err = m.VorschlagenLV(ctx, gelesen, k); err != nil {
+				return Lauf{}, fmt.Errorf("%s: %w", lv.Datei, err)
 			}
-			if v.Code != "" && strings.TrimSpace(v.Begruendung) == "" {
-				return Lauf{}, fmt.Errorf("%s %s: Zuordnung ohne Begründung", lv.Datei, p.OZ)
+			if err := pruefeVorschlaege(lv.Datei, gelesen.Positionen, vorschlaege); err != nil {
+				return Lauf{}, err
 			}
-			vorschlaege[p.OZ] = v
 		}
 		e := Auswerten(lv, vorschlaege, schwelle)
 		lauf.LVs = append(lauf.LVs, LVErgebnis{Datei: lv.Datei, Parsefehler: parsefehler, Ergebnis: e})
@@ -103,6 +106,31 @@ func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (L
 	}
 	lauf.Gesamt = Summe(alle...)
 	return lauf, nil
+}
+
+func pruefeVorschlaege(datei string, positionen []gaeb.Position, vorschlaege map[string]Vorschlag) error {
+	bekannt := make(map[string]bool, len(positionen))
+	for _, p := range positionen {
+		bekannt[p.OZ] = true
+	}
+	for oz := range vorschlaege {
+		if !bekannt[oz] {
+			return fmt.Errorf("%s: Vorschlag für unbekannte OZ %q", datei, oz)
+		}
+	}
+	for _, p := range positionen {
+		v, ok := vorschlaege[p.OZ]
+		if !ok {
+			continue
+		}
+		if v.Score < 0 || v.Score > 1 {
+			return fmt.Errorf("%s %s: Score %v außerhalb [0, 1]", datei, p.OZ, v.Score)
+		}
+		if v.Code != "" && strings.TrimSpace(v.Begruendung) == "" {
+			return fmt.Errorf("%s %s: Zuordnung ohne Begründung", datei, p.OZ)
+		}
+	}
+	return nil
 }
 
 func prozent(q float64) string {
