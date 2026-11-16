@@ -258,10 +258,11 @@ type ImportErgebnis struct {
 
 // Importieren legt Leistungen an oder aendert sie ueber den Code - ganz
 // oder gar nicht. Alle Zeilen werden vorher geprueft; die Meldung nennt die
-// Zeile (ab 1). Fehlt "aktiv", bleibt der Schalter vorhandener Leistungen
+// Zeile: nummern[i] fuer zeilen[i] (z. B. Dateizeile aus LeseCSV), ohne
+// nummern ab 1. Fehlt "aktiv", bleibt der Schalter vorhandener Leistungen
 // unveraendert, neue sind aktiv. Leistungen, die nicht in der Datei stehen,
 // bleiben unberuehrt.
-func (s *Service) Importieren(ctx context.Context, zeilen []Eingabe, actorUserID, companyID string) (*ImportErgebnis, error) {
+func (s *Service) Importieren(ctx context.Context, zeilen []Eingabe, nummern []int, actorUserID, companyID string) (*ImportErgebnis, error) {
 	if err := mandant(companyID); err != nil {
 		return nil, err
 	}
@@ -271,16 +272,25 @@ func (s *Service) Importieren(ctx context.Context, zeilen []Eingabe, actorUserID
 	if len(zeilen) > MaxImportZeilen {
 		return nil, fmt.Errorf("Import ungültig: höchstens %d Leistungen je Datei", MaxImportZeilen)
 	}
+	if nummern != nil && len(nummern) != len(zeilen) {
+		return nil, errors.New("Import ungültig: Zeilennummern passen nicht zu den Leistungen")
+	}
+	nr := func(i int) int {
+		if nummern == nil {
+			return i + 1
+		}
+		return nummern[i]
+	}
 	gesehen := make(map[string]int, len(zeilen))
 	for i := range zeilen {
 		zeilen[i] = Normalisieren(zeilen[i])
 		if err := Pruefen(zeilen[i]); err != nil {
-			return nil, fmt.Errorf("Zeile %d: %w", i+1, err)
+			return nil, fmt.Errorf("Zeile %d: %w", nr(i), err)
 		}
 		if vorher, ok := gesehen[zeilen[i].Code]; ok {
-			return nil, fmt.Errorf("Zeile %d: Code %q ungültig - doppelt (schon in Zeile %d)", i+1, zeilen[i].Code, vorher)
+			return nil, fmt.Errorf("Zeile %d: Code %q ungültig - doppelt (schon in Zeile %d)", nr(i), zeilen[i].Code, vorher)
 		}
-		gesehen[zeilen[i].Code] = i + 1
+		gesehen[zeilen[i].Code] = nr(i)
 	}
 	tx, err := s.pg.Begin(ctx)
 	if err != nil {

@@ -150,7 +150,7 @@ func TestLeistungenImport(t *testing.T) {
 		{Code: "ALT", Kurztext: "alt geändert", Einheit: "m", RCKlasse: "RC 3"},
 		{Code: " NEU ", Kurztext: "neu", Einheit: "Stk"},
 		{Code: "NEU-AUS", Kurztext: "neu aus", Einheit: "Stk", Aktiv: &aus},
-	}, "", a)
+	}, nil, "", a)
 	if err != nil || erg.Neu != 2 || erg.Geaendert != 1 {
 		t.Fatalf("Import: %+v %v", erg, err)
 	}
@@ -166,7 +166,7 @@ func TestLeistungenImport(t *testing.T) {
 		t.Fatalf("Import-Stand: %+v", ls)
 	}
 	an := true
-	if erg, err := svc.Importieren(ctx, []Eingabe{{Code: "ALT", Kurztext: "alt", Einheit: "m", Aktiv: &an}}, "", a); err != nil || erg.Geaendert != 1 || erg.Neu != 0 {
+	if erg, err := svc.Importieren(ctx, []Eingabe{{Code: "ALT", Kurztext: "alt", Einheit: "m", Aktiv: &an}}, nil, "", a); err != nil || erg.Geaendert != 1 || erg.Neu != 0 {
 		t.Fatalf("einschalten: %+v %v", erg, err)
 	}
 	if !mustCode(t, svc, a, "ALT").Aktiv {
@@ -182,14 +182,25 @@ func TestLeistungenImport(t *testing.T) {
 		{nil, "Import ungültig: keine Leistungen"},
 		{make([]Eingabe, MaxImportZeilen+1), "Import ungültig: höchstens 5000 Leistungen je Datei"},
 	} {
-		if _, err := svc.Importieren(ctx, c.zeilen, "", a); err == nil || err.Error() != c.want {
+		if _, err := svc.Importieren(ctx, c.zeilen, nil, "", a); err == nil || err.Error() != c.want {
 			t.Errorf("%q: %v", c.want, err)
 		}
 	}
 	if l := mustCode(t, svc, a, "NEU"); l.Kurztext != "neu" {
 		t.Fatalf("teilweise geschrieben: %+v", l)
 	}
-	if _, err := svc.Importieren(ctx, []Eingabe{{Code: "X", Kurztext: "x", Einheit: "Stk"}}, "", ""); err == nil || err.Error() != "Mandant erforderlich" {
+	// Zeilennummern der Datei (z. B. aus LeseCSV) in den Meldungen
+	doppelt := []Eingabe{{Code: "D", Kurztext: "d", Einheit: "Stk"}, {Code: "D", Kurztext: "d", Einheit: "Stk"}}
+	if _, err := svc.Importieren(ctx, doppelt, []int{5, 9}, "", a); err == nil || err.Error() != `Zeile 9: Code "D" ungültig - doppelt (schon in Zeile 5)` {
+		t.Fatalf("Dateizeilen doppelt: %v", err)
+	}
+	if _, err := svc.Importieren(ctx, []Eingabe{{Code: "E", Kurztext: "", Einheit: "Stk"}}, []int{7}, "", a); err == nil || err.Error() != "Zeile 7: Kurztext erforderlich" {
+		t.Fatalf("Dateizeile Fehler: %v", err)
+	}
+	if _, err := svc.Importieren(ctx, doppelt, []int{5}, "", a); err == nil || err.Error() != "Import ungültig: Zeilennummern passen nicht zu den Leistungen" {
+		t.Fatalf("Nummern passen nicht: %v", err)
+	}
+	if _, err := svc.Importieren(ctx, []Eingabe{{Code: "X", Kurztext: "x", Einheit: "Stk"}}, nil, "", ""); err == nil || err.Error() != "Mandant erforderlich" {
 		t.Fatalf("ohne Mandant: %v", err)
 	}
 	// Prüfungen der Datenbank
