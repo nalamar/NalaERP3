@@ -324,6 +324,31 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-16 — I.3 Austauschbarer Zugriff auf ein Sprachmodell (offen)
+
+Bezug: Backlog I.3, ADR 0043 (Entwurf, Bestandsaufnahme und Optionen dort).
+Kurz: Es gibt noch keinen Modellzugriff. Vorbild für Zugangsdaten je Mandant ist
+der Mailzugang (ADR 0033, verschlüsselt).
+
+1. **Anbieter**: (a) schmale Schnittstelle mit Anbindung für OpenAI-kompatible
+   Endpunkte (auch lokal, z. B. Ollama) und für die Anthropic-API; (b) nur ein
+   Cloud-Anbieter; (c) nur lokal. Empfehlung: **(a)**. Status: **offen**.
+   Auskunft erbeten: Anbieter/Vertrag oder Hardware für ein lokales Modell?
+2. **Form der Schnittstelle**: (a) allgemein (Text, JSON-Schema, Verbrauch),
+   fachliche Regeln im ERP; (b) fachliche Schnittstelle je Aufgabe im Anbieter.
+   Empfehlung: **(a)**. Status: **offen**.
+3. **Einstellungen und Schlüssel**: (a) je Mandant wie der Mailzugang,
+   Schlüssel verschlüsselt, „aktiv“ Standard aus; (b) global per
+   Umgebungsvariablen. Empfehlung: **(a)**. Status: **offen**.
+4. **Datenschutz**: (a) nur LV- und Katalogfelder an das Modell, nie Kunde,
+   Projekt, Adressen, Namen; KI je Mandant einzuschalten; (b) ohne
+   Einschränkung. Empfehlung: **(a)**. Status: **offen**.
+5. **Protokoll**: (a) Anbieter, Modell, Dauer, Verbrauch, Ergebnis, Prüfsumme —
+   keine Inhalte; (b) volle Inhalte. Empfehlung: **(a)**. Status: **offen**.
+6. **Grenzen**: (a) 60 s je Aufruf, höchstens 2 Wiederholungen, Tageslimit je
+   Mandant, klare Meldung bei Abbruch; (b) keine. Empfehlung: **(a)**.
+   Status: **offen**.
+
 ## 2026-11-16 — I.2.6 Auswahl bei der Beauftragung (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.2.6, ADR 0042 (Entwurf, Bestandsaufnahme und Optionen dort).

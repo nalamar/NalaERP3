@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.6c2** erledigt: Auftragsseite zeigt Bedarfspositionen mit Mengen und ruft sie
+> **2026-11-16 I.3.0** erledigt: ADR 0043 (Entwurf) zum austauschbaren Modellzugriff; sechs Fragen
+> und eine Auskunft in `open-questions.md` (Abschnitt 2026-11-16 I.3), Antwort ausstehend.
+> Nächste: nach der Antwort **I.3.1**. Nächste freie Migration: 119, nächstes ADR: 0044.
+> Davor **2026-11-16 I.2.6c2** erledigt: Auftragsseite zeigt Bedarfspositionen mit Mengen und ruft sie
 > als Nachtrag im Entwurf ab; **I.2.6 und I.2 abgeschlossen**. Fund: Nachträge haben keinen Client
 > (neu I.2.7). Nächste: **I.3** Provider-Interface für das Sprachmodell (zuerst ADR) oder I.2.7.
 > Nächste freie Migration: 119, nächstes ADR: 0043.
