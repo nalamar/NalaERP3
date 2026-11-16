@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.3a** erledigt: GAEB-Upload hart auf 20 MB begrenzt, `.d83`/`.p83` mit
+> **2026-11-16 I.2.3b** erledigt: Router und API nutzen den GAEB-DA-XML-Parser, der
+> Subset-Parser ist entfernt; **I.2.3 abgeschlossen**. Fund: `NewV1Router` ist toter Code.
+> Nächste: **I.2.4** Übernahme der Gliederung ins Angebot. Nächste freie Migration: 117,
+> nächstes ADR: 0041.
+> Davor **2026-11-16 I.2.3a** erledigt: GAEB-Upload hart auf 20 MB begrenzt, `.d83`/`.p83` mit
 > Meldung abgelehnt, leere Dateien abgelehnt; Testkontakte je Lauf eindeutig, Gegenprobe
 > I.2.2b wiederholt. Auskunft Logikal: kein GAEB-Import in Logikal, Export aus dem ERP
 > (Format offen) → Backlog I.7. Nächste: **I.2.3b** neuer Parser im Upload, Subset-Parser

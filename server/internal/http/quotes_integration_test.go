@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -81,7 +82,12 @@ func TestGAEBImportProcessEndpoint(t *testing.T) {
 	if rec := call(handler, procurementToken, create(t).ID); rec.Code != http.StatusForbidden || parser.calls != 1 {
 		t.Fatalf("forbidden: %d calls=%d", rec.Code, parser.calls)
 	}
-	defaultImport, err := svc.CreateGAEBImport(context.Background(), quotes.QuoteImportCreateInput{ProjectID: projectID, ContactID: contactID}, strings.NewReader("<gaeb><item position_no=\"01.001\" qty=\"1\" unit=\"Stk\"><description>Fenster</description></item></gaeb>"), "default.xml", "default")
+	// Standard-Parser: GAEB DA XML (ADR 0040), eine X83 aus dem Evaluationsset
+	x83, err := os.ReadFile("../quotes/eval/testdata/lv-01.x83")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defaultImport, err := svc.CreateGAEBImport(context.Background(), quotes.QuoteImportCreateInput{ProjectID: projectID, ContactID: contactID}, bytes.NewReader(x83), "default.xml", "default")
 	if err != nil {
 		t.Fatalf("create default XML import: %v", err)
 	}
@@ -89,8 +95,21 @@ func TestGAEBImportProcessEndpoint(t *testing.T) {
 		t.Fatalf("default parser: %d %s", rec.Code, rec.Body.String())
 	}
 	defaultParsed, err := svc.GetImport(context.Background(), defaultImport.ID, "default")
-	if err != nil || defaultParsed.Status != "parsed" || defaultParsed.ParserVersion != "gaeb-xml-subset-v1" || defaultParsed.ItemCount != 1 {
+	if err != nil || defaultParsed.Status != "parsed" || defaultParsed.ParserVersion != "gaeb-da-xml-v1" || defaultParsed.DetectedFormat != "da_xml_3.3_x83" ||
+		defaultParsed.ItemCount != 26 {
 		t.Fatalf("default parser result: %+v err=%v", defaultParsed, err)
+	}
+	// das frühere eigene Format ist kein GAEB: der Lauf scheitert mit Meldung
+	subsetImport, err := svc.CreateGAEBImport(context.Background(), quotes.QuoteImportCreateInput{ProjectID: projectID, ContactID: contactID}, strings.NewReader("<gaeb><item position_no=\"01.001\" qty=\"1\" unit=\"Stk\"><description>Fenster</description></item></gaeb>"), "subset.xml", "default")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec := call(NewRouterWithDeps(env.PG, env.Mongo, env.Redis, env.Cfg), adminToken, subsetImport.ID); rec.Code != http.StatusOK {
+		t.Fatalf("subset format: %d %s", rec.Code, rec.Body.String())
+	}
+	subsetFailed, err := svc.GetImport(context.Background(), subsetImport.ID, "default")
+	if err != nil || subsetFailed.Status != "failed" || subsetFailed.ItemCount != 0 || !strings.Contains(subsetFailed.ErrorMessage, "nicht GAEB") {
+		t.Fatalf("subset format result: %+v err=%v", subsetFailed, err)
 	}
 	noParser := create(t)
 	noParserHandler := NewRouterWithDepsAndOptions(env.PG, env.Mongo, env.Redis, env.Cfg, V1RouterOptions{})

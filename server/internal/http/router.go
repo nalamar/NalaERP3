@@ -80,7 +80,7 @@ func NewRouter() http.Handler {
 // NewRouterWithDeps stellt den Router mit DB-Abhängigkeiten bereit.
 func NewRouterWithDeps(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
 	return NewRouterWithDepsAndOptions(pg, mg, rd, cfg, V1RouterOptions{
-		GAEBImportParser: quotes.GAEBXMLSubsetParser{},
+		GAEBImportParser: quotes.GAEBDAXMLParser{},
 	})
 }
 

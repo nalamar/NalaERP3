@@ -55,7 +55,7 @@ type V1RouterOptions struct {
 
 func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
 	return NewV1RouterWithOptions(pg, mg, rd, cfg, V1RouterOptions{
-		GAEBImportParser: quotes.GAEBXMLSubsetParser{},
+		GAEBImportParser: quotes.GAEBDAXMLParser{},
 	})
 }
 

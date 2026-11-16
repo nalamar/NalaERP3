@@ -116,3 +116,7 @@ wie unten vorgeschlagen; I.2.1a liefert `internal/quotes/gaeb` mit 100 %
 - Migration 116 erst in I.2.2, mit DOWN-Pfad und Hinweis auf
   Datenverlust (neue Spalten und Tabelle).
 - Das heutige Subset-Format entfällt — Importe darin gibt es nur in Tests.
+  Umgesetzt in I.2.3b (2026-11-16): `gaeb_xml_subset_parser.go` und sein Test
+  sind entfernt, Router und API nutzen `quotes.GAEBDAXMLParser`; eine Datei im
+  alten Format scheitert beim Verarbeiten mit „nicht GAEB“. Die Dokumente
+  `docs/gaeb_xml_subset_parser_*.md` sind seitdem nur noch historisch.
