@@ -54,6 +54,29 @@ type QuoteImportItem struct {
 	LinkedQuoteID     string  `json:"linked_quote_id,omitempty"`
 	LinkedQuoteItemID string  `json:"linked_quote_item_id,omitempty"`
 	LinkedQuotePos    int     `json:"linked_quote_position,omitempty"`
+	ShortText         string  `json:"short_text"`
+	LongText          string  `json:"long_text"`
+	ItemKind          string  `json:"item_kind"`
+	IsLumpSum         bool    `json:"is_lump_sum"`
+	BasePositionNo    string  `json:"base_position_no"`
+	GroupID           string  `json:"group_id,omitempty"`
+}
+
+// QuoteImportGroup ist ein Los, Titel oder Untertitel eines Importlaufs.
+type QuoteImportGroup struct {
+	ID            string `json:"id"`
+	OutlineNo     string `json:"outline_no"`
+	ParentGroupID string `json:"parent_group_id,omitempty"`
+	Kind          string `json:"kind"`
+	Bezeichnung   string `json:"bezeichnung"`
+	SortOrder     int    `json:"sort_order"`
+}
+
+// QuoteImportStructure: Gliederung und Vorbemerkungen eines Importlaufs.
+type QuoteImportStructure struct {
+	ImportID       string             `json:"import_id"`
+	Groups         []QuoteImportGroup `json:"groups"`
+	Vorbemerkungen []string           `json:"vorbemerkungen"`
 }
 
 // QuoteImportItemInput ist eine gelesene Position. OutlineNo verweist auf
@@ -369,7 +392,8 @@ func (s *Service) ListImportItems(ctx context.Context, importID string, companyI
 	rows, err := s.pg.Query(ctx, `
 		SELECT ii.id::text, ii.import_id::text, ii.position_no, ii.outline_no, ii.description, ii.qty, ii.unit,
 		       ii.is_optional, ii.parser_hint, ii.review_status, ii.review_note, ii.sort_order,
-		       COALESCE(link.quote_id::text,''), COALESCE(link.quote_item_id::text,''), COALESCE(qi.position, 0)
+		       COALESCE(link.quote_id::text,''), COALESCE(link.quote_item_id::text,''), COALESCE(qi.position, 0),
+		       ii.short_text, ii.long_text, ii.item_kind, ii.is_lump_sum, ii.base_position_no, COALESCE(ii.group_id::text,'')
 		FROM quote_import_items ii
 		LEFT JOIN quote_import_item_links link ON link.quote_import_item_id = ii.id
 		LEFT JOIN quote_items qi ON qi.id = link.quote_item_id
@@ -400,10 +424,50 @@ func (s *Service) ListImportItems(ctx context.Context, importID string, companyI
 			&item.LinkedQuoteID,
 			&item.LinkedQuoteItemID,
 			&item.LinkedQuotePos,
+			&item.ShortText,
+			&item.LongText,
+			&item.ItemKind,
+			&item.IsLumpSum,
+			&item.BasePositionNo,
+			&item.GroupID,
 		); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
+// GetImportStructure liefert Gliederung (in Reihenfolge, Eltern vor
+// Kindern) und Vorbemerkungen eines Importlaufs.
+func (s *Service) GetImportStructure(ctx context.Context, importID string, companyID string) (*QuoteImportStructure, error) {
+	imp, err := s.GetImport(ctx, importID, companyID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("Importlauf nicht gefunden")
+		}
+		return nil, err
+	}
+	out := &QuoteImportStructure{ImportID: imp.ID, Groups: []QuoteImportGroup{}}
+	if err := s.pg.QueryRow(ctx, `SELECT vorbemerkungen FROM quote_imports WHERE id=$1`, imp.ID).Scan(&out.Vorbemerkungen); err != nil {
+		return nil, err
+	}
+	rows, err := s.pg.Query(ctx, `
+		SELECT id::text, outline_no, COALESCE(parent_group_id::text,''), kind, bezeichnung, sort_order
+		FROM quote_import_groups
+		WHERE import_id=$1
+		ORDER BY sort_order ASC, id ASC
+	`, imp.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var g QuoteImportGroup
+		if err := rows.Scan(&g.ID, &g.OutlineNo, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder); err != nil {
+			return nil, err
+		}
+		out.Groups = append(out.Groups, g)
 	}
 	return out, rows.Err()
 }
@@ -434,7 +498,8 @@ func (s *Service) GetImportItem(ctx context.Context, importID, itemID string, co
 	err := s.pg.QueryRow(ctx, `
 		SELECT ii.id::text, ii.import_id::text, ii.position_no, ii.outline_no, ii.description, ii.qty, ii.unit,
 		       ii.is_optional, ii.parser_hint, ii.review_status, ii.review_note, ii.sort_order,
-		       COALESCE(link.quote_id::text,''), COALESCE(link.quote_item_id::text,''), COALESCE(qi.position, 0)
+		       COALESCE(link.quote_id::text,''), COALESCE(link.quote_item_id::text,''), COALESCE(qi.position, 0),
+		       ii.short_text, ii.long_text, ii.item_kind, ii.is_lump_sum, ii.base_position_no, COALESCE(ii.group_id::text,'')
 		FROM quote_import_items ii
 		LEFT JOIN quote_import_item_links link ON link.quote_import_item_id = ii.id
 		LEFT JOIN quote_items qi ON qi.id = link.quote_item_id
@@ -455,6 +520,12 @@ func (s *Service) GetImportItem(ctx context.Context, importID, itemID string, co
 		&item.LinkedQuoteID,
 		&item.LinkedQuoteItemID,
 		&item.LinkedQuotePos,
+		&item.ShortText,
+		&item.LongText,
+		&item.ItemKind,
+		&item.IsLumpSum,
+		&item.BasePositionNo,
+		&item.GroupID,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

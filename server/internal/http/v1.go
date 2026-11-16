@@ -2365,6 +2365,15 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusOK, out)
 		})
+		r.With(requirePermission("quotes.read")).Get("/imports/{id}/structure", func(w http.ResponseWriter, req *http.Request) {
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := quoteSvc.GetImportStructure(req.Context(), chi.URLParam(req, "id"), companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(requirePermission("quotes.read")).Get("/imports/{id}/items", func(w http.ResponseWriter, req *http.Request) {
 			companyID, _ := companyIDFromContext(req.Context())
 			out, err := quoteSvc.ListImportItems(req.Context(), chi.URLParam(req, "id"), companyID)
