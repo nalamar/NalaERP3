@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.4.0** erledigt: ADR 0041 (Entwurf) zur Übernahme ins Angebot; sechs
+> **2026-11-16 I.2.4a** erledigt: Fragen ADR 0041 vom Nutzer mit (a) beantwortet, ADR
+> angenommen; Migration 117 und GAEB-Felder an Angebotspositionen und Gruppen,
+> Untertitel unter Untertiteln. Fund: der Client verliert beim Speichern `group_id`;
+> I.2.4 neu geschnitten (a–e). Nächste: **I.2.4b** Client reicht die Felder durch.
+> Nächste freie Migration: 118, nächstes ADR: 0042.
+> Davor **2026-11-16 I.2.4.0** erledigt: ADR 0041 (Entwurf) zur Übernahme ins Angebot; sechs
 > Fragen in `open-questions.md` (Abschnitt 2026-11-16 I.2.4), Antwort ausstehend. Fund:
 > `Revise` verliert die Gliederung. Nächste: nach der Antwort **I.2.4a** (Migration 117 und
 > Übernahme). Nächste freie Migration: 117, nächstes ADR: 0042.

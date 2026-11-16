@@ -20,6 +20,7 @@ type QuoteItemGroup struct {
 	Kind          string     `json:"kind"`
 	Bezeichnung   string     `json:"bezeichnung"`
 	SortOrder     int        `json:"sort_order"`
+	OutlineNo     string     `json:"outline_no"` // OZ aus dem LV (ADR 0041), sonst leer
 	CreatedAt     time.Time  `json:"created_at"`
 }
 
@@ -28,6 +29,7 @@ type QuoteItemGroupCreate struct {
 	Kind          string     `json:"kind"`
 	Bezeichnung   string     `json:"bezeichnung"`
 	SortOrder     int        `json:"sort_order"`
+	OutlineNo     string     `json:"outline_no"`
 }
 
 type QuoteItemGroupUpdate struct {
@@ -94,7 +96,8 @@ func (s *Service) groupKind(ctx context.Context, groupID, quoteID uuid.UUID) (st
 // validateGroupHierarchy erzwingt die Wohlgeformtheits-Regel aus ADR 0009
 // im Anwendungscode (bewusst kein DB-Trigger, analog ADR 0008): los hat nie
 // einen Elternknoten, titel darf nur unter los oder auf oberster Ebene
-// stehen, untertitel braucht zwingend einen titel-Elternknoten.
+// stehen, untertitel braucht zwingend einen titel- oder untertitel-
+// Elternknoten (ADR 0041 Frage 1: GAEB erlaubt tiefere Gliederungen).
 func (s *Service) validateGroupHierarchy(ctx context.Context, quoteID uuid.UUID, kind string, parentGroupID *uuid.UUID) error {
 	if !validQuoteItemGroupKinds[kind] {
 		return errors.New("kind ist ungültig (gültig: los, titel, untertitel)")
@@ -116,14 +119,14 @@ func (s *Service) validateGroupHierarchy(ctx context.Context, quoteID uuid.UUID,
 		}
 	case "untertitel":
 		if parentGroupID == nil {
-			return errors.New("Ungültige Hierarchie: untertitel benötigt einen übergeordneten titel-Knoten")
+			return errors.New("Ungültige Hierarchie: untertitel benötigt einen übergeordneten titel- oder untertitel-Knoten")
 		}
 		parentKind, err := s.groupKind(ctx, *parentGroupID, quoteID)
 		if err != nil {
 			return err
 		}
-		if parentKind != "titel" {
-			return errors.New("Ungültige Hierarchie: untertitel darf nur unter titel stehen")
+		if parentKind != "titel" && parentKind != "untertitel" {
+			return errors.New("Ungültige Hierarchie: untertitel darf nur unter titel oder untertitel stehen")
 		}
 	}
 	return nil
@@ -144,11 +147,11 @@ func (s *Service) CreateQuoteItemGroup(ctx context.Context, quoteID uuid.UUID, i
 	id := uuid.New()
 	var g QuoteItemGroup
 	err := s.pg.QueryRow(ctx, `
-        INSERT INTO quote_item_groups (id, quote_id, parent_group_id, kind, bezeichnung, sort_order)
-        VALUES ($1,$2,$3,$4,$5,$6)
-        RETURNING id, quote_id, parent_group_id, kind, bezeichnung, sort_order, created_at
-    `, id, quoteID, in.ParentGroupID, kind, bezeichnung, in.SortOrder).Scan(
-		&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.CreatedAt,
+        INSERT INTO quote_item_groups (id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no)
+        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        RETURNING id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no, created_at
+    `, id, quoteID, in.ParentGroupID, kind, bezeichnung, in.SortOrder, strings.TrimSpace(in.OutlineNo)).Scan(
+		&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.OutlineNo, &g.CreatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -161,7 +164,7 @@ func (s *Service) ListQuoteItemGroups(ctx context.Context, quoteID uuid.UUID, co
 		return nil, err
 	}
 	rows, err := s.pg.Query(ctx, `
-        SELECT id, quote_id, parent_group_id, kind, bezeichnung, sort_order, created_at
+        SELECT id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no, created_at
         FROM quote_item_groups WHERE quote_id=$1
         ORDER BY sort_order ASC, created_at ASC
     `, quoteID)
@@ -172,7 +175,7 @@ func (s *Service) ListQuoteItemGroups(ctx context.Context, quoteID uuid.UUID, co
 	out := make([]QuoteItemGroup, 0)
 	for rows.Next() {
 		var g QuoteItemGroup
-		if err := rows.Scan(&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.CreatedAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.OutlineNo, &g.CreatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, g)
@@ -215,9 +218,9 @@ func (s *Service) UpdateQuoteItemGroup(ctx context.Context, quoteID, groupID uui
 	}
 	var g QuoteItemGroup
 	err := s.pg.QueryRow(ctx, `
-        SELECT id, quote_id, parent_group_id, kind, bezeichnung, sort_order, created_at
+        SELECT id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no, created_at
         FROM quote_item_groups WHERE id=$1 AND quote_id=$2
-    `, groupID, quoteID).Scan(&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.CreatedAt)
+    `, groupID, quoteID).Scan(&g.ID, &g.QuoteID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.OutlineNo, &g.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, errors.New("Gruppe nicht gefunden")

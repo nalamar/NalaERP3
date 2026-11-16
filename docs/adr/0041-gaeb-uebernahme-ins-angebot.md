@@ -1,6 +1,7 @@
 # ADR 0041: Übernahme eines GAEB-Imports ins Angebot
 
-- Status: Entwurf (2026-11-16)
+- Status: Angenommen (2026-11-16; Fragen 1–6 vom Nutzer ausdrücklich mit der
+  Empfehlung (a) beantwortet)
 - Bezug: Backlog I.2.4, ADR 0040 (Entscheidung 4 (a): Gliederung, Kurz-/Langtext
   und Art als eigener Teilpunkt von I.2), ADR 0009 (LV-Hierarchie im Angebot),
   Backlog I.6 (D84-Rückschreibung braucht die OZ je Angebotsposition)
@@ -71,15 +72,32 @@
 Weiter gilt: Vorbemerkungen bleiben am Importlauf; ins Angebot (Notiz oder
 Textbaustein) gehen sie erst mit einem eigenen Punkt.
 
+## Entscheidung
+
+Alle sechs Fragen nach Empfehlung **(a)** (Antwort des Nutzers, 2026-11-16).
+
+Präzisierungen bei der Umsetzung (I.2.4a):
+
+- **Grundposition über die OZ** (`quote_items.base_outline_no`) statt über die
+  Positions-ID: `Update` legt beim Speichern eines Entwurfs alle Positionen mit
+  neuen IDs an, `Revise` ebenso — ein Fremdschlüssel ginge dabei verloren.
+- **Fund Client:** der Client schickt beim Speichern weder `group_id` noch die
+  neuen Felder mit; wer einen Entwurf im Client speichert, verliert schon heute
+  die Gruppenzuordnung. Die Übernahme darf erst kommen, wenn der Client die
+  Felder durchreicht. Teilung deshalb neu (unten).
+
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 
-- **I.2.4a** Migration 117 (Spalten an `quote_item_groups` und `quote_items`,
-  DOWN-Pfad, Datenverlusthinweis) und Übernahme: Gruppen aus
-  `quote_import_groups` in Reihenfolge, Positionen mit Gruppe, OZ, Texten, Art,
-  Pauschale, Grundposition; Hierarchie-Regel nach Frage 1.
-- **I.2.4b** Summen und PDF nach Frage 4 (`calcTotals`, SQL-Neuberechnungen,
-  Kennzeichnung im PDF).
-- **I.2.4c** Revision kopiert Gruppen und Felder; Auftrag aus Angebot nach
+Ursprünglich a) Migration und Übernahme, b) Summen und PDF, c) Revision und
+Auftrag; nach dem Fund neu geschnitten:
+
+- **I.2.4a** Migration 117, Felder in Anlegen/Speichern/Lesen, OZ an Gruppen,
+  Hierarchie-Regel nach Frage 1.
+- **I.2.4b** Client reicht `group_id` und die neuen Felder beim Speichern durch.
+- **I.2.4c** Übernahme aus dem Import (Gruppen in Reihenfolge, leere Bezeichnung
+  = OZ, Positionen mit Gruppe, OZ, Texten, Art, Pauschale, Grundposition).
+- **I.2.4d** Summen und PDF nach Frage 4.
+- **I.2.4e** Revision kopiert Gruppen und Felder; Auftrag aus Angebot nach
   Frage 5.
 
 ## Folgen

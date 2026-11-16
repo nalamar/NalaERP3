@@ -33,7 +33,18 @@ type QuoteItemInput struct {
 	MaterialCandidates      []MaterialCandidate             `json:"material_candidates,omitempty"`
 	ActiveApprovalRequest   *QuoteItemApprovalRequest       `json:"active_approval_request,omitempty"`
 	LatestApprovalDecision  *QuoteItemApprovalDecisionBadge `json:"latest_approval_decision,omitempty"`
+	// GAEB-Angaben (ADR 0041); leer bzw. normal bei von Hand erfassten
+	// Positionen. BaseOutlineNo: OZ der Grundposition einer Alternative.
+	OutlineNo     string `json:"outline_no"`
+	ShortText     string `json:"short_text"`
+	LongText      string `json:"long_text"`
+	ItemKind      string `json:"item_kind"`
+	IsLumpSum     bool   `json:"is_lump_sum"`
+	BaseOutlineNo string `json:"base_outline_no"`
 }
+
+var validQuoteItemKinds = map[string]bool{"normal": true, "grundposition": true, "alternativposition": true,
+	"bedarfsposition_mit_gb": true, "bedarfsposition_ohne_gb": true}
 
 type MaterialCandidate struct {
 	MaterialID    string `json:"material_id"`
@@ -463,9 +474,11 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 			return uuid.Nil, nil, err
 		}
 		lineID := uuid.New()
-		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID))
+		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id,
+				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID),
+			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo)
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
@@ -518,6 +531,12 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 		SELECT
 			qi.id,
 			COALESCE(qi.group_id::text,''),
+			qi.outline_no,
+			qi.short_text,
+			qi.long_text,
+			qi.item_kind,
+			qi.is_lump_sum,
+			qi.base_outline_no,
 			qi.description,
 			qi.qty,
 			qi.unit,
@@ -670,6 +689,12 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 		if err := rows.Scan(
 			&quoteItemID,
 			&item.GroupID,
+			&item.OutlineNo,
+			&item.ShortText,
+			&item.LongText,
+			&item.ItemKind,
+			&item.IsLumpSum,
+			&item.BaseOutlineNo,
 			&item.Description,
 			&item.Qty,
 			&item.Unit,
@@ -3574,9 +3599,11 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 			return nil, err
 		}
 		lineID := uuid.New()
-		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID))
+		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id,
+				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID),
+			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo)
 		if err != nil {
 			return nil, err
 		}
@@ -3673,6 +3700,18 @@ func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, quoteID uui
 			}
 			return item, err
 		}
+	}
+	item.OutlineNo = strings.TrimSpace(item.OutlineNo)
+	item.BaseOutlineNo = strings.TrimSpace(item.BaseOutlineNo)
+	item.ItemKind = strings.ToLower(strings.TrimSpace(item.ItemKind))
+	if item.ItemKind == "" {
+		item.ItemKind = "normal"
+	}
+	if !validQuoteItemKinds[item.ItemKind] {
+		return item, errors.New("item_kind ist ungültig")
+	}
+	if item.BaseOutlineNo != "" && item.ItemKind != "alternativposition" {
+		return item, errors.New("base_outline_no ist ungültig: nur bei Alternativpositionen erlaubt")
 	}
 	item.GroupID = strings.TrimSpace(item.GroupID)
 	if item.GroupID != "" {

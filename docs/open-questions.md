@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-16 — I.2.4 Übernahme eines GAEB-Imports ins Angebot (offen)
+## 2026-11-16 — I.2.4 Übernahme eines GAEB-Imports ins Angebot (beantwortet 2026-11-16)
 
 Bezug: Backlog I.2.4, ADR 0041 (Entwurf, Bestandsaufnahme und Optionen dort).
 Kurz: Heute gehen bei der Übernahme Gliederung, OZ, Art und Pauschale verloren.
@@ -332,20 +332,20 @@ Die Gliederung im Angebot erlaubt keine Untertitel unter Untertiteln, Summen und
 Auftrag zählen alle Positionen. Fund: eine Revision verliert die Gliederung.
 
 1. **Tiefere Gliederung**: (a) Untertitel auch unter Untertiteln erlauben;
-   (b) tiefere Stufen zusammenziehen; (c) ablehnen. Empfehlung: **(a)**. Status: **offen**.
+   (b) tiefere Stufen zusammenziehen; (c) ablehnen. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 2. **Ordnungszahl**: (a) Spalte `outline_no` an Gruppen und Angebotspositionen
    (Migration 117); (b) nur im Text; (c) nur über die Verknüpfung zum Import.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 3. **Kurz-/Langtext, Art, Pauschale am Angebot**: (a) eigene Spalten, Text für PDF
-   und Auftrag bleibt; (b) nur am Import. Empfehlung: **(a)**. Status: **offen**.
+   und Auftrag bleibt; (b) nur am Import. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 4. **Summen**: (a) Alternativ- und Bedarfspositionen mit Preis, aber nicht in der
    Angebotssumme, im PDF gekennzeichnet; (b) alles in der Summe, nur Kennzeichen;
-   (c) Kennzeichen „in der Summe“ je Position. Empfehlung: **(a)**. Status: **offen**.
+   (c) Kennzeichen „in der Summe“ je Position. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 5. **Auftrag aus Angebot**: (a) nur Normal- und Grundpositionen, Auswahl bei der
    Beauftragung als eigener Punkt; (b) alle mit Kennzeichen; (c) Auswahl gleich
-   jetzt. Empfehlung: **(a)**. Status: **offen**.
+   jetzt. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 6. **Revision**: (a) kopiert Gruppen und neue Felder mit; (b) wie heute.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 
 ## 2026-11-13 — I.2 Echter GAEB-DA-XML-Parser (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 

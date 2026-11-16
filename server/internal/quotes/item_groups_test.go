@@ -50,7 +50,7 @@ func TestValidateGroupHierarchyRejectsUntertitelWithoutParent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected validation error, got nil")
 	}
-	if err.Error() != "Ungültige Hierarchie: untertitel benötigt einen übergeordneten titel-Knoten" {
+	if err.Error() != "Ungültige Hierarchie: untertitel benötigt einen übergeordneten titel- oder untertitel-Knoten" {
 		t.Fatalf("unexpected error message: %q", err.Error())
 	}
 }
