@@ -81,6 +81,30 @@ func TestQuoteCalcTotalsSumsNetAndTax(t *testing.T) {
 	}
 }
 
+// Alternativ- und Bedarfspositionen zaehlen nicht zur Summe (ADR 0041 Frage 4).
+func TestQuoteCalcTotalsSkipsAlternativeAndProvisionalItems(t *testing.T) {
+	codes := map[string]taxCodeInfo{"DE19": {Rate: 0.19}}
+	items := []QuoteItemInput{
+		{Qty: 2, UnitPrice: 100, TaxCode: "DE19"},
+		{Qty: 1, UnitPrice: 50, TaxCode: "DE19", ItemKind: " Grundposition "},
+		{Qty: 1, UnitPrice: 10, TaxCode: "DE19", ItemKind: "normal"},
+		{Qty: 1, UnitPrice: 60, TaxCode: "DE19", ItemKind: "alternativposition"},
+		{Qty: 1, UnitPrice: 30, TaxCode: "DE19", ItemKind: "bedarfsposition_mit_gb"},
+		{Qty: 1, UnitPrice: 20, TaxCode: "DE19", ItemKind: "bedarfsposition_ohne_gb"},
+	}
+	net, tax, err := calcTotals(codes, items)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if net != 260 || tax != 260*0.19 {
+		t.Fatalf("expected net 260 and tax 49.4, got %v / %v", net, tax)
+	}
+	// ausschliesslich nicht zaehlende Positionen: Summe 0
+	if net, tax, err := calcTotals(codes, items[3:]); err != nil || net != 0 || tax != 0 {
+		t.Fatalf("expected 0/0, got %v / %v / %v", net, tax, err)
+	}
+}
+
 func TestQuoteCalcTotalsRejectsUnknownTaxCode(t *testing.T) {
 	codes := map[string]taxCodeInfo{"DE19": {Rate: 0.19}}
 	items := []QuoteItemInput{{Qty: 1, UnitPrice: 100, TaxCode: "XX"}}

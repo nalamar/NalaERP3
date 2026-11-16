@@ -1189,20 +1189,7 @@ func (s *Service) ApplyPrimaryPriceSourceForQuoteItem(ctx context.Context, quote
 		return nil, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE quotes
-		SET net_amount = totals.net_amount,
-			tax_amount = totals.tax_amount,
-			gross_amount = totals.net_amount + totals.tax_amount
-		FROM (
-			SELECT
-				COALESCE(SUM(net_amount), 0) AS net_amount,
-				COALESCE(SUM(tax_amount), 0) AS tax_amount
-			FROM quote_items
-			WHERE quote_id = $1
-		) totals
-		WHERE quotes.id = $1
-	`, quoteID); err != nil {
+	if err := recalcQuoteTotalsTx(ctx, tx, quoteID); err != nil {
 		return nil, err
 	}
 
@@ -1302,20 +1289,7 @@ func (s *Service) ApplyTargetUnitPriceForQuoteItem(ctx context.Context, quoteID,
 		return nil, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE quotes
-		SET net_amount = totals.net_amount,
-			tax_amount = totals.tax_amount,
-			gross_amount = totals.net_amount + totals.tax_amount
-		FROM (
-			SELECT
-				COALESCE(SUM(net_amount), 0) AS net_amount,
-				COALESCE(SUM(tax_amount), 0) AS tax_amount
-			FROM quote_items
-			WHERE quote_id = $1
-		) totals
-		WHERE quotes.id = $1
-	`, quoteID); err != nil {
+	if err := recalcQuoteTotalsTx(ctx, tx, quoteID); err != nil {
 		return nil, err
 	}
 
@@ -3659,8 +3633,39 @@ func taxRate(codes map[string]taxCodeInfo, code string) (float64, error) {
 	return info.Rate, nil
 }
 
+// quoteItemKindsInTotal sind die Positionsarten, die zur Angebotssumme
+// zaehlen (ADR 0041 Frage 4 (a)): Alternativ- und Bedarfspositionen haben
+// einen Preis, gehoeren aber nicht in die Summe. Leer = normal (Eingabe vor
+// normalizeQuoteItem). quoteItemsInTotalSQL ist dieselbe Regel fuer SQL.
+var quoteItemKindsInTotal = map[string]bool{"": true, "normal": true, "grundposition": true}
+
+const quoteItemsInTotalSQL = "item_kind IN ('normal', 'grundposition')"
+
+// recalcQuoteTotalsTx berechnet die Angebotssumme aus den gespeicherten
+// Positionen neu (nach Preisaenderung an einer Position).
+func recalcQuoteTotalsTx(ctx context.Context, tx pgx.Tx, quoteID uuid.UUID) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE quotes
+		SET net_amount = totals.net_amount,
+			tax_amount = totals.tax_amount,
+			gross_amount = totals.net_amount + totals.tax_amount
+		FROM (
+			SELECT
+				COALESCE(SUM(net_amount), 0) AS net_amount,
+				COALESCE(SUM(tax_amount), 0) AS tax_amount
+			FROM quote_items
+			WHERE quote_id = $1 AND `+quoteItemsInTotalSQL+`
+		) totals
+		WHERE quotes.id = $1
+	`, quoteID)
+	return err
+}
+
 func calcTotals(codes map[string]taxCodeInfo, items []QuoteItemInput) (net, tax float64, err error) {
 	for _, item := range items {
+		if !quoteItemKindsInTotal[strings.ToLower(strings.TrimSpace(item.ItemKind))] {
+			continue
+		}
 		n := item.Qty * item.UnitPrice
 		net += n
 		rate, err := taxRate(codes, item.TaxCode)

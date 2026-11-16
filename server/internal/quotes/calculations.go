@@ -300,18 +300,7 @@ func (s *Service) ApplyCalculationForQuoteItem(ctx context.Context, quoteID, ite
 		return nil, err
 	}
 
-	if _, err := tx.Exec(ctx, `
-		UPDATE quotes
-		SET net_amount = totals.net_amount,
-			tax_amount = totals.tax_amount,
-			gross_amount = totals.net_amount + totals.tax_amount
-		FROM (
-			SELECT COALESCE(SUM(net_amount), 0) AS net_amount, COALESCE(SUM(tax_amount), 0) AS tax_amount
-			FROM quote_items
-			WHERE quote_id = $1
-		) totals
-		WHERE quotes.id = $1
-	`, quoteID); err != nil {
+	if err := recalcQuoteTotalsTx(ctx, tx, quoteID); err != nil {
 		return nil, err
 	}
 

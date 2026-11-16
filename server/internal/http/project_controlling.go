@@ -74,6 +74,8 @@ func buildProjectControlling(
         JOIN quote_items qi ON qi.id = qic.quote_item_id
         JOIN quotes q ON q.id = qi.quote_id
         WHERE q.project_id = $1 AND q.company_id = $2 AND q.superseded_by_quote_id IS NULL
+          -- wie die Angebotssumme: ohne Alternativ- und Bedarfspositionen (ADR 0041)
+          AND qi.item_kind IN ('normal', 'grundposition')
     `, projectID, companyID).Scan(&sollKosten); err != nil {
 		return nil, err
 	}
