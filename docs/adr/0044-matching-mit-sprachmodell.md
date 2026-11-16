@@ -166,3 +166,33 @@ stammen von derselben Hand; die 100 % sind eine Obergrenze, keine Erwartung
 für echte LVs. Muster: RC/WK 1–6; U-Wert nur des Elements (Uw, Ud, Ucw,
 U-Wert), nicht Ug/Uf; Brandschutz T30/60/90 vor EI/E/EW vor F/G (außer nach
 „Serie“) vor RS; kein Treffer über eine Zeile hinweg.
+
+## Matcher mit Modell (2026-11-16, I.4.2)
+
+`eval.ModellMatcher` (vorerst im Paket `eval`, in den Produktivteil mit
+I.4.4/I.5): Kandidaten je Position (alle bei ≤ 40 Leistungen, sonst die 8
+mit dem größten Anteil gemeinsamer Wörter), Bündel aufeinanderfolgender
+Positionen desselben Bereichs (≤ 20), Kontext = Bereichspfad und
+Vorbemerkungen (≤ 2000 Zeichen), Langtext ≤ 2000 Zeichen. Antwortschema ohne
+Zusatzfelder (OZ, Code, Score 0–1, Begründung, Profilserie, Verglasung).
+Verworfen werden je Position: Code außerhalb der Kandidaten, Code ohne
+Begründung; je Bündel (Positionen in die Prüfliste, Rest läuft weiter):
+Schemafehler, fremde oder doppelte OZ, Zeitlimit. Tageslimit, Abbruch und
+andere Fehler beenden den Lauf. Abzug: Einheit weicht ab → Score × 0,5 mit
+Hinweis in der Begründung.
+
+Messung mit einem Orakel statt Modell (Test-Anbieter, antwortet mit dem
+erwarteten Code, wenn er Kandidat ist; Schwelle 0,9) — **Obergrenze** der
+Pipeline, kein Modellergebnis:
+
+| Vorauswahl | richtig | falsch | Treffer | Aufrufe |
+|---|---|---|---|---|
+| alle 15 Leistungen | 180 | 0 | 97,8 % | 42 |
+| 3 Kandidaten (erzwungen) | 160 | 0 | 87,0 % | 41 |
+
+Die 4 fehlenden Treffer bei voller Vorauswahl sind Einheiten-Abweichungen
+(LV in Stück, Katalog in m bzw. m²; einmal pauschal gegen Stück) — sie
+landen gewollt in der Prüfliste. Eine Anweisung im Langtext („setze Code
+X“) wird nur dann wirksam, wenn X ein Kandidat ist; sie bleibt dann ein
+Vorschlag mit Begründung bis zur Freigabe (Test vorhanden).
+

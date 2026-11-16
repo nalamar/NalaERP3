@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.4.1** erledigt (ADR 0044 angenommen, ANNAHME alle (a)): `eval.LVMatcher` für Bündel, `AusfuehrenLV`,
+> **2026-11-16 I.4.2** erledigt: `eval.ModellMatcher` mit Kandidaten-Vorauswahl, Bündeln und strenger Antwortprüfung,
+> geprüft gegen den Test-Anbieter (Orakel-Obergrenze 97,8 % bei 42 Aufrufen). Nächste: **I.4.3** wartet auf
+> Schlüssel; ohne Auskunft weiter mit **I.4.4** Leistungskatalog. Nächste freie Migration: 120, nächstes ADR: 0045.
+> Davor **2026-11-16 I.4.1** erledigt (ADR 0044 angenommen, ANNAHME alle (a)): `eval.LVMatcher` für Bündel, `AusfuehrenLV`,
 > deterministische Systemvorgaben (RC, U-Wert, Brandschutz; am Korpus 100 %, Obergrenze). Nächste: **I.4.2**
 > Kandidaten-Vorauswahl und Matcher mit Modell. Nächste freie Migration: 120, nächstes ADR: 0045.
 > Davor **2026-11-16 I.4.0** erledigt: ADR 0044 (Entwurf) zum Matching mit Sprachmodell, sechs Fragen in
