@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.3.4** erledigt: Mistral als OpenAI-kompatibler Anbieter (`NewMistral`, Name
+> **2026-11-16 I.3.5a1** erledigt: Migration 119 (`company_llm_settings`, `company_llm_usage`) und
+> `llm.SettingsService` mit verschlüsseltem Schlüssel, Zeitlimit und Tageslimit. Nächste: **I.3.5a2**
+> HTTP-Endpunkte. Nächste freie Migration: 120, nächstes ADR: 0044.
+> Davor **2026-11-16 I.3.4** erledigt: Mistral als OpenAI-kompatibler Anbieter (`NewMistral`, Name
 > „mistral“, Pflichtschlüssel). Nächste: **I.3.5** Einstellungen je Mandant. Nächste freie Migration:
 > 119, nächstes ADR: 0044.
 > Davor **2026-11-16 I.3.3** erledigt: Anbindung Anthropic über das offizielle Go-SDK (neue Abhängigkeit),

@@ -108,6 +108,7 @@ const (
 	OutcomeError           = "error"
 	OutcomeTimeout         = "timeout"
 	OutcomeInvalidResponse = "invalid_response"
+	OutcomeLimit           = "limit"
 )
 
 // CallRecord ist der Protokolleintrag eines Aufrufs. Er enthaelt bewusst
@@ -160,6 +161,15 @@ type Client struct {
 	recorder Recorder
 	sleep    func(time.Duration)
 	now      func() time.Time
+	budget   func(context.Context) error
+}
+
+// WithBudget setzt eine Pruefung, die vor jeder Anfrage einmal laeuft
+// (Tageslimit, I.3.5); Wiederholungen zaehlen nicht extra. Liefert sie einen
+// Fehler, geht keine Anfrage hinaus.
+func (c *Client) WithBudget(budget func(context.Context) error) *Client {
+	c.budget = budget
+	return c
 }
 
 // NewClient erzeugt einen Client; recorder nil = LogRecorder.
@@ -186,6 +196,12 @@ func (c *Client) Complete(ctx context.Context, req Request) (Response, error) {
 		rec.Duration = c.now().Sub(start)
 		c.recorder.Record(ctx, rec)
 	}()
+	if c.budget != nil {
+		if err := c.budget(ctx); err != nil {
+			rec.Outcome = OutcomeLimit
+			return Response{}, err
+		}
+	}
 	for {
 		rec.Attempts++
 		attemptCtx, cancel := context.WithTimeout(ctx, c.limits.Timeout)
