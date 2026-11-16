@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -114,10 +115,69 @@ var quoteImportItemKinds = map[string]bool{"normal": true, "grundposition": true
 var quoteImportGroupKinds = map[string]bool{"los": true, "titel": true, "untertitel": true}
 
 type acceptedQuoteImportApplyItem struct {
-	ImportItemID string
-	Description  string
-	Qty          float64
-	Unit         string
+	ImportItemID  string
+	Description   string
+	Qty           float64
+	Unit          string
+	ImportGroupID string
+}
+
+// copyImportGroupsTx legt die Gliederung eines Importlaufs als
+// quote_item_groups an (ADR 0041): in Reihenfolge, Eltern vor Kindern, mit
+// OZ; eine leere Bezeichnung wird durch die OZ ersetzt. Auch Gruppen ohne
+// uebernommene Positionen entstehen, damit die Gliederung vollstaendig
+// bleibt. Liefert Import-Gruppe -> Angebotsgruppe.
+func copyImportGroupsTx(ctx context.Context, tx pgx.Tx, importID string, quoteID uuid.UUID) (map[string]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT id::text, COALESCE(parent_group_id::text,''), outline_no, kind, bezeichnung, sort_order
+		FROM quote_import_groups
+		WHERE import_id=$1
+		ORDER BY sort_order ASC, id ASC
+	`, importID)
+	if err != nil {
+		return nil, err
+	}
+	type importGroup struct {
+		id, parentID, outline, kind, bezeichnung string
+		sortOrder                                int
+	}
+	var groups []importGroup
+	for rows.Next() {
+		var g importGroup
+		if err := rows.Scan(&g.id, &g.parentID, &g.outline, &g.kind, &g.bezeichnung, &g.sortOrder); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		groups = append(groups, g)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[string]uuid.UUID, len(groups))
+	for _, g := range groups {
+		var parentID *uuid.UUID
+		if g.parentID != "" {
+			id, ok := out[g.parentID]
+			if !ok {
+				return nil, fmt.Errorf("Gliederung %s: übergeordneter Bereich fehlt", g.outline)
+			}
+			parentID = &id
+		}
+		bezeichnung := strings.TrimSpace(g.bezeichnung)
+		if bezeichnung == "" {
+			bezeichnung = g.outline
+		}
+		id := uuid.New()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO quote_item_groups (id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`, id, quoteID, parentID, g.kind, bezeichnung, g.sortOrder, g.outline); err != nil {
+			return nil, err
+		}
+		out[g.id] = id
+	}
+	return out, nil
 }
 
 type QuoteImportApplyResult struct {
@@ -721,7 +781,8 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 	}
 
 	rows, err := tx.Query(ctx, `
-		SELECT id::text, description, qty, unit
+		SELECT id::text, description, qty, unit, position_no, short_text, long_text, item_kind, is_lump_sum, base_position_no,
+		       COALESCE(group_id::text,'')
 		FROM quote_import_items
 		WHERE import_id=$1 AND review_status='accepted'
 		ORDER BY sort_order ASC, id ASC
@@ -736,7 +797,9 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 	for rows.Next() {
 		var acceptedItem acceptedQuoteImportApplyItem
 		var quoteItem QuoteItemInput
-		if err := rows.Scan(&acceptedItem.ImportItemID, &acceptedItem.Description, &acceptedItem.Qty, &acceptedItem.Unit); err != nil {
+		if err := rows.Scan(&acceptedItem.ImportItemID, &acceptedItem.Description, &acceptedItem.Qty, &acceptedItem.Unit,
+			&quoteItem.OutlineNo, &quoteItem.ShortText, &quoteItem.LongText, &quoteItem.ItemKind, &quoteItem.IsLumpSum,
+			&quoteItem.BaseOutlineNo, &acceptedItem.ImportGroupID); err != nil {
 			return nil, err
 		}
 		quoteItem.Description = acceptedItem.Description
@@ -767,6 +830,19 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 	}
 	if len(createdQuoteItemIDs) != len(acceptedItems) {
 		return nil, errors.New("Quote-Positionen konnten nicht eindeutig zugeordnet werden")
+	}
+	quoteGroupIDs, err := copyImportGroupsTx(ctx, tx, importID, createdQuoteID)
+	if err != nil {
+		return nil, err
+	}
+	for idx, acceptedItem := range acceptedItems {
+		groupID, ok := quoteGroupIDs[acceptedItem.ImportGroupID]
+		if !ok {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `UPDATE quote_items SET group_id=$2 WHERE id=$1`, createdQuoteItemIDs[idx], groupID); err != nil {
+			return nil, err
+		}
 	}
 
 	for idx, acceptedItem := range acceptedItems {

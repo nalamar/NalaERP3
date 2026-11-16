@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.4b** erledigt: der Angebotseditor im Client reicht Gruppe und GAEB-Felder
+> **2026-11-16 I.2.4c** erledigt: die Übernahme eines GAEB-Imports ins Angebot übernimmt
+> Gliederung, OZ, Texte, Art, Pauschale und Grundposition; zweite Übernahme jetzt 409 statt
+> 500. Nächste: **I.2.4d** Summen und PDF. Nächste freie Migration: 118, nächstes ADR: 0042.
+> Davor **2026-11-16 I.2.4b** erledigt: der Angebotseditor im Client reicht Gruppe und GAEB-Felder
 > beim Speichern durch (Verlust der Gruppenzuordnung behoben). Nächste: **I.2.4c**
 > Übernahme aus dem Import. Nächste freie Migration: 118, nächstes ADR: 0042.
 > Davor **2026-11-16 I.2.4a** erledigt: Fragen ADR 0041 vom Nutzer mit (a) beantwortet, ADR

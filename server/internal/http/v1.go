@@ -5147,6 +5147,8 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "zeile nicht im fertigungsauftrag"):
 		return http.StatusNotFound, "not_found"
 	case strings.Contains(msg, "nur hochgeladene importläufe können verarbeitet werden"),
+		strings.Contains(msg, "nur freigegebene importläufe können übernommen werden"),
+		strings.Contains(msg, "bereits in ein angebot übernommen"),
 		strings.Contains(msg, "weicht vom gebuchten"),
 		strings.Contains(msg, "bereits erfasst"),
 		strings.Contains(msg, "läuft bereits"),
