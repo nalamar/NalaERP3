@@ -920,12 +920,21 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
-  Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id) async {
+  /// [alternatives]: IDs gewählter Alternativpositionen; jede ersetzt im
+  /// Auftrag ihre Grundposition (ADR 0042).
+  Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id,
+      {List<String> alternatives = const []}) async {
     final r = await _sendWithAuth(
-      (headers) => http.post(
-        _u('/api/v1/quotes/$id/convert-to-sales-order'),
-        headers: headers,
-      ),
+      (headers) => alternatives.isEmpty
+          ? http.post(
+              _u('/api/v1/quotes/$id/convert-to-sales-order'),
+              headers: headers,
+            )
+          : http.post(
+              _u('/api/v1/quotes/$id/convert-to-sales-order'),
+              headers: {...headers, 'Content-Type': 'application/json'},
+              body: jsonEncode({'alternatives': alternatives}),
+            ),
     );
     if (r.statusCode != 201) _throwApiException(r);
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;

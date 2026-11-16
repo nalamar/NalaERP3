@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.6b** erledigt: Abruf von Bedarfspositionen als vorbelegter Nachtrag und
+> **2026-11-16 I.2.6c1** erledigt: Client fragt beim Umwandeln in den Auftrag die Alternativen
+> ab. Nächste: **I.2.6c2** Auftragsseite (Bedarfspositionen abrufen). Nächste freie Migration:
+> 119, nächstes ADR: 0043.
+> Davor **2026-11-16 I.2.6b** erledigt: Abruf von Bedarfspositionen als vorbelegter Nachtrag und
 > Mengenübersicht je Bedarfsposition. Nächste: **I.2.6c** Client. Nächste freie Migration: 119,
 > nächstes ADR: 0043.
 > Davor **2026-11-16 I.2.6a** erledigt: Fragen ADR 0042 mit "fortsetzen" beantwortet (ANNAHME, alle

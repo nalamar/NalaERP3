@@ -425,9 +425,14 @@ class _FakeApiClient extends ApiClient {
     return <String, dynamic>{'bewegungen': 1};
   }
 
+  final List<List<String>> convertedQuoteAlternatives = [];
+
   @override
-  Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id) async =>
-      convertedSalesOrder ?? <String, dynamic>{'id': 'so-converted'};
+  Future<Map<String, dynamic>> convertQuoteToSalesOrder(String id,
+      {List<String> alternatives = const []}) async {
+    convertedQuoteAlternatives.add(alternatives);
+    return convertedSalesOrder ?? <String, dynamic>{'id': 'so-converted'};
+  }
 
   @override
   Future<Map<String, dynamic>> convertQuoteToInvoice(
@@ -2241,6 +2246,147 @@ void main() {
     expect(find.text('AUF-2026-0001'), findsWidgets);
     expect(find.text('AUF-2026-0009'), findsNothing);
     expect(find.widgetWithText(TextField, 'project-1'), findsOneWidget);
+  });
+
+  testWidgets('Quote conversion lets the user pick alternatives per base item',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    _FakeApiClient buildApi() => _FakeApiClient(
+          permissions: const {'quotes.write', 'sales_orders.write'},
+          quoteList: const [
+            {
+              'id': 'q-alt',
+              'number': 'ANG-2026-0301',
+              'contact_name': 'Projekt GmbH',
+              'status': 'accepted',
+              'gross_amount': 0.0,
+              'currency': 'EUR',
+            },
+          ],
+          quoteDetail: const {
+            'id': 'q-alt',
+            'number': 'ANG-2026-0301',
+            'status': 'accepted',
+            'currency': 'EUR',
+            'items': [
+              {
+                'id': 'g1',
+                'description': 'Fenster einflügelig',
+                'outline_no': '01.0010',
+                'item_kind': 'grundposition'
+              },
+              {
+                'id': 'a1',
+                'description': 'wie vor, zweiflügelig',
+                'outline_no': '01.0020',
+                'item_kind': 'alternativposition',
+                'base_outline_no': '01.0010'
+              },
+              {
+                'id': 'a2',
+                'description': 'wie vor, Holz-Alu',
+                'short_text': 'Holz-Alu-Fenster',
+                'outline_no': '01.0030',
+                'item_kind': 'alternativposition',
+                'base_outline_no': '01.0010'
+              },
+              {
+                'id': 'g2',
+                'description': 'Treppe gerade',
+                'outline_no': '01.0060',
+                'item_kind': 'grundposition'
+              },
+              {
+                'id': 'a3',
+                'description': 'Wendeltreppe',
+                'outline_no': '01.0070',
+                'item_kind': 'alternativposition',
+                'base_outline_no': '01.0060'
+              },
+              {
+                'id': 'x1',
+                'description': 'Ohne Grundposition',
+                'outline_no': '01.0080',
+                'item_kind': 'alternativposition',
+                'base_outline_no': '09.9999'
+              },
+              {'id': 'n1', 'description': 'Normal', 'item_kind': 'normal'},
+              {
+                'id': 'b1',
+                'description': 'Bedarf',
+                'outline_no': '09.9999',
+                'item_kind': 'bedarfsposition_mit_gb'
+              },
+              {
+                'id': 'g3',
+                'description': 'Fensterbank',
+                'outline_no': '01.0090',
+                'item_kind': 'grundposition'
+              },
+            ],
+          },
+          convertedSalesOrder: const {
+            'id': 'so-alt',
+            'number': 'AUF-2026-0301'
+          },
+        );
+
+    // Auswahl: Alternative a2 statt g1, g2 bleibt
+    var api = buildApi();
+    await tester.pumpWidget(MaterialApp(home: QuotesPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ANG-2026-0301'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Auftrag'));
+    await tester.pumpAndSettle();
+    expect(find.text('Alternativen für den Auftrag'), findsOneWidget);
+    expect(find.text('Grundposition 01.0010'), findsOneWidget);
+    expect(find.text('Grundposition 01.0060'), findsOneWidget);
+    expect(find.text('01.0030 Holz-Alu-Fenster'), findsOneWidget);
+    expect(find.text('01.0080 Ohne Grundposition'), findsNothing);
+    expect(find.text('Grundposition 09.9999'), findsNothing);
+    expect(find.text('Grundposition 01.0090'), findsNothing);
+    expect(
+        find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.textContaining('Normal')),
+        findsNothing);
+    await tester.tap(find.text('01.0030 Holz-Alu-Fenster'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Auftrag übernehmen'));
+    await tester.pumpAndSettle();
+    expect(api.convertedQuoteAlternatives, [
+      ['a2']
+    ]);
+
+    // ohne Änderung: keine Alternative
+    api = buildApi();
+    await tester
+        .pumpWidget(MaterialApp(home: QuotesPage(api: api, key: UniqueKey())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ANG-2026-0301'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Auftrag'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Auftrag übernehmen'));
+    await tester.pumpAndSettle();
+    expect(api.convertedQuoteAlternatives, [<String>[]]);
+
+    // Abbrechen: keine Umwandlung
+    api = buildApi();
+    await tester
+        .pumpWidget(MaterialApp(home: QuotesPage(api: api, key: UniqueKey())));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ANG-2026-0301'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('In Auftrag'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('01.0070 Wendeltreppe'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.convertedQuoteAlternatives, isEmpty);
+    expect(find.text('Alternativen für den Auftrag'), findsNothing);
   });
 
   testWidgets(

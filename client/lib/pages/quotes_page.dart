@@ -80,6 +80,35 @@ String quoteItemGaebLine(Map<String, dynamic> item) {
   return parts.join(' · ');
 }
 
+/// Grundposition mit ihren Alternativen (für die Auswahl beim Umwandeln).
+class QuoteAlternativeGroup {
+  const QuoteAlternativeGroup({required this.base, required this.alternatives});
+
+  final Map<String, dynamic> base;
+  final List<Map<String, dynamic>> alternatives;
+}
+
+/// Gruppiert Alternativpositionen nach ihrer Grundposition (über die OZ);
+/// Alternativen ohne vorhandene Grundposition fallen weg.
+List<QuoteAlternativeGroup> quoteAlternativeGroups(
+    List<Map<String, dynamic>> items) {
+  final groups = <QuoteAlternativeGroup>[];
+  for (final base in items) {
+    if ((base['item_kind'] ?? '').toString() != 'grundposition') continue;
+    final oz = (base['outline_no'] ?? '').toString().trim();
+    if (oz.isEmpty) continue;
+    final alternatives = items
+        .where((i) =>
+            (i['item_kind'] ?? '').toString() == 'alternativposition' &&
+            (i['base_outline_no'] ?? '').toString().trim() == oz)
+        .toList();
+    if (alternatives.isNotEmpty) {
+      groups.add(QuoteAlternativeGroup(base: base, alternatives: alternatives));
+    }
+  }
+  return groups;
+}
+
 class QuotesPage extends StatefulWidget {
   const QuotesPage({
     super.key,
@@ -1141,8 +1170,25 @@ class _QuotesPageState extends State<QuotesPage> {
     final selected = _selected;
     final id = selected?['id']?.toString();
     if (id == null) return;
+    // Alternativen wählen (ADR 0042): je Grundposition sie selbst oder
+    // eine ihrer Alternativen; ohne Alternativen wie bisher.
+    final groups = quoteAlternativeGroups(
+        ((selected?['items'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .toList());
+    var alternatives = const <String>[];
+    if (groups.isNotEmpty) {
+      final chosen = await showDialog<List<String>>(
+        context: context,
+        builder: (_) => _QuoteAlternativeSelectionDialog(groups: groups),
+      );
+      if (chosen == null || !mounted) return;
+      alternatives = chosen;
+    }
     try {
-      final result = await widget.api.convertQuoteToSalesOrder(id);
+      final result = await widget.api
+          .convertQuoteToSalesOrder(id, alternatives: alternatives);
       final salesOrder = result;
       final salesOrderId = (salesOrder['id'] ?? '').toString();
       if (!mounted) return;
@@ -3254,6 +3300,98 @@ class _QuoteApprovalDecisionCommentDialogState
         FilledButton(
           onPressed: () => Navigator.of(context).pop(_commentCtrl.text.trim()),
           child: Text(widget.actionLabel),
+        ),
+      ],
+    );
+  }
+}
+
+/// Auswahl je Grundposition: sie selbst (Vorgabe) oder eine Alternative.
+/// Liefert die IDs der gewählten Alternativen, null bei Abbruch.
+class _QuoteAlternativeSelectionDialog extends StatefulWidget {
+  const _QuoteAlternativeSelectionDialog({required this.groups});
+
+  final List<QuoteAlternativeGroup> groups;
+
+  @override
+  State<_QuoteAlternativeSelectionDialog> createState() =>
+      _QuoteAlternativeSelectionDialogState();
+}
+
+class _QuoteAlternativeSelectionDialogState
+    extends State<_QuoteAlternativeSelectionDialog> {
+  // OZ der Grundposition -> gewählte Positions-ID (Grund- oder Alternativposition)
+  final Map<String, String> _choice = {};
+
+  String _label(Map<String, dynamic> item) {
+    final oz = (item['outline_no'] ?? '').toString().trim();
+    final text = (item['short_text'] ?? '').toString().trim().isNotEmpty
+        ? (item['short_text'] ?? '').toString()
+        : (item['description'] ?? '').toString();
+    return oz.isEmpty ? text : '$oz $text';
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    for (final g in widget.groups) {
+      _choice[(g.base['outline_no'] ?? '').toString()] =
+          (g.base['id'] ?? '').toString();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Alternativen für den Auftrag'),
+      content: SizedBox(
+        width: 560,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                  'Je Grundposition: Grundposition beauftragen oder eine Alternative an ihrer Stelle.'),
+              for (final g in widget.groups) ...[
+                const SizedBox(height: 12),
+                Text('Grundposition ${(g.base['outline_no'] ?? '').toString()}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                RadioGroup<String>(
+                  groupValue: _choice[(g.base['outline_no'] ?? '').toString()],
+                  onChanged: (value) => setState(() =>
+                      _choice[(g.base['outline_no'] ?? '').toString()] =
+                          value ?? ''),
+                  child: Column(
+                    children: [
+                      for (final option in [g.base, ...g.alternatives])
+                        RadioListTile<String>(
+                          contentPadding: EdgeInsets.zero,
+                          value: (option['id'] ?? '').toString(),
+                          title: Text(_label(option)),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Abbrechen'),
+        ),
+        FilledButton(
+          onPressed: () {
+            final baseIds = widget.groups
+                .map((g) => (g.base['id'] ?? '').toString())
+                .toSet();
+            Navigator.of(context).pop(
+                _choice.values.where((id) => !baseIds.contains(id)).toList());
+          },
+          child: const Text('In Auftrag übernehmen'),
         ),
       ],
     );
