@@ -244,6 +244,62 @@ func (s *Service) DeleteQuoteItemGroup(ctx context.Context, quoteID, groupID uui
 	return nil
 }
 
+// copyQuoteItemGroupsTx kopiert die Gliederung eines Angebots in ein
+// anderes (Revision, ADR 0041 Frage 6) und liefert alte -> neue Gruppen-ID.
+// Eltern werden vor ihren Kindern angelegt, auch wenn sort_order bei von
+// Hand angelegten Gruppen nicht dazu passt.
+func copyQuoteItemGroupsTx(ctx context.Context, tx pgx.Tx, fromQuoteID, toQuoteID uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `
+        SELECT id, parent_group_id, kind, bezeichnung, sort_order, outline_no
+        FROM quote_item_groups WHERE quote_id=$1
+        ORDER BY sort_order ASC, created_at ASC, id ASC
+    `, fromQuoteID)
+	if err != nil {
+		return nil, err
+	}
+	var pending []QuoteItemGroup
+	for rows.Next() {
+		var g QuoteItemGroup
+		if err := rows.Scan(&g.ID, &g.ParentGroupID, &g.Kind, &g.Bezeichnung, &g.SortOrder, &g.OutlineNo); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		pending = append(pending, g)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make(map[uuid.UUID]uuid.UUID, len(pending))
+	for len(pending) > 0 {
+		var later []QuoteItemGroup
+		for _, g := range pending {
+			var parentID *uuid.UUID
+			if g.ParentGroupID != nil {
+				mapped, ok := out[*g.ParentGroupID]
+				if !ok {
+					later = append(later, g)
+					continue
+				}
+				parentID = &mapped
+			}
+			id := uuid.New()
+			if _, err := tx.Exec(ctx, `
+                INSERT INTO quote_item_groups (id, quote_id, parent_group_id, kind, bezeichnung, sort_order, outline_no)
+                VALUES ($1,$2,$3,$4,$5,$6,$7)
+            `, id, toQuoteID, parentID, g.Kind, g.Bezeichnung, g.SortOrder, g.OutlineNo); err != nil {
+				return nil, err
+			}
+			out[g.ID] = id
+		}
+		if len(later) == len(pending) {
+			return nil, errors.New("Gliederung des Angebots ist nicht wohlgeformt")
+		}
+		pending = later
+	}
+	return out, nil
+}
+
 // QuoteItemTreeNode ist ein Knoten im per GetQuoteItemTree assemblierten
 // LV-Baum (Backlog B.1.3 "Baum-Assemblierungs-Helfer" aus ADR 0009).
 type QuoteItemTreeNode struct {

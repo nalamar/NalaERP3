@@ -3367,7 +3367,14 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, `SELECT position, description, qty, unit, unit_price, net_amount, tax_amount, COALESCE(tax_code,''), COALESCE(material_id,''), COALESCE(price_mapping_status,'open')
+	// Gliederung mitnehmen (ADR 0041 Frage 6; vorher ging sie verloren)
+	groupIDs, err := copyQuoteItemGroupsTx(ctx, tx, id, revisedQuoteID)
+	if err != nil {
+		return nil, err
+	}
+
+	rows, err := tx.Query(ctx, `SELECT position, description, qty, unit, unit_price, net_amount, tax_amount, COALESCE(tax_code,''), COALESCE(material_id,''), COALESCE(price_mapping_status,'open'),
+			group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no
 		FROM quote_items
 		WHERE quote_id=$1
 		ORDER BY position`, id)
@@ -3386,11 +3393,19 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 		taxCode            string
 		materialID         string
 		priceMappingStatus string
+		groupID            uuid.NullUUID
+		outlineNo          string
+		shortText          string
+		longText           string
+		itemKind           string
+		isLumpSum          bool
+		baseOutlineNo      string
 	}
 	var sourceItems []sourceQuoteItem
 	for rows.Next() {
 		var item sourceQuoteItem
-		if err := rows.Scan(&item.position, &item.description, &item.qty, &item.unit, &item.unitPrice, &item.netAmount, &item.taxAmount, &item.taxCode, &item.materialID, &item.priceMappingStatus); err != nil {
+		if err := rows.Scan(&item.position, &item.description, &item.qty, &item.unit, &item.unitPrice, &item.netAmount, &item.taxAmount, &item.taxCode, &item.materialID, &item.priceMappingStatus,
+			&item.groupID, &item.outlineNo, &item.shortText, &item.longText, &item.itemKind, &item.isLumpSum, &item.baseOutlineNo); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -3402,8 +3417,15 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 	}
 
 	for _, item := range sourceItems {
-		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+		var groupID *uuid.UUID
+		if item.groupID.Valid {
+			if mapped, ok := groupIDs[item.groupID.UUID]; ok {
+				groupID = &mapped
+			}
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status,
+				group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
 			uuid.New(),
 			revisedQuoteID,
 			item.position,
@@ -3416,6 +3438,13 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 			nullIfEmpty(item.taxCode),
 			nullIfEmpty(item.materialID),
 			item.priceMappingStatus,
+			groupID,
+			item.outlineNo,
+			item.shortText,
+			item.longText,
+			item.itemKind,
+			item.isLumpSum,
+			item.baseOutlineNo,
 		)
 		if err != nil {
 			return nil, err
