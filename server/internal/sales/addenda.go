@@ -42,6 +42,9 @@ type SalesOrderAddendumItem struct {
 	Unit        string  `json:"unit"`
 	UnitPrice   float64 `json:"unit_price"`
 	TaxCode     string  `json:"tax_code"`
+	// Herkunft bei abgerufenen Bedarfspositionen (ADR 0042)
+	OutlineNo         string `json:"outline_no"`
+	SourceQuoteItemID string `json:"source_quote_item_id,omitempty"`
 }
 
 type SalesOrderAddendumCreate struct {
@@ -205,14 +208,14 @@ func (s *Service) GetAddendum(ctx context.Context, orderID, addendumID uuid.UUID
 		}
 		return nil, err
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id::text, position, description, qty, unit, unit_price, COALESCE(tax_code,'') FROM sales_order_addendum_items WHERE addendum_id=$1 ORDER BY position`, addendumID)
+	rows, err := s.pg.Query(ctx, `SELECT id::text, position, description, qty, unit, unit_price, COALESCE(tax_code,''), outline_no, COALESCE(source_quote_item_id::text,'') FROM sales_order_addendum_items WHERE addendum_id=$1 ORDER BY position`, addendumID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item SalesOrderAddendumItem
-		if err := rows.Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode); err != nil {
+		if err := rows.Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode, &item.OutlineNo, &item.SourceQuoteItemID); err != nil {
 			return nil, err
 		}
 		a.Items = append(a.Items, item)

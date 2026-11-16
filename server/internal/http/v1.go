@@ -2186,6 +2186,45 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			}
 			writeJSON(w, http.StatusCreated, out)
 		})
+		// Abruf einer Bedarfsposition aus dem Quellangebot (ADR 0042)
+		r.With(requirePermission("sales_orders.write")).Post("/{id}/addenda/{addendumID}/call-offs", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			addendumID, err := uuid.Parse(chi.URLParam(req, "addendumID"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Nachtrags-ID")
+				return
+			}
+			var in sales.AddendumCallOffInput
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.CreateAddendumCallOff(req.Context(), orderID, addendumID, in, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusCreated, out)
+		})
+		r.With(requirePermission("sales_orders.read")).Get("/{id}/provisional-items", func(w http.ResponseWriter, req *http.Request) {
+			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
+			if err != nil {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Auftrags-ID")
+				return
+			}
+			companyID, _ := companyIDFromContext(req.Context())
+			out, err := salesSvc.ListProvisionalItems(req.Context(), orderID, companyID)
+			if err != nil {
+				writeDomainError(w, req, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, out)
+		})
 		r.With(requirePermission("sales_orders.write")).Patch("/{id}/addenda/{addendumID}/items/{itemID}", func(w http.ResponseWriter, req *http.Request) {
 			orderID, err := uuid.Parse(chi.URLParam(req, "id"))
 			if err != nil {
