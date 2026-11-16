@@ -42,6 +42,32 @@ func TestGAEBDAXMLParser(t *testing.T) {
 	if byOZ["02.0090"].ParserHint != "alternativposition" || byOZ["06.0010"].Qty != 20 || byOZ["06.0010"].Unit != "h" {
 		t.Fatalf("Art: %+v", byOZ["02.0090"])
 	}
+	// einzelne Felder für die Speicherung (I.2.2a)
+	if first.ShortText != "Baustelleneinrichtung einrichten und räumen" || !strings.HasPrefix(first.LongText, "Einrichten, Vorhalten") ||
+		first.ItemKind != "normal" || !first.IsLumpSum || first.BasePositionNo != "" {
+		t.Fatalf("erste Position, Felder: %+v", first)
+	}
+	if alt := byOZ["02.0090"]; alt.ItemKind != "alternativposition" || alt.BasePositionNo != "02.0080" || alt.IsLumpSum {
+		t.Fatalf("Alternative: %+v", alt)
+	}
+	if g := byOZ["02.0080"]; g.ItemKind != "grundposition" || g.BasePositionNo != "" || byOZ["03.0050"].ItemKind != "bedarfsposition_mit_gb" {
+		t.Fatalf("Grund-/Bedarfsposition: %+v %+v", g, byOZ["03.0050"])
+	}
+	if len(result.Groups) != 6 || result.Groups[1] != (QuoteImportGroupInput{OutlineNo: "02", Kind: "titel", Bezeichnung: "Fenster und Fenstertüren"}) ||
+		len(result.Vorbemerkungen) != 2 || result.Vorbemerkungen[0] != "Alle Maße sind am Bau zu nehmen." {
+		t.Fatalf("Gliederung/Vorbemerkungen: %+v %q", result.Groups, result.Vorbemerkungen)
+	}
+	// Lose mit Titeln: Eltern werden übernommen
+	f2, err := os.Open("eval/testdata/lv-02.x83")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f2.Close()
+	lose, err := (GAEBDAXMLParser{}).ParseGAEB(context.Background(), f2, "lv-02.x83")
+	if err != nil || lose.Groups[0] != (QuoteImportGroupInput{OutlineNo: "1", Kind: "los", Bezeichnung: "Fassade"}) ||
+		lose.Groups[1] != (QuoteImportGroupInput{OutlineNo: "1.01", ParentOutlineNo: "1", Kind: "titel", Bezeichnung: "Pfosten-Riegel-Fassade"}) {
+		t.Fatalf("Lose: %+v %v", lose.Groups, err)
+	}
 	// ohne Langtext nur der Kurztext
 	ohneLang := `<GAEB><GAEBInfo><Version>3.2</Version></GAEBInfo><Award><DP>83</DP><BoQ><BoQBody><Itemlist><Item RNoPart="1"><QU>m</QU>` +
 		`<Description><CompleteText><OutlineText><OutlTxt><TextOutlTxt><p>Kurz</p></TextOutlTxt></OutlTxt></OutlineText></CompleteText></Description>` +

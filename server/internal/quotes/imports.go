@@ -56,16 +56,38 @@ type QuoteImportItem struct {
 	LinkedQuotePos    int     `json:"linked_quote_position,omitempty"`
 }
 
+// QuoteImportItemInput ist eine gelesene Position. OutlineNo verweist auf
+// den Bereich (QuoteImportGroupInput.OutlineNo), falls es ihn gibt.
+// ItemKind leer = normal; BasePositionNo nur bei Alternativpositionen.
 type QuoteImportItemInput struct {
-	PositionNo  string
-	OutlineNo   string
-	Description string
-	Qty         float64
-	Unit        string
-	IsOptional  bool
-	ParserHint  string
-	SortOrder   int
+	PositionNo     string
+	OutlineNo      string
+	Description    string
+	Qty            float64
+	Unit           string
+	IsOptional     bool
+	ParserHint     string
+	SortOrder      int
+	ShortText      string
+	LongText       string
+	ItemKind       string
+	IsLumpSum      bool
+	BasePositionNo string
 }
+
+// QuoteImportGroupInput ist ein Los, Titel oder Untertitel; Eltern vor
+// Kindern, ParentOutlineNo leer auf oberster Ebene.
+type QuoteImportGroupInput struct {
+	OutlineNo       string
+	ParentOutlineNo string
+	Kind            string
+	Bezeichnung     string
+}
+
+var quoteImportItemKinds = map[string]bool{"normal": true, "grundposition": true, "alternativposition": true,
+	"bedarfsposition_mit_gb": true, "bedarfsposition_ohne_gb": true}
+
+var quoteImportGroupKinds = map[string]bool{"los": true, "titel": true, "untertitel": true}
 
 type acceptedQuoteImportApplyItem struct {
 	ImportItemID string
@@ -88,6 +110,8 @@ type GAEBImportParseResult struct {
 	ParserVersion  string
 	DetectedFormat string
 	Items          []QuoteImportItemInput
+	Groups         []QuoteImportGroupInput
+	Vorbemerkungen []string
 }
 
 type GAEBImportParser interface {
@@ -696,6 +720,13 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 }
 
 func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVersion, detectedFormat string, items []QuoteImportItemInput, companyID string) (*QuoteImport, error) {
+	return s.SaveImportParse(ctx, importID, GAEBImportParseResult{ParserVersion: parserVersion, DetectedFormat: detectedFormat, Items: items}, companyID)
+}
+
+// SaveImportParse speichert ein Parse-Ergebnis mit Gliederung und
+// Vorbemerkungen und ersetzt ein frueheres Ergebnis desselben Importlaufs.
+func (s *Service) SaveImportParse(ctx context.Context, importID string, result GAEBImportParseResult, companyID string) (*QuoteImport, error) {
+	items := result.Items
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
@@ -730,6 +761,37 @@ func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVer
 	if _, err := tx.Exec(ctx, `DELETE FROM quote_import_items WHERE import_id=$1`, importID); err != nil {
 		return nil, err
 	}
+	if _, err := tx.Exec(ctx, `DELETE FROM quote_import_groups WHERE import_id=$1`, importID); err != nil {
+		return nil, err
+	}
+
+	groupIDs := map[string]string{} // outline_no -> id
+	for idx, g := range result.Groups {
+		outline, parent := strings.TrimSpace(g.OutlineNo), strings.TrimSpace(g.ParentOutlineNo)
+		switch {
+		case outline == "":
+			return nil, errors.New("Gliederung ohne Ordnungszahl")
+		case groupIDs[outline] != "":
+			return nil, fmt.Errorf("Gliederung %s ist doppelt", outline)
+		case !quoteImportGroupKinds[g.Kind]:
+			return nil, fmt.Errorf("Gliederung %s: unbekannte Stufe %q", outline, g.Kind)
+		case parent != "" && groupIDs[parent] == "":
+			return nil, fmt.Errorf("Gliederung %s: übergeordneter Bereich %s fehlt oder steht später", outline, parent)
+		}
+		var parentID *string
+		if parent != "" {
+			id := groupIDs[parent]
+			parentID = &id
+		}
+		id := uuid.NewString()
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO quote_import_groups (id, import_id, parent_group_id, outline_no, kind, bezeichnung, sort_order)
+			VALUES ($1,$2,$3,$4,$5,$6,$7)
+		`, id, importID, parentID, outline, g.Kind, strings.TrimSpace(g.Bezeichnung), idx+1); err != nil {
+			return nil, err
+		}
+		groupIDs[outline] = id
+	}
 
 	for idx, item := range items {
 		if strings.TrimSpace(item.PositionNo) == "" {
@@ -744,11 +806,25 @@ func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVer
 		if item.SortOrder <= 0 {
 			item.SortOrder = idx + 1
 		}
+		if item.ItemKind == "" {
+			item.ItemKind = "normal"
+		}
+		if !quoteImportItemKinds[item.ItemKind] {
+			return nil, fmt.Errorf("Position %s: unbekannte Positionsart %q", item.PositionNo, item.ItemKind)
+		}
+		if (item.ItemKind == "alternativposition") != (strings.TrimSpace(item.BasePositionNo) != "") {
+			return nil, fmt.Errorf("Position %s: Grundposition nur und immer bei Alternativpositionen", item.PositionNo)
+		}
+		var groupID *string
+		if id := groupIDs[strings.TrimSpace(item.OutlineNo)]; id != "" {
+			groupID = &id
+		}
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO quote_import_items (
 				id, import_id, position_no, outline_no, description, qty, unit,
-				is_optional, parser_hint, review_status, review_note, sort_order
-			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending','',$10)
+				is_optional, parser_hint, review_status, review_note, sort_order,
+				short_text, long_text, item_kind, is_lump_sum, base_position_no, group_id
+			) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending','',$10,$11,$12,$13,$14,$15,$16)
 		`,
 			uuid.NewString(),
 			importID,
@@ -760,20 +836,31 @@ func (s *Service) SaveImportParseResult(ctx context.Context, importID, parserVer
 			item.IsOptional,
 			strings.TrimSpace(item.ParserHint),
 			item.SortOrder,
+			item.ShortText,
+			item.LongText,
+			item.ItemKind,
+			item.IsLumpSum,
+			strings.TrimSpace(item.BasePositionNo),
+			groupID,
 		); err != nil {
 			return nil, err
 		}
 	}
 
+	vorbemerkungen := result.Vorbemerkungen
+	if vorbemerkungen == nil {
+		vorbemerkungen = []string{}
+	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE quote_imports
 		SET status='parsed',
 		    parser_version=$2,
 		    detected_format=$3,
 		    error_message='',
+		    vorbemerkungen=$4,
 		    updated_at=now()
 		WHERE id=$1
-	`, importID, strings.TrimSpace(parserVersion), strings.TrimSpace(detectedFormat)); err != nil {
+	`, importID, strings.TrimSpace(result.ParserVersion), strings.TrimSpace(result.DetectedFormat), vorbemerkungen); err != nil {
 		return nil, err
 	}
 
@@ -874,7 +961,7 @@ func (s *Service) ProcessGAEBImport(ctx context.Context, importID string, compan
 	if err != nil {
 		return s.MarkImportFailed(ctx, imp.ID, "adapter-v1", detectedGAEBImportFormat(imp.SourceFilename), err.Error(), companyID)
 	}
-	return s.SaveImportParseResult(ctx, imp.ID, result.ParserVersion, result.DetectedFormat, result.Items, companyID)
+	return s.SaveImportParse(ctx, imp.ID, result, companyID)
 }
 
 func detectedGAEBImportFormat(filename string) string {

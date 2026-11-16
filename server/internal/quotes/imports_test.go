@@ -36,6 +36,11 @@ const testGAEBImportCompanyID = "default"
 
 func createUploadedGAEBImportForProcessingTest(t *testing.T, ctx context.Context, parser GAEBImportParser) (*Service, *QuoteImport) {
 	t.Helper()
+	return createUploadedGAEBImportWithSource(t, ctx, parser, "gaeb-source-payload", "verarbeitung.x83")
+}
+
+func createUploadedGAEBImportWithSource(t *testing.T, ctx context.Context, parser GAEBImportParser, source, filename string) (*Service, *QuoteImport) {
+	t.Helper()
 	env := testutil.SetupIntegrationEnv(t)
 	contactID := uuid.NewString()
 	projectID := uuid.NewString()
@@ -49,7 +54,7 @@ func createUploadedGAEBImportForProcessingTest(t *testing.T, ctx context.Context
 	created, err := svc.CreateGAEBImport(ctx, QuoteImportCreateInput{
 		ProjectID: projectID,
 		ContactID: contactID,
-	}, strings.NewReader("gaeb-source-payload"), "verarbeitung.x83", testGAEBImportCompanyID)
+	}, strings.NewReader(source), filename, testGAEBImportCompanyID)
 	if err != nil {
 		t.Fatalf("create gaeb import: %v", err)
 	}

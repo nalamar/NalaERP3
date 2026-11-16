@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.1c** erledigt: Evaluationsset liest die Eingabe über den Parser,
+> **2026-11-16 I.2.2a** erledigt: Migration 116 (`quote_import_groups`, neue Spalten an
+> `quote_import_items`, `quote_imports.vorbemerkungen`) und `SaveImportParse`; der Adapter
+> liefert Gliederung und Vorbemerkungen. Nächste: **I.2.2b** Lesen und API. Nächste freie
+> Migration: 117, nächstes ADR: 0041.
+> Davor **2026-11-16 I.2.1c** erledigt: Evaluationsset liest die Eingabe über den Parser,
 > Parsefehler gehen in die Messung ein, Ausgangswert unverändert; **I.2.1 abgeschlossen**.
 > Nächste: **I.2.2** Migration 116 und Speichern. Nächste freie Migration: 116, nächstes ADR: 0041.
 > Davor **2026-11-13 I.2.1b** erledigt: Grenzen (20.000 Positionen, Texte ≤ 20.000 Zeichen, Tiefe
