@@ -1,6 +1,7 @@
 # ADR 0042: Auswahl von Alternativ- und Bedarfspositionen bei der Beauftragung
 
-- Status: Entwurf (2026-11-16)
+- Status: Angenommen (2026-11-16; Fragen 1–6 mit "fortsetzen" beantwortet =
+  jeweils Empfehlung (a), ANNAHME)
 - Bezug: Backlog I.2.6, ADR 0041 (Frage 5 (a): Auftrag und Rechnung aus dem
   Angebot nur mit Normal- und Grundpositionen, Auswahl als eigener Punkt),
   ADR 0010 (Nachtragsmanagement)
@@ -49,6 +50,13 @@
    Eingriff, der Auftrag ist der Regelweg.
 6. **Angebot nach der Auswahl.** (a) bleibt unverändert, die Auswahl steht am
    Auftrag; (b) wird per Revision angepasst. Empfehlung: **(a)**.
+
+## Entscheidung
+
+Alle sechs Fragen nach Empfehlung **(a)** (ANNAHME, "fortsetzen", 2026-11-16).
+Bei der Umsetzung (I.2.6a) gefunden und behoben: `CreateFromQuote` las das
+Angebot ohne Mandantenprüfung; ein Nutzer eines anderen Mandanten konnte mit
+der Angebots-ID einen Auftrag in seinem Mandanten anlegen.
 
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 

@@ -3357,8 +3357,16 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Angebots-ID")
 				return
 			}
+			// optional: {"alternatives": [...]} - Auswahl bei der Beauftragung (ADR 0042)
+			var in sales.CreateFromQuoteInput
+			if req.Body != nil {
+				if err := json.NewDecoder(req.Body).Decode(&in); err != nil && err != io.EOF {
+					writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+					return
+				}
+			}
 			companyID, _ := companyIDFromContext(req.Context())
-			out, err := salesSvc.CreateFromQuote(req.Context(), quoteID, companyID)
+			out, err := salesSvc.CreateFromQuoteWithSelection(req.Context(), quoteID, in, companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return

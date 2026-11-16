@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.6.0** erledigt: ADR 0042 (Entwurf) zur Auswahl bei der Beauftragung; sechs
+> **2026-11-16 I.2.6a** erledigt: Fragen ADR 0042 mit "fortsetzen" beantwortet (ANNAHME, alle
+> (a)), ADR angenommen; Migration 118, Auswahl der Alternativen beim Umwandeln in den Auftrag.
+> Fund behoben: Umwandlung in den Auftrag ohne Mandantenprüfung. Nächste: **I.2.6b** Abruf von
+> Bedarfspositionen als vorbelegter Nachtrag. Nächste freie Migration: 119, nächstes ADR: 0043.
+> Davor **2026-11-16 I.2.6.0** erledigt: ADR 0042 (Entwurf) zur Auswahl bei der Beauftragung; sechs
 > Fragen in `open-questions.md` (Abschnitt 2026-11-16 I.2.6), Antwort ausstehend. Nächste:
 > nach der Antwort **I.2.6a**. Nächste freie Migration: 118, nächstes ADR: 0043.
 > Davor **2026-11-16 I.2.5b** erledigt: Angebotsansicht und -editor zeigen OZ, Art und „nicht in

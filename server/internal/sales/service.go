@@ -26,6 +26,9 @@ type SalesOrderItem struct {
 	TaxCode      string  `json:"tax_code"`
 	InvoicedQty  float64 `json:"invoiced_qty"`
 	RemainingQty float64 `json:"remaining_qty"`
+	// Herkunft aus dem Angebot (ADR 0042): OZ und Angebotsposition.
+	OutlineNo         string `json:"outline_no"`
+	SourceQuoteItemID string `json:"source_quote_item_id,omitempty"`
 }
 
 type SalesOrder struct {
@@ -141,7 +144,61 @@ func Statuses() []string {
 	return []string{"open", "released", "invoiced", "completed", "canceled"}
 }
 
+// CreateFromQuoteInput: Auswahl bei der Beauftragung (ADR 0042). Jede
+// gewaehlte Alternativposition ersetzt im Auftrag ihre Grundposition.
+type CreateFromQuoteInput struct {
+	Alternatives []string `json:"alternatives"`
+}
+
 func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, companyID string) (*SalesOrder, error) {
+	return s.CreateFromQuoteWithSelection(ctx, quoteID, CreateFromQuoteInput{}, companyID)
+}
+
+type quoteItemForOrder struct {
+	id, outlineNo, kind, baseOutlineNo string
+	item                               SalesOrderItem
+}
+
+// selectQuoteItemsForOrder waehlt die Angebotspositionen fuer den Auftrag:
+// Normal- und Grundpositionen, gewaehlte Alternativen statt ihrer
+// Grundposition; Bedarfspositionen nie (Abruf per Nachtrag, ADR 0042).
+func selectQuoteItemsForOrder(all []quoteItemForOrder, alternatives []string) ([]quoteItemForOrder, error) {
+	byID := make(map[string]quoteItemForOrder, len(all))
+	grund := map[string]bool{}
+	for _, q := range all {
+		byID[q.id] = q
+		if q.kind == "grundposition" {
+			grund[q.outlineNo] = true
+		}
+	}
+	chosen := map[string]bool{}
+	replaced := map[string]bool{}
+	for _, raw := range alternatives {
+		id := strings.TrimSpace(raw)
+		q, ok := byID[id]
+		if !ok || q.kind != "alternativposition" {
+			return nil, fmt.Errorf("alternatives ungültig: %s ist keine Alternativposition dieses Angebots", id)
+		}
+		if !grund[q.baseOutlineNo] {
+			return nil, fmt.Errorf("alternatives ungültig: Grundposition %s fehlt im Angebot", q.baseOutlineNo)
+		}
+		if replaced[q.baseOutlineNo] {
+			return nil, fmt.Errorf("alternatives ungültig: mehrere Alternativen zur Grundposition %s", q.baseOutlineNo)
+		}
+		chosen[id] = true
+		replaced[q.baseOutlineNo] = true
+	}
+	out := make([]quoteItemForOrder, 0, len(all))
+	for _, q := range all {
+		switch {
+		case q.kind == "normal", q.kind == "grundposition" && !replaced[q.outlineNo], chosen[q.id]:
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
+func (s *Service) CreateFromQuoteWithSelection(ctx context.Context, quoteID uuid.UUID, in CreateFromQuoteInput, companyID string) (*SalesOrder, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
@@ -160,10 +217,13 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 	var linkedInvoiceID uuid.NullUUID
 	var linkedSalesOrderID uuid.NullUUID
 	err = tx.QueryRow(ctx, `SELECT status, project_id::text, contact_id, currency, COALESCE(note,''), superseded_by_quote_id, linked_invoice_out_id, linked_sales_order_id
-		FROM quotes WHERE id=$1 FOR UPDATE`, quoteID).Scan(
+		FROM quotes WHERE id=$1 AND company_id=$2 FOR UPDATE`, quoteID, companyID).Scan(
 		&status, &projectID, &contactID, &currency, &note, &supersededByQuoteID, &linkedInvoiceID, &linkedSalesOrderID,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, errors.New("Angebot nicht gefunden")
+		}
 		return nil, err
 	}
 	if supersededByQuoteID.Valid {
@@ -191,24 +251,38 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 		return nil, err
 	}
 
-	// Nur Normal- und Grundpositionen: Alternativ- und Bedarfspositionen
-	// zaehlen nicht zur Angebotssumme und werden ohne Auswahl bei der
-	// Beauftragung nicht Teil des Auftrags (ADR 0041 Frage 5).
-	rows, err := tx.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items
-		WHERE quote_id=$1 AND item_kind IN ('normal', 'grundposition') ORDER BY position`, quoteID)
+	// Ohne Auswahl nur Normal- und Grundpositionen (ADR 0041 Frage 5);
+	// gewaehlte Alternativen ersetzen ihre Grundposition (ADR 0042).
+	rows, err := tx.Query(ctx, `SELECT id::text, description, qty, unit, unit_price, COALESCE(tax_code,''), outline_no, item_kind, base_outline_no
+		FROM quote_items WHERE quote_id=$1 ORDER BY position`, quoteID)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-
-	items := make([]SalesOrderItem, 0)
-	var netAmount float64
-	var taxAmount float64
+	var all []quoteItemForOrder
 	for rows.Next() {
-		var item SalesOrderItem
-		if err := rows.Scan(&item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode); err != nil {
+		var q quoteItemForOrder
+		if err := rows.Scan(&q.id, &q.item.Description, &q.item.Qty, &q.item.Unit, &q.item.UnitPrice, &q.item.TaxCode, &q.outlineNo, &q.kind, &q.baseOutlineNo); err != nil {
+			rows.Close()
 			return nil, err
 		}
+		q.item.OutlineNo = q.outlineNo
+		q.item.SourceQuoteItemID = q.id
+		all = append(all, q)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	selected, err := selectQuoteItemsForOrder(all, in.Alternatives)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]SalesOrderItem, 0, len(selected))
+	var netAmount float64
+	var taxAmount float64
+	for _, q := range selected {
+		item := q.item
 		items = append(items, item)
 		lineNet := item.Qty * item.UnitPrice
 		netAmount += lineNet
@@ -217,9 +291,6 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 			return nil, err
 		}
 		taxAmount += lineNet * rate
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	if len(items) == 0 {
 		return nil, errors.New("keine Positionen")
@@ -248,9 +319,9 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 			return nil, err
 		}
 		lineTax := lineNet * rate
-		_, err = tx.Exec(ctx, `INSERT INTO sales_order_items (id, sales_order_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-			lineID, orderID, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, lineNet, lineTax, nullIfEmpty(item.TaxCode))
+		_, err = tx.Exec(ctx, `INSERT INTO sales_order_items (id, sales_order_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, outline_no, source_quote_item_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+			lineID, orderID, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, lineNet, lineTax, nullIfEmpty(item.TaxCode), item.OutlineNo, nullIfEmpty(item.SourceQuoteItemID))
 		if err != nil {
 			return nil, err
 		}
@@ -308,14 +379,14 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Sal
 	if projectID.Valid {
 		out.ProjectID = projectID.String
 	}
-	rows, err := s.pg.Query(ctx, `SELECT id::text, position, description, qty, unit, unit_price, COALESCE(tax_code,'') FROM sales_order_items WHERE sales_order_id=$1 ORDER BY position`, id)
+	rows, err := s.pg.Query(ctx, `SELECT id::text, position, description, qty, unit, unit_price, COALESCE(tax_code,''), outline_no, COALESCE(source_quote_item_id::text,'') FROM sales_order_items WHERE sales_order_id=$1 ORDER BY position`, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var item SalesOrderItem
-		if err := rows.Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode); err != nil {
+		if err := rows.Scan(&item.ID, &item.Position, &item.Description, &item.Qty, &item.Unit, &item.UnitPrice, &item.TaxCode, &item.OutlineNo, &item.SourceQuoteItemID); err != nil {
 			return nil, err
 		}
 		out.Items = append(out.Items, item)

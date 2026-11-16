@@ -324,7 +324,7 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-16 — I.2.6 Auswahl bei der Beauftragung (offen)
+## 2026-11-16 — I.2.6 Auswahl bei der Beauftragung (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.2.6, ADR 0042 (Entwurf, Bestandsaufnahme und Optionen dort).
 Kurz: Auftrag und Rechnung aus dem Angebot übernehmen nur Normal- und
@@ -333,19 +333,19 @@ ohne Vorbelegung; Auftragspositionen kennen keine OZ.
 
 1. **Zeitpunkt**: (a) Alternativen beim Umwandeln, Bedarfspositionen später per
    Nachtrag; (b) beides beim Umwandeln; (c) beides per Nachtrag.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 2. **Gewählte Alternative**: (a) ersetzt ihre Grundposition, höchstens eine je
-   Grundposition; (b) kommt dazu. Empfehlung: **(a)**. Status: **offen**.
+   Grundposition; (b) kommt dazu. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 3. **Abruf einer Bedarfsposition**: (a) Nachtrag mit vorbelegter Position und
    Bezug zum Angebot, Menge änderbar, mehrfach möglich; (b) freie Nachträge wie
-   heute. Empfehlung: **(a)**. Status: **offen**.
+   heute. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 4. **Herkunft am Auftrag**: (a) OZ und Bezug zur Angebotsposition an Auftrags-
    und Nachtragspositionen (Migration 118); (b) nichts davon.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 5. **Rechnung direkt aus dem Angebot**: (a) ohne Auswahl wie heute; (b) mit
-   derselben Auswahl. Empfehlung: **(a)**. Status: **offen**.
+   derselben Auswahl. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 6. **Angebot nach der Auswahl**: (a) bleibt unverändert; (b) wird revidiert.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16, ANNAHME): **(a)**.
 
 ## 2026-11-16 — I.2.4 Übernahme eines GAEB-Imports ins Angebot (beantwortet 2026-11-16)
 
