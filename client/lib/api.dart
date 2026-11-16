@@ -990,6 +990,10 @@ class ApiClient {
   Future<List<dynamic>> listQuoteImportItems(String importId) =>
       _getList('/api/v1/quotes/imports/$importId/items');
 
+  /// Gliederung und Vorbemerkungen eines GAEB-Importlaufs (Backlog I.2.2b).
+  Future<Map<String, dynamic>> getQuoteImportStructure(String importId) =>
+      _getJson('/api/v1/quotes/imports/$importId/structure');
+
   Future<Map<String, dynamic>> getQuoteImportItem(
     String importId,
     String itemId,

@@ -121,6 +121,8 @@ class _FakeApiClient extends ApiClient {
   final List<String> processedQuoteImportIds = [];
   final List<String> requestedQuoteIds = [];
   final List<Map<String, dynamic>> updatedQuoteBodies = [];
+  Map<String, Map<String, dynamic>> quoteImportStructures = {};
+  Set<String> quoteImportStructureErrors = {};
   int quoteImportListRequestCount = 0;
 
   @override
@@ -506,6 +508,14 @@ class _FakeApiClient extends ApiClient {
   @override
   Future<List<dynamic>> listQuoteImportItems(String importId) async =>
       quoteImportItemMap[importId] ?? const [];
+
+  @override
+  Future<Map<String, dynamic>> getQuoteImportStructure(String importId) async {
+    if (quoteImportStructureErrors.contains(importId)) {
+      throw ApiException(statusCode: 404, message: 'nicht gefunden');
+    }
+    return quoteImportStructures[importId] ?? <String, dynamic>{};
+  }
 
   @override
   Future<Map<String, dynamic>> getQuoteImportItem(
@@ -4334,6 +4344,187 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets(
+      'QuotesPage GAEB import details show structure, short text and kind',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteImportList: const [
+        {'id': 'import-gaeb', 'source_filename': 'lv.x83', 'status': 'parsed'},
+      ],
+      quoteImportDetails: const {
+        'import-gaeb': {
+          'id': 'import-gaeb',
+          'source_filename': 'lv.x83',
+          'status': 'parsed',
+          'project_id': 'project-1',
+        },
+      },
+      quoteImportItemMap: {
+        'import-gaeb': [
+          <String, dynamic>{
+            'id': 'i-grund',
+            'position_no': '1.01.0010',
+            'description': 'Fenster einflügelig\n\nAluminium',
+            'short_text': 'Fenster einflügelig',
+            'item_kind': 'grundposition',
+          },
+          <String, dynamic>{
+            'id': 'i-alt',
+            'position_no': '1.01.0020',
+            'description': 'wie vor, jedoch zweiflügelig',
+            'short_text': 'wie vor, jedoch zweiflügelig',
+            'item_kind': 'alternativposition',
+            'base_position_no': '1.01.0010',
+          },
+          <String, dynamic>{
+            'id': 'i-psch',
+            'position_no': '1.01.0030',
+            'description': 'Baustelleneinrichtung',
+            'short_text': 'Baustelleneinrichtung',
+            'item_kind': 'normal',
+            'is_lump_sum': true,
+          },
+          <String, dynamic>{
+            'id': 'i-normal',
+            'position_no': '1.01.0040',
+            'description': 'Fensterbank',
+            'short_text': 'Fensterbank',
+            'item_kind': 'normal',
+          },
+        ],
+      },
+      quoteImportItemDetails: const {
+        'import-gaeb': {
+          'i-alt': {
+            'id': 'i-alt',
+            'import_id': 'import-gaeb',
+            'position_no': '1.01.0020',
+            'outline_no': '1.01',
+            'description':
+                'wie vor, jedoch zweiflügelig – Ausführung zweiflügelig',
+            'short_text': 'wie vor, jedoch zweiflügelig',
+            'long_text': 'Ausführung zweiflügelig',
+            'item_kind': 'alternativposition',
+            'is_lump_sum': false,
+            'base_position_no': '1.01.0010',
+            'is_optional': true,
+          },
+        },
+      },
+    );
+    api.quoteImportStructures = {
+      'import-gaeb': {
+        'import_id': 'import-gaeb',
+        'vorbemerkungen': ['Alle Maße sind am Bau zu nehmen.'],
+        'groups': [
+          {
+            'id': 'g-los',
+            'outline_no': '1',
+            'kind': 'los',
+            'bezeichnung': 'Fassade'
+          },
+          {
+            'id': 'g-titel',
+            'outline_no': '1.01',
+            'kind': 'titel',
+            'bezeichnung': 'Fenster',
+            'parent_group_id': 'g-los',
+          },
+        ],
+      },
+    };
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
+      home: QuotesPage(
+        api: api,
+        initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vorbemerkungen'), findsOneWidget);
+    expect(find.text('Alle Maße sind am Bau zu nehmen.'), findsOneWidget);
+    expect(find.text('Gliederung'), findsOneWidget);
+    expect(find.text('1 Fassade (Los)'), findsOneWidget);
+    expect(find.text('1.01 Fenster (Titel)'), findsOneWidget);
+    final losPadding = tester.widget<Padding>(find
+        .ancestor(
+            of: find.text('1 Fassade (Los)'), matching: find.byType(Padding))
+        .first);
+    final titelPadding = tester.widget<Padding>(find
+        .ancestor(
+            of: find.text('1.01 Fenster (Titel)'),
+            matching: find.byType(Padding))
+        .first);
+    expect((losPadding.padding as EdgeInsets).left, 0);
+    expect((titelPadding.padding as EdgeInsets).left, 16);
+    // Kurztext statt Gesamttext, Art und Pauschale als Zusatzzeile
+    expect(find.text('Fenster einflügelig'), findsOneWidget);
+    expect(find.text('Grundposition'), findsOneWidget);
+    expect(find.text('Alternative zu 1.01.0010'), findsOneWidget);
+    expect(find.text('pauschal'), findsOneWidget);
+    expect(find.text('Fensterbank'), findsOneWidget);
+    expect(find.textContaining('Normalposition'), findsNothing);
+
+    final altTile = find.widgetWithText(ListTile, 'Position 1.01.0020');
+    await tester.ensureVisible(altTile);
+    await tester.tap(altTile);
+    await tester.pumpAndSettle();
+    expect(find.text('Positionsart: Alternativposition'), findsOneWidget);
+    expect(find.text('Pauschale: Nein'), findsOneWidget);
+    expect(find.text('Grundposition: 1.01.0010'), findsOneWidget);
+    expect(find.text('Kurztext: wie vor, jedoch zweiflügelig'), findsOneWidget);
+  });
+
+  testWidgets('QuotesPage GAEB import details tolerate missing structure',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read'},
+      quoteImportList: const [
+        {'id': 'import-old', 'source_filename': 'alt.x83', 'status': 'parsed'},
+      ],
+      quoteImportDetails: const {
+        'import-old': {
+          'id': 'import-old',
+          'source_filename': 'alt.x83',
+          'status': 'parsed'
+        },
+      },
+      quoteImportItemMap: {
+        'import-old': [
+          <String, dynamic>{
+            'id': 'o-1',
+            'position_no': '01',
+            'description': 'Alte Position'
+          },
+        ],
+      },
+    );
+    api.quoteImportStructureErrors = {'import-old'};
+
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(splashFactory: NoSplash.splashFactory),
+      home: QuotesPage(
+        api: api,
+        initialFilters: const CommercialFilterContext(projectId: 'project-1'),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Details'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(find.text('Alte Position'), findsOneWidget);
+    expect(find.text('Vorbemerkungen'), findsNothing);
+    expect(find.text('Gliederung'), findsNothing);
   });
 
   testWidgets('QuotesPage GAEB import item review forwards normalized decision',

@@ -17,6 +17,53 @@ String _quoteErrorMessage(Object error,
   return '$fallback: $error';
 }
 
+/// Anzeigename einer GAEB-Positionsart (ADR 0040/0041).
+String quoteItemKindLabel(String kind) {
+  switch (kind.trim()) {
+    case 'grundposition':
+      return 'Grundposition';
+    case 'alternativposition':
+      return 'Alternativposition';
+    case 'bedarfsposition_mit_gb':
+      return 'Bedarfsposition mit GB';
+    case 'bedarfsposition_ohne_gb':
+      return 'Bedarfsposition ohne GB';
+    default:
+      return 'Normalposition';
+  }
+}
+
+/// Anzeigename einer Gliederungsstufe.
+String quoteGroupKindLabel(String kind) {
+  switch (kind.trim()) {
+    case 'los':
+      return 'Los';
+    case 'titel':
+      return 'Titel';
+    case 'untertitel':
+      return 'Untertitel';
+    default:
+      return kind;
+  }
+}
+
+/// Kurzinfo zu Art, Grundposition und Pauschale einer Import- oder
+/// Angebotsposition; leer bei einer normalen, nicht pauschalen Position.
+/// [baseKey] ist das Feld mit der OZ der Grundposition.
+String quoteItemKindSummary(Map<String, dynamic> item,
+    {String baseKey = 'base_position_no'}) {
+  final kind = (item['item_kind'] ?? '').toString().trim();
+  final base = (item[baseKey] ?? '').toString().trim();
+  final parts = <String>[];
+  if (kind.isNotEmpty && kind != 'normal') {
+    parts.add(kind == 'alternativposition' && base.isNotEmpty
+        ? 'Alternative zu $base'
+        : quoteItemKindLabel(kind));
+  }
+  if (item['is_lump_sum'] == true) parts.add('pauschal');
+  return parts.join(' · ');
+}
+
 class QuotesPage extends StatefulWidget {
   const QuotesPage({
     super.key,
@@ -1192,8 +1239,30 @@ class _QuotesPageState extends State<QuotesPage> {
     try {
       Map<String, dynamic> detail = await widget.api.getQuoteImport(importId);
       List<dynamic> items = await widget.api.listQuoteImportItems(importId);
+      // Gliederung und Vorbemerkungen; fehlen sie (älterer Server), bleibt
+      // die Ansicht wie bisher.
+      Map<String, dynamic>? structure;
+      try {
+        structure = await widget.api.getQuoteImportStructure(importId);
+      } catch (_) {
+        structure = null;
+      }
       if (!mounted) return;
       var itemsExpanded = false;
+      final remarks = ((structure?['vorbemerkungen'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .where((e) => e.trim().isNotEmpty)
+          .toList();
+      final groups = ((structure?['groups'] as List?) ?? const [])
+          .whereType<Map>()
+          .map((g) => g.cast<String, dynamic>())
+          .toList();
+      final groupDepth = <String, int>{};
+      for (final g in groups) {
+        final parent = (g['parent_group_id'] ?? '').toString();
+        groupDepth[(g['id'] ?? '').toString()] =
+            parent.isEmpty ? 0 : (groupDepth[parent] ?? 0) + 1;
+      }
       await showDialog<void>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
@@ -1428,6 +1497,39 @@ class _QuotesPageState extends State<QuotesPage> {
                             ),
                         ],
                       ),
+                      if (remarks.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Vorbemerkungen',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        ...remarks.map((r) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(r),
+                            )),
+                      ],
+                      if (groups.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Gliederung',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        ...groups.map((g) => Padding(
+                              padding: EdgeInsets.only(
+                                left: 16.0 *
+                                    (groupDepth[(g['id'] ?? '').toString()] ??
+                                        0),
+                                bottom: 2,
+                              ),
+                              child: Text(
+                                '${(g['outline_no'] ?? '').toString()} '
+                                '${(g['bezeichnung'] ?? '').toString()} '
+                                '(${quoteGroupKindLabel((g['kind'] ?? '').toString())})',
+                              ),
+                            )),
+                      ],
                       const SizedBox(height: 16),
                       const Text(
                         'Importierte Rohpositionen',
@@ -1449,17 +1551,26 @@ class _QuotesPageState extends State<QuotesPage> {
                                       : 'Position ${(item['position_no'] ?? '').toString()}')
                                   .toString(),
                             ),
-                            subtitle: Text(
-                              ((item['description'] ?? '')
-                                          .toString()
-                                          .trim()
-                                          .isEmpty
-                                      ? '-'
-                                      : (item['description'] ?? '').toString())
-                                  .toString(),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                            subtitle: Builder(builder: (context) {
+                              final shortText =
+                                  (item['short_text'] ?? '').toString().trim();
+                              final description =
+                                  (item['description'] ?? '').toString().trim();
+                              final text = shortText.isNotEmpty
+                                  ? shortText
+                                  : (description.isEmpty ? '-' : description);
+                              final kindSummary = quoteItemKindSummary(item);
+                              final textWidget = Text(
+                                text,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              );
+                              if (kindSummary.isEmpty) return textWidget;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [textWidget, Text(kindSummary)],
+                              );
+                            }),
                             trailing: const Icon(Icons.chevron_right_rounded),
                             onTap: () => _openQuoteImportItemDetail(
                               importId: importId,
@@ -1544,6 +1655,27 @@ class _QuotesPageState extends State<QuotesPage> {
                             'Einheit: ${((detail['unit'] ?? '').toString().trim().isEmpty ? '-' : detail['unit']).toString()}'),
                         Text(
                             'Optional: ${(detail['is_optional'] == true) ? 'Ja' : 'Nein'}'),
+                        if ((detail['item_kind'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty) ...[
+                          Text(
+                              'Positionsart: ${quoteItemKindLabel((detail['item_kind'] ?? '').toString())}'),
+                          Text(
+                              'Pauschale: ${(detail['is_lump_sum'] == true) ? 'Ja' : 'Nein'}'),
+                        ],
+                        if ((detail['base_position_no'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty)
+                          Text(
+                              'Grundposition: ${(detail['base_position_no'] ?? '').toString()}'),
+                        if ((detail['short_text'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty)
+                          Text(
+                              'Kurztext: ${(detail['short_text'] ?? '').toString()}'),
                         Text(
                             'Review-Status: ${((detail['review_status'] ?? '').toString().trim().isEmpty ? '-' : detail['review_status']).toString()}'),
                         Text(
