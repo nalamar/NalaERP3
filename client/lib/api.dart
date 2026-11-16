@@ -3601,6 +3601,27 @@ class ApiClient {
   Future<Map<String, dynamic>> sendMailTest(String an) async =>
       (await _postJson('/api/v1/settings/mail/test', {'an': an})) as Map<String, dynamic>;
 
+  // Sprachmodell des Mandanten (I.3.5a2) - settings.manage. Der API-Schluessel
+  // wird nur gesendet, nie geliefert ("api_key_gesetzt", "api_key_lesbar").
+  Future<Map<String, dynamic>> getLlmSettings() => _getJson('/api/v1/settings/llm/');
+
+  Future<Map<String, dynamic>> saveLlmSettings(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/settings/llm/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // Verbindungstest mit den gespeicherten Einstellungen:
+  // {"ok", "modell", "dauer_ms", "eingabe_tokens", "ausgabe_tokens"}.
+  Future<Map<String, dynamic>> testLlmSettings() async =>
+      (await _postJson('/api/v1/settings/llm/test', const {})) as Map<String, dynamic>;
+
   // -------- Hinweis-Mails (Backlog F.14.4c2, Routen F.14.4c1) --------
   // Eigene Abbestellung - jeder angemeldete Benutzer fuer sich.
   Future<bool> getNoticeMailOptOut() async =>

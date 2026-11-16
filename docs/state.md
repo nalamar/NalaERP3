@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.3.5a2** erledigt: `GET`/`PUT /settings/llm` und `POST /settings/llm/test` (Recht
+> **2026-11-16 I.3.5b** erledigt — damit **I.3.5** und **I.3** vollständig: Client-Seite „Sprachmodell“ in den
+> Einstellungen (Anbieter, Endpunkt, Modell, Schlüssel, Grenzen, Verbindungstest). Nächste: **I.4** Matcher mit
+> Sprachmodell (zuerst ADR/Teilung). Nächste freie Migration: 120, nächstes ADR: 0044.
+> Davor **2026-11-16 I.3.5a2** erledigt: `GET`/`PUT /settings/llm` und `POST /settings/llm/test` (Recht
 > `settings.manage`, Verbindungstest auch ausgeschaltet; 409/400/429/502). Nächste: **I.3.5b** Client-Seite.
 > Nächste freie Migration: 120, nächstes ADR: 0044.
 > Davor **2026-11-16 I.3.5a1** erledigt: Migration 119 (`company_llm_settings`, `company_llm_usage`) und

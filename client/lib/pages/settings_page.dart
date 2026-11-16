@@ -3,6 +3,7 @@ import '../api.dart';
 import '../commercial_destinations.dart';
 import '../web/browser.dart' as browser;
 import 'hr_calendar_page.dart';
+import 'llm_settings_page.dart';
 import 'mail_settings_page.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -1374,6 +1375,14 @@ class _SettingsPageState extends State<SettingsPage> {
                   subtitle: const Text('Mail-Server, Zugangsdaten und Absender, Testversand'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => MailSettingsPage(api: widget.api))),
+                ),
+              // Sprachmodell (Backlog I.3.5b): eigene Seite, nur mit settings.manage.
+              if (widget.api.hasPermission('settings.manage'))
+                ListTile(
+                  title: _buildSectionTitle('Sprachmodell'),
+                  subtitle: const Text('Anbieter, Modell, API-Schlüssel und Grenzen, Verbindungstest'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => LlmSettingsPage(api: widget.api))),
                 ),
               const SizedBox(height: 12),
               ExpansionTile(
