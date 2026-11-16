@@ -191,7 +191,11 @@ func (s *Service) CreateFromQuote(ctx context.Context, quoteID uuid.UUID, compan
 		return nil, err
 	}
 
-	rows, err := tx.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, quoteID)
+	// Nur Normal- und Grundpositionen: Alternativ- und Bedarfspositionen
+	// zaehlen nicht zur Angebotssumme und werden ohne Auswahl bei der
+	// Beauftragung nicht Teil des Auftrags (ADR 0041 Frage 5).
+	rows, err := tx.Query(ctx, `SELECT description, qty, unit, unit_price, COALESCE(tax_code,'') FROM quote_items
+		WHERE quote_id=$1 AND item_kind IN ('normal', 'grundposition') ORDER BY position`, quoteID)
 	if err != nil {
 		return nil, err
 	}

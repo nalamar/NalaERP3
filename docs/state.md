@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.4e1** erledigt: eine Revision nimmt Gliederung und GAEB-Felder mit (Fund aus
+> **2026-11-16 I.2.4e2** erledigt: Auftrag und Rechnung aus Angebot nur mit Normal- und
+> Grundpositionen; **I.2.4 abgeschlossen**. Neu I.2.6 (Auswahl bei der Beauftragung). Nächste:
+> **I.2.5** Client zeigt Kurztext, Art und Gliederung. Nächste freie Migration: 118, ADR: 0042.
+> Davor **2026-11-16 I.2.4e1** erledigt: eine Revision nimmt Gliederung und GAEB-Felder mit (Fund aus
 > I.2.4.0 behoben). Nächste: **I.2.4e2** Auftrag und Rechnung aus Angebot. Nächste freie
 > Migration: 118, nächstes ADR: 0042.
 > Davor **2026-11-16 I.2.4d2** erledigt: Angebots-PDF zeigt die OZ und kennzeichnet Alternativ- und

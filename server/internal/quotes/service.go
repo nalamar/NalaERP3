@@ -3205,7 +3205,8 @@ func (s *Service) ConvertToInvoice(ctx context.Context, id uuid.UUID, arSvc *acc
 	if hasOpenApprovalRework {
 		return nil, errors.New("Angebot enthaelt abgelehnte Freigabeentscheidungen; Nacharbeit vor Versand, Annahme oder Folgebeleg erforderlich")
 	}
-	rows, err := tx.Query(ctx, `SELECT description, qty, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 ORDER BY position`, id)
+	// wie Angebotssumme und Auftrag: ohne Alternativ- und Bedarfspositionen (ADR 0041)
+	rows, err := tx.Query(ctx, `SELECT description, qty, unit_price, COALESCE(tax_code,'') FROM quote_items WHERE quote_id=$1 AND `+quoteItemsInTotalSQL+` ORDER BY position`, id)
 	if err != nil {
 		return nil, err
 	}
