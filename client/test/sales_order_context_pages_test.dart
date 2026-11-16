@@ -120,6 +120,7 @@ class _FakeApiClient extends ApiClient {
   final List<String> appliedQuoteImportIds = [];
   final List<String> processedQuoteImportIds = [];
   final List<String> requestedQuoteIds = [];
+  final List<Map<String, dynamic>> updatedQuoteBodies = [];
   int quoteImportListRequestCount = 0;
 
   @override
@@ -151,6 +152,13 @@ class _FakeApiClient extends ApiClient {
             item['project_id']?.toString() == projectId;
         return matchesQuery && matchesStatus && matchesProject;
       }).toList();
+
+  @override
+  Future<Map<String, dynamic>> updateQuote(
+      String id, Map<String, dynamic> body) async {
+    updatedQuoteBodies.add(body);
+    return quoteDetail ?? <String, dynamic>{'id': id};
+  }
 
   @override
   Future<Map<String, dynamic>> getQuote(String id) async {
@@ -1148,8 +1156,7 @@ void main() {
     expect(find.text('BE-2026-0002  •  ordered'), findsNothing);
   });
 
-  testWidgets(
-      'PurchaseOrderDetailPage books receipt via server receive route',
+  testWidgets('PurchaseOrderDetailPage books receipt via server receive route',
       (tester) async {
     await _prepareLargeViewport(tester);
     final purchaseOrder = <String, dynamic>{
@@ -3550,6 +3557,89 @@ void main() {
     expect(find.text('AUF-2026-0102'), findsNothing);
   });
 
+  testWidgets(
+      'QuotesPage editor keeps group and GAEB fields when saving a draft',
+      (tester) async {
+    await _prepareLargeViewport(tester);
+    final api = _FakeApiClient(
+      permissions: const {'quotes.read', 'quotes.write'},
+      quoteList: const [
+        {
+          'id': 'q-gaeb',
+          'number': 'ANG-2026-0201',
+          'contact_name': 'Muster GmbH',
+          'status': 'draft',
+          'gross_amount': 0.0,
+          'currency': 'EUR',
+        },
+      ],
+      quoteDetail: const {
+        'id': 'q-gaeb',
+        'number': 'ANG-2026-0201',
+        'contact_id': 'contact-1',
+        'status': 'draft',
+        'currency': 'EUR',
+        'items': [
+          {
+            'id': 'item-alt',
+            'description': 'wie vor, jedoch zweiflügelig',
+            'qty': 2,
+            'unit': 'Stk',
+            'unit_price': 120.0,
+            'tax_code': 'DE19',
+            'group_id': 'group-1',
+            'outline_no': '01.0020',
+            'short_text': 'wie vor, jedoch zweiflügelig',
+            'long_text': 'Ausführung zweiflügelig',
+            'item_kind': 'alternativposition',
+            'is_lump_sum': false,
+            'base_outline_no': '01.0010',
+            'unknown_field': 'nicht zurückschicken',
+          },
+          {
+            'id': 'item-psch',
+            'description': 'Baustelleneinrichtung',
+            'qty': 1,
+            'unit': 'psch',
+            'unit_price': 500.0,
+            'tax_code': 'DE19',
+            'outline_no': '01.0030',
+            'item_kind': 'bedarfsposition_ohne_gb',
+            'is_lump_sum': true,
+          },
+        ],
+      },
+    );
+
+    await tester.pumpWidget(MaterialApp(home: QuotesPage(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ANG-2026-0201'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Bearbeiten'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Speichern').last);
+    await tester.pumpAndSettle();
+
+    expect(api.updatedQuoteBodies, hasLength(1));
+    final items = (api.updatedQuoteBodies.single['items'] as List)
+        .cast<Map<String, dynamic>>();
+    expect(items, hasLength(2));
+    expect(items[0]['group_id'], 'group-1');
+    expect(items[0]['outline_no'], '01.0020');
+    expect(items[0]['short_text'], 'wie vor, jedoch zweiflügelig');
+    expect(items[0]['long_text'], 'Ausführung zweiflügelig');
+    expect(items[0]['item_kind'], 'alternativposition');
+    expect(items[0]['is_lump_sum'], false);
+    expect(items[0]['base_outline_no'], '01.0010');
+    expect(items[0]['description'], 'wie vor, jedoch zweiflügelig');
+    expect(items[0].containsKey('unknown_field'), isFalse);
+    expect(items[1]['item_kind'], 'bedarfsposition_ohne_gb');
+    expect(items[1]['is_lump_sum'], true);
+    expect(items[1]['outline_no'], '01.0030');
+    expect(items[1].containsKey('group_id'), isFalse);
+    expect(items[1].containsKey('base_outline_no'), isFalse);
+  });
+
   testWidgets('QuotesPage stays stable on smaller viewport', (tester) async {
     await _prepareSmallViewport(tester);
     final api = _FakeApiClient(
@@ -5386,7 +5476,8 @@ void main() {
 
     expect(find.text('Kaufmännischer Status'), findsOneWidget);
     // Seit 17.04.2026 mit Rechnungszahl (Backlog 0.48: Test war veraltet).
-    expect(find.text('2 Angebote  •  2 Aufträge  •  0 Rechnungen'), findsOneWidget);
+    expect(find.text('2 Angebote  •  2 Aufträge  •  0 Rechnungen'),
+        findsOneWidget);
     expect(find.textContaining('1 Angebote mit Folgebeleg'), findsOneWidget);
     expect(find.textContaining('1 Aufträge in Teilfaktura'), findsOneWidget);
     expect(
@@ -5687,7 +5778,11 @@ void main() {
         key: UniqueKey(),
         home: ProjectDetailPage(
           api: api,
-          project: const {'id': 'project-1', 'name': 'Tor 1', 'nummer': 'PRJ-0101'},
+          project: const {
+            'id': 'project-1',
+            'name': 'Tor 1',
+            'nummer': 'PRJ-0101'
+          },
           canWrite: false,
         ),
       ));

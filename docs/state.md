@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.4a** erledigt: Fragen ADR 0041 vom Nutzer mit (a) beantwortet, ADR
+> **2026-11-16 I.2.4b** erledigt: der Angebotseditor im Client reicht Gruppe und GAEB-Felder
+> beim Speichern durch (Verlust der Gruppenzuordnung behoben). Nächste: **I.2.4c**
+> Übernahme aus dem Import. Nächste freie Migration: 118, nächstes ADR: 0042.
+> Davor **2026-11-16 I.2.4a** erledigt: Fragen ADR 0041 vom Nutzer mit (a) beantwortet, ADR
 > angenommen; Migration 117 und GAEB-Felder an Angebotspositionen und Gruppen,
 > Untertitel unter Untertiteln. Fund: der Client verliert beim Speichern `group_id`;
 > I.2.4 neu geschnitten (a–e). Nächste: **I.2.4b** Client reicht die Felder durch.

@@ -4356,7 +4356,9 @@ class _QuoteItemDraft {
     bool targetMarginAnchorPerformed = false,
     _QuoteItemApprovalRequestDraft? approvalRequest,
     _QuoteItemApprovalDecisionBadgeDraft? latestApprovalDecision,
+    Map<String, dynamic> passthrough = const {},
   })  : id = id,
+        passthrough = Map<String, dynamic>.unmodifiable(passthrough),
         descriptionCtrl = TextEditingController(text: description),
         qtyCtrl = TextEditingController(text: qty),
         unitCtrl = TextEditingController(text: unit),
@@ -4443,8 +4445,26 @@ class _QuoteItemDraft {
           ? _QuoteItemApprovalDecisionBadgeDraft.fromJson(
               rawLatestApprovalDecision.cast<String, dynamic>())
           : null,
+      passthrough: {
+        for (final key in passthroughKeys)
+          if (json[key] != null) key: json[key],
+      },
     );
   }
+
+  /// Felder, die der Editor nicht bearbeitet, aber beim Speichern
+  /// unverändert zurückschicken muss: Gruppe und GAEB-Angaben (ADR 0041).
+  /// Ohne sie setzt das Speichern eines Entwurfs Gruppe, OZ und
+  /// Positionsart zurück.
+  static const passthroughKeys = [
+    'group_id',
+    'outline_no',
+    'short_text',
+    'long_text',
+    'item_kind',
+    'is_lump_sum',
+    'base_outline_no',
+  ];
 
   static String _normalizePriceMappingStatus(String value) {
     switch (value.trim().toLowerCase()) {
@@ -4465,6 +4485,7 @@ class _QuoteItemDraft {
   }
 
   final String id;
+  final Map<String, dynamic> passthrough;
   final TextEditingController descriptionCtrl;
   final TextEditingController qtyCtrl;
   final TextEditingController unitCtrl;
@@ -4519,6 +4540,7 @@ class _QuoteItemDraft {
   }
 
   Map<String, dynamic> toJson() => {
+        ...passthrough,
         'description': descriptionCtrl.text.trim(),
         'qty': double.tryParse(qtyCtrl.text.trim()) ?? 0,
         'unit': unitCtrl.text.trim().isEmpty ? 'Stk' : unitCtrl.text.trim(),
