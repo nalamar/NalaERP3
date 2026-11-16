@@ -83,6 +83,8 @@ type ErwartetesLV struct {
 	Vorbemerkungen []string            `json:"vorbemerkungen"`
 	Bereiche       []Bereich           `json:"bereiche"`
 	Positionen     []ErwartetePosition `json:"positionen"`
+
+	x83 string // Pfad der X83, von LadeKorpus gesetzt
 }
 
 func decodeStrict(path string, out any) error {

@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+
+	"nalaerp3/internal/quotes/gaeb"
 )
 
 // Position ist das, was ein Matcher von einer LV-Position sieht: nur
@@ -18,10 +20,10 @@ type Position struct {
 	Pauschal bool
 }
 
-// Eingabe macht aus einer erwarteten Position die Eingabe fuer einen
-// Matcher (bis I.2 kommen die Positionen aus der Erwartung, nicht aus
-// dem Parser).
-func Eingabe(p ErwartetePosition) Position {
+// Eingabe macht aus einer Position des Parsers die Eingabe fuer einen
+// Matcher (I.2.1c: die Positionen kommen aus der X83, nicht aus der
+// Erwartung).
+func Eingabe(p gaeb.Position) Position {
 	return Position{OZ: p.OZ, Kurztext: p.Kurztext, Langtext: p.Langtext, Menge: p.Menge,
 		Einheit: p.Einheit, Art: p.Art, Pauschal: p.Pauschal}
 }

@@ -129,3 +129,97 @@ func TestBericht(t *testing.T) {
 		}
 	}
 }
+
+// merkMatcher merkt sich die Eingaben (OZ und Kurztext, in Reihenfolge).
+type merkMatcher struct{ kurz *[]string }
+
+func (merkMatcher) Name() string { return "merk" }
+func (m merkMatcher) Vorschlagen(p Position, _ *Katalog) Vorschlag {
+	*m.kurz = append(*m.kurz, p.OZ+" "+p.Kurztext)
+	return Vorschlag{Code: "FB-ALU", Score: 1, Begruendung: "x"}
+}
+
+// kopie legt das Korpus in ein neues Verzeichnis; aendern veraendert die
+// X83 von lv-02 (alt -> neu, genau einmal).
+func kopie(t *testing.T, alt, neu string) string {
+	t.Helper()
+	dir := t.TempDir()
+	dateien, _ := filepath.Glob(filepath.Join("testdata", "lv-*"))
+	for _, d := range dateien {
+		raw, err := os.ReadFile(d)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Base(d) == "lv-02.x83" {
+			if strings.Count(string(raw), alt) < 1 {
+				t.Fatalf("%q fehlt in lv-02.x83", alt)
+			}
+			raw = []byte(strings.Replace(string(raw), alt, neu, 1))
+		}
+		if err := os.WriteFile(filepath.Join(dir, filepath.Base(d)), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestAusfuehrenLiestX83(t *testing.T) {
+	k := katalog(t)
+	// Die Eingabe kommt aus der X83, nicht aus der Erwartung.
+	dir := kopie(t, "Pfosten-Riegel-Fassade Aluminium</span>", "Geänderter Kurztext</span>")
+	lvs, err := LadeKorpus(dir, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kurz []string
+	l, err := Ausfuehren(lvs, k, merkMatcher{&kurz}, 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kurz) != 250 || kurz[26] != "1.01.0010 Geänderter Kurztext" || lvs[1].Positionen[0].Kurztext != "Pfosten-Riegel-Fassade Aluminium" ||
+		l.Gesamt.Automatisch != 250 || l.LVs[1].Parsefehler != "" || strings.Contains(l.Bericht(), "Parsefehler") {
+		t.Fatalf("Eingabe: %d %q %+v", len(kurz), kurz[26], l.Gesamt)
+	}
+	// Parsefehler: die Positionen des LV landen in der Prüfliste, der Bericht nennt den Fehler.
+	dir = kopie(t, "<QU>m2</QU>", "<QU> </QU>")
+	lvs, err = LadeKorpus(dir, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kurz = nil
+	l, err = Ausfuehren(lvs, k, merkMatcher{&kurz}, 0.5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := l.LVs[1]
+	if !strings.Contains(e.Parsefehler, "Einheit fehlt") || e.Positionen != 26 || e.Pruefliste != 26 || e.Automatisch != 0 ||
+		l.LVs[0].Parsefehler != "" || l.Gesamt.Automatisch != 224 || len(kurz) != 224 {
+		t.Fatalf("Parsefehler: %+v / %+v", e, l.Gesamt)
+	}
+	if s := l.Bericht(); !strings.Contains(s, "Parsefehler lv-02.x83: Position 1.01.0010: Einheit fehlt") || strings.Count(s, "Parsefehler") != 1 {
+		t.Fatalf("Bericht:\n%s", s)
+	}
+	// fehlende Datei und LV ohne LadeKorpus sind Fehler des Laufs
+	if err := os.Remove(filepath.Join(dir, "lv-02.x83")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Ausfuehren(lvs, k, NieZuordnen{}, 0.5); err == nil {
+		t.Fatal("fehlende X83 angenommen")
+	}
+	if _, err := Ausfuehren([]*ErwartetesLV{lv()}, k, NieZuordnen{}, 0.5); err == nil || !strings.Contains(err.Error(), "nicht mit LadeKorpus") {
+		t.Fatalf("LV ohne X83: %v", err)
+	}
+}
+
+// TestAusgangswert: mit dem Parser als Eingabe bleibt der Ausgangswert aus
+// ADR 0039 (Wortabgleich, Schwelle 0,7) unverändert.
+func TestAusgangswert(t *testing.T) {
+	k, lvs := korpus(t)
+	l, err := Ausfuehren(lvs, k, Wortabgleich{}, 0.7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g := l.Gesamt; g.Richtig != 47 || g.Falsch != 0 || g.Pruefliste != 203 || prozent(g.Trefferquote()) != "25,5 %" {
+		t.Fatalf("Ausgangswert: %+v", g)
+	}
+}

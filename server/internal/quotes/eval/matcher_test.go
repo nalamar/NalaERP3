@@ -3,12 +3,15 @@ package eval
 import (
 	"reflect"
 	"testing"
+
+	"nalaerp3/internal/quotes/gaeb"
 )
 
 func TestEingabeOhneErwartung(t *testing.T) {
-	p := lv().Positionen[0]
+	p := gaeb.Position{OZ: "01.0010", Bereich: "01", Kurztext: "Fenster", Langtext: "Alu", Menge: 4.5, Einheit: "Stk",
+		Art: gaeb.ArtAlternativ, Zu: "01.0005"}
 	got := Eingabe(p)
-	want := Position{OZ: p.OZ, Kurztext: p.Kurztext, Langtext: p.Langtext, Menge: p.Menge, Einheit: p.Einheit, Art: p.Art, Pauschal: p.Pauschal}
+	want := Position{OZ: p.OZ, Kurztext: p.Kurztext, Langtext: p.Langtext, Menge: p.Menge, Einheit: p.Einheit, Art: p.Art}
 	if got != want {
 		t.Fatalf("Eingabe = %+v", got)
 	}
@@ -27,7 +30,7 @@ func TestEingabeOhneErwartung(t *testing.T) {
 
 func TestNieZuordnen(t *testing.T) {
 	k := katalog(t)
-	v := NieZuordnen{}.Vorschlagen(Eingabe(lv().Positionen[0]), k)
+	v := NieZuordnen{}.Vorschlagen(Position{OZ: "1", Kurztext: "Aluminiumfenster einflügelig"}, k)
 	if v.Code != "" || v.Score != 0 || v.Begruendung == "" || (NieZuordnen{}).Name() != "nie-zuordnen" {
 		t.Fatalf("NieZuordnen = %+v", v)
 	}

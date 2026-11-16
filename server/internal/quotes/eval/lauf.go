@@ -2,15 +2,21 @@ package eval
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"text/tabwriter"
+
+	"nalaerp3/internal/quotes/gaeb"
 )
 
-// LVErgebnis ist das Ergebnis eines Matchers fuer ein LV.
+// LVErgebnis ist das Ergebnis eines Matchers fuer ein LV. Parsefehler ist
+// gesetzt, wenn der Parser die X83 ablehnt; dann landen alle Positionen
+// in der Pruefliste.
 type LVErgebnis struct {
-	Datei string
+	Datei       string
+	Parsefehler string
 	Ergebnis
 }
 
@@ -39,20 +45,49 @@ func LadeKorpus(dir string, k *Katalog) ([]*ErwartetesLV, error) {
 		if err != nil {
 			return nil, err
 		}
+		lv.x83 = filepath.Join(dir, lv.Datei)
 		out = append(out, lv)
 	}
 	return out, nil
 }
 
-// Ausfuehren laesst den Matcher jede Position vorschlagen und wertet aus.
+// lese liest die X83 eines mit LadeKorpus geladenen LV mit dem Parser.
+// Fehlt die Datei, ist das ein Fehler des Laufs; lehnt der Parser sie ab,
+// liefert lese den Parsefehler.
+func lese(lv *ErwartetesLV) (*gaeb.LV, string, error) {
+	if lv.x83 == "" {
+		return nil, "", fmt.Errorf("%s: LV nicht mit LadeKorpus geladen", lv.Datei)
+	}
+	f, err := os.Open(lv.x83)
+	if err != nil {
+		return nil, "", err
+	}
+	defer f.Close()
+	gelesen, err := gaeb.Parse(f)
+	if err != nil {
+		return nil, err.Error(), nil
+	}
+	return gelesen, "", nil
+}
+
+// Ausfuehren liest jede X83 mit dem Parser, laesst den Matcher jede
+// gelesene Position vorschlagen und wertet gegen die Erwartung aus.
 // Ein Vorschlag mit Code braucht eine Begruendung, der Score liegt in
 // [0, 1] (aufgabe.md §4); sonst bricht der Lauf ab.
 func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (Lauf, error) {
 	lauf := Lauf{Matcher: m.Name(), Schwelle: schwelle}
 	var alle []Ergebnis
 	for _, lv := range lvs {
+		gelesen, parsefehler, err := lese(lv)
+		if err != nil {
+			return Lauf{}, err
+		}
+		var positionen []gaeb.Position
+		if gelesen != nil {
+			positionen = gelesen.Positionen
+		}
 		vorschlaege := map[string]Vorschlag{}
-		for _, p := range lv.Positionen {
+		for _, p := range positionen {
 			v := m.Vorschlagen(Eingabe(p), k)
 			if v.Score < 0 || v.Score > 1 {
 				return Lauf{}, fmt.Errorf("%s %s: Score %v außerhalb [0, 1]", lv.Datei, p.OZ, v.Score)
@@ -63,7 +98,7 @@ func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (L
 			vorschlaege[p.OZ] = v
 		}
 		e := Auswerten(lv, vorschlaege, schwelle)
-		lauf.LVs = append(lauf.LVs, LVErgebnis{Datei: lv.Datei, Ergebnis: e})
+		lauf.LVs = append(lauf.LVs, LVErgebnis{Datei: lv.Datei, Parsefehler: parsefehler, Ergebnis: e})
 		alle = append(alle, e)
 	}
 	lauf.Gesamt = Summe(alle...)
@@ -106,5 +141,10 @@ func (l Lauf) Bericht() string {
 		fmt.Fprintf(w, "%s\t%d\t%d\t%d\t%s\t%s\t\n", name, m.Erwartet, m.Erkannt, m.Richtig, prozent(m.Genauigkeit()), prozent(m.Vollstaendigkeit()))
 	}
 	w.Flush()
+	for _, lv := range l.LVs {
+		if lv.Parsefehler != "" {
+			fmt.Fprintf(&b, "Parsefehler %s: %s\n", lv.Datei, lv.Parsefehler)
+		}
+	}
 	return b.String()
 }

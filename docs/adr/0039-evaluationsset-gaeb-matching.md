@@ -172,6 +172,12 @@ Beispiel-LV im Stil der üblichen Ausschreibungen wäre hilfreich.
   Grundposition (für die Summen und die Rückschreibung D84).
 - **Formate 5 (a)**: DA XML 3.2 und 3.3, vor allem X83.
 
+## Nachtrag I.2.1c (2026-11-16)
+
+Die Matcher bekommen ihre Eingabe jetzt aus dem Parser (`internal/quotes/gaeb`),
+nicht mehr aus der Erwartung; Parse-Fehler gehen in die Messung ein (alle
+Positionen des LV in der Prüfliste). Die Ausgangswerte oben bleiben gleich.
+
 ## Folgen
 
 - Kein Produktivcode, keine Migration in I.1. Ein Leistungskatalog in der
