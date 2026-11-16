@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.5a** erledigt: GAEB-Import-Ansicht im Client zeigt Vorbemerkungen,
+> **2026-11-16 I.2.5b** erledigt: Angebotsansicht und -editor zeigen OZ, Art und „nicht in
+> der Summe“; **I.2.5 abgeschlossen**. Offen in I.2: I.2.6 (Auswahl bei der Beauftragung,
+> braucht Fragen). Nächste freie Migration: 118, nächstes ADR: 0042.
+> Davor **2026-11-16 I.2.5a** erledigt: GAEB-Import-Ansicht im Client zeigt Vorbemerkungen,
 > Gliederung, Kurztext und Positionsart. Nächste: **I.2.5b** Angebotseditor. Nächste freie
 > Migration: 118, nächstes ADR: 0042.
 > Davor **2026-11-16 I.2.4e2** erledigt: Auftrag und Rechnung aus Angebot nur mit Normal- und

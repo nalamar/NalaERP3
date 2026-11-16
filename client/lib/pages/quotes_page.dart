@@ -64,6 +64,22 @@ String quoteItemKindSummary(Map<String, dynamic> item,
   return parts.join(' · ');
 }
 
+/// GAEB-Zeile einer Angebotsposition: OZ, Art/Grundposition/Pauschale und
+/// der Hinweis, dass Alternativ- und Bedarfspositionen nicht zur Summe
+/// zählen (ADR 0041). Leer bei Positionen ohne GAEB-Angaben.
+String quoteItemGaebLine(Map<String, dynamic> item) {
+  final parts = <String>[];
+  final outline = (item['outline_no'] ?? '').toString().trim();
+  if (outline.isNotEmpty) parts.add('OZ $outline');
+  final summary = quoteItemKindSummary(item, baseKey: 'base_outline_no');
+  if (summary.isNotEmpty) parts.add(summary);
+  final kind = (item['item_kind'] ?? '').toString().trim();
+  if (kind == 'alternativposition' || kind.startsWith('bedarfsposition')) {
+    parts.add('nicht in der Summe');
+  }
+  return parts.join(' · ');
+}
+
 class QuotesPage extends StatefulWidget {
   const QuotesPage({
     super.key,
@@ -2687,6 +2703,9 @@ class _QuotesPageState extends State<QuotesPage> {
                                         crossAxisAlignment:
                                             CrossAxisAlignment.start,
                                         children: [
+                                          if (quoteItemGaebLine(item)
+                                              .isNotEmpty)
+                                            Text(quoteItemGaebLine(item)),
                                           Text(
                                             'Menge ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 2)} ${(item['unit'] ?? '')}  •  Einzelpreis ${_formatMoney(unitPrice, currency)}  •  Steuer ${(item['tax_code'] ?? '').toString()}',
                                           ),
@@ -5883,6 +5902,11 @@ class _QuoteItemRowState extends State<_QuoteItemRow> {
                       icon: const Icon(Icons.delete_outline_rounded)),
               ],
             ),
+            if (quoteItemGaebLine(widget.item.passthrough).isNotEmpty)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(quoteItemGaebLine(widget.item.passthrough)),
+              ),
             TextField(
                 controller: widget.item.descriptionCtrl,
                 onChanged: (_) => widget.onCommercialFieldsChanged?.call(),

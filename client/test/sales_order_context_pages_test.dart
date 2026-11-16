@@ -3617,23 +3617,57 @@ void main() {
             'item_kind': 'bedarfsposition_ohne_gb',
             'is_lump_sum': true,
           },
+          {
+            'id': 'item-grund',
+            'description': 'Fenster einflügelig',
+            'qty': 1,
+            'unit': 'Stk',
+            'unit_price': 100.0,
+            'tax_code': 'DE19',
+            'outline_no': '01.0010',
+            'item_kind': 'grundposition',
+          },
+          {
+            'id': 'item-hand',
+            'description': 'Von Hand erfasst',
+            'qty': 1,
+            'unit': 'Stk',
+            'unit_price': 10.0,
+            'tax_code': 'DE19',
+            'item_kind': 'normal',
+            'outline_no': '',
+          },
         ],
       },
     );
+    const altLine = 'OZ 01.0020 · Alternative zu 01.0010 · nicht in der Summe';
+    const bedarfLine =
+        'OZ 01.0030 · Bedarfsposition ohne GB · pauschal · nicht in der Summe';
+    const grundLine = 'OZ 01.0010 · Grundposition';
 
     await tester.pumpWidget(MaterialApp(home: QuotesPage(api: api)));
     await tester.pumpAndSettle();
     await tester.tap(find.text('ANG-2026-0201'));
     await tester.pumpAndSettle();
+    // Angebotsansicht: GAEB-Zeile je Position, keine bei von Hand erfassten
+    expect(find.text(altLine), findsOneWidget);
+    expect(find.text(bedarfLine), findsOneWidget);
+    expect(find.text(grundLine), findsOneWidget);
+    expect(find.textContaining('OZ '), findsNWidgets(3));
     await tester.tap(find.text('Bearbeiten'));
     await tester.pumpAndSettle();
+    // Editor zeigt dieselben Zeilen (zusätzlich zur Ansicht dahinter)
+    expect(find.text(altLine), findsNWidgets(2));
+    expect(find.text(bedarfLine), findsNWidgets(2));
+    expect(find.text(grundLine), findsNWidgets(2));
+    expect(find.textContaining('OZ '), findsNWidgets(6));
     await tester.tap(find.text('Speichern').last);
     await tester.pumpAndSettle();
 
     expect(api.updatedQuoteBodies, hasLength(1));
     final items = (api.updatedQuoteBodies.single['items'] as List)
         .cast<Map<String, dynamic>>();
-    expect(items, hasLength(2));
+    expect(items, hasLength(4));
     expect(items[0]['group_id'], 'group-1');
     expect(items[0]['outline_no'], '01.0020');
     expect(items[0]['short_text'], 'wie vor, jedoch zweiflügelig');
