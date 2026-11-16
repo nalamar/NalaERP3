@@ -324,6 +324,28 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
+## 2026-11-16 — I.5 Vorschläge am GAEB-Import, Prüfliste und Freigabe (offen)
+
+Bezug: Backlog I.5, `docs/adr/0045-vorschlaege-pruefliste-freigabe.md` (Optionen und Begründung dort).
+
+1. **Speicherort:** (a) neue Tabelle `quote_import_item_matches` (eine Zeile je Importposition: Leistung,
+   Code, Score, Begründung, Systemvorgaben, Quelle, Modell, Entscheidung); (b) Spalten an
+   `quote_import_items`; (c) mehrere Vorschläge je Position. Empfehlung: **(a)**. Status: **offen**.
+2. **Auslösen:** (a) eigener Endpunkt, Lauf im Hintergrund mit Status und Fortschritt; (b) synchron
+   (Abbruch nach 300 s bei großen LVs); (c) automatisch nach dem Verarbeiten. Empfehlung: **(a)**. Status: **offen**.
+3. **Ohne eingeschaltetes Sprachmodell:** (a) deterministischer Lauf (Wortabgleich 0,7 und
+   Systemvorgaben); (b) 409. Empfehlung: **(a)**. Status: **offen**.
+4. **Schwelle:** (a) je Mandant in den Einstellungen zum Sprachmodell (Standard 0,9); (b) fest im Code;
+   (c) je Anbieter und Modell. Empfehlung: **(a)**. Status: **offen**.
+5. **Prüfliste und Freigabe:** (a) jeder Vorschlag bleibt offen bis zur Entscheidung eines Menschen
+   (bestätigen, ändern, verwerfen), Sammelbestätigung über der Schwelle, Freigabe des Laufs nur ohne
+   offene Vorschläge; (b) über der Schwelle automatisch bestätigt; (c) nur Hinweise.
+   Empfehlung: **(a)**. Status: **offen**.
+6. **Übernahme ins Angebot:** (a) `quote_items.leistung_id` aus der bestätigten Zuordnung, Preis bleibt 0;
+   (b) nichts am Angebot. Empfehlung: **(a)**. Status: **offen**.
+7. **Ort des Matchers:** (a) neues Paket `internal/matching`, `eval` nutzt es; (b) im Paket `quotes`;
+   (c) in `eval` lassen. Empfehlung: **(a)**. Status: **offen**.
+
 ## 2026-11-16 — I.4 Matching mit Sprachmodell (beantwortet mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Backlog I.4, `docs/adr/0044-matching-mit-sprachmodell.md` (Optionen und Begründung dort).

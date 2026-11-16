@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.4.5** erledigt: Client-Seite „Leistungskatalog“ (Liste, Pflege, CSV-Import). In I.4 offen nur noch
+> **2026-11-16 I.5.0** erledigt: ADR 0045 (Entwurf) zu Vorschlägen am GAEB-Import, Prüfliste und Freigabe; sieben
+> Fragen in `docs/open-questions.md` (Abschnitt 2026-11-16 I.5), Antwort ausstehend. Nächste: nach der Antwort **I.5.1**
+> (Umzug des Matchers nach `internal/matching`). I.4.3 wartet weiter auf Schlüssel. Nächste freie Migration: 122,
+> nächstes ADR: 0046.
+> Davor **2026-11-16 I.4.5** erledigt: Client-Seite „Leistungskatalog“ (Liste, Pflege, CSV-Import). In I.4 offen nur noch
 > **I.4.3** (wartet auf Schlüssel). Nächste: **I.5** Vorschläge am Import speichern, Prüfliste und Freigabe (zuerst
 > Bestandsaufnahme/Teilung; Matcher zieht aus `eval` in den Produktivteil). Nächste freie Migration: 122, nächstes ADR: 0045.
 > Davor **2026-11-16 I.4.4b** erledigt — damit **I.4.4** vollständig: Endpunkte `/leistungen` (Lesen `quotes.read`, Schreiben
