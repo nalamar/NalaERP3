@@ -3403,22 +3403,11 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 				NetAmount:     qt.NetAmount,
 				TaxAmount:     qt.TaxAmount,
 				GrossAmount:   qt.GrossAmount,
-				Items:         make([]pdfgen.QuoteItemData, 0, len(qt.Items)),
 			}
 			if qt.ValidUntil != nil {
 				data.ValidUntil = qt.ValidUntil.Format("02.01.2006")
 			}
-			for idx, item := range qt.Items {
-				data.Items = append(data.Items, pdfgen.QuoteItemData{
-					Pos:         idx + 1,
-					Description: item.Description,
-					Qty:         item.Qty,
-					Unit:        item.Unit,
-					UnitPrice:   item.UnitPrice,
-					TaxCode:     item.TaxCode,
-					LineTotal:   item.Qty * item.UnitPrice,
-				})
-			}
+			data.Items = quotePDFItems(qt.Items)
 
 			opts := pdfgen.TemplateOptions{
 				HeaderText:   effectiveTemplate.HeaderText,
@@ -5109,6 +5098,26 @@ func writeHTTPError(w http.ResponseWriter, req *http.Request, code int, msg stri
 	public := publicErrorMessage(req, code, msg, err)
 	logAPIError(req, code, "http_error", public, err)
 	http.Error(w, public, code)
+}
+
+// quotePDFItems baut die Zeilen des Angebots-PDF; Alternativ- und
+// Bedarfspositionen werden gekennzeichnet (ADR 0041 Frage 4).
+func quotePDFItems(items []quotes.QuoteItemInput) []pdfgen.QuoteItemData {
+	out := make([]pdfgen.QuoteItemData, 0, len(items))
+	for idx, item := range items {
+		out = append(out, pdfgen.QuoteItemData{
+			Pos:         idx + 1,
+			Description: item.Description,
+			Qty:         item.Qty,
+			Unit:        item.Unit,
+			UnitPrice:   item.UnitPrice,
+			TaxCode:     item.TaxCode,
+			LineTotal:   item.Qty * item.UnitPrice,
+			OutlineNo:   item.OutlineNo,
+			KindNote:    pdfgen.QuoteItemKindNote(item.ItemKind, item.BaseOutlineNo),
+		})
+	}
+	return out
 }
 
 func writeDomainError(w http.ResponseWriter, req *http.Request, err error) {

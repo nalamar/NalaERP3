@@ -122,4 +122,9 @@ func TestQuoteTotalsSkipAlternativeAndProvisionalItems(t *testing.T) {
 	if !near(controlling.SollKosten, 314) || !near(controlling.SollErloes, (200+314)*1.19) {
 		t.Fatalf("Controlling: %+v", controlling)
 	}
+	// Angebots-PDF mit gekennzeichneten Positionen (I.2.4d2)
+	rec = do(http.MethodGet, "/api/v1/quotes/"+q.ID+"/pdf", "")
+	if rec.Code != http.StatusOK || !bytes.HasPrefix(rec.Body.Bytes(), []byte("%PDF")) {
+		t.Fatalf("PDF: %d %.200s", rec.Code, rec.Body.String())
+	}
 }

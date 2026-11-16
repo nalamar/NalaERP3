@@ -135,6 +135,50 @@ type QuoteItemData struct {
 	LineTotal       float64
 	DimensionsLabel string
 	SurfaceLabel    string
+	// GAEB-Angaben (ADR 0041): OutlineNo ersetzt die laufende Nummer,
+	// KindNote kennzeichnet Positionen ausserhalb der Summe.
+	OutlineNo string
+	KindNote  string
+}
+
+// QuoteItemKindNote liefert die Kennzeichnung einer Angebotsposition, die
+// nicht zur Summe zaehlt (Alternativ- und Bedarfspositionen, ADR 0041
+// Frage 4); leer fuer Normal- und Grundpositionen.
+func QuoteItemKindNote(kind, baseOutlineNo string) string {
+	switch kind {
+	case "alternativposition":
+		if base := strings.TrimSpace(baseOutlineNo); base != "" {
+			return "Alternative zu Pos. " + base
+		}
+		return "Alternativposition"
+	case "bedarfsposition_mit_gb", "bedarfsposition_ohne_gb":
+		return "Bedarfsposition"
+	}
+	return ""
+}
+
+func quoteItemPosText(it QuoteItemData) string {
+	if oz := strings.TrimSpace(it.OutlineNo); oz != "" {
+		return oz
+	}
+	return fmt.Sprintf("%d", it.Pos)
+}
+
+func quoteItemDescriptionText(it QuoteItemData) string {
+	if it.KindNote == "" {
+		return it.Description
+	}
+	return it.Description + " (" + it.KindNote + ", nicht in der Summe)"
+}
+
+// quoteExcludedItemsNote steht unter den Summen, wenn Positionen fehlen.
+func quoteExcludedItemsNote(items []QuoteItemData) string {
+	for _, it := range items {
+		if it.KindNote != "" {
+			return "Alternativ- und Bedarfspositionen sind in den Summen nicht enthalten."
+		}
+	}
+	return ""
 }
 
 // RenderPurchaseOrder rendert eine Bestellung als PDF unter Verwendung der Template-Optionen und Images.
@@ -508,6 +552,10 @@ func RenderQuote(ctx context.Context, mg *mongo.Client, dbName string, quote Quo
 		pdf.SetTextColor(accent.R, accent.G, accent.B)
 		pdf.CellFormat(0, 5, tr("Brutto: "+money(quote.GrossAmount, quote.Currency)), "", 1, "R", false, 0, "")
 		pdf.SetTextColor(0, 0, 0)
+		if note := quoteExcludedItemsNote(quote.Items); note != "" {
+			pdf.SetFont("Helvetica", "I", 8)
+			pdf.CellFormat(0, 5, tr(note), "", 1, "R", false, 0, "")
+		}
 	}
 
 	var buf bytes.Buffer
@@ -702,6 +750,13 @@ func renderInvoiceItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []I
 
 func renderQuoteItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []QuoteItemData, primary, accent rgbColor) {
 	colPos := []float64{9, 18, 51, 14, 16, 22, 14, 18, 23, 25}
+	for _, it := range items {
+		if strings.TrimSpace(it.OutlineNo) != "" {
+			// Platz fuer Ordnungszahlen wie 01.02.0010 (aus der Spalte Position)
+			colPos[0], colPos[2] = 20, 40
+			break
+		}
+	}
 	headers := []string{"Pos", "Los", "Position", "Menge", "Einheit", "Abmessung", "Steuer", "Preis", "Gesamt", "Serie/Oberfl."}
 	pdf.SetFont("Helvetica", "B", 10)
 	pdf.SetFillColor(primary.R, primary.G, primary.B)
@@ -716,10 +771,10 @@ func renderQuoteItemsTable(pdf *gofpdf.Fpdf, tr func(string) string, items []Quo
 	pdf.SetTextColor(0, 0, 0)
 	for _, it := range items {
 		x, y := pdf.GetXY()
-		pdf.CellFormat(colPos[0], 6, tr(fmt.Sprintf("%d", it.Pos)), "1", 0, "R", false, 0, "")
+		pdf.CellFormat(colPos[0], 6, tr(quoteItemPosText(it)), "1", 0, "R", false, 0, "")
 		pdf.CellFormat(colPos[1], 6, tr(it.PhaseLabel), "1", 0, "L", false, 0, "")
 		x, y = pdf.GetXY()
-		pdf.MultiCell(colPos[2], 5, tr(it.Description), "1", "L", false)
+		pdf.MultiCell(colPos[2], 5, tr(quoteItemDescriptionText(it)), "1", "L", false)
 		h := pdf.GetY() - y
 		pdf.SetXY(x+colPos[2], y)
 		pdf.CellFormat(colPos[3], h, tr(trimFloat(it.Qty)), "1", 0, "R", false, 0, "")

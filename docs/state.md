@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.2.4d1** erledigt: Alternativ- und Bedarfspositionen zählen nicht mehr zur
+> **2026-11-16 I.2.4d2** erledigt: Angebots-PDF zeigt die OZ und kennzeichnet Alternativ- und
+> Bedarfspositionen samt Summenhinweis; **I.2.4d abgeschlossen**. Nächste: **I.2.4e** Revision,
+> Auftrag und Rechnung aus Angebot. Nächste freie Migration: 118, nächstes ADR: 0042.
+> Davor **2026-11-16 I.2.4d1** erledigt: Alternativ- und Bedarfspositionen zählen nicht mehr zur
 > Angebotssumme und zu den Soll-Kosten; gemeinsame Neuberechnung `recalcQuoteTotalsTx`.
 > Nächste: **I.2.4d2** PDF. Nächste freie Migration: 118, nächstes ADR: 0042.
 > Davor **2026-11-16 I.2.4c** erledigt: die Übernahme eines GAEB-Imports ins Angebot übernimmt
