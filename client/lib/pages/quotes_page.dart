@@ -1123,7 +1123,7 @@ class _QuotesPageState extends State<QuotesPage> {
     }
     final pickFile = widget.quoteImportFilePicker ?? browser.pickFile;
     final picked = await pickFile(
-      accept: '.x83,.x84,.d83,.p83,.gaeb,.xml',
+      accept: '.x83,.x84,.gaeb,.xml',
     );
     if (picked == null) return;
     if (!mounted) return;

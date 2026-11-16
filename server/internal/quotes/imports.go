@@ -1,6 +1,7 @@
 package quotes
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -151,11 +152,19 @@ type QuoteImportFilter struct {
 var allowedGAEBImportExtensions = map[string]struct{}{
 	".x83":  {},
 	".x84":  {},
-	".d83":  {},
-	".p83":  {},
 	".gaeb": {},
 	".xml":  {},
 }
+
+// GAEB 90/2000 ist kein XML und wird beim Upload abgelehnt, bis es ein
+// eigener Punkt ist (ADR 0040, Entscheidung 5 (a)).
+var gaeb90ImportExtensions = map[string]struct{}{
+	".d83": {},
+	".p83": {},
+}
+
+// MaxGAEBImportBytes begrenzt eine GAEB-Datei (ADR 0040, Entscheidung 6 (a)).
+const MaxGAEBImportBytes = 20 << 20
 
 var allowedQuoteImportReviewStatuses = map[string]struct{}{
 	"pending":  {},
@@ -201,8 +210,21 @@ func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInpu
 	if filename == "" {
 		return nil, errors.New("Dateiname erforderlich")
 	}
+	if _, ok := gaeb90ImportExtensions[strings.ToLower(filepath.Ext(filename))]; ok {
+		return nil, errors.New("GAEB 90/2000 (.d83, .p83) wird nicht unterstützt; bitte die Datei als GAEB DA XML (.x83) exportieren")
+	}
 	if !isAllowedGAEBImportFilename(filename) {
-		return nil, errors.New("Nur GAEB-Dateien mit den Endungen .x83, .x84, .d83, .p83, .gaeb oder .xml sind zulässig")
+		return nil, errors.New("Nur GAEB-Dateien mit den Endungen .x83, .x84, .gaeb oder .xml sind zulässig")
+	}
+	data, err := io.ReadAll(io.LimitReader(r, MaxGAEBImportBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > MaxGAEBImportBytes {
+		return nil, fmt.Errorf("GAEB-Datei ist größer als %d MB", MaxGAEBImportBytes>>20)
+	}
+	if len(data) == 0 {
+		return nil, errors.New("GAEB-Datei ist leer")
 	}
 
 	var projectExists bool
@@ -228,7 +250,7 @@ func (s *Service) CreateGAEBImport(ctx context.Context, in QuoteImportCreateInpu
 	if err != nil {
 		return nil, err
 	}
-	oid, err := bucket.UploadFromStream(filename, r)
+	oid, err := bucket.UploadFromStream(filename, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}

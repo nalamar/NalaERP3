@@ -3860,7 +3860,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(pickerCallCount, 1);
-    expect(pickerAccept, '.x83,.x84,.d83,.p83,.gaeb,.xml');
+    expect(pickerAccept, '.x83,.x84,.gaeb,.xml');
     expect(
       find.widgetWithText(FilledButton, 'GAEB-Import'),
       findsOneWidget,
@@ -3916,7 +3916,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(pickerCallCount, 1);
-    expect(pickerAccept, '.x83,.x84,.d83,.p83,.gaeb,.xml');
+    expect(pickerAccept, '.x83,.x84,.gaeb,.xml');
     expect(api.attemptedQuoteImportUploads, const [
       {
         'filename': 'ausschreibung-upload.x83',

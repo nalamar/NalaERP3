@@ -38,9 +38,10 @@ func TestQuoteGAEBImportStructureEndpoints(t *testing.T) {
 		return rec.Code
 	}
 
+	suffix := uuid.NewString()[:8]
 	customerID := createIntegrationContact(t, handler, accessToken, map[string]any{
-		"typ": "org", "rolle": "customer", "status": "active", "name": "GAEB Struktur Kunde GmbH",
-		"email": "gaeb-structure@example.com", "telefon": "+49 211 777777", "waehrung": "EUR",
+		"typ": "org", "rolle": "customer", "status": "active", "name": "GAEB Struktur Kunde " + suffix,
+		"email": "gaeb-structure-" + suffix + "@example.com", "telefon": "+49 211 777777", "waehrung": "EUR",
 	})
 	projectReq := httptest.NewRequest(http.MethodPost, "/api/v1/projects/", bytes.NewReader([]byte(`{"name":"GAEB Struktur Projekt","kunde_id":"`+customerID+`","status":"angebot"}`)))
 	projectReq.Header.Set("Authorization", "Bearer "+accessToken)

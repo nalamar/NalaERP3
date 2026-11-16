@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -2335,8 +2336,17 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			writeJSON(w, http.StatusOK, list)
 		})
 		r.With(requirePermission("quotes.write")).Post("/imports/gaeb", func(w http.ResponseWriter, req *http.Request) {
-			if err := req.ParseMultipartForm(32 << 20); err != nil {
-				writeHTTPError(w, req, http.StatusBadRequest, "Ungültiges Upload-Formular", err)
+			// Etwas Luft fuer die Multipart-Huelle; die Datei selbst prueft
+			// der Service auf quotes.MaxGAEBImportBytes (ADR 0040).
+			req.Body = http.MaxBytesReader(w, req.Body, quotes.MaxGAEBImportBytes+(1<<20))
+			if err := req.ParseMultipartForm(1 << 20); err != nil {
+				var tooLarge *http.MaxBytesError
+				if errors.As(err, &tooLarge) {
+					writeAPIError(w, req, http.StatusRequestEntityTooLarge, "validation_error",
+						fmt.Sprintf("Upload ist größer als %d MB", quotes.MaxGAEBImportBytes>>20))
+					return
+				}
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültiges Upload-Formular")
 				return
 			}
 			file, header, err := req.FormFile("file")
@@ -5187,8 +5197,12 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "postgres nicht konfiguriert"),
 		strings.Contains(msg, "mongodb nicht konfiguriert"):
 		return http.StatusInternalServerError, "internal_error"
+	case strings.Contains(msg, "datei ist größer als"):
+		return http.StatusRequestEntityTooLarge, "validation_error"
 	case strings.Contains(msg, "erforderlich"),
 		strings.Contains(msg, "ungültig"),
+		strings.Contains(msg, "wird nicht unterstützt"),
+		strings.Contains(msg, "gaeb-datei ist leer"),
 		strings.Contains(msg, "freigabeanforderungen"),
 		strings.Contains(msg, "offene nacharbeit"),
 		strings.Contains(msg, "zielmarge noch nicht"),

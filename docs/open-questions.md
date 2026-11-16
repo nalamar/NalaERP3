@@ -386,7 +386,13 @@ den eine Zuordnung gemessen werden könnte.
 
 Auskunft (kein Blocker): **Liest der Betrieb GAEB heute in Logikal ein und
 kalkuliert dort?** Dann ergänzt das ERP-Matching Logikal oder ersetzt es —
-das bestimmt den Leistungskatalog. Status: **unbekannt** ("fortsetzen"); der Katalog im Korpus ist davon unabhängig, die Frage wird vor dem Katalog in der Datenbank (vor I.4) wieder gestellt.
+das bestimmt den Leistungskatalog. Status: **beantwortet** (2026-11-16): Logikal kann GAEB
+nicht direkt einlesen. Der Weg ist, die GAEB in NalaERP einzulesen und von dort an Logikal zu
+exportieren (so macht es z. B. ERPlus). Folge: das ERP ist der Eingang für GAEB, das
+Matching ergänzt Logikal und ersetzt es nicht; neuer Backlog-Punkt I.7.
+
+Auskunft (kein Blocker, 2026-11-16): **Über welches Format geht der Export an Logikal?**
+Recherchiert der Betrieb. Status: **offen** — blockiert nur I.7.
 
 Auskunft (kein Blocker, 2026-11-13, I.1.2): **Kann der Betrieb eine echte
 X83-Datei** (DA XML 3.2 oder 3.3, aus der AVA eines Auftraggebers oder
