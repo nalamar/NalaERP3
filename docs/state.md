@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.3.1** erledigt: Fragen ADR 0043 vom Nutzer beantwortet (alle (a), plus Mistral,
+> **2026-11-16 I.3.2** erledigt: Anbindung für OpenAI-kompatible Endpunkte (auch lokale Server)
+> mit gemeinsamer HTTP-Hilfe. Nächste: **I.3.3** Anthropic. Nächste freie Migration: 119,
+> nächstes ADR: 0044.
+> Davor **2026-11-16 I.3.1** erledigt: Fragen ADR 0043 vom Nutzer beantwortet (alle (a), plus Mistral,
 > Zeitlimit 300 s einstellbar; kein bevorzugter Anbieter, keine lokale Hardware), ADR angenommen;
 > Paket `internal/llm` mit Schnittstelle, Test-Anbieter und Hülle. Nächste: **I.3.2**
 > OpenAI-kompatible Anbindung. Nächste freie Migration: 119, nächstes ADR: 0044.
