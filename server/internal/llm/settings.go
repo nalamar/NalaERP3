@@ -248,6 +248,21 @@ func newProvider(set Settings, apiKey string) Provider {
 // mit dem eingestellten Zeitlimit, hoechstens 2 Wiederholungen und dem
 // Tageslimit als Pruefung vor jeder Anfrage. recorder nil = LogRecorder.
 func (s *SettingsService) Client(ctx context.Context, companyID string, recorder Recorder) (*Client, error) {
+	return s.clientFor(ctx, companyID, recorder, true)
+}
+
+// TestClient liefert den Client auch, wenn das Sprachmodell noch nicht
+// eingeschaltet ist - fuer den Verbindungstest vor dem Einschalten (wie
+// der Testversand beim Mail-Zugang). Unvollstaendige Einstellungen melden
+// die Anbindungen selbst. Auch Testaufrufe zaehlen zum Tageslimit.
+func (s *SettingsService) TestClient(ctx context.Context, companyID string, recorder Recorder) (*Client, error) {
+	return s.clientFor(ctx, companyID, recorder, false)
+}
+
+// ErrDailyLimit: das Tageslimit des Mandanten ist erreicht.
+var ErrDailyLimit = errors.New("Tageslimit des Sprachmodells erreicht")
+
+func (s *SettingsService) clientFor(ctx context.Context, companyID string, recorder Recorder, requireActive bool) (*Client, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
 	}
@@ -255,14 +270,17 @@ func (s *SettingsService) Client(ctx context.Context, companyID string, recorder
 	if err != nil {
 		return nil, err
 	}
-	if !r.s.Aktiv {
+	if requireActive && !r.s.Aktiv {
 		return nil, errors.New("Sprachmodell ist nicht eingeschaltet")
+	}
+	if !r.s.Eingerichtet {
+		return nil, errors.New("Sprachmodell nicht vollständig eingerichtet")
 	}
 	apiKey := ""
 	if r.enc != nil {
 		plain, err := s.box.Open(r.enc, apiKeyAAD(companyID))
 		if err != nil {
-			return nil, errors.New("API-Schlüssel des Sprachmodells nicht lesbar - bitte neu eintragen")
+			return nil, errors.New("API-Schlüssel des Sprachmodells ungültig (nicht lesbar) - bitte neu eintragen")
 		}
 		apiKey = string(plain)
 	}
@@ -281,7 +299,7 @@ func (s *SettingsService) reserveCall(ctx context.Context, companyID string, lim
 		WHERE company_llm_usage.aufrufe < $2
 		RETURNING aufrufe`, companyID, limit).Scan(&n)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return fmt.Errorf("Tageslimit des Sprachmodells erreicht (%d Aufrufe)", limit)
+		return fmt.Errorf("%w (%d Aufrufe)", ErrDailyLimit, limit)
 	}
 	return err
 }

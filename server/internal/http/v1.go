@@ -32,6 +32,7 @@ import (
 	"nalaerp3/internal/contacts"
 	"nalaerp3/internal/fleet"
 	"nalaerp3/internal/hr"
+	"nalaerp3/internal/llm"
 	"nalaerp3/internal/mail"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/noticemail"
@@ -1802,6 +1803,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		mailTransport = &mail.Sender{RedirectTo: cfg.MailRedirectTo}
 	}
 	mountMailSettingsRoutes(protected, mail.NewSettingsService(pg, settingsBox), mailTransport, cfg.MailRedirectTo != "")
+	mountLLMSettingsRoutes(protected, llm.NewSettingsService(pg, settingsBox))
 	mountNoticeMailRoutes(protected, noticemail.NewPrefs(pg))
 
 	protected.Route("/bank-statements", func(r chi.Router) {
