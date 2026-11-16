@@ -27,12 +27,38 @@ type OpenAICompatible struct {
 	Model      string
 	SchemaMode string
 	HTTPClient *http.Client
+	// ProviderName ersetzt den Namen im Protokoll (z. B. "mistral");
+	// RequireAPIKey verlangt einen Schluessel vor jedem Aufruf.
+	ProviderName  string
+	RequireAPIKey bool
 }
 
 // Hoechstgroesse einer Antwort des Dienstes.
 const maxProviderResponseBytes = 10 << 20
 
-func (*OpenAICompatible) Name() string { return "openai_compatible" }
+func (p *OpenAICompatible) Name() string {
+	if p.ProviderName != "" {
+		return p.ProviderName
+	}
+	return "openai_compatible"
+}
+
+// Mistral (ADR 0043, I.3.4) spricht dieselbe Chat-Completions-Schnittstelle
+// (POST /v1/chat/completions, Bearer-Schluessel, response_format json_object
+// oder json_schema); eine eigene Anbindung ist nicht noetig.
+const (
+	MistralBaseURL      = "https://api.mistral.ai/v1"
+	DefaultMistralModel = "mistral-large-latest"
+)
+
+// NewMistral liefert die Anbindung an Mistral; ohne Modell gilt
+// DefaultMistralModel.
+func NewMistral(apiKey, model string) *OpenAICompatible {
+	if strings.TrimSpace(model) == "" {
+		model = DefaultMistralModel
+	}
+	return &OpenAICompatible{BaseURL: MistralBaseURL, APIKey: apiKey, Model: model, ProviderName: "mistral", RequireAPIKey: true}
+}
 
 type openAIMessage struct {
 	Role    string `json:"role"`
@@ -64,6 +90,9 @@ func (p *OpenAICompatible) Complete(ctx context.Context, req Request) (Response,
 	base := strings.TrimRight(strings.TrimSpace(p.BaseURL), "/")
 	if base == "" || strings.TrimSpace(p.Model) == "" {
 		return Response{}, errors.New("Sprachmodell nicht vollständig eingerichtet (Endpunkt und Modell)")
+	}
+	if p.RequireAPIKey && strings.TrimSpace(p.APIKey) == "" {
+		return Response{}, errors.New("Sprachmodell nicht vollständig eingerichtet (API-Schlüssel)")
 	}
 	body := openAIRequest{Model: p.Model, MaxTokens: req.MaxTokens, Temperature: req.Temperature}
 	if req.System != "" {

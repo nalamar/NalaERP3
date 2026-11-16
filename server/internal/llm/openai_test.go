@@ -175,3 +175,45 @@ func TestOpenAICompatibleThroughClient(t *testing.T) {
 		t.Fatalf("Wiederholung: %v %d %+v", err, calls, resp)
 	}
 }
+
+func TestMistral(t *testing.T) {
+	p := NewMistral("mk-geheim", "")
+	if p.BaseURL != "https://api.mistral.ai/v1" || p.Model != "mistral-large-latest" || p.Name() != "mistral" || !p.RequireAPIKey {
+		t.Fatalf("NewMistral: %+v", p)
+	}
+	if q := NewMistral("k", " ministral-8b-latest "); q.Model != " ministral-8b-latest " {
+		t.Fatalf("eigenes Modell: %+v", q)
+	}
+	// gleiche Schnittstelle: gegen den Testserver
+	srv, got := openAIServer(t, http.StatusOK, okResponse)
+	p.BaseURL = srv.URL + "/v1"
+	if _, err := p.Complete(context.Background(), Request{JSONSchema: map[string]any{"type": "object"}}); err != nil {
+		t.Fatal(err)
+	}
+	r := (*got)[0]
+	rf, _ := r.body["response_format"].(map[string]any)
+	if r.path != "/v1/chat/completions" || r.auth != "Bearer mk-geheim" || r.body["model"] != "mistral-large-latest" || rf["type"] != "json_schema" {
+		t.Fatalf("Mistral-Anfrage: %+v", r)
+	}
+	// ohne Schluessel: Fehler vor dem Aufruf
+	for _, key := range []string{"", "  "} {
+		m := NewMistral(key, "")
+		m.BaseURL = srv.URL
+		if _, err := m.Complete(context.Background(), Request{}); err == nil || !strings.Contains(err.Error(), "API-Schlüssel") {
+			t.Fatalf("ohne Schlüssel %q: %v", key, err)
+		}
+	}
+	if len(*got) != 1 {
+		t.Fatalf("%d Aufrufe", len(*got))
+	}
+	// Protokoll unter dem Namen "mistral"
+	rec := &memRecorder{}
+	if _, err := NewClient(p, Limits{}, rec).Complete(context.Background(), Request{}); err != nil || rec.records[0].Provider != "mistral" {
+		t.Fatalf("Protokoll: %v %+v", err, rec.records)
+	}
+	// ohne ProviderName bleibt der allgemeine Name, ohne RequireAPIKey geht es ohne Schluessel
+	plain := &OpenAICompatible{BaseURL: srv.URL, Model: "m"}
+	if _, err := plain.Complete(context.Background(), Request{}); err != nil || plain.Name() != "openai_compatible" {
+		t.Fatalf("allgemein: %v %s", err, plain.Name())
+	}
+}
