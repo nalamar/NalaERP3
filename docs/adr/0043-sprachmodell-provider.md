@@ -1,6 +1,7 @@
 # ADR 0043: Austauschbarer Zugriff auf ein Sprachmodell (Provider-Interface)
 
-- Status: Entwurf (2026-11-16)
+- Status: Angenommen (2026-11-16; Fragen 1–6 vom Nutzer beantwortet, mit
+  Anpassungen bei 1 und 6)
 - Bezug: Backlog I.3, `aufgabe.md` §4 (LLM nur für Matching und Textarbeit,
   Preise nie vom Modell, Score und Begründung, Freigabe durch einen Menschen,
   Modellzugriff austauschbar, lokales Modell möglich), ADR 0039
@@ -66,6 +67,25 @@ Unabhängig davon: Tests laufen gegen einen Test-Anbieter ohne Netz; ein
 optionaler Test gegen einen echten Dienst läuft nur mit gesetzter
 Umgebungsvariable und nie in der Standard-Suite.
 
+## Entscheidung
+
+Antwort des Nutzers (2026-11-16):
+
+1. **(a), erweitert um Mistral:** Anbindungen für OpenAI-kompatible Endpunkte,
+   Anthropic und Mistral.
+2. **(a)** allgemeine Schnittstelle, fachliche Regeln im ERP.
+3. **(a)** Einstellungen je Mandant wie der Mailzugang.
+4. **(a)** nur LV- und Katalogfelder an das Modell, KI je Mandant einzuschalten.
+5. **(a)** Protokoll ohne Inhalte.
+6. **(a), aber Zeitlimit 300 s als Standard und je Mandant einstellbar**;
+   höchstens 2 Wiederholungen, Tageslimit je Mandant.
+
+Auskunft: Es gibt keinen bevorzugten Anbieter oder Vertrag — im Betrieb soll
+sich zeigen, welcher Anbieter sich am besten schlägt. Folge: I.4 macht die
+Anbieter am Evaluationsset (ADR 0039) vergleichbar. Hardware für ein lokales
+Modell gibt es noch nicht, sie ist eine spätere Überlegung; die
+OpenAI-kompatible Anbindung hält den Weg offen.
+
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 
 - **Paket** `server/internal/llm`: Schnittstelle `Provider`, Anfrage-/
@@ -75,8 +95,9 @@ Umgebungsvariable und nie in der Standard-Suite.
   Protokoll ohne Inhalte), Feldliste für den Datenschutz.
 - **I.3.2** Anbindung OpenAI-kompatibel (lokal und Cloud).
 - **I.3.3** Anbindung Anthropic.
-- **I.3.4** Einstellungen je Mandant (Migration, verschlüsselter Schlüssel,
-  Tageslimit, API und Client).
+- **I.3.4** Anbindung Mistral.
+- **I.3.5** Einstellungen je Mandant (Migration, verschlüsselter Schlüssel,
+  Zeitlimit mit Standard 300 s, Tageslimit, API und Client).
 - Danach **I.4**: Matcher mit Modell, gemessen am Evaluationsset (ADR 0039).
 
 ## Folgen
