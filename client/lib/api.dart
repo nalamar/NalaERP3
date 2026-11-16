@@ -3617,6 +3617,50 @@ class ApiClient {
     return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
   }
 
+  // Leistungskatalog (I.4.4b): lesen mit quotes.read, pflegen und
+  // importieren mit leistungen.write. Abschalten statt Loeschen ("aktiv").
+  Future<List<dynamic>> listLeistungen({String q = '', bool nurAktive = false}) => _getList('/api/v1/leistungen/', {
+        if (q.trim().isNotEmpty) 'q': q.trim(),
+        if (nurAktive) 'aktiv': '1',
+        'limit': '1000',
+      });
+
+  Future<Map<String, dynamic>> createLeistung(Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.post(
+        _u('/api/v1/leistungen/'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 201) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> updateLeistung(String id, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u('/api/v1/leistungen/$id'),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
+  // CSV-Import (Feld "file"), ganz oder gar nicht: {"neu", "geaendert"}.
+  Future<Map<String, dynamic>> importLeistungenCsv(String filename, Uint8List bytes) async {
+    final r = await _sendWithAuth((headers) async {
+      final req = http.MultipartRequest('POST', _u('/api/v1/leistungen/import'));
+      req.headers.addAll(headers);
+      req.files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: MediaType('text', 'csv')));
+      return http.Response.fromStream(await req.send());
+    });
+    if (r.statusCode != 200) _throwApiException(r, fallbackMessage: 'Import fehlgeschlagen');
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // Verbindungstest mit den gespeicherten Einstellungen:
   // {"ok", "modell", "dauer_ms", "eingabe_tokens", "ausgabe_tokens"}.
   Future<Map<String, dynamic>> testLlmSettings() async =>

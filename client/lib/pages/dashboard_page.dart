@@ -9,6 +9,7 @@ import 'employees_page.dart';
 import 'absence_overview_page.dart';
 import 'change_password_page.dart';
 import 'leave_admin_page.dart';
+import 'leistungen_page.dart';
 import 'my_leave_page.dart';
 import 'my_time_page.dart';
 import 'qualification_catalog_page.dart';
@@ -132,6 +133,19 @@ class DashboardPage extends StatelessWidget {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (_) => buildQuotesPage(api: api),
+              ),
+            );
+          },
+        ),
+      if (_can('quotes.read'))
+        _DashCard(
+          title: 'Leistungskatalog',
+          icon: Icons.list_alt_rounded,
+          color: color,
+          onTap: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LeistungenPage(api: api),
               ),
             );
           },

@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.4.4b** erledigt — damit **I.4.4** vollständig: Endpunkte `/leistungen` (Lesen `quotes.read`, Schreiben
+> **2026-11-16 I.4.5** erledigt: Client-Seite „Leistungskatalog“ (Liste, Pflege, CSV-Import). In I.4 offen nur noch
+> **I.4.3** (wartet auf Schlüssel). Nächste: **I.5** Vorschläge am Import speichern, Prüfliste und Freigabe (zuerst
+> Bestandsaufnahme/Teilung; Matcher zieht aus `eval` in den Produktivteil). Nächste freie Migration: 122, nächstes ADR: 0045.
+> Davor **2026-11-16 I.4.4b** erledigt — damit **I.4.4** vollständig: Endpunkte `/leistungen` (Lesen `quotes.read`, Schreiben
 > und Import mit neuem Recht `leistungen.write`, Migration 121), Import aus JSON oder CSV-Upload. Nächste: **I.4.5**
 > Client für den Katalog. Nächste freie Migration: 122, nächstes ADR: 0045.
 > Davor **2026-11-16 I.4.4a** erledigt: Migration 120 (`leistungen`) und Paket `internal/leistungen` (Anlegen, Ändern,
