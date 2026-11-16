@@ -1,7 +1,9 @@
 # ADR 0045: Zuordnungsvorschläge am GAEB-Import, Prüfliste und Freigabe
 
-- Status: **Entwurf** (2026-11-16). Fragen in `docs/open-questions.md`,
-  Abschnitt 2026-11-16 I.5
+- Status: **Angenommen** (2026-11-16, vom Nutzer: „Deine Annahme kann so
+  umgesetzt werden“): 1–7 jeweils (a). **Frage 4 angepasst** durch ADR 0046
+  (Entwurf): mit mehreren Modellprofilen gehört die Schwelle ans Profil.
+  Fragen in `docs/open-questions.md`, Abschnitt 2026-11-16 I.5
 - Bezug: Backlog I.5, `aufgabe.md` §4 (Score und Begründung je Zuordnung,
   unterhalb der Schwelle in die Prüfliste, Angebot erst nach Freigabe durch
   einen Menschen, Preise nie vom Modell), ADR 0040 (GAEB-Import), ADR 0043
@@ -109,6 +111,15 @@ Unabhängig davon (aus §4 und ADR 0043/0044, nicht zur Wahl): an das Modell
 gehen nur LV- und Katalogfelder, nie Kunde, Projekt oder Personen; das
 Protokoll enthält keine Inhalte; keine Preise im Schema; Vorschläge und
 Entscheidungen bleiben je Mandant getrennt (Scope über den Importlauf).
+
+## Entscheidung (2026-11-16)
+
+Alle sieben Fragen mit (a): eigene Tabelle für Vorschläge, Lauf im
+Hintergrund über einen eigenen Endpunkt, ohne Sprachmodell deterministisch,
+Schwelle einstellbar (Ort nach ADR 0046: am Modellprofil), jeder Vorschlag
+offen bis zur Entscheidung eines Menschen mit Sammelbestätigung über der
+Schwelle, `quote_items.leistung_id` bei der Übernahme, Matcher in
+`internal/matching`. Reihenfolge und Migrationsnummern siehe ADR 0046.
 
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 

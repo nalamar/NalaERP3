@@ -1,7 +1,9 @@
 # ADR 0044: Matching von LV-Positionen mit Sprachmodell
 
 - Status: **Angenommen** (2026-11-16, "fortsetzen" = Empfehlung, ANNAHME):
-  1–6 jeweils (a); Auskunft zu Anbietern und Schlüsseln offen. Fragen in
+  1–6 jeweils (a). Auskunft zu Frage 6 (2026-11-16): Vergleich der Modelle
+  im Betrieb durch Feedback der Kalkulatoren, siehe ADR 0046; der Messlauf
+  am Korpus wird optional. Fragen in
   `docs/open-questions.md`, Abschnitt 2026-11-16 I.4
 - Bezug: Backlog I.4, `aufgabe.md` §4 (deterministisch vor probabilistisch,
   LLM nur für Matching und Textarbeit, Preise nie vom Modell, Score und

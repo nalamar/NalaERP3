@@ -7,7 +7,12 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.5.0** erledigt: ADR 0045 (Entwurf) zu Vorschlägen am GAEB-Import, Prüfliste und Freigabe; sieben
+> **2026-11-16 I.8.0** erledigt: ADR 0045 vom Nutzer angenommen (alle (a)); seine Auskunft zu I.4.3 (Vergleich der
+> Modelle im Betrieb durch Feedback der Kalkulatoren, Scoring, Lernen) als ADR 0046 (Entwurf) mit sieben Fragen
+> (`open-questions.md`, Abschnitt 2026-11-16 I.8). Nächste: **I.5.1** Umzug des Matchers nach `internal/matching`
+> (unabhängig von ADR 0046); danach I.8.1 Modellprofile (Migration 122), dann I.5.2 ff. Nächste freie Migration: 122,
+> nächstes ADR: 0047.
+> Davor **2026-11-16 I.5.0** erledigt: ADR 0045 (Entwurf) zu Vorschlägen am GAEB-Import, Prüfliste und Freigabe; sieben
 > Fragen in `docs/open-questions.md` (Abschnitt 2026-11-16 I.5), Antwort ausstehend. Nächste: nach der Antwort **I.5.1**
 > (Umzug des Matchers nach `internal/matching`). I.4.3 wartet weiter auf Schlüssel. Nächste freie Migration: 122,
 > nächstes ADR: 0046.
