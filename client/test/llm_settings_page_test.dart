@@ -3,66 +3,103 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:nalaerp_client/api.dart';
 import 'package:nalaerp_client/pages/llm_settings_page.dart';
 
-// Sprachmodell (Backlog I.3.5b). Erfundener Schluessel.
+// Sprachmodell (Backlog I.3.5b, umgebaut in I.8.2b). Erfundener Schluessel.
 
-Map<String, dynamic> _stand({
-  bool aktiv = false,
-  String anbieter = 'openai_compatible',
-  bool gesetzt = true,
-  bool lesbar = true,
-  bool schluessel = true,
-  int aufrufe = 3,
-}) =>
+Map<String, dynamic> _mandant(
+        {bool aktiv = false, bool schluessel = true, int aufrufe = 3}) =>
     {
-      'eingerichtet': true,
       'aktiv': aktiv,
+      'tageslimit': 500,
+      'aufrufe_heute': aufrufe,
+      'schluessel_eingerichtet': schluessel,
+    };
+
+Map<String, dynamic> _profil(String id, String name,
+        {bool standard = false,
+        bool aktiv = true,
+        String anbieter = 'openai_compatible',
+        bool lesbar = true}) =>
+    {
+      'id': id,
+      'name': name,
+      'aktiv': aktiv,
+      'standard': standard,
       'anbieter': anbieter,
       'endpunkt': 'http://localhost:11434/v1',
       'modell': 'lokal-7b',
       'timeout_s': 300,
-      'tageslimit': 500,
-      'aufrufe_heute': aufrufe,
-      'api_key_gesetzt': gesetzt,
+      'schwelle': 0.9,
+      'api_key_gesetzt': true,
       'api_key_lesbar': lesbar,
-      'schluessel_eingerichtet': schluessel,
     };
 
 class _FakeApi extends ApiClient {
-  _FakeApi({Map<String, dynamic>? stand, this.saveError, this.testError})
-      : stand = stand ?? _stand(),
+  _FakeApi(
+      {Map<String, dynamic>? mandant,
+      List<Map<String, dynamic>>? profile,
+      this.saveError,
+      this.testError})
+      : mandant = mandant ?? _mandant(),
+        profile = profile ??
+            [
+              _profil('p-1', 'Lokal', standard: true),
+              _profil('p-2', 'Claude', anbieter: 'anthropic', aktiv: false),
+            ],
         super(baseUrl: 'http://localhost:8080');
 
-  Map<String, dynamic> stand;
+  Map<String, dynamic> mandant;
+  List<Map<String, dynamic>> profile;
   final ApiException? saveError;
   final ApiException? testError;
   final List<Map<String, dynamic>> saved = [];
-  int tests = 0;
+  final List<String> tests = [];
+  final List<String> standards = [];
+  final List<Map<String, dynamic>> created = [];
 
   @override
-  Future<Map<String, dynamic>> getLlmSettings() async => stand;
+  Future<Map<String, dynamic>> getLlmMandant() async => mandant;
 
   @override
-  Future<Map<String, dynamic>> saveLlmSettings(
-      Map<String, dynamic> body) async {
+  Future<Map<String, dynamic>> saveLlmMandant(Map<String, dynamic> body) async {
     saved.add(body);
     if (saveError != null) throw saveError!;
-    final gesetzt = body.containsKey('api_key') ||
-        (stand['api_key_gesetzt'] == true &&
-            !body.containsKey('api_key_loeschen'));
-    stand = {
-      ...stand,
-      ...Map.of(body)
-        ..remove('api_key')
-        ..remove('api_key_loeschen'),
-      'api_key_gesetzt': gesetzt,
-    };
-    return stand;
+    mandant = {...mandant, ...body};
+    return mandant;
   }
 
   @override
-  Future<Map<String, dynamic>> testLlmSettings() async {
-    tests++;
-    stand = {...stand, 'aufrufe_heute': (stand['aufrufe_heute'] as int) + 1};
+  Future<List<dynamic>> listLlmProfiles() async => [...profile];
+
+  @override
+  Future<Map<String, dynamic>> setLlmStandardProfile(String id) async {
+    standards.add(id);
+    profile = [
+      for (final p in profile) {...p, 'standard': p['id'] == id}
+    ]..sort(
+        (a, b) => a['standard'] == true ? -1 : (b['standard'] == true ? 1 : 0));
+    return profile.first;
+  }
+
+  @override
+  Future<Map<String, dynamic>> createLlmProfile(
+      Map<String, dynamic> body) async {
+    created.add(body);
+    final p = {
+      ..._profil('p-${profile.length + 1}', body['name'].toString()),
+      'aktiv': body['aktiv'],
+      'standard': profile.isEmpty,
+    };
+    profile = [...profile, p];
+    return p;
+  }
+
+  @override
+  Future<Map<String, dynamic>> testLlmProfile(String id) async {
+    tests.add(id);
+    mandant = {
+      ...mandant,
+      'aufrufe_heute': (mandant['aufrufe_heute'] as int) + 1
+    };
     if (testError != null) throw testError!;
     return {
       'ok': true,
@@ -83,66 +120,23 @@ Future<void> _pump(WidgetTester tester, _FakeApi api) async {
   await tester.pumpAndSettle();
 }
 
-TextField _textField(WidgetTester tester, String key) =>
-    tester.widget<TextField>(find.byKey(ValueKey(key)));
-
 void main() {
-  group('buildLlmSettingsBody', () {
-    ({Map<String, dynamic>? body, String? error}) build(
-            {String timeout = '300',
-            String limit = '500',
-            String key = '',
-            bool loeschen = false}) =>
-        buildLlmSettingsBody(
-          aktiv: true,
-          anbieter: 'mistral',
-          endpunkt: ' https://api.example.test/v1 ',
-          modell: ' modell-1 ',
-          apiKey: key,
-          apiKeyLoeschen: loeschen,
-          timeout: timeout,
-          tageslimit: limit,
-        );
-
-    test('ohne Schluessel behaelt den gespeicherten', () {
-      final r = build();
-      expect(r.error, isNull);
-      expect(r.body, {
-        'aktiv': true,
-        'anbieter': 'mistral',
-        'endpunkt': 'https://api.example.test/v1',
-        'modell': 'modell-1',
-        'timeout_s': 300,
-        'tageslimit': 500,
-      });
-    });
-
-    test('Schluessel unveraendert, Loeschen eigens, leer = Standard', () {
-      expect(build(key: ' sk-erfunden ').body!['api_key'], ' sk-erfunden ');
-      expect(build(loeschen: true).body!['api_key_loeschen'], true);
-      expect(build(loeschen: true).body!.containsKey('api_key'), isFalse);
-      expect(build(timeout: ' ', limit: '').body!['timeout_s'], 0);
-      expect(build(timeout: ' ', limit: '').body!['tageslimit'], 0);
-      expect(build(timeout: '1800', limit: '100000').error, isNull);
-    });
-
-    test('abgelehnt', () {
-      for (final t in ['abc', '0', '1801', '-5', '2.5']) {
-        expect(build(timeout: t).error,
-            'Zeitlimit muss eine Zahl zwischen 1 und 1800 Sekunden sein',
-            reason: t);
-      }
-      for (final l in ['x', '0', '100001']) {
-        expect(build(limit: l).error,
-            'Tageslimit muss eine Zahl zwischen 1 und 100000 sein',
-            reason: l);
-      }
-      expect(build(key: 'x', loeschen: true).error,
-          'API-Schlüssel entweder neu setzen oder löschen');
-    });
+  test('buildLlmMandantBody', () {
+    expect(buildLlmMandantBody(aktiv: true, tageslimit: ' 20 ').body,
+        {'aktiv': true, 'tageslimit': 20});
+    expect(buildLlmMandantBody(aktiv: false, tageslimit: '').body,
+        {'aktiv': false, 'tageslimit': 0});
+    expect(buildLlmMandantBody(aktiv: true, tageslimit: '1').error, isNull);
+    expect(
+        buildLlmMandantBody(aktiv: true, tageslimit: '100000').error, isNull);
+    for (final l in ['x', '0', '100001', '-1', '2.5']) {
+      expect(buildLlmMandantBody(aktiv: true, tageslimit: l).error,
+          'Tageslimit muss eine Zahl zwischen 1 und 100000 sein',
+          reason: l);
+    }
   });
 
-  test('llmTestSummary', () {
+  test('llmTestSummary und llmProfilZeile', () {
     expect(
         llmTestSummary({
           'modell': 'm-1',
@@ -153,128 +147,169 @@ void main() {
         'Verbindung in Ordnung – Modell m-1, 80 ms, 10 Token gesendet, 2 Token erhalten');
     expect(llmTestSummary({}),
         'Verbindung in Ordnung – Modell unbekannt, 0 ms, 0 Token gesendet, 0 Token erhalten');
+    expect(llmProfilZeile(_profil('p', 'x')),
+        'OpenAI-kompatibel · lokal-7b · Schwelle 0,9 · eingeschaltet');
+    expect(
+        llmProfilZeile({
+          ..._profil('p', 'x', anbieter: 'anthropic', aktiv: false),
+          'modell': ''
+        }),
+        'Anthropic · Schwelle 0,9 · ausgeschaltet');
   });
 
-  testWidgets('zeigt den Stand ohne Schluessel und speichert ohne Schluessel',
+  testWidgets('zeigt Hauptschalter, Tageslimit und Profile ohne Schluessel',
       (tester) async {
     final api = _FakeApi();
     await _pump(tester, api);
-    expect(find.text('http://localhost:11434/v1'), findsOneWidget);
-    expect(find.text('lokal-7b'), findsOneWidget);
     expect(find.text('Heute: 3 Aufrufe'), findsOneWidget);
-    expect(find.text('Gespeichert – leer lassen, um ihn zu behalten'),
+    expect(find.text('Lokal'), findsOneWidget);
+    expect(find.text('Claude'), findsOneWidget);
+    expect(find.text('Standard'), findsOneWidget);
+    expect(find.text('Anthropic · lokal-7b · Schwelle 0,9 · ausgeschaltet'),
         findsOneWidget);
-    expect(_textField(tester, 'apiKey').controller!.text, '');
-    expect(_textField(tester, 'apiKey').obscureText, isTrue);
+    // Standardprofil ohne "Als Standard"
+    expect(find.byKey(const ValueKey('standard-p-1')), findsNothing);
+    expect(find.byKey(const ValueKey('standard-p-2')), findsOneWidget);
     expect(find.byIcon(Icons.warning_amber), findsNothing);
+    expect(find.text('Noch kein Profil angelegt – das erste wird Standard.'),
+        findsNothing);
+  });
 
+  testWidgets('Hauptschalter speichern, ungueltiges Tageslimit',
+      (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
     await tester.tap(find.text('Sprachmodell eingeschaltet'));
-    await tester.enterText(find.byKey(const ValueKey('timeout')), '120');
+    await tester.enterText(find.byKey(const ValueKey('tageslimit')), '50');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(api.saved, hasLength(1));
-    expect(api.saved.single['aktiv'], true);
-    expect(api.saved.single['timeout_s'], 120);
-    expect(api.saved.single.containsKey('api_key'), isFalse);
+    expect(api.saved.single, {'aktiv': true, 'tageslimit': 50});
     expect(find.text('Einstellungen des Sprachmodells gespeichert'),
         findsOneWidget);
-  });
 
-  testWidgets(
-      'Anbieter wechseln: Endpunkt und Modell optional, Schluessel gesendet und geleert',
-      (tester) async {
-    final api = _FakeApi(stand: _stand(gesetzt: false));
-    await _pump(tester, api);
-    expect(find.text('Endpunkt'), findsOneWidget);
-    expect(find.text('Gespeicherten API-Schlüssel löschen'), findsNothing);
-    await tester.tap(find.byKey(const ValueKey('anbieter')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Anthropic').last);
-    await tester.pumpAndSettle();
-    expect(find.text('Endpunkt (optional)'), findsOneWidget);
-    expect(find.text('Modell (optional)'), findsOneWidget);
-    await tester.enterText(find.byKey(const ValueKey('endpunkt')), '');
-    await tester.enterText(
-        find.byKey(const ValueKey('apiKey')), 'sk-erfunden-42');
+    await tester.enterText(find.byKey(const ValueKey('tageslimit')), '0');
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(api.saved.single['anbieter'], 'anthropic');
-    expect(api.saved.single['endpunkt'], '');
-    expect(api.saved.single['api_key'], 'sk-erfunden-42');
-    expect(_textField(tester, 'apiKey').controller!.text, '');
-    expect(find.text('Gespeichert – leer lassen, um ihn zu behalten'),
+    expect(find.text('Tageslimit muss eine Zahl zwischen 1 und 100000 sein'),
         findsOneWidget);
-  });
-
-  testWidgets('Schluessel loeschen', (tester) async {
-    final api = _FakeApi();
-    await _pump(tester, api);
-    await tester.enterText(find.byKey(const ValueKey('apiKey')), 'tippfehler');
-    await tester.tap(find.text('Gespeicherten API-Schlüssel löschen'));
-    await tester.pumpAndSettle();
-    expect(_textField(tester, 'apiKey').enabled, isFalse);
-    await tester.tap(find.text('Speichern'));
-    await tester.pumpAndSettle();
-    expect(api.saved.single['api_key_loeschen'], true);
-    expect(api.saved.single.containsKey('api_key'), isFalse);
+    expect(api.saved, hasLength(1));
   });
 
   testWidgets(
-      'ungueltiges Zeitlimit und Fehler des Servers: Meldung, Eingaben bleiben',
+      'Einschalten ohne Profil: Meldung des Servers, keine Erfolgsmeldung',
       (tester) async {
-    final api = _FakeApi(
+    final failing = _FakeApi(
+        profile: [],
         saveError: const ApiException(
             statusCode: 400,
-            message: 'Für das Sprachmodell fehlt: Endpunkt und Modell'));
-    await _pump(tester, api);
-    await tester.enterText(find.byKey(const ValueKey('timeout')), '9999');
+            message: 'Zum Einschalten fehlt ein eingeschaltetes Profil'));
+    await _pump(tester, failing);
+    expect(find.text('Noch kein Profil angelegt – das erste wird Standard.'),
+        findsOneWidget);
+    await tester.tap(find.text('Sprachmodell eingeschaltet'));
     await tester.tap(find.text('Speichern'));
     await tester.pumpAndSettle();
-    expect(
-        find.text('Zeitlimit muss eine Zahl zwischen 1 und 1800 Sekunden sein'),
+    expect(find.text('Zum Einschalten fehlt ein eingeschaltetes Profil'),
         findsOneWidget);
-    expect(api.saved, isEmpty);
-
-    await tester.enterText(find.byKey(const ValueKey('timeout')), '300');
-    await tester.enterText(find.byKey(const ValueKey('modell')), '');
-    await tester.tap(find.text('Speichern'));
-    await tester.pumpAndSettle();
-    expect(find.text('Für das Sprachmodell fehlt: Endpunkt und Modell'),
-        findsOneWidget);
-    expect(_textField(tester, 'modell').controller!.text, '');
     expect(
         find.text('Einstellungen des Sprachmodells gespeichert'), findsNothing);
   });
 
+  testWidgets('eingeschalteter Hauptschalter wird gezeigt und beibehalten',
+      (tester) async {
+    final api = _FakeApi(mandant: _mandant(aktiv: true));
+    await _pump(tester, api);
+    expect(tester.widget<SwitchListTile>(find.byType(SwitchListTile)).value,
+        isTrue);
+    await tester.tap(find.text('Speichern'));
+    await tester.pumpAndSettle();
+    expect(api.saved.single, {'aktiv': true, 'tageslimit': 500});
+  });
+
+  testWidgets('Standard wechseln laedt die Liste neu', (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('standard-p-2')));
+    await tester.pumpAndSettle();
+    expect(api.standards, ['p-2']);
+    expect(find.text('„Claude“ ist jetzt Standard'), findsOneWidget);
+    expect(find.byKey(const ValueKey('standard-p-2')), findsNothing);
+    expect(find.byKey(const ValueKey('standard-p-1')), findsOneWidget);
+  });
+
+  testWidgets('Profil anlegen ueber den Dialog', (tester) async {
+    final api = _FakeApi(profile: []);
+    await _pump(tester, api);
+    await tester.tap(find.text('Profil anlegen'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const ValueKey('profilName')), 'Neu');
+    await tester.enterText(find.byKey(const ValueKey('profilEndpunkt')),
+        'http://localhost:11434/v1');
+    await tester.tap(find.text('Speichern').last);
+    await tester.pumpAndSettle();
+    expect(api.created.single['name'], 'Neu');
+    expect(find.text('Profil angelegt'), findsOneWidget);
+    expect(find.text('Neu'), findsOneWidget);
+    expect(find.text('Standard'), findsOneWidget);
+  });
+
+  testWidgets(
+      'Bearbeiten oeffnet den Dialog mit dem Stand, Abbrechen aendert nichts',
+      (tester) async {
+    final api = _FakeApi();
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('bearbeiten-p-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil bearbeiten'), findsOneWidget);
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('profilName')))
+            .controller!
+            .text,
+        'Claude');
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil bearbeiten'), findsNothing);
+    expect(find.text('Profil gespeichert'), findsNothing);
+  });
+
   testWidgets('Warnungen: kein Schluessel, API-Schluessel nicht lesbar',
       (tester) async {
-    await _pump(
-        tester,
-        _FakeApi(
-            stand: _stand(schluessel: false, gesetzt: false, lesbar: false)));
+    await _pump(tester, _FakeApi(mandant: _mandant(schluessel: false)));
     expect(find.textContaining('SETTINGS_ENCRYPTION_KEY'), findsOneWidget);
     expect(find.textContaining('nicht mehr entschlüsseln'), findsNothing);
 
-    await _pump(tester, _FakeApi(stand: _stand(lesbar: false)));
+    await _pump(
+        tester,
+        _FakeApi(profile: [
+          _profil('p-1', 'Lokal', standard: true),
+          _profil('p-2', 'Claude', lesbar: false),
+        ]));
     expect(find.textContaining('nicht mehr entschlüsseln'), findsOneWidget);
     expect(find.textContaining('SETTINGS_ENCRYPTION_KEY'), findsNothing);
   });
 
-  testWidgets('Verbindungstest: Erfolg zaehlt mit, Fehler mit Meldung',
+  testWidgets(
+      'Verbindungstest je Profil: Erfolg zaehlt mit, Fehler mit Meldung',
       (tester) async {
     final api = _FakeApi();
     await _pump(tester, api);
-    await tester.enterText(
-        find.byKey(const ValueKey('modell')), 'ungespeichert');
-    await tester.tap(find.text('Verbindung testen'));
+    await tester.enterText(find.byKey(const ValueKey('tageslimit')), '77');
+    await tester.tap(find.byKey(const ValueKey('testen-p-2')));
     await tester.pumpAndSettle();
-    expect(api.tests, 1);
+    expect(api.tests, ['p-2']);
     expect(
         find.text(
             'Verbindung in Ordnung – Modell lokal-7b, 120 ms, 12 Token gesendet, 3 Token erhalten'),
         findsOneWidget);
     expect(find.text('Heute: 4 Aufrufe'), findsOneWidget);
-    expect(_textField(tester, 'modell').controller!.text, 'ungespeichert');
+    // Eingaben bleiben stehen
+    expect(
+        tester
+            .widget<TextField>(find.byKey(const ValueKey('tageslimit')))
+            .controller!
+            .text,
+        '77');
 
     final failing = _FakeApi(
         testError: const ApiException(
@@ -283,7 +318,7 @@ void main() {
                 'Test des Sprachmodells fehlgeschlagen: Anfrage abgelehnt (401)',
             code: 'llm_test_failed'));
     await _pump(tester, failing);
-    await tester.tap(find.text('Verbindung testen'));
+    await tester.tap(find.byKey(const ValueKey('testen-p-1')));
     await tester.pumpAndSettle();
     expect(
         find.text(
@@ -295,11 +330,25 @@ void main() {
             statusCode: 429,
             message: 'Tageslimit des Sprachmodells erreicht (500 Aufrufe)'));
     await _pump(tester, limit);
-    await tester.tap(find.text('Verbindung testen'));
+    await tester.tap(find.byKey(const ValueKey('testen-p-1')));
     await tester.pumpAndSettle();
     expect(
         find.text(
             'Test fehlgeschlagen: Tageslimit des Sprachmodells erreicht (500 Aufrufe)'),
         findsOneWidget);
   });
+
+  testWidgets('Fehler beim Laden', (tester) async {
+    await _pump(tester, _LoadFailApi());
+    expect(
+        find.text(
+            'Einstellungen konnten nicht geladen werden: Keine Berechtigung'),
+        findsOneWidget);
+  });
+}
+
+class _LoadFailApi extends _FakeApi {
+  @override
+  Future<Map<String, dynamic>> getLlmMandant() async =>
+      throw const ApiException(statusCode: 403, message: 'Keine Berechtigung');
 }

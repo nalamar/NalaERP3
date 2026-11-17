@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.8.2a** erledigt: Client-API für Profile und Mandant, Dialog „Profil anlegen/bearbeiten“ (noch nicht
+> **2026-11-17 I.8.2b** erledigt — damit **I.8.2** vollständig: Seite „Sprachmodell“ mit Hauptschalter/Tageslimit und
+> Profilliste (Anlegen, Bearbeiten, Standard, Test je Profil). Nächste: **I.5.2** gaeb.LV aus den Importtabellen (laut
+> ADR 0046 Reihenfolge I.5.2–I.5.5, mit Profil am Lauf und an jedem Vorschlag; Migration 123 ff.; zuerst Bestandsaufnahme
+> und Teilung). Nächste freie Migration: 123, nächstes ADR: 0047.
+> Davor **2026-11-17 I.8.2a** erledigt: Client-API für Profile und Mandant, Dialog „Profil anlegen/bearbeiten“ (noch nicht
 > eingebunden). Nächste: **I.8.2b** Seite „Sprachmodell“ umbauen. Nächste freie Migration: 123, nächstes ADR: 0047.
 > Davor **2026-11-17 I.8.1b** erledigt — damit **I.8.1** vollständig: Endpunkte `/settings/llm/mandant` und
 > `/settings/llm/profile` (Liste, Anlegen, Ersetzen, Standard, Test je Profil). Nächste: **I.8.2** Client (Seite
