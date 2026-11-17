@@ -443,7 +443,7 @@ func (s *SettingsService) profileClientFor(ctx context.Context, companyID, id st
 		return nil, nil, err
 	}
 	if requireActive && (!m.Aktiv || !p.Aktiv) {
-		return nil, nil, errors.New("Sprachmodell ist nicht eingeschaltet")
+		return nil, nil, ErrNotEnabled
 	}
 	set := Settings{Anbieter: p.Anbieter, Endpunkt: p.Endpunkt, Modell: p.Modell, TimeoutS: p.TimeoutS}
 	c, err := s.budgetClient(companyID, set, enc, m.Tageslimit, recorder)

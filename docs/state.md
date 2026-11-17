@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.2a** erledigt: Migration 123 (`quote_import_item_matches`, Status des Laufs am Import) und
+> **2026-11-17 I.5.2b** erledigt: `matching.LaufService` (Starten mit Auswahl Profil/Standard/Wortabgleich, Speichern je
+> Bündel, Status, Abbruch beim Neustart). Nächste: **I.5.2c** Entscheidungen (bestätigen, ändern, verwerfen,
+> Sammelbestätigung über der Schwelle, Freigabe nur ohne offene Vorschläge). Nächste freie Migration: 124, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.2a** erledigt: Migration 123 (`quote_import_item_matches`, Status des Laufs am Import) und
 > `matching.Store` (LV und Katalog aus der Datenbank). Nächste: **I.5.2b** Lauf mit Speichern der Vorschläge. Nächste
 > freie Migration: 124, nächstes ADR: 0047.
 > Davor **2026-11-17 I.8.2b** erledigt — damit **I.8.2** vollständig: Seite „Sprachmodell“ mit Hauptschalter/Tageslimit und

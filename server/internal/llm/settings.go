@@ -282,6 +282,9 @@ func (s *SettingsService) TestClient(ctx context.Context, companyID string, reco
 	return s.clientFor(ctx, companyID, recorder, false)
 }
 
+// ErrNotEnabled: Hauptschalter oder gewaehltes Profil ist ausgeschaltet.
+var ErrNotEnabled = errors.New("Sprachmodell ist nicht eingeschaltet")
+
 // ErrDailyLimit: das Tageslimit des Mandanten ist erreicht.
 var ErrDailyLimit = errors.New("Tageslimit des Sprachmodells erreicht")
 
@@ -294,7 +297,7 @@ func (s *SettingsService) clientFor(ctx context.Context, companyID string, recor
 		return nil, err
 	}
 	if requireActive && (!r.s.Aktiv || !r.profilAktiv) {
-		return nil, errors.New("Sprachmodell ist nicht eingeschaltet")
+		return nil, ErrNotEnabled
 	}
 	if !r.s.Eingerichtet {
 		return nil, errors.New("Sprachmodell nicht vollständig eingerichtet")
