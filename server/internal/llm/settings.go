@@ -299,16 +299,21 @@ func (s *SettingsService) clientFor(ctx context.Context, companyID string, recor
 	if !r.s.Eingerichtet {
 		return nil, errors.New("Sprachmodell nicht vollständig eingerichtet")
 	}
+	return s.budgetClient(companyID, r.s, r.enc, r.s.Tageslimit, recorder)
+}
+
+// budgetClient baut den Client aus Anbieter, Endpunkt, Modell und Zeitlimit
+// von set, dem verschluesselten Schluessel und dem Tageslimit des Mandanten.
+func (s *SettingsService) budgetClient(companyID string, set Settings, enc []byte, limit int, recorder Recorder) (*Client, error) {
 	apiKey := ""
-	if r.enc != nil {
-		plain, err := s.box.Open(r.enc, apiKeyAAD(companyID))
+	if enc != nil {
+		plain, err := s.box.Open(enc, apiKeyAAD(companyID))
 		if err != nil {
 			return nil, errors.New("API-Schlüssel des Sprachmodells ungültig (nicht lesbar) - bitte neu eintragen")
 		}
 		apiKey = string(plain)
 	}
-	limit := r.s.Tageslimit
-	c := NewClient(newProvider(r.s, apiKey), Limits{Timeout: time.Duration(r.s.TimeoutS) * time.Second, MaxRetries: DefaultMaxRetries}, recorder)
+	c := NewClient(newProvider(set, apiKey), Limits{Timeout: time.Duration(set.TimeoutS) * time.Second, MaxRetries: DefaultMaxRetries}, recorder)
 	return c.WithBudget(func(ctx context.Context) error { return s.reserveCall(ctx, companyID, limit) }), nil
 }
 

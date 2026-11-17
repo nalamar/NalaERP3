@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.8.1a1** erledigt: Migration 122 (`company_llm_profiles`, Übernahme als Profil „Standard“, Schwelle
+> **2026-11-17 I.8.1a2** erledigt: Profile im Dienst pflegen (Liste, Anlegen — erstes wird Standard —, Ändern, Standard
+> setzen), Hauptschalter/Tageslimit getrennt (`GetMandant`/`SaveMandant`), `ProfileClient` mit `ProfilAbschrift` für den
+> Lauf. Nächste: **I.8.1b** HTTP für Profile und Mandant. Nächste freie Migration: 123, nächstes ADR: 0047.
+> Davor **2026-11-17 I.8.1a1** erledigt: Migration 122 (`company_llm_profiles`, Übernahme als Profil „Standard“, Schwelle
 > je Profil); `llm.SettingsService` liest/schreibt Hauptschalter und Tageslimit am Mandanten, Rest am Standardprofil —
 > Endpunkte und Client unverändert. Nächste: **I.8.1a2** Profile pflegen und wählen im Dienst. Nächste freie
 > Migration: 123, nächstes ADR: 0047.
