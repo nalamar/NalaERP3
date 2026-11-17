@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nalaerp_client/api.dart';
@@ -32,31 +34,92 @@ Map<String, dynamic> _zeile(String id,
     };
 
 class _FakeApi extends ApiClient {
-  _FakeApi(this.zeilen, {this.write = true, this.error})
-      : super(baseUrl: 'http://localhost:8080');
+  _FakeApi(this.zeilen,
+      {this.write = true,
+      this.settings = false,
+      this.error,
+      this.startError,
+      List<Map<String, dynamic>>? status})
+      : status = status ?? [_fertig],
+        super(baseUrl: 'http://localhost:8080');
 
   List<Map<String, dynamic>> zeilen;
   final bool write;
+  final bool settings;
   final ApiException? error;
+  final ApiException? startError;
+  // Antworten der Statusabfrage nacheinander; die letzte bleibt.
+  final List<Map<String, dynamic>> status;
   final List<(String, String)> decided = [];
+  final List<String> leistungIds = [];
+  final List<(String, bool)> started = [];
+  final List<String> suchen = [];
   int confirmed = 0;
+  int listCalls = 0;
 
   @override
   bool hasPermission(String permission) =>
-      permission == 'quotes.read' || (write && permission == 'quotes.write');
+      permission == 'quotes.read' ||
+      (write && permission == 'quotes.write') ||
+      (settings && permission == 'settings.manage');
+
+  // Ist halt gesetzt, wartet die Statusabfrage (langsamer Server).
+  Completer<void>? halt;
+  int statusCalls = 0;
 
   @override
-  Future<List<dynamic>> listQuoteImportMatches(String importId) async =>
-      [for (final z in zeilen) Map<String, dynamic>.from(z)];
+  Future<Map<String, dynamic>> getQuoteImportMatchStatus(
+      String importId) async {
+    statusCalls++;
+    if (halt != null) await halt!.future;
+    return status.length > 1 ? status.removeAt(0) : status.first;
+  }
+
+  @override
+  Future<Map<String, dynamic>> startQuoteImportMatch(String importId,
+      {String profilId = '', bool wortabgleich = false}) async {
+    started.add((profilId, wortabgleich));
+    if (startError != null) throw startError!;
+    return _laeuft;
+  }
+
+  @override
+  Future<List<dynamic>> listLlmProfiles() async => [
+        {'id': 'p-1', 'name': 'Lokal', 'aktiv': true},
+        {'id': 'p-2', 'name': 'Aus', 'aktiv': false},
+      ];
+
+  @override
+  Future<List<dynamic>> listLeistungen(
+      {String q = '', bool nurAktive = false}) async {
+    suchen.add('$q|$nurAktive');
+    return [
+      {'id': 'l-2', 'code': 'L-2', 'kurztext': 'Tür', 'einheit': 'St'},
+      if (q.isEmpty)
+        {'id': 'l-3', 'code': 'L-3', 'kurztext': 'Tor', 'einheit': 'St'},
+    ];
+  }
+
+  @override
+  Future<List<dynamic>> listQuoteImportMatches(String importId) async {
+    listCalls++;
+    return [for (final z in zeilen) Map<String, dynamic>.from(z)];
+  }
 
   @override
   Future<Map<String, dynamic>> decideQuoteImportMatch(
       String importId, String itemId, String aktion,
       {String leistungId = ''}) async {
     decided.add((itemId, aktion));
+    leistungIds.add(leistungId);
     if (error != null) throw error!;
     final z = zeilen.firstWhere((z) => z['item_id'] == itemId);
-    z['entscheidung'] = aktion == 'bestaetigen' ? 'bestaetigt' : 'verworfen';
+    z['entscheidung'] = switch (aktion) {
+      'bestaetigen' => 'bestaetigt',
+      'aendern' => 'geaendert',
+      _ => 'verworfen',
+    };
+    z['entschieden_code'] = aktion == 'aendern' ? 'L-2' : '';
     return Map<String, dynamic>.from(z);
   }
 
@@ -74,14 +137,30 @@ class _FakeApi extends ApiClient {
   }
 }
 
-Future<void> _pump(WidgetTester tester, _FakeApi api) async {
+const _fertig = {
+  'status': 'fertig',
+  'quelle': 'wortabgleich',
+  'fortschritt': 2,
+  'gesamt': 2
+};
+const _laeuft = {
+  'status': 'laeuft',
+  'quelle': 'modell',
+  'profil_name': 'Lokal',
+  'fortschritt': 1,
+  'gesamt': 2
+};
+
+Future<void> _pump(WidgetTester tester, _FakeApi api,
+    {bool bearbeitbar = true}) async {
   tester.view.physicalSize = const Size(1200, 3000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
     home: Builder(
       builder: (context) => TextButton(
-        onPressed: () => showQuoteImportMatchDialog(context, api, 'imp-1'),
+        onPressed: () => showQuoteImportMatchDialog(context, api, 'imp-1',
+            bearbeitbar: bearbeitbar),
         child: const Text('öffnen'),
       ),
     ),
@@ -211,5 +290,162 @@ void main() {
     await _pump(tester, _FakeApi([_zeile('b', entscheidung: '')]));
     expect(find.text('Entscheidung: noch nicht zugeordnet'), findsOneWidget);
     expect(find.byKey(const ValueKey('verwerfen-b')), findsNothing);
+  });
+
+  test('Text zum Stand des Laufs', () {
+    expect(matchLaufText(const {}), 'Noch keine Zuordnung gelaufen');
+    expect(
+        matchLaufText(const {'status': ''}), 'Noch keine Zuordnung gelaufen');
+    expect(matchLaufText(_laeuft),
+        'Zuordnung läuft (Modell Lokal): 1 von 2 Positionen');
+    expect(matchLaufText(_fertig), 'Zuordnung fertig (Wortabgleich)');
+    expect(matchLaufText(const {'status': 'fehler', 'fehler': 'Zeitlimit'}),
+        'Zuordnung mit Fehler beendet: Zeitlimit');
+    expect(matchLaufText(const {'status': 'abgebrochen'}),
+        'Zuordnung abgebrochen (Serverneustart) - bitte neu starten');
+  });
+
+  testWidgets('startet den Wortabgleich und fragt den Status bis zum Ende ab',
+      (tester) async {
+    final api = _FakeApi([
+      _zeile('a')
+    ], status: [
+      {'status': ''},
+      _laeuft,
+      _fertig,
+    ]);
+    await _pump(tester, api);
+    expect(find.text('Noch keine Zuordnung gelaufen'), findsOneWidget);
+    expect(find.text('Zuordnung starten'), findsOneWidget);
+    // ohne settings.manage keine Profile in der Auswahl
+    await tester.tap(find.byKey(const ValueKey('lauf-auswahl')));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil Lokal'), findsNothing);
+    await tester.tap(find.text('Wortabgleich (ohne Sprachmodell)').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lauf-starten')));
+    await tester.pumpAndSettle();
+    expect(api.started, [('', true)]);
+    expect(find.text('Zuordnung läuft (Modell Lokal): 1 von 2 Positionen'),
+        findsOneWidget);
+    // waehrend des Laufs weder Start noch Entscheidungen
+    expect(find.byKey(const ValueKey('lauf-starten')), findsNothing);
+    expect(find.byKey(const ValueKey('verwerfen-a')), findsNothing);
+    expect(find.byKey(const ValueKey('sammel-bestaetigen')), findsNothing);
+    final vorher = api.listCalls;
+    await tester.pump(matchPollIntervall);
+    await tester.pumpAndSettle();
+    expect(find.text('Zuordnung läuft (Modell Lokal): 1 von 2 Positionen'),
+        findsOneWidget);
+    expect(api.listCalls, vorher);
+    await tester.pump(matchPollIntervall);
+    await tester.pumpAndSettle();
+    expect(find.text('Zuordnung fertig (Wortabgleich)'), findsOneWidget);
+    expect(api.listCalls, vorher + 1);
+    expect(find.text('Zuordnung neu starten'), findsOneWidget);
+    expect(find.byKey(const ValueKey('verwerfen-a')), findsOneWidget);
+    // nach dem Ende keine weitere Abfrage
+    await tester.pump(matchPollIntervall * 3);
+    expect(api.listCalls, vorher + 1);
+  });
+
+  testWidgets('startet mit Profil nur mit settings.manage, nur aktive Profile',
+      (tester) async {
+    final api = _FakeApi([_zeile('a')], settings: true);
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('lauf-auswahl')));
+    await tester.pumpAndSettle();
+    expect(find.text('Profil Aus'), findsNothing);
+    await tester.tap(find.text('Profil Lokal').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('lauf-starten')));
+    await tester.pumpAndSettle();
+    expect(api.started, [('p-1', false)]);
+    // Dialog schliessen beendet die Abfrage (kein Timer bleibt haengen)
+    await tester.tap(find.text('Schließen'));
+    await tester.pumpAndSettle();
+    await tester.pump(matchPollIntervall * 2);
+  });
+
+  testWidgets('Standardprofil ohne Auswahl, Fehler beim Start sichtbar',
+      (tester) async {
+    final api = _FakeApi([_zeile('a')],
+        startError: const ApiException(
+            statusCode: 409, message: 'Sprachmodell ist nicht eingeschaltet'));
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('lauf-starten')));
+    await tester.pumpAndSettle();
+    expect(api.started, [('', false)]);
+    expect(find.text('Sprachmodell ist nicht eingeschaltet'), findsOneWidget);
+    expect(find.text('Zuordnung fertig (Wortabgleich)'), findsOneWidget);
+  });
+
+  testWidgets('beim Öffnen laufender Lauf wird weiter abgefragt',
+      (tester) async {
+    final api = _FakeApi([_zeile('a')], status: [_laeuft, _fertig]);
+    await _pump(tester, api);
+    expect(find.text('Zuordnung läuft (Modell Lokal): 1 von 2 Positionen'),
+        findsOneWidget);
+    await tester.pump(matchPollIntervall);
+    await tester.pumpAndSettle();
+    expect(find.text('Zuordnung fertig (Wortabgleich)'), findsOneWidget);
+  });
+
+  testWidgets('langsamer Server: keine überlappenden Statusabfragen',
+      (tester) async {
+    final api = _FakeApi([_zeile('a')], status: [_laeuft, _laeuft, _fertig]);
+    await _pump(tester, api);
+    expect(api.statusCalls, 1);
+    api.halt = Completer<void>();
+    await tester.pump(matchPollIntervall);
+    await tester.pump(matchPollIntervall);
+    await tester.pump(matchPollIntervall);
+    expect(api.statusCalls, 2);
+    api.halt!.complete();
+    api.halt = null;
+    await tester.pumpAndSettle();
+    await tester.pump(matchPollIntervall);
+    await tester.pumpAndSettle();
+    expect(api.statusCalls, 3);
+    expect(find.text('Zuordnung fertig (Wortabgleich)'), findsOneWidget);
+  });
+
+  testWidgets('ändert über die Leistungsauswahl mit Suche', (tester) async {
+    final api = _FakeApi([_zeile('a')]);
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('aendern-a')));
+    await tester.pumpAndSettle();
+    expect(find.text('Leistung wählen'), findsOneWidget);
+    expect(find.text('L-3 Tor'), findsOneWidget);
+    await tester.enterText(find.byKey(const ValueKey('leistung-suche')), 'Tür');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    expect(api.suchen, ['|true', 'Tür|true']);
+    expect(find.text('L-3 Tor'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('leistung-l-2')));
+    await tester.pumpAndSettle();
+    expect(api.decided, [('a', 'aendern')]);
+    expect(api.leistungIds, ['l-2']);
+    expect(find.text('Entscheidung: geändert (L-2)'), findsOneWidget);
+  });
+
+  testWidgets('Abbrechen der Leistungsauswahl entscheidet nichts',
+      (tester) async {
+    final api = _FakeApi([_zeile('a')]);
+    await _pump(tester, api);
+    await tester.tap(find.byKey(const ValueKey('aendern-a')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Abbrechen'));
+    await tester.pumpAndSettle();
+    expect(api.decided, isEmpty);
+    expect(find.text('Entscheidung: offen'), findsOneWidget);
+  });
+
+  testWidgets('nach der Freigabe nur lesen', (tester) async {
+    await _pump(tester, _FakeApi([_zeile('a')]), bearbeitbar: false);
+    expect(find.text('Zuordnung fertig (Wortabgleich)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('lauf-starten')), findsNothing);
+    expect(find.byKey(const ValueKey('aendern-a')), findsNothing);
+    expect(find.byKey(const ValueKey('sammel-bestaetigen')), findsNothing);
   });
 }

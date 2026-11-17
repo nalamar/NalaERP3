@@ -547,6 +547,23 @@ class _FakeApiClient extends ApiClient {
   Future<List<dynamic>> listQuoteImportItems(String importId) async =>
       quoteImportItemMap[importId] ?? const [];
 
+  // Zuordnung (I.5.5b): noch kein Lauf, Positionen ohne Vorschlag.
+  @override
+  Future<Map<String, dynamic>> getQuoteImportMatchStatus(
+          String importId) async =>
+      {'status': ''};
+
+  @override
+  Future<List<dynamic>> listQuoteImportMatches(String importId) async => [
+        for (final item in quoteImportItemMap[importId] ?? const [])
+          {
+            'item_id': (item as Map)['id'],
+            'position_no': item['position_no'],
+            'kurztext': item['short_text'],
+            'entscheidung': '',
+          }
+      ];
+
   @override
   Future<Map<String, dynamic>> getQuoteImportStructure(String importId) async {
     if (quoteImportStructureErrors.contains(importId)) {
@@ -5106,6 +5123,64 @@ void main() {
     expect(find.text('Review-Notiz: Fachlich geprueft'), findsNothing);
     expect(find.text('Review-Entscheidung wurde gespeichert'), findsNothing);
   });
+
+  for (final (status, knopf, bearbeitbar) in const [
+    ('parsed', true, true),
+    ('reviewed', true, false),
+    ('uploaded', false, false),
+  ]) {
+    testWidgets('QuotesPage GAEB import Zuordnung prüfen bei Status $status',
+        (tester) async {
+      await _prepareLargeViewport(tester);
+      final api = _FakeApiClient(
+        permissions: const {'quotes.read', 'quotes.write'},
+        quoteImportList: [
+          {
+            'id': 'import-match-1',
+            'source_filename': 'lv.x83',
+            'status': status
+          },
+        ],
+        quoteImportDetails: {
+          'import-match-1': {
+            'id': 'import-match-1',
+            'source_filename': 'lv.x83',
+            'status': status,
+            'item_count': 1,
+          },
+        },
+        quoteImportItemMap: const {
+          'import-match-1': [
+            {'id': 'item-1', 'position_no': '01.01', 'short_text': 'Fenster'},
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(splashFactory: NoSplash.splashFactory),
+          home: QuotesPage(
+            api: api,
+            initialFilters:
+                const CommercialFilterContext(projectId: 'project-1'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Details'));
+      await tester.pumpAndSettle();
+
+      final zuordnung = find.byKey(const ValueKey('import-zuordnung'));
+      expect(zuordnung, knopf ? findsOneWidget : findsNothing);
+      if (!knopf) return;
+      await tester.tap(zuordnung);
+      await tester.pumpAndSettle();
+      expect(find.text('Zuordnung prüfen'), findsWidgets);
+      expect(find.text('Noch keine Zuordnung gelaufen'), findsOneWidget);
+      expect(find.text('01.01 Fenster'), findsOneWidget);
+      expect(find.byKey(const ValueKey('lauf-starten')),
+          bearbeitbar ? findsOneWidget : findsNothing);
+    });
+  }
 
   testWidgets('QuotesPage GAEB import review enables draft quote action',
       (tester) async {

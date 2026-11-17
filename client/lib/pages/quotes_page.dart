@@ -4,6 +4,7 @@ import '../api.dart';
 import '../commercial_destinations.dart';
 import '../commercial_navigation.dart';
 import '../web/browser.dart' as browser;
+import 'quote_import_match_dialog.dart';
 
 typedef QuoteImportFilePicker = Future<browser.PickedFile?> Function({
   String? accept,
@@ -1358,6 +1359,8 @@ class _QuotesPageState extends State<QuotesPage> {
                 widget.api.hasPermission('quotes.write') && status == 'parsed';
             final canApplyImport = widget.api.hasPermission('quotes.write') &&
                 status == 'reviewed';
+            final canReviewMatches = widget.api.hasPermission('quotes.read') &&
+                const {'parsed', 'reviewed', 'applied'}.contains(status);
 
             return AlertDialog(
               title:
@@ -1464,6 +1467,20 @@ class _QuotesPageState extends State<QuotesPage> {
                               },
                               icon: const Icon(Icons.verified_rounded),
                               label: const Text('Zur Übernahme freigeben'),
+                            ),
+                          // Zuordnung zum Leistungskatalog (I.5.5b); nach
+                          // der Freigabe nur noch lesbar.
+                          if (canReviewMatches)
+                            OutlinedButton.icon(
+                              key: const ValueKey('import-zuordnung'),
+                              onPressed: () => showQuoteImportMatchDialog(
+                                dialogContext,
+                                widget.api,
+                                importId,
+                                bearbeitbar: status == 'parsed',
+                              ),
+                              icon: const Icon(Icons.rule_rounded),
+                              label: const Text('Zuordnung prüfen'),
                             ),
                           if (canApplyImport)
                             FilledButton.icon(
