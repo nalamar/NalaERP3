@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"nalaerp3/internal/matching"
 )
 
 // festerMatcher liefert immer denselben Vorschlag (fuer Fehlerfaelle).
@@ -44,7 +46,7 @@ func TestLadeKorpus(t *testing.T) {
 
 func TestAusfuehren(t *testing.T) {
 	k, lvs := korpus(t)
-	nie, err := Ausfuehren(lvs, k, NieZuordnen{}, 0.5)
+	nie, err := Ausfuehren(lvs, k, matching.NieZuordnen{}, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,11 +59,11 @@ func TestAusfuehren(t *testing.T) {
 		t.Fatalf("je LV: %+v %+v", nie.LVs[0], nie.LVs[3])
 	}
 	// Wortabgleich: deterministisch, jede Position genau einmal gezählt
-	a, err := Ausfuehren(lvs, k, Wortabgleich{}, 0.5)
+	a, err := Ausfuehren(lvs, k, matching.Wortabgleich{}, 0.5)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, _ := Ausfuehren(lvs, k, Wortabgleich{}, 0.5)
+	b, _ := Ausfuehren(lvs, k, matching.Wortabgleich{}, 0.5)
 	if !reflect.DeepEqual(a, b) || a.Gesamt.Automatisch+a.Gesamt.Pruefliste != 250 || a.Gesamt.Richtig+a.Gesamt.Falsch != a.Gesamt.Automatisch ||
 		a.Gesamt.Richtig == 0 {
 		t.Fatalf("wortabgleich: %+v", a.Gesamt)
@@ -120,7 +122,7 @@ func TestBericht(t *testing.T) {
 		t.Skip("NALA_EVAL nicht gesetzt")
 	}
 	k, lvs := korpus(t)
-	for _, m := range []LVMatcher{JePosition(NieZuordnen{}), JePosition(Wortabgleich{}), MitSystemvorgaben(JePosition(Wortabgleich{}))} {
+	for _, m := range []LVMatcher{matching.JePosition(matching.NieZuordnen{}), matching.JePosition(matching.Wortabgleich{}), matching.MitSystemvorgaben(matching.JePosition(matching.Wortabgleich{}))} {
 		for _, s := range []float64{0.3, 0.5, 0.7, 0.9} {
 			l, err := AusfuehrenLV(context.Background(), lvs, k, m, s)
 			if err != nil {
@@ -204,10 +206,10 @@ func TestAusfuehrenLiestX83(t *testing.T) {
 	if err := os.Remove(filepath.Join(dir, "lv-02.x83")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Ausfuehren(lvs, k, NieZuordnen{}, 0.5); err == nil {
+	if _, err := Ausfuehren(lvs, k, matching.NieZuordnen{}, 0.5); err == nil {
 		t.Fatal("fehlende X83 angenommen")
 	}
-	if _, err := Ausfuehren([]*ErwartetesLV{lv()}, k, NieZuordnen{}, 0.5); err == nil || !strings.Contains(err.Error(), "nicht mit LadeKorpus") {
+	if _, err := Ausfuehren([]*ErwartetesLV{lv()}, k, matching.NieZuordnen{}, 0.5); err == nil || !strings.Contains(err.Error(), "nicht mit LadeKorpus") {
 		t.Fatalf("LV ohne X83: %v", err)
 	}
 }
@@ -216,7 +218,7 @@ func TestAusfuehrenLiestX83(t *testing.T) {
 // ADR 0039 (Wortabgleich, Schwelle 0,7) unverändert.
 func TestAusgangswert(t *testing.T) {
 	k, lvs := korpus(t)
-	l, err := Ausfuehren(lvs, k, Wortabgleich{}, 0.7)
+	l, err := Ausfuehren(lvs, k, matching.Wortabgleich{}, 0.7)
 	if err != nil {
 		t.Fatal(err)
 	}

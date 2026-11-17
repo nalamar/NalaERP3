@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"nalaerp3/internal/matching"
 )
 
 func f(v float64) *float64 { return &v }
@@ -74,7 +76,7 @@ func TestKatalogUndLV(t *testing.T) {
 		{"U-Wert null", func(l *ErwartetesLV) { l.Positionen[0].Systemvorgaben.UWert = f(0) }, "U-Wert"},
 		{"U-Wert zu groß", func(l *ErwartetesLV) { l.Positionen[0].Systemvorgaben.UWert = f(10.5) }, "U-Wert"},
 		{"Systemvorgabe zu lang", func(l *ErwartetesLV) {
-			l.Positionen[0].Systemvorgaben.Verglasung = strings.Repeat("é", maxSystemvorgabeText+1)
+			l.Positionen[0].Systemvorgaben.Verglasung = strings.Repeat("é", matching.MaxSystemvorgabeText+1)
 		}, "zu lang"},
 	}
 	for _, c := range cases {
@@ -90,7 +92,7 @@ func TestKatalogUndLV(t *testing.T) {
 	// Grenzwerte gelten noch
 	l := lv()
 	l.Positionen[0].Systemvorgaben.UWert = f(10)
-	l.Positionen[0].Systemvorgaben.Verglasung = strings.Repeat("é", maxSystemvorgabeText)
+	l.Positionen[0].Systemvorgaben.Verglasung = strings.Repeat("é", matching.MaxSystemvorgabeText)
 	l.Positionen[2].Langtext = strings.Repeat("ü", maxTextRunes)
 	l.Positionen[2].Menge = 0
 	if err := l.Validate(k); err != nil {

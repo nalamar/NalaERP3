@@ -2,7 +2,8 @@
 
 - Status: **Angenommen** (2026-11-16, vom Nutzer: „Deine Annahme kann so
   umgesetzt werden“): 1–7 jeweils (a). **Frage 4 angepasst** durch ADR 0046
-  (Entwurf): mit mehreren Modellprofilen gehört die Schwelle ans Profil.
+  (angenommen 2026-11-17): mit mehreren Modellprofilen gehört die Schwelle
+  ans Profil.
   Fragen in `docs/open-questions.md`, Abschnitt 2026-11-16 I.5
 - Bezug: Backlog I.5, `aufgabe.md` §4 (Score und Begründung je Zuordnung,
   unterhalb der Schwelle in die Prüfliste, Angebot erst nach Freigabe durch

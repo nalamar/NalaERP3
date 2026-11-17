@@ -14,42 +14,19 @@ import (
 
 // Positionsarten der Erwartung; Eventualposition = Bedarfsposition.
 const (
-	ArtNormal            = "normal"
-	ArtGrund             = "grundposition"
-	ArtAlternativ        = "alternativposition"
-	ArtBedarfMitGB       = "bedarfsposition_mit_gb"
-	ArtBedarfOhneGB      = "bedarfsposition_ohne_gb"
-	StufeLos             = "los"
-	StufeTitel           = "titel"
-	StufeUntertitel      = "untertitel"
-	maxTextRunes         = 20000
-	maxSystemvorgabeText = 200
+	ArtNormal       = "normal"
+	ArtGrund        = "grundposition"
+	ArtAlternativ   = "alternativposition"
+	ArtBedarfMitGB  = "bedarfsposition_mit_gb"
+	ArtBedarfOhneGB = "bedarfsposition_ohne_gb"
+	StufeLos        = "los"
+	StufeTitel      = "titel"
+	StufeUntertitel = "untertitel"
+	maxTextRunes    = 20000
 )
 
 var validArten = map[string]bool{ArtNormal: true, ArtGrund: true, ArtAlternativ: true, ArtBedarfMitGB: true, ArtBedarfOhneGB: true}
 var validStufen = map[string]bool{StufeLos: true, StufeTitel: true, StufeUntertitel: true}
-
-// Systemvorgaben nach aufgabe.md §4; leer bzw. nil = nicht vorgegeben.
-type Systemvorgaben struct {
-	Profilserie       string   `json:"profilserie,omitempty"`
-	Verglasung        string   `json:"verglasung,omitempty"`
-	RCKlasse          string   `json:"rc_klasse,omitempty"`
-	UWert             *float64 `json:"u_wert,omitempty"`
-	Brandschutzklasse string   `json:"brandschutzklasse,omitempty"`
-}
-
-// Leistung im synthetischen Katalog mit festem Code.
-type Leistung struct {
-	Code           string         `json:"code"`
-	Kurztext       string         `json:"kurztext"`
-	Einheit        string         `json:"einheit"`
-	Gewerk         string         `json:"gewerk"`
-	Systemvorgaben Systemvorgaben `json:"systemvorgaben"`
-}
-
-type Katalog struct {
-	Leistungen []Leistung `json:"leistungen"`
-}
 
 // Bereich: Los, Titel oder Untertitel; Eltern = OZ des uebergeordneten
 // Bereichs (leer auf oberster Ebene).
@@ -124,51 +101,6 @@ func LoadLV(path string, k *Katalog) (*ErwartetesLV, error) {
 	return &lv, nil
 }
 
-func (s Systemvorgaben) validate() error {
-	for _, v := range []string{s.Profilserie, s.Verglasung, s.RCKlasse, s.Brandschutzklasse} {
-		if len([]rune(v)) > maxSystemvorgabeText {
-			return fmt.Errorf("Systemvorgabe ist zu lang")
-		}
-	}
-	if s.UWert != nil && (*s.UWert <= 0 || *s.UWert > 10) {
-		return fmt.Errorf("U-Wert muss zwischen 0 und 10 liegen")
-	}
-	return nil
-}
-
-func (k *Katalog) Validate() error {
-	if len(k.Leistungen) == 0 {
-		return fmt.Errorf("Katalog ist leer")
-	}
-	seen := map[string]bool{}
-	for i, l := range k.Leistungen {
-		code := strings.TrimSpace(l.Code)
-		switch {
-		case code == "" || code != l.Code:
-			return fmt.Errorf("Leistung %d: Code fehlt oder hat Leerraum", i+1)
-		case seen[code]:
-			return fmt.Errorf("Leistung %s ist doppelt", code)
-		case strings.TrimSpace(l.Kurztext) == "" || strings.TrimSpace(l.Einheit) == "":
-			return fmt.Errorf("Leistung %s: Kurztext und Einheit sind Pflicht", code)
-		}
-		if err := l.Systemvorgaben.validate(); err != nil {
-			return fmt.Errorf("Leistung %s: %w", code, err)
-		}
-		seen[code] = true
-	}
-	return nil
-}
-
-// Code liefert, ob der Katalog den Code kennt.
-func (k *Katalog) Code(code string) bool {
-	for _, l := range k.Leistungen {
-		if l.Code == code {
-			return true
-		}
-	}
-	return false
-}
-
 func (lv *ErwartetesLV) Validate(k *Katalog) error {
 	if strings.TrimSpace(lv.Datei) == "" || strings.TrimSpace(lv.Format) == "" || strings.TrimSpace(lv.Phase) == "" {
 		return fmt.Errorf("Datei, Format und Phase sind Pflicht")
@@ -214,7 +146,7 @@ func (lv *ErwartetesLV) Validate(k *Katalog) error {
 		case p.Leistung != "" && !k.Code(p.Leistung):
 			return fmt.Errorf("Position %s: Leistung %s fehlt im Katalog", p.OZ, p.Leistung)
 		}
-		if err := p.Systemvorgaben.validate(); err != nil {
+		if err := p.Systemvorgaben.Validate(); err != nil {
 			return fmt.Errorf("Position %s: %w", p.OZ, err)
 		}
 		oz[p.OZ] = p.Art

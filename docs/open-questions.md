@@ -324,28 +324,28 @@ Details, Recherche und Begründung in `docs/adr/0032-fuhrpark.md`.
    (`fleet.read`/`fleet.write`), die Personalabteilung nicht? Empfehlung:
    ja. Status: **beantwortet** am 2026-10-25 — "Genau so".
 
-## 2026-11-16 — I.8 Modellprofile, Feedback, Scoring und Lernen (offen)
+## 2026-11-16 — I.8 Modellprofile, Feedback, Scoring und Lernen (beantwortet 2026-11-17 mit "fortsetzen" = Empfehlung, ANNAHME)
 
 Bezug: Auskunft zu ADR 0044 Frage 6, `docs/adr/0046-modellprofile-feedback-scoring.md` (Optionen und Begründung dort).
 
 1. **Mehrere Modelle je Mandant:** (a) neue Tabelle `company_llm_profiles` (Anbieter, Endpunkt, Modell, Schlüssel,
    Zeitlimit, Schwelle, Standardprofil), Hauptschalter und Tageslimit bleiben je Mandant, bestehende Einstellung
    wird Profil „Standard“; (b) mehrere Zeilen in `company_llm_settings`. Empfehlung: **(a)** (Schwelle damit je
-   Profil, Anpassung von ADR 0045 Frage 4). Status: **offen**.
+   Profil, Anpassung von ADR 0045 Frage 4). Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 2. **Auswahl beim Lauf:** (a) Kalkulator wählt beim Start ein Profil oder „Wortabgleich ohne Modell“, Profil wird
-   am Lauf und an jedem Vorschlag als Abschrift gespeichert; (b) fest je Nutzer. Empfehlung: **(a)**. Status: **offen**.
+   am Lauf und an jedem Vorschlag als Abschrift gespeichert; (b) fest je Nutzer. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 3. **Feedback:** (a) automatisch aus den Entscheidungen, Grund zur Auswahl beim Ändern/Verwerfen, Gesamtbewertung
-   1–5 mit optionaler Nacharbeit in Minuten bei der Freigabe; (b) nur Freitext. Empfehlung: **(a)**. Status: **offen**.
+   1–5 mit optionaler Nacharbeit in Minuten bei der Freigabe; (b) nur Freitext. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 4. **Scoring:** (a) je Profil über einen Zeitraum (Abdeckung, Übernahme, Fehlerquote über der Schwelle, Gründe,
    Bewertung, Kosten), ab 50 entschiedenen Positionen; (b) zusätzlich Schattenlauf eines zweiten Profils; (c) nur
-   Export. Empfehlung: **(a)**, (b) später. Status: **offen**.
+   Export. Empfehlung: **(a)**, (b) später. Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 5. **Lernen aus Korrekturen:** (a) Gedächtnis je Mandant: gleicher Text → Vorschlag ohne Modell, ähnlicher Text →
    Kandidat und bis zu 5 Beispiele im Aufruf; (b) zusätzlich Vektorsuche; (c) Fine-Tuning beim Anbieter.
-   Empfehlung: **(a)**. Status: **offen**.
+   Empfehlung: **(a)**. Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 6. **Auswertung nach Personen:** (a) nie je Kalkulator, nur je Profil; (b) auch je Person. Empfehlung: **(a)**.
-   Status: **offen**.
+   Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 7. **Messlauf I.4.3 am Korpus:** (a) bleibt optional ohne Termin, Schlüssel je Profil in den Einstellungen;
-   (b) streichen. Empfehlung: **(a)**. Status: **offen**.
+   (b) streichen. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-17, ANNAHME): **(a)**.
 
 ## 2026-11-16 — I.5 Vorschläge am GAEB-Import, Prüfliste und Freigabe (beantwortet 2026-11-16)
 
@@ -359,7 +359,7 @@ Bezug: Backlog I.5, `docs/adr/0045-vorschlaege-pruefliste-freigabe.md` (Optionen
 3. **Ohne eingeschaltetes Sprachmodell:** (a) deterministischer Lauf (Wortabgleich 0,7 und
    Systemvorgaben); (b) 409. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**.
 4. **Schwelle:** (a) je Mandant in den Einstellungen zum Sprachmodell (Standard 0,9); (b) fest im Code;
-   (c) je Anbieter und Modell. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**; Ort nach ADR 0046 Frage 1 am Modellprofil (offen).
+   (c) je Anbieter und Modell. Empfehlung: **(a)**. Status: **beantwortet** (2026-11-16): **(a)**; Ort nach ADR 0046 Frage 1 am Modellprofil (ANNAHME 2026-11-17).
 5. **Prüfliste und Freigabe:** (a) jeder Vorschlag bleibt offen bis zur Entscheidung eines Menschen
    (bestätigen, ändern, verwerfen), Sammelbestätigung über der Schwelle, Freigabe des Laufs nur ohne
    offene Vorschläge; (b) über der Schwelle automatisch bestätigt; (c) nur Hinweise.

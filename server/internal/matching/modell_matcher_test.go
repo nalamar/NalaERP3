@@ -1,4 +1,4 @@
-package eval
+package matching
 
 import (
 	"context"
@@ -361,64 +361,5 @@ func TestModellMatcherGroessenUndKontext(t *testing.T) {
 	a := anfrageAus(t, f.Requests[0])
 	if len(a.Kontext) != 2 || len([]rune(a.Kontext[0])) != 1500 || len([]rune(a.Kontext[1])) != 500+2 || len([]rune(a.Positionen[0].Langtext)) != maxLangtextModell+2 {
 		t.Fatalf("gekürzt: %d %d", len(a.Kontext), len([]rune(a.Positionen[0].Langtext)))
-	}
-}
-
-// orakel antwortet mit dem erwarteten Code, wenn er unter den Kandidaten
-// ist - misst Vorauswahl, Bündel und Abzüge ohne Modell.
-func orakel(t *testing.T, erwartet map[string]string) *llm.Fake {
-	return &llm.Fake{Respond: func(_ context.Context, _ int, req llm.Request) (llm.Response, error) {
-		var zeilen []antwortZeile
-		for _, p := range anfrageAus(t, req).Positionen {
-			z := antwortZeile{OZ: p.OZ, Begruendung: "Orakel"}
-			for _, kd := range p.Kandidaten {
-				if kd.Code == erwartet[p.OZ] {
-					z.Code, z.Score = kd.Code, 0.95
-				}
-			}
-			zeilen = append(zeilen, z)
-		}
-		return antwort(zeilen...), nil
-	}}
-}
-
-// TestModellMatcherOrakel: mit perfektem Modell erreicht die Pipeline am
-// Korpus die Zielwerte (Obergrenze fuer I.4.3); mit erzwungener Vorauswahl
-// (3 Kandidaten) fehlen die Treffer, deren Leistung die Vorauswahl nicht
-// findet. Statt 250 Aufrufen je Position reichen 42 Buendel.
-func TestModellMatcherOrakel(t *testing.T) {
-	k, lvs := korpus(t)
-	for _, c := range []struct {
-		name          string
-		m             ModellMatcher
-		richtig, aufr int
-	}{
-		// 4 Treffer fallen durch den Einheiten-Abzug in die Prüfliste (Stk im LV, m/m2 im Katalog)
-		{"alle Kandidaten", ModellMatcher{Modell: "orakel"}, 180, 42},
-		{"Vorauswahl 3", ModellMatcher{Modell: "orakel", MaxKandidaten: 3, KleinerKatalog: 1}, 160, 41},
-	} {
-		var gesamt []Ergebnis
-		aufrufe := 0
-		for _, lv := range lvs {
-			erwartet := map[string]string{}
-			for _, p := range lv.Positionen {
-				erwartet[p.OZ] = p.Leistung
-			}
-			f := orakel(t, erwartet)
-			m := c.m
-			m.Client = modellClient(f)
-			l, err := AusfuehrenLV(context.Background(), []*ErwartetesLV{lv}, k, MitSystemvorgaben(m), 0.9)
-			if err != nil {
-				t.Fatal(err)
-			}
-			gesamt = append(gesamt, l.Gesamt)
-			aufrufe += len(f.Requests)
-		}
-		g := Summe(gesamt...)
-		t.Logf("%s: richtig %d, falsch %d, automatisch %d, Treffer %s, Fehlzuordnung %s, Aufrufe %d", c.name, g.Richtig, g.Falsch, g.Automatisch,
-			prozent(g.Trefferquote()), prozent(g.Fehlzuordnungsrate()), aufrufe)
-		if g.Richtig != c.richtig || g.Falsch != 0 || aufrufe != c.aufr || g.Merkmale["profilserie"].Erkannt != 0 || g.Merkmale["u_wert"].Richtig != 42 {
-			t.Errorf("%s: %+v, %d Aufrufe", c.name, g, aufrufe)
-		}
 	}
 }

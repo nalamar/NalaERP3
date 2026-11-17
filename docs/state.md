@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-16 I.8.0** erledigt: ADR 0045 vom Nutzer angenommen (alle (a)); seine Auskunft zu I.4.3 (Vergleich der
+> **2026-11-17 I.5.1** erledigt (ADR 0046 mit "fortsetzen" angenommen, ANNAHME alle (a)): Matcher, Kandidaten und
+> Systemvorgaben im neuen Paket `internal/matching`, `eval` nutzt es über Aliase; voller Bericht zeilengleich.
+> Nächste: **I.8.1** Modellprofile (Migration 122 `company_llm_profiles`, Übernahme der bestehenden Einstellung,
+> Schwelle je Profil; zuerst Teilung prüfen). Nächste freie Migration: 122, nächstes ADR: 0047.
+> Davor **2026-11-16 I.8.0** erledigt: ADR 0045 vom Nutzer angenommen (alle (a)); seine Auskunft zu I.4.3 (Vergleich der
 > Modelle im Betrieb durch Feedback der Kalkulatoren, Scoring, Lernen) als ADR 0046 (Entwurf) mit sieben Fragen
 > (`open-questions.md`, Abschnitt 2026-11-16 I.8). Nächste: **I.5.1** Umzug des Matchers nach `internal/matching`
 > (unabhängig von ADR 0046); danach I.8.1 Modellprofile (Migration 122), dann I.5.2 ff. Nächste freie Migration: 122,

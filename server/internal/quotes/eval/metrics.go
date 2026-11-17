@@ -15,14 +15,6 @@ const (
 // Merkmale der Systemvorgaben in fester Reihenfolge fuer den Bericht.
 var Merkmale = []string{"profilserie", "verglasung", "rc_klasse", "u_wert", "brandschutzklasse"}
 
-// Vorschlag eines Matchers je Position: Code leer = keine Zuordnung.
-type Vorschlag struct {
-	Code           string
-	Score          float64
-	Begruendung    string
-	Systemvorgaben Systemvorgaben
-}
-
 // MerkmalZahlen: Erwartet = Positionen mit Vorgabe, Erkannt = Positionen
 // mit erkannter Angabe, Richtig = erkannte Angabe stimmt.
 type MerkmalZahlen struct {

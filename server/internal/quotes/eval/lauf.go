@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"nalaerp3/internal/matching"
 	"nalaerp3/internal/quotes/gaeb"
 )
 
@@ -74,7 +75,7 @@ func lese(lv *ErwartetesLV) (*gaeb.LV, string, error) {
 // Ausfuehren laesst einen Matcher je Position ueber das Korpus laufen
 // (siehe AusfuehrenLV).
 func Ausfuehren(lvs []*ErwartetesLV, k *Katalog, m Matcher, schwelle float64) (Lauf, error) {
-	return AusfuehrenLV(context.Background(), lvs, k, JePosition(m), schwelle)
+	return AusfuehrenLV(context.Background(), lvs, k, matching.JePosition(m), schwelle)
 }
 
 // AusfuehrenLV liest jede X83 mit dem Parser, laesst den Matcher fuer das

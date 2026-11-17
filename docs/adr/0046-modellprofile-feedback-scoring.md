@@ -1,7 +1,8 @@
 # ADR 0046: Modellprofile, Feedback der Kalkulatoren, Scoring und Lernen aus Korrekturen
 
-- Status: **Entwurf** (2026-11-16). Fragen in `docs/open-questions.md`,
-  Abschnitt 2026-11-16 I.8
+- Status: **Angenommen** (2026-11-17, "fortsetzen" = Empfehlung, ANNAHME):
+  1–7 jeweils (a). Fragen in `docs/open-questions.md`, Abschnitt
+  2026-11-16 I.8
 - Bezug: Auskunft des Nutzers zu ADR 0044 Frage 6 (2026-11-16), ADR 0043
   (Modellzugriff, Datenschutz, Grenzen), ADR 0044 (Matching), ADR 0045
   (Vorschläge, Prüfliste, Freigabe), `aufgabe.md` §4
@@ -129,6 +130,15 @@ Modell; Beispiele aus dem Gedächtnis enthalten nur LV- und Katalogfelder,
 keine Kunden, Projekte oder Personen; das Protokoll enthält keine Inhalte;
 jede Zuordnung — auch aus dem Gedächtnis — bleibt ein Vorschlag bis zur
 Freigabe.
+
+## Entscheidung (2026-11-17, ANNAHME)
+
+Alle sieben Fragen mit (a): Modellprofile je Mandant mit Schwelle je Profil
+(Hauptschalter und Tageslimit bleiben am Mandanten, bestehende Einstellung
+wird Profil „Standard“), Auswahl des Profils oder „Wortabgleich“ beim Start
+des Laufs, Feedback aus den Entscheidungen mit Grund und Gesamtbewertung,
+Scoring je Profil ab 50 entschiedenen Positionen, Gedächtnis je Mandant
+ohne Vektorsuche, keine Auswertung je Person, Messlauf am Korpus optional.
 
 ## Vorschlag zur Umsetzung (bei Empfehlung)
 

@@ -1,11 +1,37 @@
-package eval
+package matching
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
 	"nalaerp3/internal/quotes/gaeb"
 )
+
+// katalog liest den synthetischen Katalog des Evaluationssets (ADR 0039).
+func katalog(t *testing.T) *Katalog {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "quotes", "eval", "testdata", "katalog.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var k Katalog
+	if err := json.Unmarshal(raw, &k); err != nil || k.Validate() != nil {
+		t.Fatalf("Katalog: %v", err)
+	}
+	return &k
+}
+
+// merkMatcher merkt sich die Eingaben (OZ und Kurztext, in Reihenfolge).
+type merkMatcher struct{ kurz *[]string }
+
+func (merkMatcher) Name() string { return "merk" }
+func (m merkMatcher) Vorschlagen(p Position, _ *Katalog) Vorschlag {
+	*m.kurz = append(*m.kurz, p.OZ+" "+p.Kurztext)
+	return Vorschlag{Code: "FB-ALU", Score: 1, Begruendung: "x"}
+}
 
 func TestEingabeOhneErwartung(t *testing.T) {
 	p := gaeb.Position{OZ: "01.0010", Bereich: "01", Kurztext: "Fenster", Langtext: "Alu", Menge: 4.5, Einheit: "Stk",
