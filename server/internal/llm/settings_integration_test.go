@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -57,7 +59,7 @@ func TestSettingsServiceSaveAndGet(t *testing.T) {
 		t.Fatalf("Schlüssel im JSON: %s", raw)
 	}
 	var stored []byte
-	if err := env.PG.QueryRow(ctx, `SELECT api_key_enc FROM company_llm_settings WHERE company_id=$1`, company).Scan(&stored); err != nil ||
+	if err := env.PG.QueryRow(ctx, `SELECT api_key_enc FROM company_llm_profiles WHERE company_id=$1 AND standard`, company).Scan(&stored); err != nil ||
 		bytes.Contains(stored, []byte("sk-ant-geheim")) || len(stored) < 29 {
 		t.Fatalf("gespeichert: %v %d", err, len(stored))
 	}
@@ -107,7 +109,7 @@ func TestSettingsServiceSaveAndGet(t *testing.T) {
 	if _, err := svc.Save(ctx, SettingsInput{}, "", second); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := env.PG.Exec(ctx, `UPDATE company_llm_settings SET api_key_enc=(SELECT api_key_enc FROM company_llm_settings WHERE company_id=$1) WHERE company_id=$2`, company, second); err != nil {
+	if _, err := env.PG.Exec(ctx, `UPDATE company_llm_profiles SET api_key_enc=(SELECT api_key_enc FROM company_llm_profiles WHERE company_id=$1 AND standard) WHERE company_id=$2`, company, second); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ = svc.Get(ctx, second); !got.APIKeyGesetzt || got.APIKeyLesbar {
@@ -115,16 +117,122 @@ func TestSettingsServiceSaveAndGet(t *testing.T) {
 	}
 	// Pruefungen der Datenbank
 	for name, sql := range map[string]string{
-		"Anbieter":         `UPDATE company_llm_settings SET anbieter='gpt' WHERE company_id=$1`,
-		"Zeitlimit":        `UPDATE company_llm_settings SET timeout_s=1801 WHERE company_id=$1`,
+		"Anbieter":         `UPDATE company_llm_profiles SET anbieter='gpt' WHERE company_id=$1`,
+		"Zeitlimit":        `UPDATE company_llm_profiles SET timeout_s=1801 WHERE company_id=$1`,
 		"Tageslimit":       `UPDATE company_llm_settings SET tageslimit=0 WHERE company_id=$1`,
-		"Schlüssel kaputt": `UPDATE company_llm_settings SET api_key_enc='\x0201'::bytea WHERE company_id=$1`,
-		"aktiv ohne Key":   `UPDATE company_llm_settings SET api_key_enc=NULL WHERE company_id=$1`,
-		"aktiv OpenAI":     `UPDATE company_llm_settings SET anbieter='openai_compatible', endpunkt='' WHERE company_id=$1`,
+		"Schlüssel kaputt": `UPDATE company_llm_profiles SET api_key_enc='\x0201'::bytea WHERE company_id=$1`,
+		"aktiv ohne Key":   `UPDATE company_llm_profiles SET api_key_enc=NULL WHERE company_id=$1`,
+		"aktiv OpenAI":     `UPDATE company_llm_profiles SET anbieter='openai_compatible', endpunkt='' WHERE company_id=$1`,
+		"Schwelle über 1":  `UPDATE company_llm_profiles SET schwelle=1.001 WHERE company_id=$1`,
+		"Schwelle negativ": `UPDATE company_llm_profiles SET schwelle=-0.001 WHERE company_id=$1`,
+		"Name leer":        `UPDATE company_llm_profiles SET name=' ' WHERE company_id=$1`,
+		"Name zu lang":     `UPDATE company_llm_profiles SET name=repeat('n', 101) WHERE company_id=$1`,
+		"zweites Standard": `INSERT INTO company_llm_profiles (company_id, name, standard) VALUES ($1, 'Zweites', true)`,
+		"Name doppelt":     `INSERT INTO company_llm_profiles (company_id, name) VALUES ($1, 'STANDARD')`,
 	} {
 		if _, err := env.PG.Exec(ctx, sql, company); err == nil {
 			t.Fatalf("Datenbank nimmt %s an", name)
 		}
+	}
+	// Grenzwerte und weiteres Profil mit anderem Namen gehen
+	for _, sql := range []string{
+		`UPDATE company_llm_profiles SET schwelle=1, name=repeat('n', 100) WHERE company_id=$1`,
+		`UPDATE company_llm_profiles SET schwelle=0, name='Standard' WHERE company_id=$1`,
+		`INSERT INTO company_llm_profiles (company_id, name) VALUES ($1, 'Alternative')`,
+	} {
+		if _, err := env.PG.Exec(ctx, sql, company); err != nil {
+			t.Fatalf("%s: %v", sql, err)
+		}
+	}
+	// ein weiteres Profil aendert die Einstellung nicht (nur das Standardprofil
+	// zaehlt) - auch wenn das Standardprofil danach geaendert wurde und in der
+	// Tabelle hinter dem anderen liegt
+	if _, err := env.PG.Exec(ctx, `UPDATE company_llm_profiles SET updated_at=now() WHERE company_id=$1 AND standard`, company); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = svc.Get(ctx, company); got.Anbieter != "mistral" || !got.Aktiv {
+		t.Fatalf("mit zweitem Profil: %+v", got)
+	}
+}
+
+// Migration 122: Uebernahme der Einstellung als Profil "Standard",
+// wiederholbar; Hauptschalter und Tageslimit bleiben am Mandanten.
+func TestMigration122Profile(t *testing.T) {
+	env := testutil.SetupIntegrationEnv(t)
+	ctx := context.Background()
+	sqlText, err := os.ReadFile(filepath.Join("..", "migrate", "migrations", "122_company_llm_profiles.sql"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewSettingsService(env.PG, testBox(t, 1))
+	box := testBox(t, 1)
+	alt := llmTestCompany(t, env)
+	enc, err := box.Seal([]byte("sk-alt"), apiKeyAAD(alt))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stand vor der Migration: alles in company_llm_settings
+	if _, err := env.PG.Exec(ctx, `INSERT INTO company_llm_settings (company_id, aktiv, anbieter, modell, api_key_enc, timeout_s, tageslimit)
+		VALUES ($1, true, 'anthropic', 'claude-x', $2, 77, 12)`, alt, enc); err != nil {
+		t.Fatal(err)
+	}
+	ohne := llmTestCompany(t, env)
+	if _, err := env.PG.Exec(ctx, `INSERT INTO company_llm_settings (company_id) VALUES ($1)`, ohne); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.Get(ctx, alt); got.Eingerichtet {
+		t.Fatalf("ohne Profil eingerichtet: %+v", got)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err := env.PG.Exec(ctx, string(sqlText)); err != nil {
+			t.Fatalf("Migration Lauf %d: %v", i+1, err)
+		}
+	}
+	var n int
+	var name string
+	var schwelle float64
+	if err := env.PG.QueryRow(ctx, `SELECT count(*), min(name), min(schwelle)::float8 FROM company_llm_profiles WHERE company_id=$1 AND standard`, alt).
+		Scan(&n, &name, &schwelle); err != nil || n != 1 || name != "Standard" || schwelle != 0.9 {
+		t.Fatalf("übernommen: %v %d %q %v", err, n, name, schwelle)
+	}
+	got, err := svc.Get(ctx, alt)
+	if err != nil || !got.Eingerichtet || !got.Aktiv || got.Anbieter != "anthropic" || got.Modell != "claude-x" || got.TimeoutS != 77 ||
+		got.Tageslimit != 12 || !got.APIKeyLesbar {
+		t.Fatalf("nach Migration: %+v %v", got, err)
+	}
+	if c, err := svc.Client(ctx, alt, nil); err != nil || c.Limits().Timeout != 77*time.Second {
+		t.Fatalf("Client nach Migration: %v", err)
+	}
+	// nicht eingeschaltete Einstellung: Profil aus
+	if got, _ := svc.Get(ctx, ohne); !got.Eingerichtet || got.Aktiv {
+		t.Fatalf("ausgeschaltet übernommen: %+v", got)
+	}
+	// Hauptschalter an, Standardprofil aus: kein Client; Testclient geht
+	if _, err := env.PG.Exec(ctx, `UPDATE company_llm_profiles SET aktiv=false WHERE company_id=$1`, alt); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Client(ctx, alt, nil); err == nil || !strings.Contains(err.Error(), "nicht eingeschaltet") {
+		t.Fatalf("Profil aus: %v", err)
+	}
+	if _, err := svc.TestClient(ctx, alt, nil); err != nil {
+		t.Fatalf("Testclient mit Profil aus: %v", err)
+	}
+	// Speichern schreibt nicht mehr in die veralteten Spalten
+	if _, err := svc.Save(ctx, SettingsInput{Aktiv: true, Anbieter: "mistral", Modell: "neu", TimeoutS: 5, Tageslimit: 9}, "", alt); err != nil {
+		t.Fatal(err)
+	}
+	var anbieter, modell string
+	var timeout, limit int
+	if err := env.PG.QueryRow(ctx, `SELECT anbieter, modell, timeout_s, tageslimit FROM company_llm_settings WHERE company_id=$1`, alt).
+		Scan(&anbieter, &modell, &timeout, &limit); err != nil || anbieter != "anthropic" || modell != "claude-x" || timeout != 77 || limit != 9 {
+		t.Fatalf("veraltete Spalten: %v %s %s %d %d", err, anbieter, modell, timeout, limit)
+	}
+	if err := env.PG.QueryRow(ctx, `SELECT count(*) FROM company_llm_profiles WHERE company_id=$1`, alt).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("Profile nach Speichern: %v %d", err, n)
+	}
+	// Hauptschalter ohne Pruefung der veralteten Spalten
+	if _, err := env.PG.Exec(ctx, `UPDATE company_llm_settings SET aktiv=true, anbieter='openai_compatible', endpunkt='' WHERE company_id=$1`, ohne); err != nil {
+		t.Fatalf("Hauptschalter: %v", err)
 	}
 }
 

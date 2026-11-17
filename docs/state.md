@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.1** erledigt (ADR 0046 mit "fortsetzen" angenommen, ANNAHME alle (a)): Matcher, Kandidaten und
+> **2026-11-17 I.8.1a1** erledigt: Migration 122 (`company_llm_profiles`, Übernahme als Profil „Standard“, Schwelle
+> je Profil); `llm.SettingsService` liest/schreibt Hauptschalter und Tageslimit am Mandanten, Rest am Standardprofil —
+> Endpunkte und Client unverändert. Nächste: **I.8.1a2** Profile pflegen und wählen im Dienst. Nächste freie
+> Migration: 123, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.1** erledigt (ADR 0046 mit "fortsetzen" angenommen, ANNAHME alle (a)): Matcher, Kandidaten und
 > Systemvorgaben im neuen Paket `internal/matching`, `eval` nutzt es über Aliase; voller Bericht zeilengleich.
 > Nächste: **I.8.1** Modellprofile (Migration 122 `company_llm_profiles`, Übernahme der bestehenden Einstellung,
 > Schwelle je Profil; zuerst Teilung prüfen). Nächste freie Migration: 122, nächstes ADR: 0047.

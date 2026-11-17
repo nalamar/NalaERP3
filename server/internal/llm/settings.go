@@ -16,8 +16,13 @@ import (
 
 // Einstellungen je Mandant (ADR 0043 Fragen 3 und 6, Backlog I.3.5a1),
 // Muster wie der Mail-Zugang (ADR 0033): der API-Schluessel steht nur
-// verschluesselt in company_llm_settings und verlaesst den Dienst nur im
+// verschluesselt in der Datenbank und verlaesst den Dienst nur im
 // Provider - nie ueber JSON, nie im Log.
+//
+// Seit Migration 122 (ADR 0046, I.8.1a1): Hauptschalter und Tageslimit
+// stehen in company_llm_settings, alles Modellbezogene am Standardprofil in
+// company_llm_profiles. Settings zeigt beides als eine Einstellung, damit
+// die bisherigen Endpunkte und der Client unveraendert weiterlaufen.
 
 const (
 	ProviderOpenAICompatible = "openai_compatible"
@@ -128,18 +133,24 @@ func NewSettingsService(pg *pgxpool.Pool, box *secretbox.Box) *SettingsService {
 	return &SettingsService{pg: pg, box: box}
 }
 
+// settingsRow: profilAktiv = das Standardprofil ist eingeschaltet.
 type settingsRow struct {
-	s   Settings
-	enc []byte
+	s           Settings
+	enc         []byte
+	profilAktiv bool
 }
 
-const settingsSelect = `SELECT aktiv, anbieter, endpunkt, modell, api_key_enc, timeout_s, tageslimit, updated_by_user_id, updated_at,
+// Eingerichtet ist nur, wer Mandanten-Einstellung und Standardprofil hat.
+const settingsSelect = `SELECT s.aktiv, p.aktiv, p.anbieter, p.endpunkt, p.modell, p.api_key_enc, p.timeout_s, s.tageslimit,
+	s.updated_by_user_id, s.updated_at,
 	COALESCE((SELECT aufrufe FROM company_llm_usage u WHERE u.company_id=$1 AND u.tag=current_date), 0)
-	FROM company_llm_settings WHERE company_id=$1`
+	FROM company_llm_settings s
+	JOIN company_llm_profiles p ON p.company_id = s.company_id AND p.standard
+	WHERE s.company_id=$1`
 
 func loadSettings(q pgx.Row) (*settingsRow, error) {
 	var r settingsRow
-	err := q.Scan(&r.s.Aktiv, &r.s.Anbieter, &r.s.Endpunkt, &r.s.Modell, &r.enc, &r.s.TimeoutS, &r.s.Tageslimit,
+	err := q.Scan(&r.s.Aktiv, &r.profilAktiv, &r.s.Anbieter, &r.s.Endpunkt, &r.s.Modell, &r.enc, &r.s.TimeoutS, &r.s.Tageslimit,
 		&r.s.UpdatedByUserID, &r.s.UpdatedAt, &r.s.AufrufeHeute)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return &settingsRow{s: Settings{Anbieter: ProviderOpenAICompatible, TimeoutS: int(DefaultTimeout / time.Second), Tageslimit: DefaultTageslimit}}, nil
@@ -175,7 +186,9 @@ func (s *SettingsService) Get(ctx context.Context, companyID string) (*Settings,
 	return s.view(r, companyID), nil
 }
 
-// Save ersetzt die Einstellung des Mandanten.
+// Save ersetzt die Einstellung des Mandanten: Hauptschalter und Tageslimit
+// am Mandanten, Anbieter bis Zeitlimit am Standardprofil (fehlt es, wird
+// es als "Standard" angelegt); aktiv gilt fuer beide.
 func (s *SettingsService) Save(ctx context.Context, in SettingsInput, actorUserID, companyID string) (*Settings, error) {
 	if strings.TrimSpace(companyID) == "" {
 		return nil, errors.New("Mandant erforderlich")
@@ -189,7 +202,7 @@ func (s *SettingsService) Save(ctx context.Context, in SettingsInput, actorUserI
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	cur, err := loadSettings(tx.QueryRow(ctx, settingsSelect+` FOR UPDATE`, companyID))
+	cur, err := loadSettings(tx.QueryRow(ctx, settingsSelect+` FOR UPDATE OF s, p`, companyID))
 	if err != nil {
 		return nil, err
 	}
@@ -213,13 +226,23 @@ func (s *SettingsService) Save(ctx context.Context, in SettingsInput, actorUserI
 		actor = &actorUserID
 	}
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO company_llm_settings (company_id, aktiv, anbieter, endpunkt, modell, api_key_enc, timeout_s, tageslimit, updated_by_user_id, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+		INSERT INTO company_llm_settings (company_id, aktiv, tageslimit, updated_by_user_id, updated_at)
+		VALUES ($1,$2,$3,$4,now())
 		ON CONFLICT (company_id) DO UPDATE SET
-			aktiv=EXCLUDED.aktiv, anbieter=EXCLUDED.anbieter, endpunkt=EXCLUDED.endpunkt, modell=EXCLUDED.modell,
-			api_key_enc=EXCLUDED.api_key_enc, timeout_s=EXCLUDED.timeout_s, tageslimit=EXCLUDED.tageslimit,
+			aktiv=EXCLUDED.aktiv, tageslimit=EXCLUDED.tageslimit,
 			updated_by_user_id=EXCLUDED.updated_by_user_id, updated_at=now()`,
-		companyID, in.Aktiv, in.Anbieter, in.Endpunkt, in.Modell, enc, in.TimeoutS, in.Tageslimit, actor); err != nil {
+		companyID, in.Aktiv, in.Tageslimit, actor); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO company_llm_profiles (company_id, name, aktiv, standard, anbieter, endpunkt, modell, api_key_enc, timeout_s,
+			updated_by_user_id, updated_at)
+		VALUES ($1,'Standard',$2,true,$3,$4,$5,$6,$7,$8,now())
+		ON CONFLICT (company_id) WHERE standard DO UPDATE SET
+			aktiv=EXCLUDED.aktiv, anbieter=EXCLUDED.anbieter, endpunkt=EXCLUDED.endpunkt, modell=EXCLUDED.modell,
+			api_key_enc=EXCLUDED.api_key_enc, timeout_s=EXCLUDED.timeout_s,
+			updated_by_user_id=EXCLUDED.updated_by_user_id, updated_at=now()`,
+		companyID, in.Aktiv, in.Anbieter, in.Endpunkt, in.Modell, enc, in.TimeoutS, actor); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -270,7 +293,7 @@ func (s *SettingsService) clientFor(ctx context.Context, companyID string, recor
 	if err != nil {
 		return nil, err
 	}
-	if requireActive && !r.s.Aktiv {
+	if requireActive && (!r.s.Aktiv || !r.profilAktiv) {
 		return nil, errors.New("Sprachmodell ist nicht eingeschaltet")
 	}
 	if !r.s.Eingerichtet {
