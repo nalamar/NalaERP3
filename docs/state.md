@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.3** erledigt: Routen der Zuordnung unter `/quotes/imports/{id}` (Lauf im Hintergrund, Status,
+> **2026-11-17 I.5.4** erledigt: Migration 124 (`quote_items.leistung_id`), Übernahme setzt die bestätigte bzw. geänderte
+> Leistung (Preis 0), Speichern, Revision und Client behalten sie. Nächste: **I.5.5** Client: Prüfliste im Importdialog
+> (zuerst Bestandsaufnahme des Importdialogs und Teilung). Nächste freie Migration: 125, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.3** erledigt: Routen der Zuordnung unter `/quotes/imports/{id}` (Lauf im Hintergrund, Status,
 > Prüfliste, Entscheiden, Sammelbestätigung), abgebrochene Läufe beim Serverstart markiert. Nächste: **I.5.4** Übernahme
 > mit `quote_items.leistung_id` (Migration 124). Nächste freie Migration: 124, nächstes ADR: 0047.
 > Davor **2026-11-17 I.5.2c** erledigt — damit **I.5.2** vollständig: Prüfliste, Entscheidungen, Sammelbestätigung; Freigabe

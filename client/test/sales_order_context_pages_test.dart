@@ -3929,6 +3929,7 @@ void main() {
             'item_kind': 'alternativposition',
             'is_lump_sum': false,
             'base_outline_no': '01.0010',
+            'leistung_id': 'leistung-fe-2f',
             'unknown_field': 'nicht zurückschicken',
           },
           {
@@ -4000,6 +4001,7 @@ void main() {
     expect(items[0]['item_kind'], 'alternativposition');
     expect(items[0]['is_lump_sum'], false);
     expect(items[0]['base_outline_no'], '01.0010');
+    expect(items[0]['leistung_id'], 'leistung-fe-2f');
     expect(items[0]['description'], 'wie vor, jedoch zweiflügelig');
     expect(items[0].containsKey('unknown_field'), isFalse);
     expect(items[1]['item_kind'], 'bedarfsposition_ohne_gb');
@@ -4007,6 +4009,7 @@ void main() {
     expect(items[1]['outline_no'], '01.0030');
     expect(items[1].containsKey('group_id'), isFalse);
     expect(items[1].containsKey('base_outline_no'), isFalse);
+    expect(items[1].containsKey('leistung_id'), isFalse);
   });
 
   testWidgets('QuotesPage stays stable on smaller viewport', (tester) async {

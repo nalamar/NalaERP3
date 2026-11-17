@@ -41,6 +41,9 @@ type QuoteItemInput struct {
 	ItemKind      string `json:"item_kind"`
 	IsLumpSum     bool   `json:"is_lump_sum"`
 	BaseOutlineNo string `json:"base_outline_no"`
+	// LeistungID: Leistung des Katalogs aus der Zuordnung (ADR 0045 Frage 6,
+	// I.5.4); beim Speichern zurueckzuschicken wie material_id.
+	LeistungID string `json:"leistung_id,omitempty"`
 }
 
 var validQuoteItemKinds = map[string]bool{"normal": true, "grundposition": true, "alternativposition": true,
@@ -475,10 +478,10 @@ func (s *Service) createQuoteTx(ctx context.Context, tx pgx.Tx, in QuoteInput, c
 		}
 		lineID := uuid.New()
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id,
-				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no, leistung_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID),
-			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo)
+			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo, nullIfEmpty(item.LeistungID))
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
@@ -543,6 +546,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 			qi.unit_price,
 			COALESCE(qi.tax_code,''),
 			COALESCE(qi.material_id,''),
+			COALESCE(qi.leistung_id,''),
 			COALESCE(qi.price_mapping_status,'open'),
 			CASE
 				WHEN COALESCE(qi.material_id,'') <> '' THEN 'none'
@@ -701,6 +705,7 @@ func (s *Service) Get(ctx context.Context, id uuid.UUID, companyID string) (*Quo
 			&item.UnitPrice,
 			&item.TaxCode,
 			&item.MaterialID,
+			&item.LeistungID,
 			&item.PriceMappingStatus,
 			&item.MaterialCandidateStatus,
 			&approvalID,
@@ -3375,7 +3380,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 	}
 
 	rows, err := tx.Query(ctx, `SELECT position, description, qty, unit, unit_price, net_amount, tax_amount, COALESCE(tax_code,''), COALESCE(material_id,''), COALESCE(price_mapping_status,'open'),
-			group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no
+			group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no, COALESCE(leistung_id,'')
 		FROM quote_items
 		WHERE quote_id=$1
 		ORDER BY position`, id)
@@ -3393,6 +3398,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 		taxAmount          float64
 		taxCode            string
 		materialID         string
+		leistungID         string
 		priceMappingStatus string
 		groupID            uuid.NullUUID
 		outlineNo          string
@@ -3406,7 +3412,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 	for rows.Next() {
 		var item sourceQuoteItem
 		if err := rows.Scan(&item.position, &item.description, &item.qty, &item.unit, &item.unitPrice, &item.netAmount, &item.taxAmount, &item.taxCode, &item.materialID, &item.priceMappingStatus,
-			&item.groupID, &item.outlineNo, &item.shortText, &item.longText, &item.itemKind, &item.isLumpSum, &item.baseOutlineNo); err != nil {
+			&item.groupID, &item.outlineNo, &item.shortText, &item.longText, &item.itemKind, &item.isLumpSum, &item.baseOutlineNo, &item.leistungID); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -3425,8 +3431,8 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 			}
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status,
-				group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+				group_id, outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no, leistung_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 			uuid.New(),
 			revisedQuoteID,
 			item.position,
@@ -3446,6 +3452,7 @@ func (s *Service) Revise(ctx context.Context, id uuid.UUID, companyID string, ac
 			item.itemKind,
 			item.isLumpSum,
 			item.baseOutlineNo,
+			nullIfEmpty(item.leistungID),
 		)
 		if err != nil {
 			return nil, err
@@ -3604,10 +3611,10 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in QuoteInput, compa
 		}
 		lineID := uuid.New()
 		_, err = tx.Exec(ctx, `INSERT INTO quote_items (id, quote_id, position, description, qty, unit, unit_price, net_amount, tax_amount, tax_code, material_id, price_mapping_status, group_id,
-				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+				outline_no, short_text, long_text, item_kind, is_lump_sum, base_outline_no, leistung_id)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
 			lineID, id, idx+1, item.Description, item.Qty, item.Unit, item.UnitPrice, item.Qty*item.UnitPrice, item.Qty*item.UnitPrice*itemTaxRate, nullIfEmpty(item.TaxCode), nullIfEmpty(item.MaterialID), item.PriceMappingStatus, nullIfEmpty(item.GroupID),
-			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo)
+			item.OutlineNo, item.ShortText, item.LongText, item.ItemKind, item.IsLumpSum, item.BaseOutlineNo, nullIfEmpty(item.LeistungID))
 		if err != nil {
 			return nil, err
 		}
@@ -3734,6 +3741,18 @@ func (s *Service) normalizeQuoteItem(ctx context.Context, tx pgx.Tx, quoteID uui
 				return item, errors.New("material_id ist ungültig")
 			}
 			return item, err
+		}
+	}
+	item.LeistungID = strings.TrimSpace(item.LeistungID)
+	if item.LeistungID != "" {
+		// Leistung desselben Mandanten wie das Angebot (abgeschaltete bleiben gueltig)
+		var ok bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM leistungen l JOIN quotes q ON q.company_id = l.company_id
+			WHERE l.id=$1 AND q.id=$2)`, item.LeistungID, quoteID).Scan(&ok); err != nil {
+			return item, err
+		}
+		if !ok {
+			return item, errors.New("leistung_id ist ungültig")
 		}
 	}
 	item.OutlineNo = strings.TrimSpace(item.OutlineNo)

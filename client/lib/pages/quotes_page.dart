@@ -4742,9 +4742,10 @@ class _QuoteItemDraft {
   }
 
   /// Felder, die der Editor nicht bearbeitet, aber beim Speichern
-  /// unverändert zurückschicken muss: Gruppe und GAEB-Angaben (ADR 0041).
-  /// Ohne sie setzt das Speichern eines Entwurfs Gruppe, OZ und
-  /// Positionsart zurück.
+  /// unverändert zurückschicken muss: Gruppe und GAEB-Angaben (ADR 0041),
+  /// Leistung aus der Zuordnung (ADR 0045, I.5.4).
+  /// Ohne sie setzt das Speichern eines Entwurfs Gruppe, OZ,
+  /// Positionsart und Leistung zurück.
   static const passthroughKeys = [
     'group_id',
     'outline_no',
@@ -4753,6 +4754,7 @@ class _QuoteItemDraft {
     'item_kind',
     'is_lump_sum',
     'base_outline_no',
+    'leistung_id',
   ];
 
   static String _normalizePriceMappingStatus(String value) {

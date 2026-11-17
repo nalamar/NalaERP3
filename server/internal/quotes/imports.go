@@ -804,12 +804,16 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 		return nil, errors.New("Importlauf enthält noch offene Review-Positionen")
 	}
 
+	// Leistung aus der Zuordnung (I.5.4): bestaetigt = vorgeschlagene,
+	// geaendert = gewaehlte; sonst keine. Der Preis bleibt 0.
 	rows, err := tx.Query(ctx, `
-		SELECT id::text, description, qty, unit, position_no, short_text, long_text, item_kind, is_lump_sum, base_position_no,
-		       COALESCE(group_id::text,'')
-		FROM quote_import_items
-		WHERE import_id=$1 AND review_status='accepted'
-		ORDER BY sort_order ASC, id ASC
+		SELECT ii.id::text, ii.description, ii.qty, ii.unit, ii.position_no, ii.short_text, ii.long_text, ii.item_kind, ii.is_lump_sum,
+		       ii.base_position_no, COALESCE(ii.group_id::text,''),
+		       COALESCE(CASE m.entscheidung WHEN 'bestaetigt' THEN m.leistung_id WHEN 'geaendert' THEN m.entschieden_leistung_id END, '')
+		FROM quote_import_items ii
+		LEFT JOIN quote_import_item_matches m ON m.quote_import_item_id = ii.id
+		WHERE ii.import_id=$1 AND ii.review_status='accepted'
+		ORDER BY ii.sort_order ASC, ii.id ASC
 	`, importID)
 	if err != nil {
 		return nil, err
@@ -823,7 +827,7 @@ func (s *Service) ApplyImportToDraftQuote(ctx context.Context, importID string, 
 		var quoteItem QuoteItemInput
 		if err := rows.Scan(&acceptedItem.ImportItemID, &acceptedItem.Description, &acceptedItem.Qty, &acceptedItem.Unit,
 			&quoteItem.OutlineNo, &quoteItem.ShortText, &quoteItem.LongText, &quoteItem.ItemKind, &quoteItem.IsLumpSum,
-			&quoteItem.BaseOutlineNo, &acceptedItem.ImportGroupID); err != nil {
+			&quoteItem.BaseOutlineNo, &acceptedItem.ImportGroupID, &quoteItem.LeistungID); err != nil {
 			return nil, err
 		}
 		quoteItem.Description = acceptedItem.Description
