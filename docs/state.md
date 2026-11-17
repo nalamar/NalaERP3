@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.4** erledigt: Migration 124 (`quote_items.leistung_id`), Übernahme setzt die bestätigte bzw. geänderte
+> **2026-11-17 I.5.5a** erledigt: Client-API der Zuordnung und Prüfliste (`quote_import_match_dialog.dart`) mit
+> Bestätigen, Verwerfen, Sammelbestätigung, noch nicht eingebunden. Nächste: **I.5.5b** Lauf starten mit Statusabfrage, Ändern
+> über eine Leistungsauswahl, Knopf im Importdialog. Nächste freie Migration: 125, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.4** erledigt: Migration 124 (`quote_items.leistung_id`), Übernahme setzt die bestätigte bzw. geänderte
 > Leistung (Preis 0), Speichern, Revision und Client behalten sie. Nächste: **I.5.5** Client: Prüfliste im Importdialog
 > (zuerst Bestandsaufnahme des Importdialogs und Teilung). Nächste freie Migration: 125, nächstes ADR: 0047.
 > Davor **2026-11-17 I.5.3** erledigt: Routen der Zuordnung unter `/quotes/imports/{id}` (Lauf im Hintergrund, Status,

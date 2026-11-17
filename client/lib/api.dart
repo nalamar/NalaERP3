@@ -1065,6 +1065,41 @@ class ApiClient {
     return jsonDecode(_decodeBody(r)) as Map<String, dynamic>;
   }
 
+  // Zuordnung am GAEB-Import (ADR 0045, Routen I.5.3). Start mit
+  // {"profil_id"} oder {"wortabgleich": true}, leer = Standardprofil;
+  // Antwort 202 mit dem Status, der Lauf geht im Hintergrund weiter.
+  Future<Map<String, dynamic>> startQuoteImportMatch(String importId,
+          {String profilId = '', bool wortabgleich = false}) async =>
+      (await _postJson('/api/v1/quotes/imports/$importId/match', {
+        if (profilId.isNotEmpty) 'profil_id': profilId,
+        if (wortabgleich) 'wortabgleich': true,
+      })) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> getQuoteImportMatchStatus(String importId) =>
+      _getJson('/api/v1/quotes/imports/$importId/match');
+
+  // Alle Positionen in LV-Reihenfolge mit Vorschlag und Entscheidung.
+  Future<List<dynamic>> listQuoteImportMatches(String importId) =>
+      _getList('/api/v1/quotes/imports/$importId/matches');
+
+  // Bestaetigt alle offenen Vorschlaege ueber der Schwelle; liefert die Anzahl.
+  Future<int> confirmQuoteImportMatches(String importId) async {
+    final out = (await _postJson(
+            '/api/v1/quotes/imports/$importId/matches/bestaetigen', const {}))
+        as Map<String, dynamic>;
+    return (out['bestaetigt'] as num?)?.toInt() ?? 0;
+  }
+
+  // aktion: bestaetigen, aendern (mit leistungId) oder verwerfen; liefert
+  // die Zeile der Pruefliste.
+  Future<Map<String, dynamic>> decideQuoteImportMatch(
+          String importId, String itemId, String aktion,
+          {String leistungId = ''}) =>
+      _llmPut('/api/v1/quotes/imports/$importId/matches/$itemId', {
+        'aktion': aktion,
+        if (leistungId.isNotEmpty) 'leistung_id': leistungId,
+      });
+
   Future<List<dynamic>> listSalesOrders(
       {String? q,
       String? status,
