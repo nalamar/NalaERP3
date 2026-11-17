@@ -58,11 +58,11 @@ func TestProfilesServiceFlow(t *testing.T) {
 	if raw, _ := json.Marshal(claude); strings.Contains(string(raw), "sk-geheim") {
 		t.Fatalf("Schlüssel im JSON: %s", raw)
 	}
-	if _, err := svc.CreateProfile(ctx, ProfileInput{Name: "LOKAL"}, "", company); err == nil || !strings.Contains(err.Error(), "bereits vergeben") {
+	if _, err := svc.CreateProfile(ctx, ProfileInput{Name: "LOKAL"}, "", company); err == nil || !strings.Contains(err.Error(), "bereits vorhanden") {
 		t.Fatalf("Name doppelt: %v", err)
 	}
 	if _, err := svc.UpdateProfile(ctx, claude.ID, ProfileInput{Name: "lokal", Aktiv: true, Anbieter: "anthropic"}, "", company); err == nil ||
-		!strings.Contains(err.Error(), "bereits vergeben") {
+		!strings.Contains(err.Error(), "bereits vorhanden") {
 		t.Fatalf("Umbenennen auf vorhandenen Namen: %v", err)
 	}
 	// Liste: Standard zuerst, obwohl "Claude" vor "Lokal" sortiert
@@ -123,7 +123,7 @@ func TestProfilesServiceFlow(t *testing.T) {
 		t.Fatalf("Testclient: %+v %v", ab, err)
 	}
 	if _, err := svc.UpdateProfile(ctx, claude.ID, ProfileInput{Name: "Claude", Anbieter: "anthropic"}, "", company); err == nil ||
-		!strings.Contains(err.Error(), "Letztes eingeschaltetes Profil") {
+		!strings.Contains(err.Error(), "letzte eingeschaltete Profil darf nicht") {
 		t.Fatalf("letztes Profil: %v", err)
 	}
 	// Ändern ohne Schlüssel behält ihn

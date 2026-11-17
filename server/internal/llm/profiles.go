@@ -268,7 +268,7 @@ func (s *SettingsService) saveProfile(ctx context.Context, id string, in Profile
 			companyID, id, in.Name, in.Aktiv, in.Anbieter, in.Endpunkt, in.Modell, enc, in.TimeoutS, *in.Schwelle, actor)
 	}
 	if isProfileNameTaken(err) {
-		return nil, errors.New("Name des Profils bereits vergeben")
+		return nil, errors.New("Ein Profil mit diesem Namen ist bereits vorhanden")
 	}
 	if err != nil {
 		return nil, err
@@ -289,7 +289,7 @@ func lastActiveCheck(ctx context.Context, tx pgx.Tx, companyID, exceptID string)
 		return err
 	}
 	if blocked {
-		return errors.New("Letztes eingeschaltetes Profil: zuerst das Sprachmodell ausschalten")
+		return errors.New("Das letzte eingeschaltete Profil darf nicht ausgeschaltet werden, solange das Sprachmodell eingeschaltet ist")
 	}
 	return nil
 }

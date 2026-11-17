@@ -2,7 +2,6 @@ package apihttp
 
 import (
 	"bytes"
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -23,12 +22,8 @@ const llmTestKey = "erfundener-Schluessel-42"
 
 func TestLLMSettingsRoutes(t *testing.T) {
 	env := testutil.SetupIntegrationEnv(t)
-	cleanup := func() {
-		_, _ = env.PG.Exec(context.Background(), `DELETE FROM company_llm_settings WHERE company_id='default'`)
-		_, _ = env.PG.Exec(context.Background(), `DELETE FROM company_llm_usage WHERE company_id='default'`)
-	}
-	cleanup()
-	t.Cleanup(cleanup)
+	llmCleanupDefault(env)
+	t.Cleanup(func() { llmCleanupDefault(env) })
 	cfg := *env.Cfg
 	cfg.SettingsEncryptionKey = base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{3}, 32))
 	h := NewRouterWithDepsAndOptions(env.PG, env.Mongo, env.Redis, &cfg, V1RouterOptions{})
