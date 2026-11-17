@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -22,6 +23,12 @@ const (
 	AktionAendern     = "aendern"
 	AktionVerwerfen   = "verwerfen"
 )
+
+// Gruende beim Aendern oder Verwerfen (ADR 0046 Frage 3, I.8.3a);
+// freiwillig, Freitext nur mit Grund.
+var Gruende = []string{"falsche_leistung", "systemvorgabe_falsch", "einheit_menge", "keine_passende_leistung", "sonstiges"}
+
+const maxGrundText = 1000
 
 // PruefZeile ist eine Position des Importlaufs mit ihrem Vorschlag (ohne
 // Vorschlag: Quelle leer).
@@ -46,12 +53,36 @@ type PruefZeile struct {
 	EntschiedenCode       string          `json:"entschieden_code"`
 	EntschiedenVonUserID  *string         `json:"entschieden_von_user_id"`
 	EntschiedenAm         *time.Time      `json:"entschieden_at"`
+	Grund                 string          `json:"grund"`
+	GrundText             string          `json:"grund_text"`
 }
 
-// EntscheidungEingabe: LeistungID nur bei "aendern".
+// EntscheidungEingabe: LeistungID nur bei "aendern", Grund nur bei
+// "aendern" oder "verwerfen".
 type EntscheidungEingabe struct {
 	Aktion     string `json:"aktion"`
 	LeistungID string `json:"leistung_id"`
+	Grund      string `json:"grund"`
+	GrundText  string `json:"grund_text"`
+}
+
+func pruefeGrund(in EntscheidungEingabe) error {
+	switch {
+	case in.Grund == "" && in.GrundText != "":
+		return errors.New("Grund ungültig: Freitext nur mit Grund")
+	case in.Grund == "":
+		return nil
+	case in.Aktion == AktionBestaetigen:
+		return errors.New("Grund ungültig: nur beim Ändern oder Verwerfen")
+	case utf8.RuneCountInString(in.GrundText) > maxGrundText:
+		return errors.New("Freitext zum Grund darf höchstens 1000 Zeichen haben")
+	}
+	for _, g := range Gruende {
+		if g == in.Grund {
+			return nil
+		}
+	}
+	return errors.New("Grund ungültig (" + strings.Join(Gruende, ", ") + ")")
 }
 
 // ErrItemNotFound: keine Position mit dieser ID im Importlauf.
@@ -62,7 +93,7 @@ const pruefSelect = `SELECT i.id::text, i.position_no,
 	m.leistung_id, COALESCE(m.code, ''), COALESCE(m.score, 0)::float8, COALESCE(m.begruendung, ''), COALESCE(m.systemvorgaben, '{}'),
 	COALESCE(m.quelle, ''), COALESCE(m.profil_name, ''), COALESCE(m.modell, ''), COALESCE(m.schwelle, 0)::float8,
 	COALESCE(m.code <> '' AND m.score >= m.schwelle, false), COALESCE(m.entscheidung, ''), m.entschieden_leistung_id,
-	COALESCE(m.entschieden_code, ''), m.entschieden_von_user_id, m.entschieden_at
+	COALESCE(m.entschieden_code, ''), m.entschieden_von_user_id, m.entschieden_at, COALESCE(m.grund, ''), COALESCE(m.grund_text, '')
 	FROM quote_import_items i LEFT JOIN quote_import_item_matches m ON m.quote_import_item_id = i.id
 	WHERE i.import_id=$1`
 
@@ -70,7 +101,7 @@ func scanPruefZeile(row pgx.Row) (*PruefZeile, error) {
 	var z PruefZeile
 	err := row.Scan(&z.ItemID, &z.PositionNo, &z.Kurztext, &z.Menge, &z.Einheit, &z.LeistungID, &z.Code, &z.Score, &z.Begruendung,
 		&z.Systemvorgaben, &z.Quelle, &z.ProfilName, &z.Modell, &z.Schwelle, &z.UeberSchwelle, &z.Entscheidung, &z.EntschiedenLeistungID,
-		&z.EntschiedenCode, &z.EntschiedenVonUserID, &z.EntschiedenAm)
+		&z.EntschiedenCode, &z.EntschiedenVonUserID, &z.EntschiedenAm, &z.Grund, &z.GrundText)
 	return &z, err
 }
 
@@ -118,11 +149,16 @@ func (s *LaufService) beginEntscheidung(ctx context.Context, importID, companyID
 func (s *LaufService) Entscheiden(ctx context.Context, importID, itemID string, in EntscheidungEingabe, actorUserID, companyID string) (*PruefZeile, error) {
 	in.Aktion = strings.TrimSpace(in.Aktion)
 	in.LeistungID = strings.TrimSpace(in.LeistungID)
+	in.Grund = strings.TrimSpace(in.Grund)
+	in.GrundText = strings.TrimSpace(in.GrundText)
 	switch {
 	case in.Aktion != AktionBestaetigen && in.Aktion != AktionAendern && in.Aktion != AktionVerwerfen:
 		return nil, errors.New("Aktion ungültig (bestaetigen, aendern oder verwerfen)")
 	case (in.Aktion == AktionAendern) != (in.LeistungID != ""):
 		return nil, errors.New("Leistung ungültig: nur und immer beim Ändern angeben")
+	}
+	if err := pruefeGrund(in); err != nil {
+		return nil, err
 	}
 	tx, err := s.beginEntscheidung(ctx, importID, companyID)
 	if err != nil {
@@ -156,10 +192,11 @@ func (s *LaufService) Entscheiden(ctx context.Context, importID, itemID string, 
 			return nil, errors.New("Bestätigen nicht möglich: es fehlt eine vorgeschlagene, vorhandene Leistung - sonst ändern")
 		}
 		_, err = tx.Exec(ctx, `UPDATE quote_import_item_matches SET entscheidung='bestaetigt', entschieden_leistung_id=NULL,
-			entschieden_code='', entschieden_von_user_id=$2, entschieden_at=now() WHERE quote_import_item_id=$1`, itemID, actor)
+			entschieden_code='', entschieden_von_user_id=$2, entschieden_at=now(), grund='', grund_text='' WHERE quote_import_item_id=$1`, itemID, actor)
 	case AktionVerwerfen:
 		_, err = tx.Exec(ctx, `UPDATE quote_import_item_matches SET entscheidung='verworfen', entschieden_leistung_id=NULL,
-			entschieden_code='', entschieden_von_user_id=$2, entschieden_at=now() WHERE quote_import_item_id=$1`, itemID, actor)
+			entschieden_code='', entschieden_von_user_id=$2, entschieden_at=now(), grund=$3, grund_text=$4 WHERE quote_import_item_id=$1`,
+			itemID, actor, in.Grund, in.GrundText)
 	case AktionAendern:
 		var code string
 		err = tx.QueryRow(ctx, `SELECT code FROM leistungen WHERE id=$1 AND company_id=$2 AND aktiv`, in.LeistungID, companyID).Scan(&code)
@@ -170,7 +207,8 @@ func (s *LaufService) Entscheiden(ctx context.Context, importID, itemID string, 
 			return nil, err
 		}
 		_, err = tx.Exec(ctx, `UPDATE quote_import_item_matches SET entscheidung='geaendert', entschieden_leistung_id=$2,
-			entschieden_code=$3, entschieden_von_user_id=$4, entschieden_at=now() WHERE quote_import_item_id=$1`, itemID, in.LeistungID, code, actor)
+			entschieden_code=$3, entschieden_von_user_id=$4, entschieden_at=now(), grund=$5, grund_text=$6 WHERE quote_import_item_id=$1`,
+			itemID, in.LeistungID, code, actor, in.Grund, in.GrundText)
 	}
 	if err != nil {
 		return nil, err

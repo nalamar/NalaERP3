@@ -164,8 +164,10 @@ func TestQuoteImportMatchRoutes(t *testing.T) {
 
 	// Entscheiden
 	var z matching.PruefZeile
-	rec = mailRequest(t, h, admin, http.MethodPut, base+"/matches/"+ohneCode, `{"aktion":"aendern","leistung_id":"`+ersteLeistung+`"}`)
-	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &z) != nil || z.Entscheidung != "geaendert" || z.EntschiedenVonUserID == nil {
+	rec = mailRequest(t, h, admin, http.MethodPut, base+"/matches/"+ohneCode,
+		`{"aktion":"aendern","leistung_id":"`+ersteLeistung+`","grund":"keine_passende_leistung","grund_text":"Vorschlag fehlte"}`)
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &z) != nil || z.Entscheidung != "geaendert" || z.EntschiedenVonUserID == nil ||
+		z.Grund != "keine_passende_leistung" || z.GrundText != "Vorschlag fehlte" {
 		t.Fatalf("ändern: %d %s", rec.Code, rec.Body.String())
 	}
 	for _, c := range []struct {
@@ -178,6 +180,8 @@ func TestQuoteImportMatchRoutes(t *testing.T) {
 		{ohneCode, `{"aktion":"bestaetigen"}`, http.StatusBadRequest},
 		{uuid.NewString(), `{"aktion":"verwerfen"}`, http.StatusNotFound},
 		{mitCode, `{"aktion":"aendern","leistung_id":"gibt-es-nicht"}`, http.StatusNotFound},
+		{mitCode, `{"aktion":"verwerfen","grund":"egal"}`, http.StatusBadRequest},
+		{mitCode, `{"aktion":"verwerfen","grund":"sonstiges","grund_text":"` + strings.Repeat("x", 1001) + `"}`, http.StatusBadRequest},
 	} {
 		if rec := mailRequest(t, h, admin, http.MethodPut, base+"/matches/"+c.item, c.body); rec.Code != c.code {
 			t.Fatalf("%s: %d %s", c.body, rec.Code, rec.Body.String())

@@ -7,7 +7,10 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.5b** erledigt — damit **I.5.5** und der Ablauf von I.5 vollständig: Lauf aus der Prüfliste starten
+> **2026-11-17 I.8.3a** erledigt: Migration 125 (Grund und Freitext an der Entscheidung), Prüfung im Matching-Service,
+> Grund freiwillig (ANNAHME). Nächste: **I.8.3b** Gesamtbewertung bei der Freigabe (Migration 126: Note 1–5, Nacharbeit
+> in Minuten, Freitext, optional). Nächste freie Migration: 126, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.5b** erledigt — damit **I.5.5** und der Ablauf von I.5 vollständig: Lauf aus der Prüfliste starten
 > (Standard, Wortabgleich, Profil), Status bis zum Ende abfragen, Ändern über eine Leistungsauswahl, Knopf „Zuordnung prüfen“
 > im Importdialog. Nächste: **I.8.3** Feedback (Gründe beim Ändern/Verwerfen, Gesamtbewertung bei der Freigabe; zuerst
 > Bestandsaufnahme und Teilung). Nächste freie Migration: 125, nächstes ADR: 0047.
