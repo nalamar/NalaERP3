@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.8.1b** erledigt — damit **I.8.1** vollständig: Endpunkte `/settings/llm/mandant` und
+> **2026-11-17 I.8.2a** erledigt: Client-API für Profile und Mandant, Dialog „Profil anlegen/bearbeiten“ (noch nicht
+> eingebunden). Nächste: **I.8.2b** Seite „Sprachmodell“ umbauen. Nächste freie Migration: 123, nächstes ADR: 0047.
+> Davor **2026-11-17 I.8.1b** erledigt — damit **I.8.1** vollständig: Endpunkte `/settings/llm/mandant` und
 > `/settings/llm/profile` (Liste, Anlegen, Ersetzen, Standard, Test je Profil). Nächste: **I.8.2** Client (Seite
 > „Sprachmodell“ mit Profilen und Hauptschalter). Nächste freie Migration: 123, nächstes ADR: 0047.
 > Davor **2026-11-17 I.8.1a2** erledigt: Profile im Dienst pflegen (Liste, Anlegen — erstes wird Standard —, Ändern, Standard

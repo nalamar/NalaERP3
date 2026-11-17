@@ -3666,6 +3666,39 @@ class ApiClient {
   Future<Map<String, dynamic>> testLlmSettings() async =>
       (await _postJson('/api/v1/settings/llm/test', const {})) as Map<String, dynamic>;
 
+  // Modellprofile und Hauptschalter (ADR 0046, Routen I.8.1b) - settings.manage.
+  // Profile ohne Schluessel ("api_key_gesetzt", "api_key_lesbar").
+  Future<Map<String, dynamic>> getLlmMandant() => _getJson('/api/v1/settings/llm/mandant');
+
+  Future<Map<String, dynamic>> saveLlmMandant(Map<String, dynamic> body) => _llmPut('/api/v1/settings/llm/mandant', body);
+
+  Future<List<dynamic>> listLlmProfiles() => _getList('/api/v1/settings/llm/profile');
+
+  Future<Map<String, dynamic>> createLlmProfile(Map<String, dynamic> body) async =>
+      (await _postJson('/api/v1/settings/llm/profile', body)) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> updateLlmProfile(String id, Map<String, dynamic> body) =>
+      _llmPut('/api/v1/settings/llm/profile/${Uri.encodeComponent(id)}', body);
+
+  Future<Map<String, dynamic>> setLlmStandardProfile(String id) async =>
+      (await _postJson('/api/v1/settings/llm/profile/${Uri.encodeComponent(id)}/standard', const {})) as Map<String, dynamic>;
+
+  // Verbindungstest je Profil, Antwort wie testLlmSettings.
+  Future<Map<String, dynamic>> testLlmProfile(String id) async =>
+      (await _postJson('/api/v1/settings/llm/profile/${Uri.encodeComponent(id)}/test', const {})) as Map<String, dynamic>;
+
+  Future<Map<String, dynamic>> _llmPut(String path, Map<String, dynamic> body) async {
+    final r = await _sendWithAuth(
+      (headers) => http.put(
+        _u(path),
+        headers: {...headers, 'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    if (r.statusCode != 200) _throwApiException(r);
+    return jsonDecode(utf8.decode(r.bodyBytes)) as Map<String, dynamic>;
+  }
+
   // -------- Hinweis-Mails (Backlog F.14.4c2, Routen F.14.4c1) --------
   // Eigene Abbestellung - jeder angemeldete Benutzer fuer sich.
   Future<bool> getNoticeMailOptOut() async =>
