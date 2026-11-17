@@ -95,7 +95,7 @@ func (s *LaufService) Starten(ctx context.Context, importID string, in LaufEinga
 	if _, status, err := s.store.importStatus(ctx, s.store.pg.QueryRow, importID, companyID, ""); err != nil {
 		return nil, nil, err
 	} else if status != "parsed" {
-		return nil, nil, errors.New("Zuordnung nur für verarbeitete, noch nicht freigegebene Importläufe")
+		return nil, nil, errors.New("Zuordnung im aktuellen Status nicht erlaubt (nur verarbeitete, noch nicht freigegebene Importläufe)")
 	}
 	lv, positionen, err := s.store.LadeLV(ctx, importID, companyID)
 	if err != nil {
@@ -106,7 +106,7 @@ func (s *LaufService) Starten(ctx context.Context, importID string, in LaufEinga
 		return nil, nil, err
 	}
 	if len(k.Leistungen) == 0 {
-		return nil, nil, errors.New("Leistungskatalog ist leer - zuerst Leistungen anlegen")
+		return nil, nil, errors.New("Leistungskatalog ist leer: es fehlt mindestens eine aktive Leistung")
 	}
 	matcher, buendel, ab, err := s.waehle(ctx, in, companyID)
 	if err != nil {
@@ -169,7 +169,7 @@ func (s *LaufService) waehle(ctx context.Context, in LaufEingabe, companyID stri
 	wort := MitSystemvorgaben(JePosition(Wortabgleich{}))
 	if in.Wortabgleich {
 		if in.ProfilID != "" {
-			return nil, 0, nil, errors.New("Entweder ein Profil oder den Wortabgleich wählen")
+			return nil, 0, nil, errors.New("Auswahl ungültig: entweder ein Profil oder den Wortabgleich")
 		}
 		return wort, buendelWortabgleich, nil, nil
 	}

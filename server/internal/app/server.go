@@ -14,6 +14,7 @@ import (
 	"nalaerp3/internal/config"
 	"nalaerp3/internal/db"
 	httpx "nalaerp3/internal/http"
+	"nalaerp3/internal/matching"
 	"nalaerp3/internal/migrate"
 )
 
@@ -90,6 +91,14 @@ func New(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, err
 	} else if created {
 		log.Printf("Erster Administrator angelegt: Benutzer %q - das Passwort muss bei der ersten Anmeldung geändert werden", auth.BootstrapAdminUsername)
+	}
+
+	// Laeufe der Zuordnung, die beim Ende des letzten Prozesses noch liefen,
+	// koennen nicht weiterlaufen (ADR 0045 Frage 2): als abgebrochen markieren.
+	if n, err := matching.NewLaufService(matching.NewStore(pgConn), nil).MarkiereAbgebrochen(ctx); err != nil {
+		log.Printf("Zuordnung: abgebrochene Läufe nicht markiert: %v", err)
+	} else if n > 0 {
+		log.Printf("Zuordnung: %d abgebrochene Läufe markiert", n)
 	}
 
 	// Hinweis-Mails werktags 7:00 (F.14.4b) - nur im API-Prozess, die

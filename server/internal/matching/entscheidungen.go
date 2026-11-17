@@ -105,7 +105,7 @@ func (s *LaufService) beginEntscheidung(ctx context.Context, importID, companyID
 	}
 	_, status, err := s.store.importStatus(ctx, tx.QueryRow, importID, companyID, " FOR UPDATE OF i")
 	if err == nil && status != "parsed" {
-		err = errors.New("Entscheiden nur für verarbeitete, noch nicht freigegebene Importläufe")
+		err = errors.New("Entscheiden im aktuellen Status nicht erlaubt (nur verarbeitete, noch nicht freigegebene Importläufe)")
 	}
 	if err != nil {
 		_ = tx.Rollback(ctx)
@@ -122,7 +122,7 @@ func (s *LaufService) Entscheiden(ctx context.Context, importID, itemID string, 
 	case in.Aktion != AktionBestaetigen && in.Aktion != AktionAendern && in.Aktion != AktionVerwerfen:
 		return nil, errors.New("Aktion ungültig (bestaetigen, aendern oder verwerfen)")
 	case (in.Aktion == AktionAendern) != (in.LeistungID != ""):
-		return nil, errors.New("Leistung nur und immer beim Ändern angeben")
+		return nil, errors.New("Leistung ungültig: nur und immer beim Ändern angeben")
 	}
 	tx, err := s.beginEntscheidung(ctx, importID, companyID)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *LaufService) Entscheiden(ctx context.Context, importID, itemID string, 
 	case AktionBestaetigen:
 		// ohne Code gibt es nie eine Leistung
 		if !mitLeistung {
-			return nil, errors.New("Bestätigen nur mit vorgeschlagener, vorhandener Leistung - sonst ändern")
+			return nil, errors.New("Bestätigen nicht möglich: es fehlt eine vorgeschlagene, vorhandene Leistung - sonst ändern")
 		}
 		_, err = tx.Exec(ctx, `UPDATE quote_import_item_matches SET entscheidung='bestaetigt', entschieden_leistung_id=NULL,
 			entschieden_code='', entschieden_von_user_id=$2, entschieden_at=now() WHERE quote_import_item_id=$1`, itemID, actor)

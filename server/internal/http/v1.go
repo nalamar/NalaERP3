@@ -35,6 +35,7 @@ import (
 	"nalaerp3/internal/leistungen"
 	"nalaerp3/internal/llm"
 	"nalaerp3/internal/mail"
+	"nalaerp3/internal/matching"
 	"nalaerp3/internal/materials"
 	"nalaerp3/internal/noticemail"
 	"nalaerp3/internal/notices"
@@ -53,6 +54,9 @@ type V1RouterOptions struct {
 	GAEBImportParser quotes.GAEBImportParser
 	// MailTransport verschickt Mails (nil: mail.Sender mit MAIL_REDIRECT_TO).
 	MailTransport MailTransport
+	// MatchRunner fuehrt einen Lauf der Zuordnung aus (nil: Goroutine mit
+	// eigenem Context, I.5.3); Tests fuehren ihn synchron aus.
+	MatchRunner func(run func(context.Context) error)
 }
 
 func NewV1Router(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client, cfg *config.Config) http.Handler {
@@ -1804,7 +1808,13 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 		mailTransport = &mail.Sender{RedirectTo: cfg.MailRedirectTo}
 	}
 	mountMailSettingsRoutes(protected, mail.NewSettingsService(pg, settingsBox), mailTransport, cfg.MailRedirectTo != "")
-	mountLLMSettingsRoutes(protected, llm.NewSettingsService(pg, settingsBox))
+	llmSettings := llm.NewSettingsService(pg, settingsBox)
+	mountLLMSettingsRoutes(protected, llmSettings)
+	matchSvc := matching.NewLaufService(matching.NewStore(pg), llmSettings)
+	matchRunner := options.MatchRunner
+	if matchRunner == nil {
+		matchRunner = backgroundMatchRunner
+	}
 	mountLeistungenRoutes(protected, leistungen.NewService(pg))
 	mountNoticeMailRoutes(protected, noticemail.NewPrefs(pg))
 
@@ -2352,6 +2362,7 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 	})
 
 	protected.Route("/quotes", func(r chi.Router) {
+		mountQuoteImportMatchRoutes(r, matchSvc, matchRunner)
 		r.With(requirePermission("quotes.read")).Get("/imports", func(w http.ResponseWriter, req *http.Request) {
 			q := req.URL.Query()
 			lim, off := 0, 0

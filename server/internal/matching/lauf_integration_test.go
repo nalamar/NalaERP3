@@ -379,7 +379,7 @@ func TestLaufVoraussetzungen(t *testing.T) {
 		if _, err := env.PG.Exec(ctx, `UPDATE quote_imports SET status=$2 WHERE id=$1`, imp, status); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := svc.Starten(ctx, imp, wort, "", company); err == nil || !strings.Contains(err.Error(), "nur für verarbeitete") {
+		if _, _, err := svc.Starten(ctx, imp, wort, "", company); err == nil || !strings.Contains(err.Error(), "im aktuellen Status nicht erlaubt") {
 			t.Fatalf("Status %s: %v", status, err)
 		}
 	}

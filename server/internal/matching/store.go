@@ -86,7 +86,7 @@ func (s *Store) LadeLV(ctx context.Context, importID, companyID string) (lv *gae
 			return nil, nil, err
 		}
 		if _, doppelt := positionen[p.OZ]; doppelt {
-			return nil, nil, fmt.Errorf("Ordnungszahl %s ist doppelt", p.OZ)
+			return nil, nil, fmt.Errorf("Ordnungszahl %s ungültig: doppelt", p.OZ)
 		}
 		positionen[p.OZ] = id
 		lv.Positionen = append(lv.Positionen, p)
@@ -95,7 +95,7 @@ func (s *Store) LadeLV(ctx context.Context, importID, companyID string) (lv *gae
 		return nil, nil, err
 	}
 	if len(lv.Positionen) == 0 {
-		return nil, nil, errors.New("Importlauf hat keine Positionen")
+		return nil, nil, errors.New("Im Importlauf fehlen Positionen")
 	}
 	return lv, positionen, nil
 }

@@ -168,13 +168,13 @@ func TestStoreLadeLV(t *testing.T) {
 		SELECT max(sort_order) FROM quote_import_items WHERE import_id=$1)`, erstes, oz); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.LadeLV(ctx, erstes, company); err == nil || err.Error() != "Ordnungszahl "+oz+" ist doppelt" {
+	if _, _, err := store.LadeLV(ctx, erstes, company); err == nil || err.Error() != "Ordnungszahl "+oz+" ungültig: doppelt" {
 		t.Fatalf("doppelt: %v", err)
 	}
 	if _, err := env.PG.Exec(ctx, `DELETE FROM quote_import_items WHERE import_id=$1`, erstes); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := store.LadeLV(ctx, erstes, company); err == nil || err.Error() != "Importlauf hat keine Positionen" {
+	if _, _, err := store.LadeLV(ctx, erstes, company); err == nil || err.Error() != "Im Importlauf fehlen Positionen" {
 		t.Fatalf("ohne Positionen: %v", err)
 	}
 }
