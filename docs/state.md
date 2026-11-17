@@ -7,7 +7,11 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-17 I.5.2b** erledigt: `matching.LaufService` (Starten mit Auswahl Profil/Standard/Wortabgleich, Speichern je
+> **2026-11-17 I.5.2c** erledigt — damit **I.5.2** vollständig: Prüfliste, Entscheidungen, Sammelbestätigung; Freigabe
+> des Importlaufs nur ohne offene Vorschläge und ohne laufenden Lauf. Nächste: **I.5.3** HTTP (Lauf im Hintergrund mit
+> eigenem Context, `MarkiereAbgebrochen` beim Start, Status, Prüfliste, Entscheiden, Sammelbestätigung). Nächste freie
+> Migration: 124, nächstes ADR: 0047.
+> Davor **2026-11-17 I.5.2b** erledigt: `matching.LaufService` (Starten mit Auswahl Profil/Standard/Wortabgleich, Speichern je
 > Bündel, Status, Abbruch beim Neustart). Nächste: **I.5.2c** Entscheidungen (bestätigen, ändern, verwerfen,
 > Sammelbestätigung über der Schwelle, Freigabe nur ohne offene Vorschläge). Nächste freie Migration: 124, nächstes ADR: 0047.
 > Davor **2026-11-17 I.5.2a** erledigt: Migration 123 (`quote_import_item_matches`, Status des Laufs am Import) und

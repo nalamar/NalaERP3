@@ -5284,6 +5284,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "sind zulässig"),
 		strings.Contains(msg, "können reviewt werden"),
 		strings.Contains(msg, "offene review-positionen"),
+		strings.Contains(msg, "offene vorschläge der zuordnung"),
 		strings.Contains(msg, "hat bereits ein material"),
 		strings.Contains(msg, "kein sichtbarer suchtreffer"),
 		strings.Contains(msg, "kein sichtbarer kandidat"),

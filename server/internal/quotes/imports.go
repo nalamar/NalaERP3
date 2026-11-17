@@ -721,13 +721,37 @@ func (s *Service) MarkImportReviewed(ctx context.Context, importID string, compa
 		return nil, errors.New("Importlauf enthält keine reviewten Positionen")
 	}
 
-	if _, err := s.pg.Exec(ctx, `
+	// Zuordnung (ADR 0045 Frage 5, I.5.2c): kein laufender Lauf und kein
+	// offener Vorschlag; Positionen ohne Vorschlag sind zulaessig.
+	var matchStatus string
+	var openMatches int
+	if err := s.pg.QueryRow(ctx, `
+		SELECT match_status,
+		       (SELECT COUNT(*) FROM quote_import_item_matches WHERE import_id=$1 AND entscheidung='offen' AND code<>'')
+		FROM quote_imports WHERE id=$1
+	`, importID).Scan(&matchStatus, &openMatches); err != nil {
+		return nil, err
+	}
+	if matchStatus == "laeuft" {
+		return nil, errors.New("Zuordnung läuft bereits - Freigabe erst nach ihrem Ende")
+	}
+	if openMatches > 0 {
+		return nil, fmt.Errorf("Importlauf enthält noch offene Vorschläge der Zuordnung (%d)", openMatches)
+	}
+
+	// Bedingt, damit kein Lauf zwischen Pruefung und Freigabe beginnt.
+	tag, err := s.pg.Exec(ctx, `
 		UPDATE quote_imports
 		SET status='reviewed',
 		    updated_at=now()
-		WHERE id=$1
-	`, importID); err != nil {
+		WHERE id=$1 AND status='parsed' AND match_status<>'laeuft'
+		  AND NOT EXISTS (SELECT 1 FROM quote_import_item_matches WHERE import_id=$1 AND entscheidung='offen' AND code<>'')
+	`, importID)
+	if err != nil {
 		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, errors.New("Importlauf kann nicht freigegeben werden: Stand hat sich geändert, bitte neu laden")
 	}
 	return s.GetImport(ctx, importID, companyID)
 }
