@@ -38,6 +38,8 @@ void main() {
       decided = await api.decideQuoteImportMatch('imp-1', 'i1', 'aendern',
           leistungId: 'l-2');
       await api.decideQuoteImportMatch('imp-1', 'i2', 'verwerfen');
+      await api.decideQuoteImportMatch('imp-1', 'i3', 'verwerfen',
+          grund: 'sonstiges', grundText: 'zu teuer');
     }, () => client);
     expect(calls.map((c) => '${c.method} ${c.url.path}'), [
       'POST /api/v1/quotes/imports/imp-1/match',
@@ -48,6 +50,7 @@ void main() {
       'POST /api/v1/quotes/imports/imp-1/matches/bestaetigen',
       'PUT /api/v1/quotes/imports/imp-1/matches/i1',
       'PUT /api/v1/quotes/imports/imp-1/matches/i2',
+      'PUT /api/v1/quotes/imports/imp-1/matches/i3',
     ]);
     expect(started['status'], 'laeuft');
     expect(status['status'], 'fertig');
@@ -61,6 +64,11 @@ void main() {
     expect(
         jsonDecode(calls[6].body), {'aktion': 'aendern', 'leistung_id': 'l-2'});
     expect(jsonDecode(calls[7].body), {'aktion': 'verwerfen'});
+    expect(jsonDecode(calls[8].body), {
+      'aktion': 'verwerfen',
+      'grund': 'sonstiges',
+      'grund_text': 'zu teuer'
+    });
   });
 
   test('API: Konflikt beim Start und beim Entscheiden wirft ApiException',

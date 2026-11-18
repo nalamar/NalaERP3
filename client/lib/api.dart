@@ -1094,10 +1094,12 @@ class ApiClient {
   // die Zeile der Pruefliste.
   Future<Map<String, dynamic>> decideQuoteImportMatch(
           String importId, String itemId, String aktion,
-          {String leistungId = ''}) =>
+          {String leistungId = '', String grund = '', String grundText = ''}) =>
       _llmPut('/api/v1/quotes/imports/$importId/matches/$itemId', {
         'aktion': aktion,
         if (leistungId.isNotEmpty) 'leistung_id': leistungId,
+        if (grund.isNotEmpty) 'grund': grund,
+        if (grundText.isNotEmpty) 'grund_text': grundText,
       });
 
   Future<List<dynamic>> listSalesOrders(

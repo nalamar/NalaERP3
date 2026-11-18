@@ -7,7 +7,9 @@
 
 > **Stand 2026-10-13 (jüngste Subtask zuerst — der Rest dieses Abschnitts ist
 > historisch gewachsen und beginnt weiter unten noch bei Epic 0.3):**
-> **2026-11-18 I.8.3b** erledigt: Migration 126 (Gesamtbewertung am Importlauf: Note 1–5, Nacharbeit, Freitext, wer/wann),
+> **2026-11-18 I.8.3c1** erledigt: Grund in der Prüfliste (nach der Entscheidung angeboten, ANNAHME). Nächste: **I.8.3c2**
+> Bewertung bei der Freigabe im Client. Nächste freie Migration: 127, nächstes ADR: 0047.
+> Davor **2026-11-18 I.8.3b** erledigt: Migration 126 (Gesamtbewertung am Importlauf: Note 1–5, Nacharbeit, Freitext, wer/wann),
 > `FreigebenMitBewertung`, freiwilliger Body an `PATCH /imports/{id}/review`; nebenbei 500→409 bei Freigabe eines nicht
 > verarbeiteten Laufs. Nächste: **I.8.3c** Client (Grund beim Ändern/Verwerfen, Bewertung bei der Freigabe).
 > Nächste freie Migration: 127, nächstes ADR: 0047.

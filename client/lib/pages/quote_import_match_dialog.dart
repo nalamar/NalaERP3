@@ -54,6 +54,24 @@ String matchEntscheidungLabel(String entscheidung) {
   }
 }
 
+/// Gruende beim Aendern oder Verwerfen (wie der Server, I.8.3a/c);
+/// freiwillig, Freitext nur mit Grund.
+const matchGruende = {
+  'falsche_leistung': 'Falsche Leistung',
+  'systemvorgabe_falsch': 'Systemvorgabe falsch',
+  'einheit_menge': 'Einheit oder Menge',
+  'keine_passende_leistung': 'Keine passende Leistung im Katalog',
+  'sonstiges': 'Sonstiges',
+};
+
+/// Grund einer Entscheidung fuer die Zeile; leer ohne Grund.
+String matchGrundText(Map<String, dynamic> z) {
+  final grund = (z['grund'] ?? '').toString();
+  if (grund.isEmpty) return '';
+  final text = (z['grund_text'] ?? '').toString().trim();
+  return '${matchGruende[grund] ?? grund}${text.isEmpty ? '' : ': $text'}';
+}
+
 String matchScoreText(Object? score) =>
     '${(((score as num?) ?? 0) * 100).round()} %';
 
@@ -236,13 +254,33 @@ class _QuoteImportMatchDialogState extends State<QuoteImportMatchDialog> {
     await _entscheiden(z, 'aendern', leistungId: leistungId);
   }
 
+  // Grund nachtraeglich: die Entscheidung bleibt ein Klick, der Grund wird
+  // mit derselben Entscheidung erneut gespeichert.
+  Future<void> _grundAngeben(Map<String, dynamic> z) async {
+    final eingabe = await showDialog<(String, String)>(
+      context: context,
+      builder: (_) => _GrundDialog(
+          grund: (z['grund'] ?? '').toString(),
+          text: (z['grund_text'] ?? '').toString()),
+    );
+    if (eingabe == null || !mounted) return;
+    final geaendert = z['entscheidung'] == 'geaendert';
+    await _entscheiden(z, geaendert ? 'aendern' : 'verwerfen',
+        leistungId:
+            geaendert ? (z['entschieden_leistung_id'] ?? '').toString() : '',
+        grund: eingabe.$1,
+        grundText: eingabe.$2);
+  }
+
   String _text(Object e, String fallback) =>
       e is ApiException ? e.message : '$fallback: $e';
 
   // Ersetzt die Zeile an ihrem Platz: die Liste springt beim Entscheiden
   // nicht, neu sortiert wird erst beim naechsten Oeffnen.
   Future<void> _entscheiden(Map<String, dynamic> z, String aktion,
-      {String leistungId = ''}) async {
+      {String leistungId = '',
+      String grund = '',
+      String grundText = ''}) async {
     setState(() {
       busy = true;
       error = null;
@@ -251,7 +289,7 @@ class _QuoteImportMatchDialogState extends State<QuoteImportMatchDialog> {
     try {
       final neu = await widget.api.decideQuoteImportMatch(
           widget.importId, z['item_id'].toString(), aktion,
-          leistungId: leistungId);
+          leistungId: leistungId, grund: grund, grundText: grundText);
       if (!mounted) return;
       setState(() {
         zeilen = [
@@ -337,6 +375,7 @@ class _QuoteImportMatchDialogState extends State<QuoteImportMatchDialog> {
             : '$code · ${matchScoreText(z['score'])} '
                 '(Schwelle ${matchScoreText(z['schwelle'])}) · ${_quelleText(z)}';
     final entschiedenCode = (z['entschieden_code'] ?? '').toString();
+    final grund = matchGrundText(z);
     return Card(
       key: ValueKey('match-$id'),
       child: Padding(
@@ -357,6 +396,8 @@ class _QuoteImportMatchDialogState extends State<QuoteImportMatchDialog> {
               'Entscheidung: ${matchEntscheidungLabel(entscheidung)}'
               '${entschiedenCode.isEmpty ? '' : ' ($entschiedenCode)'}',
             ),
+            if (grund.isNotEmpty)
+              Text('Grund: $grund', key: ValueKey('grund-text-$id')),
             if (canWrite && !laeuft && entscheidung.isNotEmpty)
               Wrap(
                 spacing: 8,
@@ -379,6 +420,14 @@ class _QuoteImportMatchDialogState extends State<QuoteImportMatchDialog> {
                       onPressed:
                           busy ? null : () => _entscheiden(z, 'verwerfen'),
                       child: const Text('Verwerfen'),
+                    ),
+                  if (entscheidung == 'geaendert' ||
+                      entscheidung == 'verworfen')
+                    TextButton(
+                      key: ValueKey('grund-$id'),
+                      onPressed: busy ? null : () => _grundAngeben(z),
+                      child: Text(
+                          grund.isEmpty ? 'Grund angeben' : 'Grund ändern'),
                     ),
                 ],
               ),
@@ -540,6 +589,76 @@ class _LeistungAuswahlDialogState extends State<_LeistungAuswahlDialog> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Abbrechen'),
+          ),
+        ],
+      );
+}
+
+/// Grund zu einer geaenderten oder verworfenen Position; liefert
+/// (grund, freitext), ohne Grund beides leer.
+class _GrundDialog extends StatefulWidget {
+  const _GrundDialog({required this.grund, required this.text});
+
+  final String grund;
+  final String text;
+
+  @override
+  State<_GrundDialog> createState() => _GrundDialogState();
+}
+
+class _GrundDialogState extends State<_GrundDialog> {
+  late String grund =
+      matchGruende.containsKey(widget.grund) ? widget.grund : '';
+  late final freitext = TextEditingController(text: widget.text);
+
+  @override
+  void dispose() {
+    freitext.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+        title: const Text('Grund angeben'),
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                key: const ValueKey('grund-auswahl'),
+                isExpanded: true,
+                initialValue: grund,
+                decoration: const InputDecoration(labelText: 'Grund'),
+                items: [
+                  const DropdownMenuItem(value: '', child: Text('ohne Grund')),
+                  for (final e in matchGruende.entries)
+                    DropdownMenuItem(value: e.key, child: Text(e.value)),
+                ],
+                onChanged: (v) => setState(() => grund = v ?? ''),
+              ),
+              TextField(
+                key: const ValueKey('grund-freitext'),
+                controller: freitext,
+                enabled: grund.isNotEmpty,
+                maxLength: 1000,
+                maxLines: 3,
+                decoration:
+                    const InputDecoration(labelText: 'Freitext (freiwillig)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            key: const ValueKey('grund-speichern'),
+            onPressed: () => Navigator.of(context)
+                .pop((grund, grund.isEmpty ? '' : freitext.text.trim())),
+            child: const Text('Speichern'),
           ),
         ],
       );

@@ -52,6 +52,7 @@ class _FakeApi extends ApiClient {
   final List<Map<String, dynamic>> status;
   final List<(String, String)> decided = [];
   final List<String> leistungIds = [];
+  final List<(String, String)> gruende = [];
   final List<(String, bool)> started = [];
   final List<String> suchen = [];
   int confirmed = 0;
@@ -109,9 +110,12 @@ class _FakeApi extends ApiClient {
   @override
   Future<Map<String, dynamic>> decideQuoteImportMatch(
       String importId, String itemId, String aktion,
-      {String leistungId = ''}) async {
+      {String leistungId = '',
+      String grund = '',
+      String grundText = ''}) async {
     decided.add((itemId, aktion));
     leistungIds.add(leistungId);
+    gruende.add((grund, grundText));
     if (error != null) throw error!;
     final z = zeilen.firstWhere((z) => z['item_id'] == itemId);
     z['entscheidung'] = switch (aktion) {
@@ -120,6 +124,9 @@ class _FakeApi extends ApiClient {
       _ => 'verworfen',
     };
     z['entschieden_code'] = aktion == 'aendern' ? 'L-2' : '';
+    z['entschieden_leistung_id'] = aktion == 'aendern' ? leistungId : null;
+    z['grund'] = grund;
+    z['grund_text'] = grundText;
     return Map<String, dynamic>.from(z);
   }
 
@@ -447,5 +454,124 @@ void main() {
     expect(find.byKey(const ValueKey('lauf-starten')), findsNothing);
     expect(find.byKey(const ValueKey('aendern-a')), findsNothing);
     expect(find.byKey(const ValueKey('sammel-bestaetigen')), findsNothing);
+    expect(find.byKey(const ValueKey('grund-a')), findsNothing);
+  });
+
+  // Gruende (Backlog I.8.3c1)
+  group('Gründe', () {
+    test('Auswahl wie der Server, Text der Zeile', () {
+      expect(matchGruende.keys, [
+        'falsche_leistung',
+        'systemvorgabe_falsch',
+        'einheit_menge',
+        'keine_passende_leistung',
+        'sonstiges',
+      ]);
+      expect(matchGrundText({'grund': ''}), '');
+      expect(matchGrundText({'grund_text': 'ohne Grund'}), '');
+      expect(matchGrundText({'grund': 'einheit_menge', 'grund_text': ' '}),
+          'Einheit oder Menge');
+      expect(matchGrundText({'grund': 'sonstiges', 'grund_text': ' alt '}),
+          'Sonstiges: alt');
+      expect(matchGrundText({'grund': 'neu_x'}), 'neu_x');
+    });
+
+    testWidgets('Verwerfen bleibt ein Klick, Grund danach freiwillig',
+        (tester) async {
+      final api = _FakeApi([_zeile('a')]);
+      await _pump(tester, api);
+      expect(find.byKey(const ValueKey('grund-a')), findsNothing);
+      await tester.tap(find.byKey(const ValueKey('verwerfen-a')));
+      await tester.pumpAndSettle();
+      expect(api.decided, [('a', 'verwerfen')]);
+      expect(api.gruende, [('', '')]);
+      expect(find.text('Grund angeben'), findsOneWidget);
+      expect(find.byKey(const ValueKey('grund-text-a')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('grund-a')));
+      await tester.pumpAndSettle();
+      // Freitext erst mit Grund
+      expect(
+          tester
+              .widget<TextField>(find.byKey(const ValueKey('grund-freitext')))
+              .enabled,
+          isFalse);
+      await tester.tap(find.byKey(const ValueKey('grund-auswahl')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Keine passende Leistung im Katalog').last);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('grund-freitext')), '  nicht im Katalog ');
+      await tester.tap(find.byKey(const ValueKey('grund-speichern')));
+      await tester.pumpAndSettle();
+      expect(api.decided, [('a', 'verwerfen'), ('a', 'verwerfen')]);
+      expect(api.leistungIds, ['', '']);
+      expect(api.gruende.last, ('keine_passende_leistung', 'nicht im Katalog'));
+      expect(
+          find.text('Grund: Keine passende Leistung im Katalog: '
+              'nicht im Katalog'),
+          findsOneWidget);
+      expect(find.text('Grund ändern'), findsOneWidget);
+    });
+
+    testWidgets('Grund zur Änderung behält die gewählte Leistung',
+        (tester) async {
+      final api = _FakeApi([_zeile('a')]);
+      await _pump(tester, api);
+      await tester.tap(find.byKey(const ValueKey('aendern-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('leistung-l-3')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-auswahl')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Systemvorgabe falsch').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-speichern')));
+      await tester.pumpAndSettle();
+      expect(api.decided, [('a', 'aendern'), ('a', 'aendern')]);
+      expect(api.leistungIds, ['l-3', 'l-3']);
+      expect(api.gruende.last, ('systemvorgabe_falsch', ''));
+      expect(find.text('Grund: Systemvorgabe falsch'), findsOneWidget);
+    });
+
+    testWidgets('ohne Grund verwirft den Freitext, Abbrechen speichert nichts',
+        (tester) async {
+      final z = _zeile('a', entscheidung: 'verworfen')
+        ..['grund'] = 'sonstiges'
+        ..['grund_text'] = 'alt';
+      final api = _FakeApi([z, _zeile('b', entscheidung: 'bestaetigt')]);
+      await _pump(tester, api);
+      expect(find.text('Grund: Sonstiges: alt'), findsOneWidget);
+      // nur bei geaendert und verworfen
+      expect(find.byKey(const ValueKey('grund-b')), findsNothing);
+
+      await tester.tap(find.byKey(const ValueKey('grund-a')));
+      await tester.pumpAndSettle();
+      expect(find.text('alt'), findsOneWidget);
+      await tester.tap(find.text('Abbrechen'));
+      await tester.pumpAndSettle();
+      expect(api.decided, isEmpty);
+
+      // Speichern ohne Änderung behält Grund und Freitext
+      await tester.tap(find.byKey(const ValueKey('grund-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-speichern')));
+      await tester.pumpAndSettle();
+      expect(api.gruende, [('sonstiges', 'alt')]);
+
+      await tester.tap(find.byKey(const ValueKey('grund-a')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-auswahl')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('ohne Grund').last);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('grund-speichern')));
+      await tester.pumpAndSettle();
+      expect(api.gruende.last, ('', ''));
+      expect(find.byKey(const ValueKey('grund-text-a')), findsNothing);
+      expect(find.text('Grund angeben'), findsOneWidget);
+    });
   });
 }
