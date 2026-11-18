@@ -2457,8 +2457,14 @@ func NewV1RouterWithOptions(pg *pgxpool.Pool, mg *mongo.Client, rd *redis.Client
 			writeJSON(w, http.StatusOK, out)
 		})
 		r.With(requirePermission("quotes.write")).Patch("/imports/{id}/review", func(w http.ResponseWriter, req *http.Request) {
+			// Body freiwillig: Gesamtbewertung (I.8.3b)
+			var in quotes.ImportBewertung
+			if err := json.NewDecoder(req.Body).Decode(&in); err != nil && !errors.Is(err, io.EOF) {
+				writeAPIError(w, req, http.StatusBadRequest, "validation_error", "Ungültige Eingabe")
+				return
+			}
 			companyID, _ := companyIDFromContext(req.Context())
-			out, err := quoteSvc.MarkImportReviewed(req.Context(), chi.URLParam(req, "id"), companyID)
+			out, err := quoteSvc.FreigebenMitBewertung(req.Context(), chi.URLParam(req, "id"), in, actorUserIDFromContext(req.Context()), companyID)
 			if err != nil {
 				writeDomainError(w, req, err)
 				return
@@ -5253,6 +5259,7 @@ func classifyDomainError(err error) (int, string) {
 		strings.Contains(msg, "nur ein entwurf kann"),
 		strings.Contains(msg, "ist nicht mehr im projekt"),
 		strings.Contains(msg, "kann nicht freigegeben werden"),
+		strings.Contains(msg, "nur geparste importläufe können freigegeben werden"),
 		strings.Contains(msg, "arbeitsplatz ist deaktiviert"),
 		strings.Contains(msg, "arbeitsgänge nicht änderbar"),
 		strings.Contains(msg, "bereits arbeitsgänge"),

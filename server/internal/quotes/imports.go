@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -38,7 +39,42 @@ type QuoteImport struct {
 	PendingCount     int       `json:"pending_count"`
 	UploadedAt       time.Time `json:"uploaded_at"`
 	UpdatedAt        time.Time `json:"updated_at"`
+	// Gesamtbewertung bei der Freigabe (I.8.3b), sonst leer
+	Bewertung         *int       `json:"bewertung"`
+	NacharbeitMin     *int       `json:"nacharbeit_min"`
+	BewertungText     string     `json:"bewertung_text"`
+	BewertetVonUserID *string    `json:"bewertet_von_user_id"`
+	BewertetAm        *time.Time `json:"bewertet_at"`
 }
+
+// ImportBewertung ist die Gesamtbewertung eines Importlaufs bei der
+// Freigabe (ADR 0046 Frage 3, I.8.3b); alle Angaben sind freiwillig.
+type ImportBewertung struct {
+	Note          *int   `json:"bewertung"`
+	NacharbeitMin *int   `json:"nacharbeit_min"`
+	Text          string `json:"bewertung_text"`
+}
+
+func (b ImportBewertung) leer() bool {
+	return b.Note == nil && b.NacharbeitMin == nil && b.Text == ""
+}
+
+func pruefeBewertung(b *ImportBewertung) error {
+	b.Text = strings.TrimSpace(b.Text)
+	switch {
+	case b.Note != nil && (*b.Note < 1 || *b.Note > 5):
+		return errors.New("Bewertung ungültig (1 bis 5)")
+	case b.NacharbeitMin != nil && (*b.NacharbeitMin < 0 || *b.NacharbeitMin > 100000):
+		return errors.New("Nacharbeit ungültig (0 bis 100000 Minuten)")
+	case utf8.RuneCountInString(b.Text) > 2000:
+		return errors.New("Freitext zur Bewertung darf höchstens 2000 Zeichen haben")
+	}
+	return nil
+}
+
+const importBewertungSelect = `,
+	       quote_imports.bewertung, quote_imports.nacharbeit_min, quote_imports.bewertung_text,
+	       quote_imports.bewertet_von_user_id, quote_imports.bewertet_at`
 
 type QuoteImportItem struct {
 	ID                string  `json:"id"`
@@ -370,7 +406,7 @@ func (s *Service) ListImports(ctx context.Context, f QuoteImportFilter, companyI
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='accepted'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='rejected'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='pending'), 0),
-		       quote_imports.uploaded_at, quote_imports.updated_at
+		       quote_imports.uploaded_at, quote_imports.updated_at`+importBewertungSelect+`
 		FROM quote_imports
 		JOIN projects p ON p.id = quote_imports.project_id`+where+`
 		ORDER BY uploaded_at DESC
@@ -401,6 +437,7 @@ func (s *Service) ListImports(ctx context.Context, f QuoteImportFilter, companyI
 			&item.PendingCount,
 			&item.UploadedAt,
 			&item.UpdatedAt,
+			&item.Bewertung, &item.NacharbeitMin, &item.BewertungText, &item.BewertetVonUserID, &item.BewertetAm,
 		); err != nil {
 			return nil, err
 		}
@@ -427,7 +464,7 @@ func (s *Service) GetImport(ctx context.Context, id string, companyID string) (*
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='accepted'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='rejected'), 0),
 		       COALESCE((SELECT COUNT(*) FROM quote_import_items qi WHERE qi.import_id = quote_imports.id AND qi.review_status='pending'), 0),
-		       quote_imports.uploaded_at, quote_imports.updated_at
+		       quote_imports.uploaded_at, quote_imports.updated_at`+importBewertungSelect+`
 		FROM quote_imports
 		JOIN projects p ON p.id = quote_imports.project_id
 		WHERE quote_imports.id=$1 AND p.company_id=$2
@@ -449,6 +486,7 @@ func (s *Service) GetImport(ctx context.Context, id string, companyID string) (*
 		&item.PendingCount,
 		&item.UploadedAt,
 		&item.UpdatedAt,
+		&item.Bewertung, &item.NacharbeitMin, &item.BewertungText, &item.BewertetVonUserID, &item.BewertetAm,
 	)
 	if err != nil {
 		return nil, err
@@ -672,12 +710,25 @@ func (s *Service) UpdateImportItemReview(ctx context.Context, importID, itemID, 
 }
 
 func (s *Service) MarkImportReviewed(ctx context.Context, importID string, companyID string) (*QuoteImport, error) {
+	return s.FreigebenMitBewertung(ctx, importID, ImportBewertung{}, "", companyID)
+}
+
+// FreigebenMitBewertung gibt den Importlauf frei und haelt die freiwillige
+// Gesamtbewertung fest (I.8.3b).
+func (s *Service) FreigebenMitBewertung(ctx context.Context, importID string, b ImportBewertung, actorUserID, companyID string) (*QuoteImport, error) {
 	importID = strings.TrimSpace(importID)
 	if importID == "" {
 		return nil, errors.New("import_id erforderlich")
 	}
 	if _, err := uuid.Parse(importID); err != nil {
 		return nil, errors.New("ungültige import_id")
+	}
+	if err := pruefeBewertung(&b); err != nil {
+		return nil, err
+	}
+	var bewertetVon *string
+	if !b.leer() && strings.TrimSpace(actorUserID) != "" {
+		bewertetVon = &actorUserID
 	}
 
 	var status string
@@ -743,10 +794,12 @@ func (s *Service) MarkImportReviewed(ctx context.Context, importID string, compa
 	tag, err := s.pg.Exec(ctx, `
 		UPDATE quote_imports
 		SET status='reviewed',
-		    updated_at=now()
+		    updated_at=now(),
+		    bewertung=$2, nacharbeit_min=$3, bewertung_text=$4, bewertet_von_user_id=$5,
+		    bewertet_at=CASE WHEN $6::bool THEN now() END
 		WHERE id=$1 AND status='parsed' AND match_status<>'laeuft'
 		  AND NOT EXISTS (SELECT 1 FROM quote_import_item_matches WHERE import_id=$1 AND entscheidung='offen' AND code<>'')
-	`, importID)
+	`, importID, b.Note, b.NacharbeitMin, b.Text, bewertetVon, !b.leer())
 	if err != nil {
 		return nil, err
 	}
